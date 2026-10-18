@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ReferenceAssets\defeat_reference_runtime.bin" />
+    <EmbeddedResource Include="ReferenceAssets\loadscreen_nazi_zombie_aztec_reference_runtime.bin" />
+  </ItemGroup>
+</Project>

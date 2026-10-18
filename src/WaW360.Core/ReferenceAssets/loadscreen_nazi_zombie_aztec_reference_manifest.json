@@ -1,0 +1,8 @@
+{
+  "asset": "loadscreen_nazi_zombie_aztec",
+  "runtime_bytes": 491520,
+  "sha256": "87477481f84c9e57ad82ffb6bac408a23ba2a2f79f1a4a97fe6d90574100f7f3",
+  "source": "Known-working Xbox Aztec load.ff reference: second 0x78000 bytes of the 0x88000 LargeRuntime image arena.",
+  "reference_zone_sha256": "31fe0e1122f5729405fcb1a47dd03f5d18e8064528754d232ada0da79ad8750e",
+  "reference_nonruntime_sha256": "ad62a93f49eb784f8e6654f99ab26adcbcd4845da53fe92453cbe21f98034989"
+}

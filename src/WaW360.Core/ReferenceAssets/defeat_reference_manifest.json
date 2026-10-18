@@ -1,0 +1,17 @@
+{
+  "asset": "defeat",
+  "kind": "Xbox360 T4 GfxImage LargeRuntime reference donor",
+  "runtime_bytes": 65536,
+  "base_level_bytes": 32768,
+  "width": 256,
+  "height": 256,
+  "format": "BC1/DXT1",
+  "mip_levels": 9,
+  "runtime_sha256": "340853759d2a38087d3429bdeb17a0aeae515407c3ef4a5bdd93f0a733d39d9d",
+  "reference_source": "Known-working Xbox nazi_zombie_aztec_load.ff supplied in project research",
+  "reference_zone_nonruntime_end": "0x3ED",
+  "reference_large_runtime_offset": "0x00000",
+  "xbox_payload_verified": true,
+  "retail_stock_origin_proven": false,
+  "retail_origin_note": "Exact source FF/offset in the retail TU7 donor set remains unproven; do not claim common.ff/code_post_gfx.ff/patch.ff provenance."
+}
