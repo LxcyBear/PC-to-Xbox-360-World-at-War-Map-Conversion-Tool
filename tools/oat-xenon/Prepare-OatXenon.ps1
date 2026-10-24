@@ -54,9 +54,26 @@ try {
     if (-not $?) { throw 'Xenon contract failed.' }
     if ($Build) {
         $vswhere = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
-        if (-not (Test-Path $vswhere)) { throw 'Visual Studio 2026 C++ tools are required.' }
-        $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\Current\Bin\MSBuild.exe' | Select-Object -First 1
-        if (-not $msbuild) { throw 'MSBuild not found.' }
+        if (-not (Test-Path -LiteralPath $vswhere)) {
+            throw 'Visual Studio Installer not found. Install Visual Studio 2026 with Desktop development with C++.'
+        }
+
+        # MSBuild alone is not sufficient for native C++ projects. In particular,
+        # MSBuild supplied by a .NET-only workload lacks Microsoft.Cpp.Default.props.
+        # Choose an installation with both MSBuild and x86/x64 MSVC tools.
+        $msbuild = & $vswhere -latest -products '*' -version '[18.0,19.0)' -requires Microsoft.Component.MSBuild Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'MSBuild\Current\Bin\MSBuild.exe' | Select-Object -First 1
+        if (-not $msbuild) {
+            throw 'Visual Studio 2026 x86/x64 C++ build tools are missing. Open Visual Studio Installer > Modify (VS 2026) > Desktop development with C++. Ensure MSVC Build Tools for x64/x86 and a Windows SDK are selected, click Modify, then retry. The .NET/MSBuild workload alone cannot compile OpenAssetTools.'
+        }
+        $msbuild = [string]$msbuild
+        # Validate the precise import target that Premake VS2026 projects use,
+        # so a missing workload produces one actionable error, not hundreds.
+        $cppDefaultProps = [System.IO.Path]::GetFullPath(
+            (Join-Path (Split-Path -Parent $msbuild) '..\..\Microsoft\VC\v180\Microsoft.Cpp.Default.props'))
+        if (-not (Test-Path -LiteralPath $cppDefaultProps -PathType Leaf)) {
+            throw "Required C++ targets missing: $cppDefaultProps. In Visual Studio Installer, modify VS 2026 and install or repair 'Desktop development with C++' plus MSVC x86/x64 build tools and Windows SDK. Do not copy targets from another VS version."
+        }
+        Write-Host "[OAT] Found VS2026 C++ targets: $cppDefaultProps"
         $env:PREMAKE_NO_PROMPT = '1'
         & cmd.exe /d /c generate.bat
         if ($LASTEXITCODE -ne 0) { throw 'OAT solution generation failed.' }
