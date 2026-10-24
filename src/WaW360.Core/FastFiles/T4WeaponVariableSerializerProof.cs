@@ -64,9 +64,12 @@ public static class T4WeaponVariableSerializerProof
     private const int XAnims = 80;          // 35 XString/XAnim refs
     private const int ModeName = 220;
 
+    private sealed record PlannedInsertion(int Offset, byte[] Bytes);
+
     private sealed class TraverseStats
     {
         public int InlineStrings;
+        public int LocalizedIwdStrings;
         public int SoundNameRecords;
         public int BounceSoundTables;
         public int AccuracyGraphArrays;
@@ -85,6 +88,10 @@ public static class T4WeaponVariableSerializerProof
         public required TraverseStats Stats { get; init; }
         public required string WeaponName { get; init; }
         public bool RequireSelfContainedPointers { get; init; }
+        public byte[]? PatchDestination { get; init; }
+        public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
+        public List<PlannedInsertion>? PlannedInsertions { get; init; }
+        public bool PlanIwdStrings { get; init; }
     }
 
     public static Task<T4WeaponVariableProofResult> BuildProofAsync(
@@ -270,6 +277,61 @@ public static class T4WeaponVariableSerializerProof
         }
     }
 
+    internal static bool TryBuildStructuralXboxBlobWithIwdStrings(
+        byte[] blob,
+        string name,
+        IReadOnlyDictionary<string, string> stringOverrides,
+        out byte[] rebuilt,
+        out int localizedStrings,
+        out string reason)
+    {
+        rebuilt = Array.Empty<byte>();
+        localizedStrings = 0;
+        reason = string.Empty;
+        try
+        {
+            if (blob.Length < FixedBodySize)
+                throw new InvalidDataException($"Weapon '{name}' proof blob is shorter than the {FixedBodySize}-byte fixed body.");
+
+            var patched = blob.ToArray();
+            var insertions = new List<PlannedInsertion>();
+            var stats = new TraverseStats();
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = stats,
+                WeaponName = name,
+                PatchDestination = patched,
+                StringOverrides = stringOverrides,
+                PlannedInsertions = insertions,
+                PlanIwdStrings = true
+            };
+
+            var end = WalkOwnedPayload(ctx, 0);
+            if (end != blob.Length)
+                throw new InvalidDataException($"IWD-string planning walk ended at 0x{end:X}, expected 0x{blob.Length:X}.");
+            if (stats.LocalizedIwdStrings == 0)
+                throw new InvalidDataException("Weapon has no packed direct XString field covered by its authoritative IWD weapon file.");
+
+            rebuilt = ApplyInsertions(patched, insertions);
+            if (!TryValidateSelfContainedXboxBlob(rebuilt, name, out reason))
+                return false;
+
+            localizedStrings = stats.LocalizedIwdStrings;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            rebuilt = Array.Empty<byte>();
+            localizedStrings = 0;
+            return false;
+        }
+    }
+
     private static int WalkOwnedPayload(WalkContext c, int start)
     {
         Ensure(c.Source, start, FixedBodySize, $"Weapon '{c.WeaponName}' fixed body");
@@ -281,17 +343,17 @@ public static class T4WeaponVariableSerializerProof
         ValidateFixedBody(c, body);
 
         // WeaponDef ZoneCode order begins with its strings and early model refs.
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + InternalName, c.Endianness), cursor, "szInternalName");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + DisplayName, c.Endianness), cursor, "szDisplayName");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + OverlayName, c.Endianness), cursor, "szOverlayName");
+        cursor = ConsumeWeaponXString(c, body + InternalName, cursor, "szInternalName");
+        cursor = ConsumeWeaponXString(c, body + DisplayName, cursor, "szDisplayName");
+        cursor = ConsumeWeaponXString(c, body + OverlayName, cursor, "szOverlayName");
 
         for (var i = 0; i < 16; i++)
             cursor = ConsumeXModelRef(c, ReadU32(c.Source, body + GunModels + i * 4, c.Endianness), cursor, $"gunXModel[{i}]");
         cursor = ConsumeXModelRef(c, ReadU32(c.Source, body + HandModel, c.Endianness), cursor, "handXModel");
 
         for (var i = 0; i < 35; i++)
-            cursor = ConsumeXString(c, ReadU32(c.Source, body + XAnims + i * 4, c.Endianness), cursor, $"szXAnims[{i}]");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + ModeName, c.Endianness), cursor, "szModeName");
+            cursor = ConsumeWeaponXString(c, body + XAnims + i * 4, cursor, $"szXAnims[{i}]");
+        cursor = ConsumeWeaponXString(c, body + ModeName, cursor, "szModeName");
 
         // viewFlashEffect/worldFlashEffect are asset refs, not Weapon-owned data.
         cursor = ConsumeUnsupportedFxRef(c, ReadU32(c.Source, body + 380, c.Endianness), cursor, "viewFlashEffect");
@@ -304,9 +366,9 @@ public static class T4WeaponVariableSerializerProof
         // bounceSound is a reusable array of exactly 31 SndAliasCustom entries in T4.
         cursor = ConsumeBounceSoundTable(c, ReadU32(c.Source, body + 624, c.Endianness), cursor);
 
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 628, c.Endianness), cursor, "standMountedWeapdef");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 632, c.Endianness), cursor, "crouchMountedWeapdef");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 636, c.Endianness), cursor, "proneMountedWeapdef");
+        cursor = ConsumeWeaponXString(c, body + 628, cursor, "standMountedWeapdef");
+        cursor = ConsumeWeaponXString(c, body + 632, cursor, "crouchMountedWeapdef");
+        cursor = ConsumeWeaponXString(c, body + 636, cursor, "proneMountedWeapdef");
 
         foreach (var (offset, label) in new[]
         {
@@ -331,16 +393,16 @@ public static class T4WeaponVariableSerializerProof
         cursor = ConsumeMaterialRef(c, ReadU32(c.Source, body + 984, c.Endianness), cursor, "hudIcon");
         cursor = ConsumeMaterialRef(c, ReadU32(c.Source, body + 992, c.Endianness), cursor, "ammoCounterIcon");
 
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 1008, c.Endianness), cursor, "szAmmoName");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 1016, c.Endianness), cursor, "szClipName");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 1040, c.Endianness), cursor, "szSharedAmmoCapName");
+        cursor = ConsumeWeaponXString(c, body + 1008, cursor, "szAmmoName");
+        cursor = ConsumeWeaponXString(c, body + 1016, cursor, "szClipName");
+        cursor = ConsumeWeaponXString(c, body + 1040, cursor, "szSharedAmmoCapName");
 
         cursor = ConsumeMaterialRef(c, ReadU32(c.Source, body + 1308, c.Endianness), cursor, "overlayMaterial");
         cursor = ConsumeMaterialRef(c, ReadU32(c.Source, body + 1312, c.Endianness), cursor, "overlayMaterialLowRes");
         cursor = ConsumeMaterialRef(c, ReadU32(c.Source, body + 1552, c.Endianness), cursor, "killIcon");
         cursor = ConsumeMaterialRef(c, ReadU32(c.Source, body + 1564, c.Endianness), cursor, "dpadIcon");
 
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 1592, c.Endianness), cursor, "szAltWeaponName");
+        cursor = ConsumeWeaponXString(c, body + 1592, cursor, "szAltWeaponName");
         cursor = ConsumeXModelRef(c, ReadU32(c.Source, body + 1664, c.Endianness), cursor, "projectileModel");
         cursor = ConsumeUnsupportedFxRef(c, ReadU32(c.Source, body + 1672, c.Endianness), cursor, "projExplosionEffect");
         cursor = ConsumeUnsupportedFxRef(c, ReadU32(c.Source, body + 1680, c.Endianness), cursor, "projDudEffect");
@@ -361,20 +423,20 @@ public static class T4WeaponVariableSerializerProof
         if (aiCount is < 0 or > 4096 || playerCount is < 0 or > 4096)
             throw new InvalidDataException($"Weapon '{c.WeaponName}' has implausible accuracy graph knot counts ({aiCount}, {playerCount}).");
 
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2176, c.Endianness), cursor, "aiVsAiAccuracyGraphName");
+        cursor = ConsumeWeaponXString(c, body + 2176, cursor, "aiVsAiAccuracyGraphName");
         cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2184, c.Endianness), aiCount, cursor, "aiVsAiAccuracyGraphKnots");
         cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2192, c.Endianness), aiCount, cursor, "originalAiVsAiAccuracyGraphKnots");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2180, c.Endianness), cursor, "aiVsPlayerAccuracyGraphName");
+        cursor = ConsumeWeaponXString(c, body + 2180, cursor, "aiVsPlayerAccuracyGraphName");
         cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2188, c.Endianness), playerCount, cursor, "aiVsPlayerAccuracyGraphKnots");
         cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2196, c.Endianness), playerCount, cursor, "originalAiVsPlayerAccuracyGraphKnots");
 
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2288, c.Endianness), cursor, "szUseHintString");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2292, c.Endianness), cursor, "dropHintString");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2312, c.Endianness), cursor, "szScript");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2428, c.Endianness), cursor, "fireRumble");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2432, c.Endianness), cursor, "meleeImpactRumble");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2452, c.Endianness), cursor, "flameTableFirstPerson");
-        cursor = ConsumeXString(c, ReadU32(c.Source, body + 2456, c.Endianness), cursor, "flameTableThirdPerson");
+        cursor = ConsumeWeaponXString(c, body + 2288, cursor, "szUseHintString");
+        cursor = ConsumeWeaponXString(c, body + 2292, cursor, "dropHintString");
+        cursor = ConsumeWeaponXString(c, body + 2312, cursor, "szScript");
+        cursor = ConsumeWeaponXString(c, body + 2428, cursor, "fireRumble");
+        cursor = ConsumeWeaponXString(c, body + 2432, cursor, "meleeImpactRumble");
+        cursor = ConsumeWeaponXString(c, body + 2452, cursor, "flameTableFirstPerson");
+        cursor = ConsumeWeaponXString(c, body + 2456, cursor, "flameTableThirdPerson");
 
         cursor = ConsumeFlameTable(c, ReadU32(c.Source, body + 2460, c.Endianness), cursor, "flameTableFirstPersonPtr");
         cursor = ConsumeFlameTable(c, ReadU32(c.Source, body + 2464, c.Endianness), cursor, "flameTableThirdPersonPtr");
@@ -382,6 +444,33 @@ public static class T4WeaponVariableSerializerProof
         cursor = ConsumeUnsupportedFxRef(c, ReadU32(c.Source, body + 2468, c.Endianness), cursor, "tagFx_preparationEffect");
         cursor = ConsumeUnsupportedFxRef(c, ReadU32(c.Source, body + 2472, c.Endianness), cursor, "tagFlash_preparationEffect");
         return cursor;
+    }
+
+    private static int ConsumeWeaponXString(WalkContext c, int pointerOffset, int cursor, string label)
+    {
+        var raw = ReadU32(c.Source, pointerOffset, c.Endianness);
+        if (c.PlanIwdStrings &&
+            raw != 0 &&
+            !IsInline(raw) &&
+            c.StringOverrides is not null &&
+            c.StringOverrides.TryGetValue(label, out var value))
+        {
+            // The original packed source pointer remains valid evidence, but the destination must
+            // own its own XString. Patch only the rebuilt copy and insert the source-authoritative
+            // IWD value exactly where T4 ZoneCode would serialize an inline XString.
+            ValidateStringPointer(c, raw, label);
+            if (c.PatchDestination is null || c.PlannedInsertions is null)
+                throw new InvalidDataException($"Weapon '{c.WeaponName}' IWD-string planner is missing its patch buffers.");
+            BinaryPrimitives.WriteUInt32BigEndian(c.PatchDestination.AsSpan(pointerOffset, 4), Following);
+            var encoded = Encoding.Latin1.GetBytes(value);
+            var bytes = new byte[encoded.Length + 1];
+            encoded.CopyTo(bytes, 0);
+            c.PlannedInsertions.Add(new PlannedInsertion(cursor, bytes));
+            c.Stats.LocalizedIwdStrings++;
+            return cursor;
+        }
+
+        return ConsumeXString(c, raw, cursor, label);
     }
 
     private static int ConsumeXString(WalkContext c, uint raw, int cursor, string label)
@@ -587,6 +676,23 @@ public static class T4WeaponVariableSerializerProof
             if (block < 0 || block >= c.Header.BlockSizes.Count || decoded.Offset >= c.Header.BlockSizes[block])
                 throw new InvalidDataException($"Weapon '{c.WeaponName}' {label} pointer 0x{raw:X8} exceeds its block bounds.");
         }
+    }
+
+    private static byte[] ApplyInsertions(byte[] source, IReadOnlyList<PlannedInsertion> insertions)
+    {
+        if (insertions.Count == 0) return source;
+        using var ms = new MemoryStream(source.Length + insertions.Sum(x => x.Bytes.Length));
+        var cursor = 0;
+        foreach (var insertion in insertions.OrderBy(x => x.Offset))
+        {
+            if (insertion.Offset < cursor || insertion.Offset > source.Length)
+                throw new InvalidDataException($"Invalid Weapon insertion offset 0x{insertion.Offset:X}.");
+            ms.Write(source, cursor, insertion.Offset - cursor);
+            ms.Write(insertion.Bytes);
+            cursor = insertion.Offset;
+        }
+        ms.Write(source, cursor, source.Length - cursor);
+        return ms.ToArray();
     }
 
     private static int FindCStringEnd(byte[] data, int cursor, string label)
