@@ -407,14 +407,29 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             }
         }
 
-        // Sound parser already closes every source snd_alias_list ownership graph and creates a
-        // self-contained silent Xbox stub. Fail closed if a source sound run cannot be proven.
+        // Audio fidelity is a STRICT gate, not a structural-loader gate. Preserve every sound
+        // alias list the deterministic parser can prove; if a custom source run cannot be mapped
+        // exactly, retain that root as an explicit one-alias silent structural stub instead of
+        // aborting the entire map. This never claims XMA/SDNS fidelity and is reported as fallback.
         var sound = T4SoundAliasSmokeSerializer.Build(doc, zone, ct);
-        if (!sound.Verified && sound.DeclaredPhysicalSoundAssets != 0)
-            throw new InvalidDataException($"Sound structural serialization is not exact for {Path.GetFileName(sourcePath)}: {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}.");
+        if (sound.ReadBackErrors != 0)
+            throw new InvalidDataException($"Sound structural read-back failed for {Path.GetFileName(sourcePath)}: errors={sound.ReadBackErrors:N0}.");
         foreach (var s in sound.AssetsByIndex.Values)
             output[s.AssetIndex] = new StructuralPayload("sound", s.AliasListName, s.XboxSilentStubPayload, false,
                 "silent Sound structural stub; SDNS/XMA fidelity pending");
+
+        var physicalSounds = Physical(doc, "sound");
+        foreach (var asset in physicalSounds)
+        {
+            if (output.ContainsKey(asset.Index)) continue;
+            var fallbackName = $"__waw360_silent_sound_{Path.GetFileNameWithoutExtension(sourcePath)}_{asset.Index:D5}";
+            output[asset.Index] = new StructuralPayload(
+                "sound",
+                fallbackName,
+                T4SoundAliasSmokeSerializer.BuildFallbackSilentStub(asset.Index, fallbackName),
+                true,
+                $"fallback silent Sound root; deterministic sound coverage was {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}; final SDNS/XMA conversion remains required");
+        }
 
         var techsets = T4TechniqueSetNullGraphSerializer.Build(doc);
         if (!techsets.Verified && techsets.DeclaredPhysicalTechniqueSets != 0)
