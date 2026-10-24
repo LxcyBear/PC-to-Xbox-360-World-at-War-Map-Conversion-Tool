@@ -265,22 +265,22 @@ public static class NormalMapLinkerV2LoadHardwarePackager
 
                     var mainSha = await Sha256Async(scriptClosureMain, cancellationToken);
                     var loadSha = await Sha256Async(scriptClosureLoad, cancellationToken);
-                    var readme = new StringBuilder();
-                    readme.AppendLine("WaW360Converter — HARDWARE MATRIX: SCRIPT-CLOSURE MAIN + GENERATED LOAD");
-                    readme.AppendLine(new string('=', 88));
-                    readme.AppendLine($"Map: {map.Name}");
-                    readme.AppendLine($"Main SHA-256: {mainSha}");
-                    readme.AppendLine($"Load SHA-256: {loadSha}");
-                    readme.AppendLine($"Resident MenuLists removed: {main.ScriptClosureResidentMenusRemoved:N0}");
-                    readme.AppendLine($"IWD RawFiles promoted: {main.ScriptClosureRawFilesPromoted:N0}");
-                    readme.AppendLine();
-                    readme.AppendLine("TEST THIS VARIANT NEXT.");
-                    readme.AppendLine("It starts from tracked_shell, removes only proven resident UI MenuLists, and adds exact missing IWD .gsc/.csc RawFiles.");
-                    readme.AppendLine("If the first exception moves away from 0x82168594, map/script closure participates in the previous DB frontier.");
-                    readme.AppendLine("This remains a diagnostic; it does not claim final canonical graph closure.");
+                    var scriptReadme = new StringBuilder();
+                    scriptReadme.AppendLine("WaW360Converter — HARDWARE MATRIX: SCRIPT-CLOSURE MAIN + GENERATED LOAD");
+                    scriptReadme.AppendLine(new string('=', 88));
+                    scriptReadme.AppendLine($"Map: {map.Name}");
+                    scriptReadme.AppendLine($"Main SHA-256: {mainSha}");
+                    scriptReadme.AppendLine($"Load SHA-256: {loadSha}");
+                    scriptReadme.AppendLine($"Resident MenuLists removed: {main.ScriptClosureResidentMenusRemoved:N0}");
+                    scriptReadme.AppendLine($"IWD RawFiles promoted: {main.ScriptClosureRawFilesPromoted:N0}");
+                    scriptReadme.AppendLine();
+                    scriptReadme.AppendLine("TEST THIS VARIANT NEXT.");
+                    scriptReadme.AppendLine("It starts from tracked_shell, removes only proven resident UI MenuLists, and adds exact missing IWD .gsc/.csc RawFiles.");
+                    scriptReadme.AppendLine("If the first exception moves away from 0x82168594, map/script closure participates in the previous DB frontier.");
+                    scriptReadme.AppendLine("This remains a diagnostic; it does not claim final canonical graph closure.");
                     await File.WriteAllTextAsync(
                         Path.Combine(scriptClosurePairDir, "SCRIPT_CLOSURE_PAIR_TEST.txt"),
-                        readme.ToString(),
+                        scriptReadme.ToString(),
                         new UTF8Encoding(false),
                         cancellationToken);
 
