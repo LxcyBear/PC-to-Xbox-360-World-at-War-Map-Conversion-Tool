@@ -7,7 +7,11 @@ on:
       - xbox360/oat-xenon-integration
     paths:
       - '.github/workflows/build-oat-xenon.yml'
-      - 'tools/oat-xenon/**'
+      - 'tools/oat-xenon/Test-XenonContract.ps1'
+
+concurrency:
+  group: oat-xenon-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
