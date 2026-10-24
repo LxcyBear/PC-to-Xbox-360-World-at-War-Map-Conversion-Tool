@@ -89,6 +89,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(ffPath);
         TryDelete(zonePath);
         TryDelete(Path.Combine(packageDir, "STRUCTURAL_NATIVE_TEST.txt"));
+        TryDelete(Path.Combine(packageDir, "mod.arena"));
 
         var blockers = new List<string>();
         var notes = new List<string>
@@ -212,7 +213,6 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
-            CopyMetadata(map, packageDir);
             notes.Add($"NATIVE GATE OPEN: structural main FF emitted with {rootPolicy.Roots.Count:N0} authoritative source roots and {fallbackCount:N0} explicitly reduced/fallback payload(s).");
         }
         else
@@ -631,28 +631,19 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"Xbox XAsset roots: {roots:N0}");
         sb.AppendLine($"Explicitly reduced/fallback payloads: {fallback:N0}");
         sb.AppendLine();
-        sb.AppendLine("THIS IS NOT A FULL CONVERSION.");
+        sb.AppendLine("THIS IS NOT A FULL CONVERSION OR STANDALONE MAP PACKAGE.");
+        sb.AppendLine($"ONLY {baseName}.ff in this folder is the structural A/B candidate.");
         sb.AppendLine("It is a fail-closed loader/zone/XAsset structural diagnostic. Audio is silent; materials/shaders/world data and several unresolved simple assets are deliberately reduced.");
         sb.AppendLine();
-        sb.AppendLine("SIMPSONS GOLDEN A/B TEST (preferred first test):");
+        sb.AppendLine("GOLDEN A/B TEST:");
         sb.AppendLine($"  1. Start with the known-working Xbox {baseName} package.");
-        sb.AppendLine($"  2. Replace ONLY {baseName}.ff with this file.");
-        sb.AppendLine("  3. Keep the known-good load FF, sounds folder and metadata untouched.");
-        sb.AppendLine("  4. Record the exact screen/result and xbWatson output if available.");
+        sb.AppendLine($"  2. Back up its original {baseName}.ff.");
+        sb.AppendLine($"  3. Replace ONLY {baseName}.ff with the candidate from this folder.");
+        sb.AppendLine($"  4. Do NOT copy this folder as a map. Keep the known-good {baseName}_load.ff, sounds folder, previews, description, t4ff metadata, arena/IWD files and every other companion file untouched.");
+        sb.AppendLine("  5. Record the exact screen/result and xbWatson output if available.");
         sb.AppendLine();
         sb.AppendLine("A loader success proves structural main-FF emission; it does NOT prove gameplay/fidelity readiness.");
         await File.WriteAllTextAsync(Path.Combine(packageDir, "STRUCTURAL_NATIVE_TEST.txt"), sb.ToString(), new UTF8Encoding(false), ct);
-    }
-
-    private static void CopyMetadata(MapCandidate map, string packageDir)
-    {
-        foreach (var folder in map.SourceFolders.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var arena = Path.Combine(folder, "mod.arena");
-            if (!File.Exists(arena)) continue;
-            File.Copy(arena, Path.Combine(packageDir, "mod.arena"), overwrite: true);
-            break;
-        }
     }
 
     private static async Task<string> Sha256Async(string path, CancellationToken ct)
