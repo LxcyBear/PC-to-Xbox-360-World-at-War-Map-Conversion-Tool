@@ -17,6 +17,8 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required int ScriptStrings { get; init; }
     public required int PayloadsBuilt { get; init; }
     public required int FallbackPayloads { get; init; }
+    public required int RealPromotedPayloads { get; init; }
+    public required IReadOnlyDictionary<string, int> RealPromotedByType { get; init; }
     public required int SourceAliasRoots { get; init; }
     public required int ReadBackErrors { get; init; }
     public required long ZoneBytes { get; init; }
@@ -213,14 +215,24 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
-            var realXAnimPayloads = rootPayloads.Count(p => p.TypeName.Equals("xanim", StringComparison.OrdinalIgnoreCase) && !p.Fallback);
+            var promoted = rootPayloads
+                .Where(p => TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) && !p.Fallback)
+                .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
             notes.Add($"NATIVE GATE OPEN: structural main FF emitted with {rootPolicy.Roots.Count:N0} authoritative source roots and {fallbackCount:N0} explicitly reduced/fallback payload(s).");
-            notes.Add($"REAL PAYLOAD PROMOTION: {realXAnimPayloads:N0} self-contained verified Xbox-endian XAnim proof blob(s) were embedded with their owned animation data.");
+            notes.Add($"REAL PAYLOAD PROMOTION: total={promoted.Values.Sum():N0}; " +
+                      string.Join(", ", TrackedTypes.Select(t => $"{t}={promoted.GetValueOrDefault(t):N0}")) +
+                      ". Every promoted proof blob passed its typed self-contained-pointer audit.");
         }
         else
         {
             TryDelete(ffPath);
         }
+
+        var realPromotedByType = rootPayloads
+            .Where(p => TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) && !p.Fallback)
+            .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         // Deliberately false: this stage bypasses packed/shared production ownership by rebuilding
         // self-contained smoke objects. It can native-test the loader but must never satisfy the real
@@ -237,6 +249,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ScriptStrings = canonicalStrings.Values.Count + (canonicalStrings.HasNullSentinel ? 1 : 0),
             PayloadsBuilt = rootPayloads.Count,
             FallbackPayloads = fallbackCount,
+            RealPromotedPayloads = realPromotedByType.Values.Sum(),
+            RealPromotedByType = realPromotedByType,
             SourceAliasRoots = aliasRoots,
             ReadBackErrors = readBackErrors,
             ZoneBytes = zoneBytes,
@@ -300,29 +314,51 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 var record = proof.Records[i];
                 var name = await LinkerV2ProofEvidence.TryReadNameAsync(record, ct);
 
-                // XAnim proof blobs are already complete Xbox-endian serialized ownership streams.
-                // Promote them directly only when the fixed body's top-level/owned pointers are
-                // self-contained (null/Following/Insert). Packed source pointers are never copied.
-                if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(name))
+                if (!string.IsNullOrWhiteSpace(name))
                 {
                     var blob = await T4NativeProofContainerReader.ReadBlobAsync(record, ct);
-                    if (IsSelfContainedXboxXAnim(blob))
+                    var safe = false;
+                    var auditedName = name;
+                    var reason = string.Empty;
+
+                    switch (type.ToLowerInvariant())
+                    {
+                        case "xanim":
+                            safe = IsSelfContainedXboxXAnim(blob);
+                            if (!safe) reason = "typed XAnim fixed body retains a packed/source pointer";
+                            break;
+                        case "xmodel":
+                            safe = T4XModelSerializerProof.TryValidateSelfContainedXboxBlob(blob, out auditedName, out reason) &&
+                                   auditedName.Equals(name, StringComparison.Ordinal);
+                            if (safe && !auditedName.Equals(name, StringComparison.Ordinal))
+                            {
+                                safe = false;
+                                reason = $"typed XModel name mismatch '{auditedName}' != '{name}'";
+                            }
+                            break;
+                        case "weapon":
+                            safe = T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
+                            break;
+                        case "fx":
+                            safe = T4FxSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
+                            break;
+                    }
+
+                    if (safe)
                     {
                         output[assets[i].Index] = new StructuralPayload(
                             type,
                             name,
                             blob,
                             false,
-                            "verified Xbox-endian XAnim proof blob promoted with full owned payload; no packed source pointer retained");
+                            $"verified Xbox-endian {type} proof blob promoted with complete typed owned payload; no packed source pointer retained");
                         continue;
                     }
                 }
 
-                var fallback = string.IsNullOrWhiteSpace(name);
                 name ??= $"__waw360_{type}_{Path.GetFileNameWithoutExtension(sourcePath)}_{assets[i].Index:D5}";
                 output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), true,
-                    $"reduced {type} shell; real proof blob was not self-contained enough for direct structural promotion");
+                    $"reduced {type} shell; verified proof blob retained a source dependency or could not satisfy the self-contained typed audit");
             }
         }
 
@@ -715,7 +751,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}; canonical={r.CanonicalBaseName}");
         sb.AppendLine($"candidateReady={r.StructuralNativeCandidateReady}; productionMainReady={r.ProductionMainReady}; verified={r.Verified}");
-        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
+        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; realPromotedPayloads={r.RealPromotedPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
+        sb.AppendLine("realPromotedByType: " + string.Join(", ", TrackedTypes.Select(t => $"{t}={r.RealPromotedByType.GetValueOrDefault(t):N0}")));
         sb.AppendLine($"zone={r.ZoneBytes:N0}B; headerZoneSize={r.HeaderZoneSize:N0}B; correctZoneSizeSemantics={r.CorrectZoneSizeSemantics}; perBlockHeader={r.PerBlockCapacityHeader}; readBackErrors={r.ReadBackErrors:N0}");
         sb.AppendLine($"ff={r.FastFileBytes:N0}B; wrapperRoundTrip={r.WrapperRoundTripVerified}; sha256={r.FastFileSha256 ?? "<none>"}");
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
