@@ -13,6 +13,99 @@ namespace WaW360.Core.Maps;
 internal static class LinkerV2ProofEvidence
 {
     internal static readonly string[] TrackedTypes = { "xanim", "xmodel", "weapon", "fx" };
+    private static readonly SemaphoreSlim MaterializeGate = new(1, 1);
+
+    internal sealed record MaterializeResult(
+        IReadOnlyList<string> GeneratedFamilies,
+        IReadOnlyList<string> FailedFamilies,
+        IReadOnlyList<string> Notes);
+
+    internal static async Task<MaterializeResult> EnsureTrackedProofsAsync(
+        MapCandidate map,
+        string outputRoot,
+        NormalMapLinkerV2SourceArchiveResult source,
+        CancellationToken cancellationToken = default)
+    {
+        var generated = new List<string>();
+        var failed = new List<string>();
+        var notes = new List<string>();
+
+        var primary = source.FastFiles
+            .Where(x => x.GraphParticipation is "PRIMARY_GRAPH_SOURCE" or "AUXILIARY_GRAPH_SOURCE")
+            .ToList();
+
+        bool Needs(string type)
+        {
+            foreach (var container in primary)
+            {
+                var doc = FastFileAnalysisCache.GetZoneAsync(container.Path, cancellationToken).GetAwaiter().GetResult().Document;
+                var count = doc.Assets.Count(a =>
+                    a.TypeName.Equals(type, StringComparison.OrdinalIgnoreCase) &&
+                    a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared);
+                if (count == 0) continue;
+                if (!File.Exists(GetProofPath(outputRoot, map.Name, container.Path, container.Role, type)))
+                    return true;
+            }
+            return false;
+        }
+
+        // Proof serializers are intentionally serialized across parallel Fast-Mode maps. They are
+        // CPU/memory-heavy and share the immutable FF analysis cache; running two proof marathons
+        // at once only increases memory pressure without reducing wall time reliably.
+        await MaterializeGate.WaitAsync(cancellationToken);
+        try
+        {
+            var needWeapon = Needs("weapon");
+            var needXAnim = Needs("xanim");
+            var needXModel = Needs("xmodel");
+            var needFx = Needs("fx");
+
+            async Task TryFamilyAsync(string family, Func<Task> build)
+            {
+                try
+                {
+                    await build();
+                    generated.Add(family);
+                    notes.Add($"Fast Mode materialized missing {family} typed proof evidence.");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed.Add(family);
+                    notes.Add($"Fast Mode could not materialize {family} proof evidence: {ex.Message}");
+                }
+            }
+
+            // Weapon fixed -> owned first because XAnim/XModel can use Weapon ownership as an
+            // alignment anchor. Each wrapper remains fail-closed and independently verifies its
+            // output before Linker V2 consumes it.
+            if (needWeapon)
+            {
+                await TryFamilyAsync("weapon", async () =>
+                {
+                    await NormalMapWeaponSerializerProof.RunAsync(map, outputRoot, cancellationToken);
+                    await NormalMapWeaponVariableSerializerProof.RunAsync(map, outputRoot, cancellationToken);
+                });
+            }
+
+            if (needXAnim)
+                await TryFamilyAsync("xanim", async () =>
+                    await NormalMapXAnimSerializerProof.RunAsync(map, outputRoot, cancellationToken));
+
+            if (needXModel)
+                await TryFamilyAsync("xmodel", async () =>
+                    await NormalMapXModelSerializerProof.RunAsync(map, outputRoot, cancellationToken));
+
+            if (needFx)
+                await TryFamilyAsync("fx", async () =>
+                    await NormalMapFxSerializerProof.RunAsync(map, outputRoot, cancellationToken));
+        }
+        finally
+        {
+            MaterializeGate.Release();
+        }
+
+        return new MaterializeResult(generated, failed, notes);
+    }
 
     internal static string GetProofPath(string outputRoot, string mapName, string sourcePath, string role, string type)
     {
