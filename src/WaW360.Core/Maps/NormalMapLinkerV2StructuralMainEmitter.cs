@@ -13,6 +13,12 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required string? OutputFastFile { get; init; }
     public required string? OutputZone { get; init; }
     public required string? HardwarePackageDirectory { get; init; }
+    public required string? ConservativeOutputFastFile { get; init; }
+    public required string? ConservativeHardwarePackageDirectory { get; init; }
+    public required bool ConservativeCandidateReady { get; init; }
+    public required int ConservativeReadBackErrors { get; init; }
+    public required bool ConservativeWrapperRoundTripVerified { get; init; }
+    public required string? ConservativeFastFileSha256 { get; init; }
     public required int XboxAssets { get; init; }
     public required int ScriptStrings { get; init; }
     public required int PayloadsBuilt { get; init; }
@@ -84,18 +90,25 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural");
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural");
+        var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_tracked_shell");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
+        Directory.CreateDirectory(conservativePackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".zone");
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
+        var conservativeZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".tracked_shell.zone");
+        var conservativeFfPath = Path.Combine(conservativePackageDir, source.CanonicalBaseName + ".ff");
 
         // Never let a stale candidate survive a failed rerun.
         TryDelete(ffPath);
         TryDelete(zonePath);
         TryDelete(Path.Combine(packageDir, "STRUCTURAL_NATIVE_TEST.txt"));
         TryDelete(Path.Combine(packageDir, "mod.arena"));
+        TryDelete(conservativeFfPath);
+        TryDelete(conservativeZonePath);
+        TryDelete(Path.Combine(conservativePackageDir, "TRACKED_SHELL_NATIVE_TEST.txt"));
 
         var blockers = new List<string>();
         var notes = new List<string>
@@ -216,6 +229,45 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                              rootPayloads.Count == rootPolicy.Roots.Count &&
                              correctZoneSize && perBlockHeader && readBackErrors == 0 && wrapperRoundTrip;
 
+        // Emit a second main-FF hardware candidate from the SAME analyzed graph. It keeps all
+        // non-tracked structural payloads identical but reduces XAnim/XModel/Weapon/FX to named,
+        // zero-owned-data shells. This is an A/B isolation tool: if both variants fault at the same
+        // hardware frontier, promoted tracked payloads are unlikely to be the cause. If only the
+        // proof-heavy candidate faults, the promoted tracked graph becomes the primary suspect.
+        var conservativeReady = false;
+        var conservativeReadBackErrors = 0;
+        var conservativeRoundTrip = false;
+        string? conservativeSha = null;
+        if (blockers.Count == 0 && rootPayloads.Count == rootPolicy.Roots.Count)
+        {
+            var conservativePayloads = BuildTrackedShellVariant(rootPayloads);
+            var conservativeZone = BuildZone(rootPolicy.Roots, conservativePayloads, canonicalStrings, blockPlan, out var conservativeHeaderZoneSize);
+            var conservativeSizeOk = conservativeHeaderZoneSize == checked((uint)(conservativeZone.Length - FastFileConstants.T4XFileHeaderSize));
+            var conservativeBlockOk = VerifyBlockHeader(conservativeZone, blockPlan);
+            if (conservativeSizeOk && conservativeBlockOk)
+            {
+                await File.WriteAllBytesAsync(conservativeZonePath, conservativeZone, cancellationToken);
+                conservativeReadBackErrors = VerifyReadBack(
+                    conservativeZonePath, conservativeZone, rootPolicy.Roots, conservativePayloads, canonicalStrings, blockPlan);
+                if (conservativeReadBackErrors == 0)
+                {
+                    var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                        conservativeFfPath, conservativeZone, preferNativeLevel6: true, cancellationToken: cancellationToken);
+                    conservativeRoundTrip = write.RoundTripVerified;
+                    if (conservativeRoundTrip)
+                    {
+                        conservativeSha = await Sha256Async(conservativeFfPath, cancellationToken);
+                        conservativeReady = true;
+                        await WriteTrackedShellReadmeAsync(
+                            conservativePackageDir, source.CanonicalBaseName, conservativeSha,
+                            rootPolicy.Roots.Count, cancellationToken);
+                    }
+                }
+            }
+        }
+        if (!conservativeReady)
+            TryDelete(conservativeFfPath);
+
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
@@ -270,6 +322,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             OutputFastFile = candidateReady ? ffPath : null,
             OutputZone = File.Exists(zonePath) ? zonePath : null,
             HardwarePackageDirectory = candidateReady ? packageDir : null,
+            ConservativeOutputFastFile = conservativeReady ? conservativeFfPath : null,
+            ConservativeHardwarePackageDirectory = conservativeReady ? conservativePackageDir : null,
+            ConservativeCandidateReady = conservativeReady,
+            ConservativeReadBackErrors = conservativeReadBackErrors,
+            ConservativeWrapperRoundTripVerified = conservativeRoundTrip,
+            ConservativeFastFileSha256 = conservativeSha,
             XboxAssets = rootPolicy.Roots.Count,
             ScriptStrings = canonicalStrings.Values.Count + (canonicalStrings.HasNullSentinel ? 1 : 0),
             PayloadsBuilt = rootPayloads.Count,
@@ -725,6 +783,28 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return true;
     }
 
+    private static IReadOnlyList<StructuralPayload> BuildTrackedShellVariant(IReadOnlyList<StructuralPayload> payloads)
+    {
+        return payloads.Select(p =>
+        {
+            var fixedSize = p.TypeName.ToLowerInvariant() switch
+            {
+                "xanim" => 88,
+                "xmodel" => 228,
+                "weapon" => 0x9AC,
+                "fx" => 36,
+                _ => 0
+            };
+            if (fixedSize == 0) return p;
+            return new StructuralPayload(
+                p.TypeName,
+                p.Name,
+                BuildFixedNameShell(fixedSize, p.Name),
+                true,
+                $"hardware-matrix tracked shell: {p.TypeName} owned children intentionally zeroed");
+        }).ToList();
+    }
+
     private static byte[] BuildFixedNameShell(int fixedSize, string name)
     {
         var n = Encoding.ASCII.GetBytes(name);
@@ -800,6 +880,36 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return bytes;
     }
 
+    private static async Task WriteTrackedShellReadmeAsync(
+        string packageDir,
+        string baseName,
+        string sha,
+        int roots,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WaW360Converter — TRACKED-SHELL HARDWARE MATRIX CANDIDATE");
+        sb.AppendLine(new string('=', 82));
+        sb.AppendLine($"FF: {baseName}.ff");
+        sb.AppendLine($"SHA-256: {sha}");
+        sb.AppendLine($"Xbox XAsset roots: {roots:N0}");
+        sb.AppendLine();
+        sb.AppendLine("A/B PURPOSE");
+        sb.AppendLine("  This candidate is generated from the exact same Linker V2 root graph as the proof-heavy main FF.");
+        sb.AppendLine("  Only XAnim/XModel/Weapon/FX differ: all four are reduced to named self-contained fixed shells.");
+        sb.AppendLine("  World/material/sound/simple-root behavior is otherwise unchanged.");
+        sb.AppendLine();
+        sb.AppendLine("INTERPRETATION");
+        sb.AppendLine("  - Same hardware fault as proof-heavy main => suspect world/material/simple-root initialization first.");
+        sb.AppendLine("  - Different/later fault => promoted tracked payloads participate in the previous frontier.");
+        sb.AppendLine("  - This is diagnostic only and never satisfies production fidelity.");
+        await File.WriteAllTextAsync(
+            Path.Combine(packageDir, "TRACKED_SHELL_NATIVE_TEST.txt"),
+            sb.ToString(),
+            new UTF8Encoding(false),
+            ct);
+    }
+
     private static async Task WriteReadmeAsync(string packageDir, string baseName, string sha, int roots, int fallback, CancellationToken ct)
     {
         var sb = new StringBuilder();
@@ -863,6 +973,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"zone={r.ZoneBytes:N0}B; headerZoneSize={r.HeaderZoneSize:N0}B; correctZoneSizeSemantics={r.CorrectZoneSizeSemantics}; perBlockHeader={r.PerBlockCapacityHeader}; readBackErrors={r.ReadBackErrors:N0}");
         sb.AppendLine($"ff={r.FastFileBytes:N0}B; wrapperRoundTrip={r.WrapperRoundTripVerified}; sha256={r.FastFileSha256 ?? "<none>"}");
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
+        sb.AppendLine($"trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; trackedShellSha256={r.ConservativeFastFileSha256 ?? "<none>"}; trackedShellOutput={r.ConservativeOutputFastFile ?? "<none>"}");
         sb.AppendLine();
         sb.AppendLine("SOURCE-DERIVED BLOCK CAPACITIES");
         foreach (var block in Enum.GetValues<T4ZoneBlock>())
