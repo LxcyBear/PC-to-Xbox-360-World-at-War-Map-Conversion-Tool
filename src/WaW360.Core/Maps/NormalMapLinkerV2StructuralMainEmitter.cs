@@ -512,6 +512,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                         "fallback empty StringTable");
                     break;
                 }
+                case "font":
+                {
+                    // T4 Font_s is a 24-byte 32-bit root:
+                    // fontName*, pixelHeight, glyphCount, material*, glowMaterial*, glyphs*.
+                    // Structural smoke output owns only a fresh name and leaves all rendering/glyph
+                    // dependencies null with zero counts. This is intentionally fidelity-inert.
+                    var name = $"__waw360_font_{Path.GetFileNameWithoutExtension(sourcePath)}_{asset.Index:D5}";
+                    output[asset.Index] = new StructuralPayload("font", name, BuildFixedNameShell(24, name), true,
+                        "fallback empty T4 Font_s root; pixelHeight/glyphCount/material/glow/glyphs are intentionally zero/null");
+                    break;
+                }
                 default:
                     throw new InvalidDataException($"No alpha-5 self-contained structural serializer exists for XAsset#{asset.Index} '{asset.TypeName}' in {Path.GetFileName(sourcePath)}.");
             }
