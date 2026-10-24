@@ -65,6 +65,13 @@ internal static class LinkerV2IwdWeaponStringCatalog
                 Add(fields, byLabel, "displayName", "szDisplayName");
                 Add(fields, byLabel, "AIOverlayDescription", "szOverlayName");
                 Add(fields, byLabel, "modeName", "szModeName");
+                Add(fields, byLabel, "standMountedWeapdef", "standMountedWeapdef");
+                Add(fields, byLabel, "crouchMountedWeapdef", "crouchMountedWeapdef");
+                Add(fields, byLabel, "proneMountedWeapdef", "proneMountedWeapdef");
+                Add(fields, byLabel, "ammoName", "szAmmoName");
+                Add(fields, byLabel, "clipName", "szClipName");
+                Add(fields, byLabel, "sharedAmmoCapName", "szSharedAmmoCapName");
+                Add(fields, byLabel, "altWeapon", "szAltWeaponName");
                 Add(fields, byLabel, "script", "szScript");
                 Add(fields, byLabel, "useHintString", "szUseHintString");
                 Add(fields, byLabel, "dropHintString", "dropHintString");
