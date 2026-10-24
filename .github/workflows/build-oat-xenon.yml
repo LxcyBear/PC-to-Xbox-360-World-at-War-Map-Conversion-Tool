@@ -18,10 +18,10 @@ jobs:
     runs-on: windows-2025-vs2026
     steps:
       - name: Checkout converter
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Checkout pinned OpenAssetTools Xenon source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: michaeloliverx/OpenAssetTools
           ref: 1f7acb3347bc2e44deb609bc8cf7259bf027f176
@@ -33,7 +33,7 @@ jobs:
         run: ./tools/oat-xenon/Test-XenonContract.ps1 -OatDirectory ./oat
 
       - name: Add MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3.0.0
 
       - name: Generate VS2026 projects
         shell: pwsh
@@ -57,7 +57,7 @@ jobs:
           }
 
       - name: Upload OAT Xenon x86 tools
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: oat-xenon-windows-x86-${{ github.sha }}
           path: oat/build/bin/Release_x86/
