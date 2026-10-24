@@ -84,6 +84,7 @@ public static class T4WeaponVariableSerializerProof
         public Stream? Output { get; init; }
         public required TraverseStats Stats { get; init; }
         public required string WeaponName { get; init; }
+        public bool RequireSelfContainedPointers { get; init; }
     }
 
     public static Task<T4WeaponVariableProofResult> BuildProofAsync(
@@ -239,6 +240,33 @@ public static class T4WeaponVariableSerializerProof
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, string name, out string reason)
+    {
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = true
+            };
+            var end = WalkOwnedPayload(ctx, 0);
+            if (end != blob.Length)
+                throw new InvalidDataException($"typed self-contained walk ended at 0x{end:X}, expected 0x{blob.Length:X}.");
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            return false;
         }
     }
 
@@ -536,6 +564,8 @@ public static class T4WeaponVariableSerializerProof
     private static void ValidateStringPointer(WalkContext c, uint raw, string label)
     {
         if (raw == 0 || IsInline(raw)) return;
+        if (c.RequireSelfContainedPointers)
+            throw new InvalidDataException($"Weapon '{c.WeaponName}' {label} retains packed/source pointer 0x{raw:X8}; self-contained promotion refused.");
         var decoded = T4ZonePointer.Decode(raw);
         if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block != T4ZoneBlock.Virtual)
             throw new InvalidDataException($"Weapon '{c.WeaponName}' {label} has non-VIRTUAL string pointer 0x{raw:X8}.");
