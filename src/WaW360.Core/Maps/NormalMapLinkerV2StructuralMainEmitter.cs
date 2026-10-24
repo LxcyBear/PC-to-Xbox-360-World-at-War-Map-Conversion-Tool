@@ -37,7 +37,7 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
 }
 
 /// <summary>
-/// Linker V2 alpha 5 SELF-CONTAINED STRUCTURAL main-FF emitter.
+/// Linker V2 alpha 7 SELF-CONTAINED STRUCTURAL main-FF emitter.
 ///
 /// This is deliberately NOT the production shared-object linker. It is an explicit native-loader
 /// diagnostic that rebuilds each authoritative primary XAsset root as a self-contained Xbox-endian
@@ -120,10 +120,18 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var cached = await FastFileAnalysisCache.GetZoneAsync(container.Path, cancellationToken);
-                var payloads = await BuildSourcePayloadsAsync(
-                    outputRoot, map.Name, source.CanonicalBaseName,
-                    container.Role, container.Path, cached.Document, cached.Bytes, cancellationToken);
-                contexts[container.Path] = new SourceContext(container.Role, container.Path, cached.Document, cached.Bytes, payloads);
+                try
+                {
+                    var payloads = await BuildSourcePayloadsAsync(
+                        outputRoot, map.Name, source.CanonicalBaseName,
+                        container.Role, container.Path, cached.Document, cached.Bytes, cancellationToken);
+                    contexts[container.Path] = new SourceContext(container.Role, container.Path, cached.Document, cached.Bytes, payloads);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    blockers.Add($"{container.FileName}: structural payload construction blocked: {ex.Message}");
+                    break;
+                }
             }
         }
 
@@ -273,7 +281,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             if (assets.Count == 0) continue;
             var proofPath = LinkerV2ProofEvidence.GetProofPath(outputRoot, mapName, sourcePath, role, type);
             if (!File.Exists(proofPath))
-                throw new InvalidDataException($"Alpha 5 structural main emitter needs existing verified {type} proof evidence: {proofPath}");
+                throw new InvalidDataException($"typed {type} proof evidence is unavailable after Fast Mode identity materialization: {proofPath}");
             var proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, ct);
             if (proof.Records.Count != assets.Count)
                 throw new InvalidDataException($"{Path.GetFileName(sourcePath)} {type} proof count mismatch: roots={assets.Count:N0}, proof={proof.Records.Count:N0}.");
