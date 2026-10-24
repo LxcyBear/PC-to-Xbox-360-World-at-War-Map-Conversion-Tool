@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -19,6 +20,14 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required int ConservativeReadBackErrors { get; init; }
     public required bool ConservativeWrapperRoundTripVerified { get; init; }
     public required string? ConservativeFastFileSha256 { get; init; }
+    public required string? ScriptClosureOutputFastFile { get; init; }
+    public required string? ScriptClosureHardwarePackageDirectory { get; init; }
+    public required bool ScriptClosureCandidateReady { get; init; }
+    public required int ScriptClosureReadBackErrors { get; init; }
+    public required bool ScriptClosureWrapperRoundTripVerified { get; init; }
+    public required string? ScriptClosureFastFileSha256 { get; init; }
+    public required int ScriptClosureResidentMenusRemoved { get; init; }
+    public required int ScriptClosureRawFilesPromoted { get; init; }
     public required int XboxAssets { get; init; }
     public required int ScriptStrings { get; init; }
     public required int PayloadsBuilt { get; init; }
@@ -91,15 +100,19 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural");
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural");
         var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_tracked_shell");
+        var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_script_closure");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
         Directory.CreateDirectory(conservativePackageDir);
+        Directory.CreateDirectory(scriptClosurePackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".zone");
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
         var conservativeZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".tracked_shell.zone");
         var conservativeFfPath = Path.Combine(conservativePackageDir, source.CanonicalBaseName + ".ff");
+        var scriptClosureZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".script_closure.zone");
+        var scriptClosureFfPath = Path.Combine(scriptClosurePackageDir, source.CanonicalBaseName + ".ff");
 
         // Never let a stale candidate survive a failed rerun.
         TryDelete(ffPath);
@@ -109,6 +122,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(conservativeFfPath);
         TryDelete(conservativeZonePath);
         TryDelete(Path.Combine(conservativePackageDir, "TRACKED_SHELL_NATIVE_TEST.txt"));
+        TryDelete(scriptClosureFfPath);
+        TryDelete(scriptClosureZonePath);
+        TryDelete(Path.Combine(scriptClosurePackageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"));
 
         var blockers = new List<string>();
         var notes = new List<string>
@@ -279,6 +295,86 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (!conservativeReady)
             TryDelete(conservativeFfPath);
 
+        // Third hardware matrix candidate: start from the tracked-shell graph, remove only
+        // exact-name resident UI MenuLists proven by typed closure, then add exact IWD .gsc/.csc
+        // RawFiles that the closure stage proves are absent from the current named RawFile set.
+        // This intentionally tests the SP DB/script-lookup frontier; it does NOT claim final graph
+        // convergence because golden validation may still require a different net RawFile count.
+        var scriptClosureReady = false;
+        var scriptClosureReadBackErrors = 0;
+        var scriptClosureRoundTrip = false;
+        string? scriptClosureSha = null;
+        var scriptClosureMenusRemoved = 0;
+        var scriptClosureRawPromoted = 0;
+        if (blockers.Count == 0 && rootPayloads.Count == rootPolicy.Roots.Count)
+        {
+            try
+            {
+                var typedClosure = await LoadTypedClosureAsync(map, outputRoot, source, cancellationToken);
+                var trackedShellPayloads = BuildTrackedShellVariant(rootPayloads);
+                var scriptVariant = await BuildScriptClosureVariantAsync(
+                    rootPolicy.Roots,
+                    trackedShellPayloads,
+                    typedClosure,
+                    cancellationToken);
+
+                scriptClosureMenusRemoved = scriptVariant.ResidentMenusRemoved;
+                scriptClosureRawPromoted = scriptVariant.RawFilesPromoted;
+
+                if (scriptClosureMenusRemoved != 0 || scriptClosureRawPromoted != 0)
+                {
+                    var scriptZone = BuildZone(
+                        scriptVariant.Roots,
+                        scriptVariant.Payloads,
+                        canonicalStrings,
+                        blockPlan,
+                        out var scriptHeaderZoneSize);
+                    var scriptSizeOk = scriptHeaderZoneSize == checked((uint)(scriptZone.Length - FastFileConstants.T4XFileHeaderSize));
+                    var scriptBlockOk = VerifyBlockHeader(scriptZone, blockPlan);
+                    if (scriptSizeOk && scriptBlockOk)
+                    {
+                        await File.WriteAllBytesAsync(scriptClosureZonePath, scriptZone, cancellationToken);
+                        scriptClosureReadBackErrors = VerifyReadBack(
+                            scriptClosureZonePath,
+                            scriptZone,
+                            scriptVariant.Roots,
+                            scriptVariant.Payloads,
+                            canonicalStrings,
+                            blockPlan);
+                        if (scriptClosureReadBackErrors == 0)
+                        {
+                            var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                                scriptClosureFfPath,
+                                scriptZone,
+                                preferNativeLevel6: true,
+                                cancellationToken: cancellationToken);
+                            scriptClosureRoundTrip = write.RoundTripVerified;
+                            if (scriptClosureRoundTrip)
+                            {
+                                scriptClosureSha = await Sha256Async(scriptClosureFfPath, cancellationToken);
+                                scriptClosureReady = true;
+                                await WriteScriptClosureReadmeAsync(
+                                    scriptClosurePackageDir,
+                                    source.CanonicalBaseName,
+                                    scriptClosureSha,
+                                    scriptVariant.Roots.Count,
+                                    scriptClosureMenusRemoved,
+                                    scriptClosureRawPromoted,
+                                    typedClosure.GoldenExpectedRawFilePromotions,
+                                    cancellationToken);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                notes.Add($"SCRIPT-CLOSURE MATRIX SKIPPED: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        if (!scriptClosureReady)
+            TryDelete(scriptClosureFfPath);
+
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
@@ -339,6 +435,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ConservativeReadBackErrors = conservativeReadBackErrors,
             ConservativeWrapperRoundTripVerified = conservativeRoundTrip,
             ConservativeFastFileSha256 = conservativeSha,
+            ScriptClosureOutputFastFile = scriptClosureReady ? scriptClosureFfPath : null,
+            ScriptClosureHardwarePackageDirectory = scriptClosureReady ? scriptClosurePackageDir : null,
+            ScriptClosureCandidateReady = scriptClosureReady,
+            ScriptClosureReadBackErrors = scriptClosureReadBackErrors,
+            ScriptClosureWrapperRoundTripVerified = scriptClosureRoundTrip,
+            ScriptClosureFastFileSha256 = scriptClosureSha,
+            ScriptClosureResidentMenusRemoved = scriptClosureMenusRemoved,
+            ScriptClosureRawFilesPromoted = scriptClosureRawPromoted,
             XboxAssets = rootPolicy.Roots.Count,
             ScriptStrings = canonicalStrings.Values.Count + (canonicalStrings.HasNullSentinel ? 1 : 0),
             PayloadsBuilt = rootPayloads.Count,
@@ -820,6 +924,142 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return true;
     }
 
+    private sealed record ScriptClosureVariant(
+        IReadOnlyList<LinkerV2CanonicalRoot> Roots,
+        IReadOnlyList<StructuralPayload> Payloads,
+        int ResidentMenusRemoved,
+        int RawFilesPromoted);
+
+    private static async Task<NormalMapLinkerV2TypedClosurePlanResult> LoadTypedClosureAsync(
+        MapCandidate map,
+        string outputRoot,
+        NormalMapLinkerV2SourceArchiveResult source,
+        CancellationToken ct)
+    {
+        var json = Path.Combine(
+            outputRoot,
+            map.Name,
+            "linker_v2_typed_closure",
+            $"{map.Name}_linker_v2_typed_closure.json");
+        if (File.Exists(json))
+        {
+            var parsed = JsonSerializer.Deserialize<NormalMapLinkerV2TypedClosurePlanResult>(
+                await File.ReadAllTextAsync(json, ct),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (parsed is not null)
+                return parsed;
+        }
+        return await NormalMapLinkerV2TypedClosurePlan.RunAsync(map, outputRoot, source, ct);
+    }
+
+    private static async Task<ScriptClosureVariant> BuildScriptClosureVariantAsync(
+        IReadOnlyList<LinkerV2CanonicalRoot> roots,
+        IReadOnlyList<StructuralPayload> payloads,
+        NormalMapLinkerV2TypedClosurePlanResult closure,
+        CancellationToken ct)
+    {
+        if (roots.Count != payloads.Count)
+            throw new InvalidDataException("Script-closure matrix requires one payload per canonical provenance root.");
+
+        static string Full(string path) => Path.GetFullPath(path);
+        var resident = closure.ResidentRoots
+            .Select(x => (Path: Full(x.SourceFastFile), x.AssetIndex))
+            .ToHashSet();
+
+        var keptRoots = new List<LinkerV2CanonicalRoot>(roots.Count + closure.Promotions.Count);
+        var keptPayloads = new List<StructuralPayload>(payloads.Count + closure.Promotions.Count);
+        var removed = 0;
+        for (var i = 0; i < roots.Count; i++)
+        {
+            var root = roots[i];
+            if (resident.Contains((Full(root.SourceFastFile), root.SourceAssetIndex)))
+            {
+                removed++;
+                continue;
+            }
+            keptRoots.Add(root);
+            keptPayloads.Add(payloads[i]);
+        }
+
+        var rawPromotions = closure.Promotions
+            .Where(x => x.AssetType.Equals("rawfile", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Archive, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Entry, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var nextOrdinal = keptRoots.Count == 0 ? 0 : keptRoots.Max(x => x.CanonicalSourceOrdinal) + 1;
+        var promoted = 0;
+        foreach (var p in rawPromotions)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!File.Exists(p.Archive))
+                throw new FileNotFoundException("Typed-closure IWD archive disappeared.", p.Archive);
+
+            byte[] sourceBytes;
+            using (var zip = ZipFile.OpenRead(p.Archive))
+            {
+                var entry = zip.Entries.FirstOrDefault(x =>
+                    x.FullName.Replace('\\', '/').Equals(p.Entry.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
+                if (entry is null)
+                    throw new InvalidDataException($"IWD RawFile promotion entry disappeared: {Path.GetFileName(p.Archive)}::{p.Entry}");
+                await using var stream = entry.Open();
+                using var ms = new MemoryStream(checked((int)Math.Min(entry.Length + 1L, int.MaxValue)));
+                await stream.CopyToAsync(ms, ct);
+                sourceBytes = ms.ToArray();
+            }
+
+            var name = p.Name.Replace('\\', '/').TrimStart('/');
+            var payload = BuildRawFileOwned(name, sourceBytes);
+            var root = new LinkerV2CanonicalRoot(
+                nextOrdinal++,
+                "iwd",
+                p.Archive,
+                -1,
+                "rawfile",
+                "rawfile",
+                T4XboxAssetTypeMap.GetXboxTypeId("rawfile"),
+                T4AssetReferenceKind.Inline,
+                T4ZonePointer.Following,
+                $"iwd|{Path.GetFileName(p.Archive)}|{p.Entry}|rawfile",
+                "HARDWARE_DIAGNOSTIC_TYPED_IWD_RAWFILE_PROMOTION");
+            keptRoots.Add(root);
+            keptPayloads.Add(new StructuralPayload(
+                "rawfile",
+                name,
+                payload,
+                false,
+                $"script-closure hardware diagnostic: exact IWD RawFile bytes promoted from {Path.GetFileName(p.Archive)}::{p.Entry}"));
+            promoted++;
+        }
+
+        var ordered = keptRoots
+            .Select((root, i) => (root, payload: keptPayloads[i]))
+            .OrderBy(x => x.root.CanonicalSourceOrdinal)
+            .ToList();
+
+        return new ScriptClosureVariant(
+            ordered.Select(x => x.root).ToList(),
+            ordered.Select(x => x.payload).ToList(),
+            removed,
+            promoted);
+    }
+
+    private static byte[] BuildRawFileOwned(string name, ReadOnlySpan<byte> sourceBytes)
+    {
+        if (sourceBytes.Length > int.MaxValue - 1)
+            throw new InvalidDataException($"IWD RawFile '{name}' is too large.");
+        var n = Encoding.ASCII.GetBytes(name);
+        var bytes = new byte[12 + n.Length + 1 + sourceBytes.Length + 1];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(0, 4), T4ZonePointer.Following);
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(4, 4), checked((uint)sourceBytes.Length));
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(8, 4), T4ZonePointer.Following);
+        n.CopyTo(bytes.AsSpan(12));
+        sourceBytes.CopyTo(bytes.AsSpan(12 + n.Length + 1));
+        // Final byte is the owned RawFile buffer terminator outside the logical len.
+        return bytes;
+    }
+
     private static IReadOnlyList<StructuralPayload> BuildTrackedShellVariant(IReadOnlyList<StructuralPayload> payloads)
     {
         return payloads.Select(p =>
@@ -917,6 +1157,42 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return bytes;
     }
 
+    private static async Task WriteScriptClosureReadmeAsync(
+        string packageDir,
+        string baseName,
+        string sha,
+        int roots,
+        int residentMenusRemoved,
+        int rawFilesPromoted,
+        int? goldenExpectedRawPromotions,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WaW360Converter — SCRIPT-CLOSURE HARDWARE MATRIX CANDIDATE");
+        sb.AppendLine(new string('=', 82));
+        sb.AppendLine($"FF: {baseName}.ff");
+        sb.AppendLine($"SHA-256: {sha}");
+        sb.AppendLine($"Xbox XAsset roots in this diagnostic: {roots:N0}");
+        sb.AppendLine($"Resident UI MenuLists removed by exact identity: {residentMenusRemoved:N0}");
+        sb.AppendLine($"Missing IWD .gsc/.csc RawFiles promoted by exact name+bytes: {rawFilesPromoted:N0}");
+        if (goldenExpectedRawPromotions is not null)
+            sb.AppendLine($"Known-working golden RawFile net delta (validation only): {goldenExpectedRawPromotions:+#;-#;0}");
+        sb.AppendLine();
+        sb.AppendLine("PURPOSE");
+        sb.AppendLine("  This variant starts from tracked_shell and changes ONLY typed map-activation closure:");
+        sb.AppendLine("  proven always-loaded resident UI MenuLists are omitted, and missing IWD scripts are emitted as owned RawFile roots.");
+        sb.AppendLine("  It tests the SP TU7 DB/script lookup frontier at 0x82168594 / 0xC0000005.");
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT");
+        sb.AppendLine("  This is NOT production graph convergence. Golden counts never force additions/removals.");
+        sb.AppendLine("  A different/later hardware frontier proves this closure family matters; the final linker still needs exact identity closure.");
+        await File.WriteAllTextAsync(
+            Path.Combine(packageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"),
+            sb.ToString(),
+            new UTF8Encoding(false),
+            ct);
+    }
+
     private static async Task WriteTrackedShellReadmeAsync(
         string packageDir,
         string baseName,
@@ -1011,6 +1287,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"ff={r.FastFileBytes:N0}B; wrapperRoundTrip={r.WrapperRoundTripVerified}; sha256={r.FastFileSha256 ?? "<none>"}");
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
         sb.AppendLine($"trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; trackedShellSha256={r.ConservativeFastFileSha256 ?? "<none>"}; trackedShellOutput={r.ConservativeOutputFastFile ?? "<none>"}");
+        sb.AppendLine($"scriptClosureCandidate={r.ScriptClosureCandidateReady}; scriptClosureReadBackErrors={r.ScriptClosureReadBackErrors:N0}; scriptClosureRoundTrip={r.ScriptClosureWrapperRoundTripVerified}; residentMenusRemoved={r.ScriptClosureResidentMenusRemoved:N0}; iwdRawFilesPromoted={r.ScriptClosureRawFilesPromoted:N0}; scriptClosureSha256={r.ScriptClosureFastFileSha256 ?? "<none>"}; scriptClosureOutput={r.ScriptClosureOutputFastFile ?? "<none>"}");
         sb.AppendLine();
         sb.AppendLine("SOURCE-DERIVED BLOCK CAPACITIES");
         foreach (var block in Enum.GetValues<T4ZoneBlock>())
