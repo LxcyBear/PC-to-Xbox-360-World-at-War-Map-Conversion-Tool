@@ -19,6 +19,8 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required int FallbackPayloads { get; init; }
     public required int RealPromotedPayloads { get; init; }
     public required IReadOnlyDictionary<string, int> RealPromotedByType { get; init; }
+    public required int PromotionRejectedPayloads { get; init; }
+    public required IReadOnlyDictionary<string, int> PromotionRejectReasons { get; init; }
     public required int SourceAliasRoots { get; init; }
     public required int ReadBackErrors { get; init; }
     public required long ZoneBytes { get; init; }
@@ -234,6 +236,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
+        var promotionRejectReasons = rootPayloads
+            .Where(p => p.Fallback && TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) &&
+                        p.Note.StartsWith("promotion-rejected[", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(p => NormalizePromotionRejectReason(p.TypeName, p.Note), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
         // Deliberately false: this stage bypasses packed/shared production ownership by rebuilding
         // self-contained smoke objects. It can native-test the loader but must never satisfy the real
         // main-linker readiness gate.
@@ -251,6 +261,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             FallbackPayloads = fallbackCount,
             RealPromotedPayloads = realPromotedByType.Values.Sum(),
             RealPromotedByType = realPromotedByType,
+            PromotionRejectedPayloads = promotionRejectReasons.Values.Sum(),
+            PromotionRejectReasons = promotionRejectReasons,
             SourceAliasRoots = aliasRoots,
             ReadBackErrors = readBackErrors,
             ZoneBytes = zoneBytes,
@@ -357,8 +369,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 }
 
                 name ??= $"__waw360_{type}_{Path.GetFileNameWithoutExtension(sourcePath)}_{assets[i].Index:D5}";
+                if (string.IsNullOrWhiteSpace(reason))
+                    reason = "verified proof blob retained a source dependency or could not satisfy the self-contained typed audit";
                 output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), true,
-                    $"reduced {type} shell; verified proof blob retained a source dependency or could not satisfy the self-contained typed audit");
+                    $"promotion-rejected[{type}]: {reason}");
             }
         }
 
@@ -605,6 +619,28 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                               a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared)
             .OrderBy(a => a.Index).ToList();
 
+    private static string NormalizePromotionRejectReason(string type, string note)
+    {
+        var prefix = $"promotion-rejected[{type}]: ";
+        var reason = note.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? note[prefix.Length..]
+            : note;
+
+        // Preserve the typed field name while removing per-asset names/addresses so the
+        // census groups the actual dependency class rather than producing one row per asset.
+        var marker = " retains packed/source pointer ";
+        var i = reason.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (i >= 0)
+            reason = reason[..i] + " retains packed/source pointer";
+
+        // XModel diagnostics often prefix the model name before the typed child label.
+        var quoteEnd = reason.IndexOf("' ", StringComparison.Ordinal);
+        if (quoteEnd >= 0 && reason.StartsWith("XModel '", StringComparison.OrdinalIgnoreCase))
+            reason = "XModel " + reason[(quoteEnd + 2)..];
+
+        return $"{type}: {reason}";
+    }
+
     private static bool IsSelfContainedXboxXAnim(byte[] blob)
     {
         const int fixedSize = 88;
@@ -751,8 +787,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}; canonical={r.CanonicalBaseName}");
         sb.AppendLine($"candidateReady={r.StructuralNativeCandidateReady}; productionMainReady={r.ProductionMainReady}; verified={r.Verified}");
-        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; realPromotedPayloads={r.RealPromotedPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
+        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; realPromotedPayloads={r.RealPromotedPayloads:N0}; promotionRejected={r.PromotionRejectedPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
         sb.AppendLine("realPromotedByType: " + string.Join(", ", TrackedTypes.Select(t => $"{t}={r.RealPromotedByType.GetValueOrDefault(t):N0}")));
+        if (r.PromotionRejectReasons.Count != 0)
+        {
+            sb.AppendLine("PROMOTION REJECTION CENSUS");
+            foreach (var reason in r.PromotionRejectReasons.Take(40))
+                sb.AppendLine($"  {reason.Value,5:N0}  {reason.Key}");
+        }
         sb.AppendLine($"zone={r.ZoneBytes:N0}B; headerZoneSize={r.HeaderZoneSize:N0}B; correctZoneSizeSemantics={r.CorrectZoneSizeSemantics}; perBlockHeader={r.PerBlockCapacityHeader}; readBackErrors={r.ReadBackErrors:N0}");
         sb.AppendLine($"ff={r.FastFileBytes:N0}B; wrapperRoundTrip={r.WrapperRoundTripVerified}; sha256={r.FastFileSha256 ?? "<none>"}");
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
