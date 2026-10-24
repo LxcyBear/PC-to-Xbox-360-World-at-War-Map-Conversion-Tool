@@ -19,6 +19,8 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required int FallbackPayloads { get; init; }
     public required int RealPromotedPayloads { get; init; }
     public required IReadOnlyDictionary<string, int> RealPromotedByType { get; init; }
+    public required int SmokePromotedPayloads { get; init; }
+    public required IReadOnlyDictionary<string, int> SmokePromotedByType { get; init; }
     public required int PromotionRejectedPayloads { get; init; }
     public required IReadOnlyDictionary<string, int> PromotionRejectReasons { get; init; }
     public required int SourceAliasRoots { get; init; }
@@ -225,6 +227,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             notes.Add($"REAL PAYLOAD PROMOTION: total={promoted.Values.Sum():N0}; " +
                       string.Join(", ", TrackedTypes.Select(t => $"{t}={promoted.GetValueOrDefault(t):N0}")) +
                       ". Every promoted proof blob passed its typed self-contained-pointer audit.");
+            var smoke = rootPayloads
+                .Where(p => p.Note.StartsWith("smoke-promotion[", StringComparison.OrdinalIgnoreCase))
+                .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            if (smoke.Count != 0)
+                notes.Add($"SMOKE PAYLOAD PROMOTION: total={smoke.Values.Sum():N0}; " +
+                          string.Join(", ", TrackedTypes.Select(t => $"{t}={smoke.GetValueOrDefault(t):N0}")) +
+                          ". Smoke promotions remain fallback-class and are not counted as fidelity-ready real payloads.");
         }
         else
         {
@@ -233,6 +243,11 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var realPromotedByType = rootPayloads
             .Where(p => TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) && !p.Fallback)
+            .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var smokePromotedByType = rootPayloads
+            .Where(p => p.Note.StartsWith("smoke-promotion[", StringComparison.OrdinalIgnoreCase))
             .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
@@ -261,6 +276,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             FallbackPayloads = fallbackCount,
             RealPromotedPayloads = realPromotedByType.Values.Sum(),
             RealPromotedByType = realPromotedByType,
+            SmokePromotedPayloads = smokePromotedByType.Values.Sum(),
+            SmokePromotedByType = smokePromotedByType,
             PromotionRejectedPayloads = promotionRejectReasons.Values.Sum(),
             PromotionRejectReasons = promotionRejectReasons,
             SourceAliasRoots = aliasRoots,
@@ -346,6 +363,20 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                             {
                                 safe = false;
                                 reason = $"typed XModel name mismatch '{auditedName}' != '{name}'";
+                            }
+                            if (!safe &&
+                                reason.Contains("Material.techniqueSet retains packed/source pointer", StringComparison.OrdinalIgnoreCase) &&
+                                T4XModelSerializerProof.TryBuildStructuralXboxBlobWithSmokeTechniqueSets(
+                                    blob, out var smokeBlob, out var smokeName, out var smokeTechniqueSets, out var smokeReason) &&
+                                smokeName.Equals(name, StringComparison.Ordinal))
+                            {
+                                output[assets[i].Index] = new StructuralPayload(
+                                    type,
+                                    name,
+                                    smokeBlob,
+                                    true,
+                                    $"smoke-promotion[xmodel]: preserved verified Xbox-endian model/material/image ownership and localized {smokeTechniqueSets:N0} packed PC TechniqueSet dependency(ies) as inline Xbox 216-byte null-graph TechniqueSets; no PC shader graph copied");
+                                continue;
                             }
                             break;
                         case "weapon":
@@ -787,8 +818,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}; canonical={r.CanonicalBaseName}");
         sb.AppendLine($"candidateReady={r.StructuralNativeCandidateReady}; productionMainReady={r.ProductionMainReady}; verified={r.Verified}");
-        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; realPromotedPayloads={r.RealPromotedPayloads:N0}; promotionRejected={r.PromotionRejectedPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
+        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; realPromotedPayloads={r.RealPromotedPayloads:N0}; smokePromotedPayloads={r.SmokePromotedPayloads:N0}; promotionRejected={r.PromotionRejectedPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
         sb.AppendLine("realPromotedByType: " + string.Join(", ", TrackedTypes.Select(t => $"{t}={r.RealPromotedByType.GetValueOrDefault(t):N0}")));
+        sb.AppendLine("smokePromotedByType: " + string.Join(", ", TrackedTypes.Select(t => $"{t}={r.SmokePromotedByType.GetValueOrDefault(t):N0}")));
         if (r.PromotionRejectReasons.Count != 0)
         {
             sb.AppendLine("PROMOTION REJECTION CENSUS");
