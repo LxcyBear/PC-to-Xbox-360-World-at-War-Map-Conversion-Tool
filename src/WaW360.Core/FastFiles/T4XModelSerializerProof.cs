@@ -950,9 +950,21 @@ public static class T4XModelSerializerProof
                 throw new InvalidDataException("XModel zero-body reference stub owns unexpected inline geometry/physics data.");
         }
 
-        ValidateSerializedPointers(c, "XModel", namePtr, ptrBoneNames, ptrParentList, ptrQuats, ptrTrans,
-            ptrPartClass, ptrBaseMat, ptrSurfs, ptrMaterials, ptrCollSurfs, ptrBoneInfo,
-            ptrPhysPreset, ptrPhysGeoms, ptrCollmap, ptrPhysConstraints);
+        ValidateSerializedPointer(c, "XModel.name", namePtr);
+        ValidateSerializedPointer(c, "XModel.boneNames", ptrBoneNames);
+        ValidateSerializedPointer(c, "XModel.parentList", ptrParentList);
+        ValidateSerializedPointer(c, "XModel.quats", ptrQuats);
+        ValidateSerializedPointer(c, "XModel.trans", ptrTrans);
+        ValidateSerializedPointer(c, "XModel.partClassification", ptrPartClass);
+        ValidateSerializedPointer(c, "XModel.baseMat", ptrBaseMat);
+        ValidateSerializedPointer(c, "XModel.surfs", ptrSurfs);
+        ValidateSerializedPointer(c, "XModel.materialHandles", ptrMaterials);
+        ValidateSerializedPointer(c, "XModel.collSurfs", ptrCollSurfs);
+        ValidateSerializedPointer(c, "XModel.boneInfo", ptrBoneInfo);
+        ValidateSerializedPointer(c, "XModel.physPreset", ptrPhysPreset);
+        ValidateSerializedPointer(c, "XModel.physGeoms", ptrPhysGeoms);
+        ValidateSerializedPointer(c, "XModel.collmap", ptrCollmap);
+        ValidateSerializedPointer(c, "XModel.physConstraints", ptrPhysConstraints);
 
         var cursor = checked(start + XModelFixedSize);
         string name;
