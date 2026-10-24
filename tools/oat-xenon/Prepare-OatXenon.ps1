@@ -10,17 +10,42 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is requir
 if (-not (Test-Path (Join-Path $checkout '.git'))) {
     if (Test-Path $checkout) { throw 'Dependency folder already exists and is not a Git checkout.' }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $checkout) | Out-Null
-    & git clone --no-checkout $remote $checkout
+    # Normal checkout avoids Git reporting a deliberately missing worktree as edits.
+    & git clone --branch xenon $remote $checkout
     if ($LASTEXITCODE -ne 0) { throw 'OAT clone failed.' }
 }
 Push-Location $checkout
 try {
     $origin = (& git remote get-url origin).Trim()
     if ($origin -ne $remote) { throw "Unexpected origin: $origin" }
-    if (& git status --porcelain) { throw 'OAT working tree has edits; refusing checkout.' }
+    # Recover the empty --no-checkout clone created by the initial version of
+    # this script. An empty working directory and empty index, with an otherwise
+    # valid Git HEAD, are distinguishable from local source modifications.
+    # Never force-checkout a populated working tree.
+    $rootEntries = @(Get-ChildItem -LiteralPath $checkout -Force |
+        Where-Object { $_.Name -ne '.git' })
+    $indexEntries = @(& git ls-files)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect OAT Git index.' }
+    $headFiles = @(& git ls-tree -r --name-only HEAD)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect OAT Git HEAD.' }
+    $emptyUnmaterializedClone = $rootEntries.Count -eq 0 -and
+        $indexEntries.Count -eq 0 -and $headFiles.Count -gt 0
+
+    $changes = @(& git status --porcelain --untracked-files=all)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect OAT working tree.' }
+    if ($changes.Count -gt 0 -and -not $emptyUnmaterializedClone) {
+        throw 'OAT has real local changes; refusing checkout. Inspect .deps\OpenAssetTools-xenon before retrying.'
+    }
+
     & git fetch origin $revision
     if ($LASTEXITCODE -ne 0) { throw 'OAT fetch failed.' }
-    & git checkout --detach $revision
+    if ($emptyUnmaterializedClone) {
+        Write-Host '[OAT] Recovering the empty checkout left by the earlier bootstrap script.'
+        # Safe only because no worktree files or indexed changes exist.
+        & git checkout --force --detach $revision
+    } else {
+        & git checkout --detach $revision
+    }
     if ($LASTEXITCODE -ne 0) { throw 'OAT checkout failed.' }
     if ((& git rev-parse HEAD).Trim() -ne $revision) { throw 'OAT revision does not match pin.' }
     & git submodule update --init --recursive
