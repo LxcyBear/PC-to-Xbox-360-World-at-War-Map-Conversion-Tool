@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using WaW360.Core.Configuration;
 using WaW360.Core.FastFiles;
+using WaW360.Core.Linker;
 
 namespace WaW360.Core.Maps;
 
@@ -14,7 +16,10 @@ public sealed record LinkerV2TechniqueClosureEntry(
     int PackedConsoleTechniqueSlots,
     int NonNullDroppedPcSlots,
     string Disposition,
-    string Evidence);
+    string Evidence,
+    string DonorResolution = "NOT_APPLICABLE",
+    string? DonorSourceFastFile = null,
+    int? DonorAssetIndex = null);
 
 public sealed class NormalMapLinkerV2TechniqueClosureResult
 {
@@ -26,6 +31,13 @@ public sealed class NormalMapLinkerV2TechniqueClosureResult
     public required int MaterialTechniqueReferences { get; init; }
     public required int PortableNullGraphTechniqueSets { get; init; }
     public required int XboxDonorRequiredTechniqueSets { get; init; }
+    public required int ExactXboxDonorIdentityMatches { get; init; }
+    public required int UnresolvedXboxDonorIdentities { get; init; }
+    public required int AmbiguousXboxDonorIdentities { get; init; }
+    public required int DonorCatalogFastFilesScanned { get; init; }
+    public required int DonorCatalogTechniqueSets { get; init; }
+    public required string XboxDonorFolder { get; init; }
+    public required bool DonorIdentityResolutionComplete { get; init; }
     public required int BlockedTechniqueSets { get; init; }
     public required int NonNullDroppedPcTechniqueSlots { get; init; }
     public required bool ClassificationComplete { get; init; }
@@ -206,13 +218,97 @@ public static class NormalMapLinkerV2TechniqueClosure
             walkedTechsets == declaredTechsets &&
             entries.All(x => !x.Disposition.Equals("BLOCKED_SOURCE_WALKER", StringComparison.OrdinalIgnoreCase));
 
+        var exactDonorMatches = 0;
+        var unresolvedDonors = 0;
+        var ambiguousDonors = 0;
+        var donorCatalogFastFiles = 0;
+        var donorCatalogTechsets = 0;
+        var xboxDonorFolder = string.Empty;
+
         if (donorRequired != 0)
-            blockers.Add($"{donorRequired:N0} TechniqueSet root(s) require Xbox-native donor resolution before production serialization.");
+        {
+            var settings = SettingsStore.Load();
+            xboxDonorFolder = settings.XboxGameFolder?.Trim() ?? string.Empty;
+            var donorCatalog = await T4XboxTechniqueDonorCatalog.BuildAsync(xboxDonorFolder, cancellationToken);
+            donorCatalogFastFiles = donorCatalog.FastFilesScanned;
+            donorCatalogTechsets = donorCatalog.ResolvedTechniqueSets;
+
+            var resolvedEntries = new List<LinkerV2TechniqueClosureEntry>(entries.Count);
+            foreach (var entry in entries)
+            {
+                if (!entry.Disposition.Equals("XBOX_DONOR_REQUIRED", StringComparison.OrdinalIgnoreCase))
+                {
+                    resolvedEntries.Add(entry);
+                    continue;
+                }
+
+                var matches = donorCatalog.FindExact(entry.Name)
+                    .Where(x => x.NonNullTechniqueSlots > 0)
+                    .ToList();
+
+                if (matches.Count == 1)
+                {
+                    var donor = matches[0];
+                    exactDonorMatches++;
+                    resolvedEntries.Add(entry with
+                    {
+                        Disposition = "XBOX_DONOR_IDENTITY_MATCHED",
+                        Evidence = entry.Evidence +
+                                   $"; exact Xbox donor identity matched {Path.GetFileName(donor.SourceFastFile)}#{donor.AssetIndex} " +
+                                   $"with {donor.NonNullTechniqueSlots} non-null Xbox technique slot(s)",
+                        DonorResolution = "EXACT_NAME_IDENTITY",
+                        DonorSourceFastFile = donor.SourceFastFile,
+                        DonorAssetIndex = donor.AssetIndex
+                    });
+                }
+                else if (matches.Count > 1)
+                {
+                    ambiguousDonors++;
+                    resolvedEntries.Add(entry with
+                    {
+                        Disposition = "XBOX_DONOR_AMBIGUOUS",
+                        Evidence = entry.Evidence +
+                                   $"; {matches.Count} Xbox donor candidates share this exact TechniqueSet name",
+                        DonorResolution = "AMBIGUOUS_EXACT_NAME"
+                    });
+                }
+                else
+                {
+                    unresolvedDonors++;
+                    resolvedEntries.Add(entry with
+                    {
+                        Disposition = "XBOX_DONOR_UNRESOLVED",
+                        Evidence = entry.Evidence + "; no exact-name Xbox TechniqueSet donor was proven from the configured user-owned Xbox fastfiles",
+                        DonorResolution = "NO_EXACT_NAME_MATCH"
+                    });
+                }
+            }
+            entries = resolvedEntries;
+
+            notes.Add($"Xbox donor catalog: folder='{donorCatalog.XboxGameFolder}'; ffDiscovered={donorCatalog.FastFilesDiscovered:N0}; ffScanned={donorCatalog.FastFilesScanned:N0}; donorTechsets={donorCatalog.ResolvedTechniqueSets:N0}; rejected={donorCatalog.FastFilesRejected:N0}.");
+            foreach (var warning in donorCatalog.Warnings.Take(8))
+                notes.Add("Xbox donor catalog warning: " + warning);
+            if (donorCatalog.Warnings.Count > 8)
+                notes.Add($"Xbox donor catalog emitted {donorCatalog.Warnings.Count - 8:N0} additional warning(s); exact donor matches remain fail-closed.");
+
+            if (exactDonorMatches != 0)
+                notes.Add($"DONOR IDENTITY PROGRESS: {exactDonorMatches:N0}/{donorRequired:N0} donor-required TechniqueSet root(s) have one exact-name Xbox-native donor identity.");
+            if (unresolvedDonors != 0)
+                blockers.Add($"{unresolvedDonors:N0} donor-required TechniqueSet root(s) have no exact-name Xbox donor in the configured Xbox game folder.");
+            if (ambiguousDonors != 0)
+                blockers.Add($"{ambiguousDonors:N0} donor-required TechniqueSet root(s) match multiple Xbox donors and require deterministic disambiguation.");
+            if (exactDonorMatches != 0)
+                blockers.Add($"{exactDonorMatches:N0} exact Xbox TechniqueSet donor identity match(es) still require graph extraction, dependency closure, destination placement, and pointer rebasing before serialization.");
+            if (string.IsNullOrWhiteSpace(xboxDonorFolder))
+                blockers.Add("Xbox game folder is not configured; production shader donor resolution requires user-owned Xbox WaW fastfiles.");
+        }
         if (blocked != 0)
             blockers.Add($"{blocked:N0} TechniqueSet root(s) remain blocked by incomplete deterministic source/platform mapping.");
         if (nonNullDropped != 0)
             blockers.Add($"{nonNullDropped:N0} non-null PC-only technique slot(s) need explicit Xbox policy; silently dropping them is forbidden.");
 
+        var donorIdentityComplete = donorRequired == 0 ||
+                                    (exactDonorMatches == donorRequired && unresolvedDonors == 0 && ambiguousDonors == 0);
         var fullReady = classificationComplete && donorRequired == 0 && blocked == 0 && nonNullDropped == 0;
         if (fullReady)
             notes.Add($"TECHNIQUE CLOSURE PASS: all {declaredTechsets:N0} physical TechniqueSet root(s) are production-safe without copying PC shader bytecode.");
@@ -229,6 +325,13 @@ public static class NormalMapLinkerV2TechniqueClosure
             MaterialTechniqueReferences = materialTechniqueRefs,
             PortableNullGraphTechniqueSets = portable,
             XboxDonorRequiredTechniqueSets = donorRequired,
+            ExactXboxDonorIdentityMatches = exactDonorMatches,
+            UnresolvedXboxDonorIdentities = unresolvedDonors,
+            AmbiguousXboxDonorIdentities = ambiguousDonors,
+            DonorCatalogFastFilesScanned = donorCatalogFastFiles,
+            DonorCatalogTechniqueSets = donorCatalogTechsets,
+            XboxDonorFolder = xboxDonorFolder,
+            DonorIdentityResolutionComplete = donorIdentityComplete,
             BlockedTechniqueSets = blocked,
             NonNullDroppedPcTechniqueSlots = nonNullDropped,
             ClassificationComplete = classificationComplete,
@@ -252,16 +355,17 @@ public static class NormalMapLinkerV2TechniqueClosure
     private static string Render(NormalMapLinkerV2TechniqueClosureResult r)
     {
         var sb = new StringBuilder(64 * 1024);
-        sb.AppendLine("WaW360Converter — LINKER V2 alpha 6 production TechniqueSet dependency closure");
+        sb.AppendLine("WaW360Converter — LINKER V2 alpha 7 production TechniqueSet donor resolution");
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}");
-        sb.AppendLine($"techsets: declared={r.DeclaredTechniqueSets:N0}; walked={r.DeterministicallyWalkedTechniqueSets:N0}; portableNull={r.PortableNullGraphTechniqueSets:N0}; xboxDonorRequired={r.XboxDonorRequiredTechniqueSets:N0}; blocked={r.BlockedTechniqueSets:N0}");
+        sb.AppendLine($"techsets: declared={r.DeclaredTechniqueSets:N0}; walked={r.DeterministicallyWalkedTechniqueSets:N0}; portableNull={r.PortableNullGraphTechniqueSets:N0}; xboxDonorRequired={r.XboxDonorRequiredTechniqueSets:N0}; donorMatched={r.ExactXboxDonorIdentityMatches:N0}; donorUnresolved={r.UnresolvedXboxDonorIdentities:N0}; donorAmbiguous={r.AmbiguousXboxDonorIdentities:N0}; blocked={r.BlockedTechniqueSets:N0}");
+        sb.AppendLine($"donorCatalog: folder='{r.XboxDonorFolder}'; fastfilesScanned={r.DonorCatalogFastFilesScanned:N0}; techniqueSets={r.DonorCatalogTechniqueSets:N0}; identityComplete={r.DonorIdentityResolutionComplete}");
         sb.AppendLine($"materials: declared={r.DeclaredMaterials:N0}; walked={r.DeterministicallyWalkedMaterials:N0}; techniqueRefs={r.MaterialTechniqueReferences:N0}");
         sb.AppendLine($"nonNullDroppedPcSlots={r.NonNullDroppedPcTechniqueSlots:N0}; classificationComplete={r.ClassificationComplete}; fullTechniqueClosureReady={r.FullTechniqueClosureReady}; verified={r.Verified}");
         sb.AppendLine();
         sb.AppendLine("TECHNIQUESETS");
         foreach (var e in r.Entries.Take(1024))
-            sb.AppendLine($"  [{e.SourceRole}] {Path.GetFileName(e.SourceFastFile)}#{e.AssetIndex} {e.Name} | {e.Disposition} | slots={e.NonNullConsoleTechniqueSlots} inline={e.InlineConsoleTechniqueSlots} packed={e.PackedConsoleTechniqueSlots} droppedPc={e.NonNullDroppedPcSlots} | {e.Evidence}");
+            sb.AppendLine($"  [{e.SourceRole}] {Path.GetFileName(e.SourceFastFile)}#{e.AssetIndex} {e.Name} | {e.Disposition} | slots={e.NonNullConsoleTechniqueSlots} inline={e.InlineConsoleTechniqueSlots} packed={e.PackedConsoleTechniqueSlots} droppedPc={e.NonNullDroppedPcSlots} | donor={e.DonorResolution}{(e.DonorSourceFastFile is null ? string.Empty : $" {Path.GetFileName(e.DonorSourceFastFile)}#{e.DonorAssetIndex}")} | {e.Evidence}");
         if (r.Entries.Count > 1024)
             sb.AppendLine($"  ... {r.Entries.Count - 1024:N0} additional TechniqueSet row(s) omitted from TXT; JSON contains all entries.");
         sb.AppendLine();
