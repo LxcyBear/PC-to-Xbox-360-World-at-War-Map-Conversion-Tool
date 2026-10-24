@@ -46,10 +46,24 @@ jobs:
           PREMAKE_NO_PROMPT: '1'
         run: ./generate.bat
 
-      - name: Build OAT x86 Release
+      - name: Build required OAT x86 Release tools
         shell: pwsh
         working-directory: oat
-        run: msbuild /m /p:Configuration=Release /p:Platform=Win32 build
+        env:
+          # Pinned Xenon commit predates VS2026's C4018 diagnostics in several IW3
+          # Xenon XModel loops. Release intentionally keeps all other warnings fatal.
+          CL: /wd4018
+        run: |
+          $projects = @(
+            'build\src\LinkerCli\LinkerCli.vcxproj',
+            'build\src\UnlinkerCli\UnlinkerCli.vcxproj',
+            'build\src\ImageConverter\ImageConverter.vcxproj'
+          )
+          foreach ($project in $projects) {
+            Write-Host "[OAT] Building $project"
+            & msbuild $project /m /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:Configuration=Release /p:Platform=Win32
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Verify required tools
         shell: pwsh
