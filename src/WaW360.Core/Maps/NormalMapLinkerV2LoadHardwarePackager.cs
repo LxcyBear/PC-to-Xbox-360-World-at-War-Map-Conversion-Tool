@@ -257,6 +257,27 @@ public static class NormalMapLinkerV2LoadHardwarePackager
                 matrix.ToString(),
                 new UTF8Encoding(false),
                 cancellationToken);
+
+            var latest = new StringBuilder();
+            latest.AppendLine("LATEST HARDWARE TEST");
+            latest.AppendLine(new string('=', 72));
+            latest.AppendLine($"Map: {map.Name}");
+            latest.AppendLine($"Use folder: {matrixRoot}");
+            latest.AppendLine();
+            latest.AppendLine("TEST ORDER");
+            latest.AppendLine("  1) hardware_test_main_matrix\\tracked_shell");
+            latest.AppendLine("  2) hardware_test_main_matrix\\proof_heavy");
+            latest.AppendLine();
+            latest.AppendLine("For each folder, copy BOTH generated FFs as a pair.");
+            latest.AppendLine("Keep sounds/preview/description/t4ff and all other companion files unchanged.");
+            latest.AppendLine("Set xbWatson to stop/break on the FIRST exception and record the exception code + PC address.");
+            latest.AppendLine();
+            latest.AppendLine("Previous hardware frontier: 0xC0000005 access violation at PC 0x82168594.");
+            await File.WriteAllTextAsync(
+                Path.Combine(outputRoot, map.Name, "LATEST_HARDWARE_TEST.txt"),
+                latest.ToString(),
+                new UTF8Encoding(false),
+                cancellationToken);
         }
 
         var result = new NormalMapLinkerV2LoadHardwarePackageResult
