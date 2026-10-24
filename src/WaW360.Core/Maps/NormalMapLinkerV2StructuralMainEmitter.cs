@@ -213,7 +213,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
+            var realXAnimPayloads = rootPayloads.Count(p => p.TypeName.Equals("xanim", StringComparison.OrdinalIgnoreCase) && !p.Fallback);
             notes.Add($"NATIVE GATE OPEN: structural main FF emitted with {rootPolicy.Roots.Count:N0} authoritative source roots and {fallbackCount:N0} explicitly reduced/fallback payload(s).");
+            notes.Add($"REAL PAYLOAD PROMOTION: {realXAnimPayloads:N0} self-contained verified Xbox-endian XAnim proof blob(s) were embedded with their owned animation data.");
         }
         else
         {
@@ -295,11 +297,32 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             };
             for (var i = 0; i < assets.Count; i++)
             {
-                var name = await LinkerV2ProofEvidence.TryReadNameAsync(proof.Records[i], ct);
+                var record = proof.Records[i];
+                var name = await LinkerV2ProofEvidence.TryReadNameAsync(record, ct);
+
+                // XAnim proof blobs are already complete Xbox-endian serialized ownership streams.
+                // Promote them directly only when the fixed body's top-level/owned pointers are
+                // self-contained (null/Following/Insert). Packed source pointers are never copied.
+                if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(name))
+                {
+                    var blob = await T4NativeProofContainerReader.ReadBlobAsync(record, ct);
+                    if (IsSelfContainedXboxXAnim(blob))
+                    {
+                        output[assets[i].Index] = new StructuralPayload(
+                            type,
+                            name,
+                            blob,
+                            false,
+                            "verified Xbox-endian XAnim proof blob promoted with full owned payload; no packed source pointer retained");
+                        continue;
+                    }
+                }
+
                 var fallback = string.IsNullOrWhiteSpace(name);
                 name ??= $"__waw360_{type}_{Path.GetFileNameWithoutExtension(sourcePath)}_{assets[i].Index:D5}";
-                output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), fallback,
-                    $"reduced {type} shell; owned child data omitted for structural native test");
+                output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), true,
+                    $"reduced {type} shell; real proof blob was not self-contained enough for direct structural promotion");
             }
         }
 
@@ -546,6 +569,26 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                               a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared)
             .OrderBy(a => a.Index).ToList();
 
+    private static bool IsSelfContainedXboxXAnim(byte[] blob)
+    {
+        const int fixedSize = 88;
+        if (blob.Length < fixedSize) return false;
+
+        static bool SelfContained(uint value) =>
+            value == 0 || value is T4ZonePointer.Following or T4ZonePointer.Insert;
+
+        // XAnimParts::name plus every serialized owned pointer in the fixed body.
+        if (!SelfContained(BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(0, 4))))
+            return false;
+        for (var offset = 48; offset <= 84; offset += 4)
+        {
+            var value = BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(offset, 4));
+            if (!SelfContained(value))
+                return false;
+        }
+        return true;
+    }
+
     private static byte[] BuildFixedNameShell(int fixedSize, string name)
     {
         var n = Encoding.ASCII.GetBytes(name);
@@ -624,7 +667,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
     private static async Task WriteReadmeAsync(string packageDir, string baseName, string sha, int roots, int fallback, CancellationToken ct)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — Linker V2 alpha 5 SELF-CONTAINED MAIN NATIVE STRUCTURAL TEST");
+        sb.AppendLine("WaW360Converter — Linker V2 alpha 8 PROOF-PAYLOAD MAIN NATIVE STRUCTURAL TEST");
         sb.AppendLine(new string('=', 92));
         sb.AppendLine($"FF: {baseName}.ff");
         sb.AppendLine($"SHA-256: {sha}");
@@ -668,7 +711,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
     private static string Render(NormalMapLinkerV2StructuralMainEmitResult r, NormalMapLinkerV2DestinationBlockPlanResult blocks)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — LINKER V2 alpha 5 self-contained main native structural emitter");
+        sb.AppendLine("WaW360Converter — LINKER V2 alpha 8 proof-payload structural main emitter");
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}; canonical={r.CanonicalBaseName}");
         sb.AppendLine($"candidateReady={r.StructuralNativeCandidateReady}; productionMainReady={r.ProductionMainReady}; verified={r.Verified}");
