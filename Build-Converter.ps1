@@ -70,7 +70,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Solution build failed.' }
 
     Write-Host "[WaW360] Publishing Windows GUI to $releaseDirectory"
-    $publishArgs = @('publish', $guiProject, '--configuration', 'Release', '--runtime', 'win-x64', '--self-contained', 'false', '--output', $releaseDirectory, '--nologo', '-p:UseAppHost=true')
+    # Build exactly once, then publish the already-built Release output. This mirrors the
+    # green GitHub Actions path and avoids a second RID-specific compilation during publish.
+    # The app remains framework-dependent and requires the .NET 8 Desktop Runtime.
+    $publishArgs = @('publish', $guiProject, '--configuration', 'Release', '--no-build', '--output', $releaseDirectory, '--nologo')
     & dotnet @publishArgs
     if ($LASTEXITCODE -ne 0) { throw 'GUI publish failed.' }
 
@@ -90,7 +93,7 @@ try {
         "Built: $(Get-Date -Format o)"
         "Source revision: $revision"
         "Target framework: net8.0-windows"
-        'Runtime: win-x64 (requires .NET 8 Desktop Runtime)'
+        'Runtime: framework-dependent Windows (requires .NET 8 Desktop Runtime)'
         "EXE SHA256: $((Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash)"
         'NOTE: This build is NOT proof that a converted map is native-playable.'
     ) | Set-Content -LiteralPath (Join-Path $releaseDirectory 'BUILD_INFO.txt') -Encoding UTF8
