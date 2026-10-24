@@ -3,7 +3,8 @@
 param(
     [switch]$Clean,
     [switch]$WithOat,
-    [switch]$RunOatTests
+    [switch]$RunOatTests,
+    [string]$OutputDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -11,7 +12,13 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
 $solution = Join-Path $repoRoot 'WaW360Converter.sln'
 $guiProject = Join-Path $repoRoot 'src\WaW360.Gui\WaW360.Gui.csproj'
-$releaseDirectory = Join-Path $repoRoot 'src\WaW360.Gui\Release'
+$defaultReleaseDirectory = Join-Path $repoRoot 'src\WaW360.Gui\Release'
+$releaseDirectory = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    $defaultReleaseDirectory
+} else {
+    [System.IO.Path]::GetFullPath($OutputDirectory)
+}
+$externalReleaseDirectory = -not $releaseDirectory.Equals($defaultReleaseDirectory, [StringComparison]::OrdinalIgnoreCase)
 
 if ($RunOatTests -and -not $WithOat) { throw '-RunOatTests requires -WithOat.' }
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
@@ -27,7 +34,9 @@ try {
         Write-Host '[WaW360] Cleaning Release artifacts...'
         & dotnet clean $solution --configuration Release --nologo
         if ($LASTEXITCODE -ne 0) { throw 'dotnet clean failed.' }
-        if (Test-Path -LiteralPath $releaseDirectory) {
+        if ($externalReleaseDirectory) {
+            Write-Host '[WaW360] External Release output will be published in-place (no deletion of existing files).'
+        } elseif (Test-Path -LiteralPath $releaseDirectory) {
             Remove-Item -LiteralPath $releaseDirectory -Force -Recurse
         }
     }
