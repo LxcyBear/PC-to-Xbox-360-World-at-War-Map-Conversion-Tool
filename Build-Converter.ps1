@@ -69,6 +69,29 @@ try {
     & dotnet build $solution --configuration Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Solution build failed.' }
 
+    # If the currently installed GUI is still running from the publish destination,
+    # Windows can keep the EXE/DLLs locked and dotnet publish reports MSB3021/MSB3027 copy
+    # failures. Stop only that exact installed copy; do not touch unrelated dotnet/apps.
+    $destinationExe = Join-Path $releaseDirectory 'WaW360.Gui.exe'
+    if (Test-Path -LiteralPath $destinationExe) {
+        $destinationExeFull = [System.IO.Path]::GetFullPath($destinationExe)
+        $runningGui = @(Get-Process -Name 'WaW360.Gui' -ErrorAction SilentlyContinue | Where-Object {
+            try {
+                $processPath = $_.Path
+                $processPath -and [System.IO.Path]::GetFullPath($processPath).Equals(
+                    $destinationExeFull,
+                    [StringComparison]::OrdinalIgnoreCase)
+            } catch {
+                $false
+            }
+        })
+        foreach ($process in $runningGui) {
+            Write-Host "[WaW360] Closing running GUI from publish destination (PID $($process.Id))..."
+            Stop-Process -Id $process.Id -Force
+            try { $process.WaitForExit(5000) | Out-Null } catch { }
+        }
+    }
+
     Write-Host "[WaW360] Publishing Windows GUI to $releaseDirectory"
     # Build exactly once, then publish the already-built Release output. This mirrors the
     # green GitHub Actions path and avoids a second RID-specific compilation during publish.
