@@ -15,6 +15,10 @@ public sealed class NormalMapLinkerV2LoadHardwarePackageResult
     public required string? CombinedPackageDirectory { get; init; }
     public required string? CombinedMainFastFile { get; init; }
     public required string? CombinedLoadFastFile { get; init; }
+    public required bool TrackedShellPairReady { get; init; }
+    public required string? TrackedShellPairDirectory { get; init; }
+    public required string? TrackedShellMainFastFile { get; init; }
+    public required string? TrackedShellLoadFastFile { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
     public required string TextReportFile { get; init; }
     public required string JsonReportFile { get; init; }
@@ -55,6 +59,10 @@ public static class NormalMapLinkerV2LoadHardwarePackager
                 CombinedPackageDirectory = null,
                 CombinedMainFastFile = null,
                 CombinedLoadFastFile = null,
+                TrackedShellPairReady = false,
+                TrackedShellPairDirectory = null,
+                TrackedShellMainFastFile = null,
+                TrackedShellLoadFastFile = null,
                 Notes = notes,
                 TextReportFile = txt,
                 JsonReportFile = json
@@ -147,6 +155,66 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             }
         }
 
+        var trackedShellPairReady = false;
+        string? trackedShellPairDir = null;
+        string? trackedShellMain = null;
+        string? trackedShellLoad = null;
+
+        if (File.Exists(mainJson))
+        {
+            try
+            {
+                var main = JsonSerializer.Deserialize<NormalMapLinkerV2StructuralMainEmitResult>(
+                    await File.ReadAllTextAsync(mainJson, cancellationToken));
+                if (main is not null &&
+                    main.ConservativeCandidateReady &&
+                    main.ConservativeReadBackErrors == 0 &&
+                    main.ConservativeWrapperRoundTripVerified &&
+                    !string.IsNullOrWhiteSpace(main.ConservativeOutputFastFile) &&
+                    File.Exists(main.ConservativeOutputFastFile))
+                {
+                    trackedShellPairDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_matrix", "tracked_shell");
+                    if (Directory.Exists(trackedShellPairDir)) Directory.Delete(trackedShellPairDir, recursive: true);
+                    Directory.CreateDirectory(trackedShellPairDir);
+
+                    trackedShellMain = Path.Combine(trackedShellPairDir, Path.GetFileName(main.ConservativeOutputFastFile));
+                    trackedShellLoad = Path.Combine(trackedShellPairDir, Path.GetFileName(emitter.OutputFastFile));
+                    File.Copy(main.ConservativeOutputFastFile, trackedShellMain, overwrite: true);
+                    File.Copy(emitter.OutputFastFile, trackedShellLoad, overwrite: true);
+
+                    var mainSha = await Sha256Async(trackedShellMain, cancellationToken);
+                    var loadSha = await Sha256Async(trackedShellLoad, cancellationToken);
+                    var readme = new StringBuilder();
+                    readme.AppendLine("WaW360Converter — HARDWARE MATRIX: TRACKED-SHELL MAIN + GENERATED LOAD");
+                    readme.AppendLine(new string('=', 86));
+                    readme.AppendLine($"Map: {map.Name}");
+                    readme.AppendLine($"Main SHA-256: {mainSha}");
+                    readme.AppendLine($"Load SHA-256: {loadSha}");
+                    readme.AppendLine();
+                    readme.AppendLine("This pair is generated entirely by the converter.");
+                    readme.AppendLine("Compared with hardware_test_main_plus_load, only XAnim/XModel/Weapon/FX are reduced to named fixed shells.");
+                    readme.AppendLine("World/material/sound/simple-root behavior is intentionally identical.");
+                    readme.AppendLine();
+                    readme.AppendLine("INTERPRETATION");
+                    readme.AppendLine("  Same exception address as proof-heavy pair => prioritize world/material/simple-root initialization.");
+                    readme.AppendLine("  Different/later exception => promoted tracked payloads contributed to the earlier frontier.");
+                    readme.AppendLine("  This is diagnostic only; it is not a production/fidelity-ready conversion.");
+                    await File.WriteAllTextAsync(
+                        Path.Combine(trackedShellPairDir, "TRACKED_SHELL_PAIR_TEST.txt"),
+                        readme.ToString(),
+                        new UTF8Encoding(false),
+                        cancellationToken);
+
+                    trackedShellPairReady = true;
+                    notes.Add($"TRACKED-SHELL MATRIX PAIR READY: {trackedShellPairDir}");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                notes.Add($"Tracked-shell pair skipped: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         var result = new NormalMapLinkerV2LoadHardwarePackageResult
         {
             MapName = map.Name,
@@ -158,6 +226,10 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             CombinedPackageDirectory = combinedDir,
             CombinedMainFastFile = combinedMain,
             CombinedLoadFastFile = combinedLoad,
+            TrackedShellPairReady = trackedShellPairReady,
+            TrackedShellPairDirectory = trackedShellPairDir,
+            TrackedShellMainFastFile = trackedShellMain,
+            TrackedShellLoadFastFile = trackedShellLoad,
             Notes = notes,
             TextReportFile = txt,
             JsonReportFile = json
@@ -175,6 +247,7 @@ public static class NormalMapLinkerV2LoadHardwarePackager
         sb.AppendLine($"ready={r.Ready}; package={r.PackageDirectory ?? "<none>"}; ff={r.FastFile ?? "<none>"}");
         if (r.Sha256 is not null) sb.AppendLine($"sha256={r.Sha256}");
         sb.AppendLine($"combinedMainLoadReady={r.CombinedMainLoadReady}; combinedPackage={r.CombinedPackageDirectory ?? "<none>"}; main={r.CombinedMainFastFile ?? "<none>"}; load={r.CombinedLoadFastFile ?? "<none>"}");
+        sb.AppendLine($"trackedShellPairReady={r.TrackedShellPairReady}; trackedShellPair={r.TrackedShellPairDirectory ?? "<none>"}; main={r.TrackedShellMainFastFile ?? "<none>"}; load={r.TrackedShellLoadFastFile ?? "<none>"}");
         foreach (var note in r.Notes) sb.AppendLine("NOTE: " + note);
         await File.WriteAllTextAsync(r.TextReportFile, sb.ToString(), new UTF8Encoding(false), ct);
         await File.WriteAllTextAsync(r.JsonReportFile, JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false), ct);
