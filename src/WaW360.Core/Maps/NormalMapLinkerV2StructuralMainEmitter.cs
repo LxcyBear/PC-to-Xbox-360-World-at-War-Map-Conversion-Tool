@@ -326,12 +326,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 var record = proof.Records[i];
                 var name = await LinkerV2ProofEvidence.TryReadNameAsync(record, ct);
 
+                var reason = string.Empty;
                 if (!string.IsNullOrWhiteSpace(name))
                 {
                     var blob = await T4NativeProofContainerReader.ReadBlobAsync(record, ct);
                     var safe = false;
                     var auditedName = name;
-                    var reason = string.Empty;
 
                     switch (type.ToLowerInvariant())
                     {
