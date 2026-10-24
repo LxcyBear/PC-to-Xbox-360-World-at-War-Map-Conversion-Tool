@@ -20,6 +20,8 @@ public static class NormalMapMasterDiagnostics
 
     private sealed record Failure(string Map, string Stage, string Detail, string Signature);
     private sealed record MapCounts(string Map, int Pass, int Fail, int Cached, string? HybridDetail);
+    private sealed record PromotionRejectRow(string Map, string Reason, int Count);
+    private sealed record RelocationFieldRow(string Map, string AssetType, string Field, int References, int UniqueTargets);
 
     public static async Task<string> WriteAsync(
         IReadOnlyList<MapCandidate> maps,
@@ -43,6 +45,8 @@ public static class NormalMapMasterDiagnostics
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var productionBlockers = await ReadV2ProductionBlockersAsync(maps, outputRoot, cancellationToken);
+        var promotionRejects = await ReadV2PromotionRejectsAsync(maps, outputRoot, cancellationToken);
+        var relocationFields = await ReadV2RelocationFieldsAsync(maps, outputRoot, cancellationToken);
 
         var sb = new StringBuilder(2 * 1024 * 1024);
         sb.AppendLine("WaW360Converter — ALL NORMAL MAPS MASTER DIAGNOSTIC DATASET");
@@ -115,6 +119,69 @@ public static class NormalMapMasterDiagnostics
                 var affected = g.Select(x => x.Map).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
                 sb.AppendLine($"  [{blockerIndex++:D2}] maps={affected.Length:N0}: {g.Key}");
                 sb.AppendLine($"       maps={string.Join(", ", affected)}");
+            }
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("CROSS-MAP TYPED PROMOTION BLOCKERS");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("Ranked by total rejected payloads first, then number of maps affected. These are the highest-value self-contained/rebase implementation targets.");
+        if (promotionRejects.Count == 0)
+        {
+            sb.AppendLine("  <no typed promotion rejection reports found>");
+        }
+        else
+        {
+            var rank = 1;
+            foreach (var g in promotionRejects
+                         .GroupBy(x => x.Reason, StringComparer.OrdinalIgnoreCase)
+                         .Select(g => new
+                         {
+                             Reason = g.Key,
+                             Total = g.Sum(x => x.Count),
+                             Maps = g.Select(x => x.Map).Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray()
+                         })
+                         .OrderByDescending(x => x.Total)
+                         .ThenByDescending(x => x.Maps.Length)
+                         .ThenBy(x => x.Reason, StringComparer.OrdinalIgnoreCase)
+                         .Take(100))
+            {
+                sb.AppendLine($"  [{rank++:D2}] rejected={g.Total:N0}; maps={g.Maps.Length:N0}: {g.Reason}");
+                sb.AppendLine($"       maps={string.Join(", ", g.Maps)}");
+            }
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("CROSS-MAP PACKED RELOCATION FIELDS");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("Ranked by packed references. Unique targets are summed per map/source ledger; low target counts relative to references identify high-leverage shared objects to own once and rebase.");
+        if (relocationFields.Count == 0)
+        {
+            sb.AppendLine("  <no relocation field reports found>");
+        }
+        else
+        {
+            var rank = 1;
+            foreach (var g in relocationFields
+                         .GroupBy(x => (x.AssetType, x.Field), new AssetFieldComparer())
+                         .Select(g => new
+                         {
+                             AssetType = g.Key.AssetType,
+                             Field = g.Key.Field,
+                             References = g.Sum(x => x.References),
+                             UniqueTargets = g.Sum(x => x.UniqueTargets),
+                             Maps = g.Select(x => x.Map).Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray()
+                         })
+                         .OrderByDescending(x => x.References)
+                         .ThenBy(x => x.UniqueTargets)
+                         .ThenBy(x => x.AssetType, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
+                         .Take(120))
+            {
+                sb.AppendLine($"  [{rank++:D02}] refs={g.References:N0}; uniqueTargets(sum)={g.UniqueTargets:N0}; maps={g.Maps.Length:N0}: {g.AssetType}.{g.Field}");
+                sb.AppendLine($"       maps={string.Join(", ", g.Maps)}");
             }
         }
         sb.AppendLine();
@@ -440,6 +507,72 @@ public static class NormalMapMasterDiagnostics
         s = Regex.Replace(s, @"\b\d[\d,]*(?:\.\d+)?\b", "<n>");
         s = Regex.Replace(s, @"\s+", " ").Trim();
         return s;
+    }
+
+    private sealed class AssetFieldComparer : IEqualityComparer<(string AssetType, string Field)>
+    {
+        public bool Equals((string AssetType, string Field) x, (string AssetType, string Field) y) =>
+            StringComparer.OrdinalIgnoreCase.Equals(x.AssetType, y.AssetType) &&
+            StringComparer.OrdinalIgnoreCase.Equals(x.Field, y.Field);
+
+        public int GetHashCode((string AssetType, string Field) obj) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.AssetType),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Field));
+    }
+
+    private static async Task<List<PromotionRejectRow>> ReadV2PromotionRejectsAsync(
+        IReadOnlyList<MapCandidate> maps,
+        string outputRoot,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<PromotionRejectRow>();
+        foreach (var map in maps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural", $"{map.Name}_linker_v2_main_structural.json");
+            if (!File.Exists(path)) continue;
+            try
+            {
+                var result = System.Text.Json.JsonSerializer.Deserialize<NormalMapLinkerV2StructuralMainEmitResult>(
+                    await File.ReadAllTextAsync(path, cancellationToken));
+                if (result is null) continue;
+                foreach (var kv in result.PromotionRejectReasons)
+                    rows.Add(new PromotionRejectRow(map.Name, kv.Key, kv.Value));
+            }
+            catch
+            {
+                // Optional cross-map clustering must never prevent the master dataset.
+            }
+        }
+        return rows;
+    }
+
+    private static async Task<List<RelocationFieldRow>> ReadV2RelocationFieldsAsync(
+        IReadOnlyList<MapCandidate> maps,
+        string outputRoot,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<RelocationFieldRow>();
+        foreach (var map in maps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = Path.Combine(outputRoot, map.Name, "linker_v2_relocation", $"{map.Name}_linker_v2_relocation.json");
+            if (!File.Exists(path)) continue;
+            try
+            {
+                var result = System.Text.Json.JsonSerializer.Deserialize<NormalMapLinkerV2RelocationObligationsResult>(
+                    await File.ReadAllTextAsync(path, cancellationToken));
+                if (result is null) continue;
+                foreach (var f in result.Fields)
+                    rows.Add(new RelocationFieldRow(map.Name, f.AssetType, f.Field, f.PackedReferences, f.UniquePackedTargets));
+            }
+            catch
+            {
+                // Optional cross-map clustering must never prevent the master dataset.
+            }
+        }
+        return rows;
     }
 
     private sealed record V2ProductionBlocker(string Map, string Blocker);
