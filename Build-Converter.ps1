@@ -3,6 +3,7 @@
 param(
     [switch]$Clean,
     [switch]$WithOat,
+    [switch]$BuildOatLocally,
     [switch]$RunOatTests,
     [string]$OutputDirectory
 )
@@ -21,6 +22,7 @@ $releaseDirectory = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $externalReleaseDirectory = -not $releaseDirectory.Equals($defaultReleaseDirectory, [StringComparison]::OrdinalIgnoreCase)
 
 if ($RunOatTests -and -not $WithOat) { throw '-RunOatTests requires -WithOat.' }
+if ($BuildOatLocally -and -not $WithOat) { throw '-BuildOatLocally requires -WithOat.' }
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
     throw '.NET 8 SDK is required. Install the .NET 8 SDK first.'
 }
@@ -43,9 +45,24 @@ try {
 
     if ($RunOatTests) { throw '-RunOatTests is not yet available; run the OAT tests separately once the toolchain is built.' }
     if ($WithOat) {
-        Write-Host '[WaW360] Preparing pinned OpenAssetTools Xenon x86 toolchain...'
-        $prepare = Join-Path $repoRoot 'tools\oat-xenon\Prepare-OatXenon.ps1'
-        & $prepare -Build
+        $prebuiltDir = Join-Path $repoRoot '.deps\OpenAssetTools-xenon-prebuilt\Release_x86'
+        $requiredOatTools = @('Linker.exe','Unlinker.exe','ImageConverter.exe')
+        $missingPrebuilt = @($requiredOatTools | Where-Object {
+            -not (Test-Path -LiteralPath (Join-Path $prebuiltDir $_) -PathType Leaf)
+        })
+
+        if ($missingPrebuilt.Count -eq 0) {
+            Write-Host '[WaW360] Reusing installed pinned OAT Xenon x86 toolchain.'
+            Write-Host "          $prebuiltDir"
+        }
+        elseif ($BuildOatLocally) {
+            Write-Host '[WaW360] No prebuilt OAT toolchain found; local C++ build explicitly requested.'
+            $prepare = Join-Path $repoRoot 'tools\oat-xenon\Prepare-OatXenon.ps1'
+            & $prepare -Build
+        }
+        else {
+            throw "Pinned OAT x86 binaries are not installed. Download the successful GitHub Actions artifact once and run tools\oat-xenon\Install-OatArtifact.ps1. Future -WithOat builds will reuse it. Use -BuildOatLocally only if you intentionally want the Visual Studio C++ build."
+        }
     }
 
     Write-Host '[WaW360] Building complete C# solution (Release)...'
