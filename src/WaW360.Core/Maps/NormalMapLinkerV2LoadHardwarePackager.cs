@@ -19,6 +19,10 @@ public sealed class NormalMapLinkerV2LoadHardwarePackageResult
     public required string? TrackedShellPairDirectory { get; init; }
     public required string? TrackedShellMainFastFile { get; init; }
     public required string? TrackedShellLoadFastFile { get; init; }
+    public required bool ScriptClosurePairReady { get; init; }
+    public required string? ScriptClosurePairDirectory { get; init; }
+    public required string? ScriptClosureMainFastFile { get; init; }
+    public required string? ScriptClosureLoadFastFile { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
     public required string TextReportFile { get; init; }
     public required string JsonReportFile { get; init; }
@@ -63,6 +67,10 @@ public static class NormalMapLinkerV2LoadHardwarePackager
                 TrackedShellPairDirectory = null,
                 TrackedShellMainFastFile = null,
                 TrackedShellLoadFastFile = null,
+                ScriptClosurePairReady = false,
+                ScriptClosurePairDirectory = null,
+                ScriptClosureMainFastFile = null,
+                ScriptClosureLoadFastFile = null,
                 Notes = notes,
                 TextReportFile = txt,
                 JsonReportFile = json
@@ -228,7 +236,65 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             }
         }
 
-        if (combinedReady || trackedShellPairReady)
+        var scriptClosurePairReady = false;
+        string? scriptClosurePairDir = null;
+        string? scriptClosureMain = null;
+        string? scriptClosureLoad = null;
+
+        if (File.Exists(mainJson))
+        {
+            try
+            {
+                var main = JsonSerializer.Deserialize<NormalMapLinkerV2StructuralMainEmitResult>(
+                    await File.ReadAllTextAsync(mainJson, cancellationToken));
+                if (main is not null &&
+                    main.ScriptClosureCandidateReady &&
+                    main.ScriptClosureReadBackErrors == 0 &&
+                    main.ScriptClosureWrapperRoundTripVerified &&
+                    !string.IsNullOrWhiteSpace(main.ScriptClosureOutputFastFile) &&
+                    File.Exists(main.ScriptClosureOutputFastFile))
+                {
+                    scriptClosurePairDir = Path.Combine(matrixRoot, "script_closure");
+                    if (Directory.Exists(scriptClosurePairDir)) Directory.Delete(scriptClosurePairDir, recursive: true);
+                    Directory.CreateDirectory(scriptClosurePairDir);
+
+                    scriptClosureMain = Path.Combine(scriptClosurePairDir, Path.GetFileName(main.ScriptClosureOutputFastFile));
+                    scriptClosureLoad = Path.Combine(scriptClosurePairDir, Path.GetFileName(emitter.OutputFastFile));
+                    File.Copy(main.ScriptClosureOutputFastFile, scriptClosureMain, overwrite: true);
+                    File.Copy(emitter.OutputFastFile, scriptClosureLoad, overwrite: true);
+
+                    var mainSha = await Sha256Async(scriptClosureMain, cancellationToken);
+                    var loadSha = await Sha256Async(scriptClosureLoad, cancellationToken);
+                    var readme = new StringBuilder();
+                    readme.AppendLine("WaW360Converter — HARDWARE MATRIX: SCRIPT-CLOSURE MAIN + GENERATED LOAD");
+                    readme.AppendLine(new string('=', 88));
+                    readme.AppendLine($"Map: {map.Name}");
+                    readme.AppendLine($"Main SHA-256: {mainSha}");
+                    readme.AppendLine($"Load SHA-256: {loadSha}");
+                    readme.AppendLine($"Resident MenuLists removed: {main.ScriptClosureResidentMenusRemoved:N0}");
+                    readme.AppendLine($"IWD RawFiles promoted: {main.ScriptClosureRawFilesPromoted:N0}");
+                    readme.AppendLine();
+                    readme.AppendLine("TEST THIS VARIANT NEXT.");
+                    readme.AppendLine("It starts from tracked_shell, removes only proven resident UI MenuLists, and adds exact missing IWD .gsc/.csc RawFiles.");
+                    readme.AppendLine("If the first exception moves away from 0x82168594, map/script closure participates in the previous DB frontier.");
+                    readme.AppendLine("This remains a diagnostic; it does not claim final canonical graph closure.");
+                    await File.WriteAllTextAsync(
+                        Path.Combine(scriptClosurePairDir, "SCRIPT_CLOSURE_PAIR_TEST.txt"),
+                        readme.ToString(),
+                        new UTF8Encoding(false),
+                        cancellationToken);
+
+                    scriptClosurePairReady = true;
+                    notes.Add($"SCRIPT-CLOSURE MATRIX PAIR READY: {scriptClosurePairDir}");
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                notes.Add($"Script-closure pair skipped: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        if (combinedReady || trackedShellPairReady || scriptClosurePairReady)
         {
             Directory.CreateDirectory(matrixRoot);
             var matrix = new StringBuilder();
@@ -239,16 +305,18 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             matrix.AppendLine("Both variants use the SAME converter-generated load FF.");
             matrix.AppendLine("The only intended A/B difference is the tracked main-asset payload policy.");
             matrix.AppendLine();
-            matrix.AppendLine("TEST A — proof_heavy");
-            matrix.AppendLine("  Uses every self-contained XAnim/XModel/FX payload currently proven safe, plus smoke-promoted XModels.");
-            matrix.AppendLine("  This matches the main policy used at the 0x82168594 / 0xC0000005 hardware frontier.");
+            matrix.AppendLine("OBSERVED BASELINE — proof_heavy");
+            matrix.AppendLine("  Previously faulted at 0x82168594 / 0xC0000005.");
             matrix.AppendLine();
-            matrix.AppendLine("TEST B — tracked_shell");
-            matrix.AppendLine("  XAnim/XModel/Weapon/FX are reduced to named fixed shells; world/material/sound/simple roots stay identical.");
+            matrix.AppendLine("OBSERVED ISOLATION — tracked_shell");
+            matrix.AppendLine("  XAnim/XModel/Weapon/FX reduced to fixed shells; also faulted at the SAME 0x82168594.");
+            matrix.AppendLine();
+            matrix.AppendLine("NEXT TEST — script_closure");
+            matrix.AppendLine("  Starts from tracked_shell, removes exact resident UI MenuLists and promotes exact missing IWD .gsc/.csc RawFiles.");
             matrix.AppendLine();
             matrix.AppendLine("INTERPRETATION");
-            matrix.AppendLine("  Same first exception address in A and B => tracked promoted payloads are probably not the frontier; prioritize world/material/simple roots.");
-            matrix.AppendLine("  B gets farther or faults elsewhere => at least one promoted tracked payload participates in A's frontier.");
+            matrix.AppendLine("  script_closure moves past 0x82168594 => map/script/root closure participates in the DB frontier.");
+            matrix.AppendLine("  same 0x82168594 => continue into other shared simple/root identity families; tracked XAnim/XModel/Weapon/FX remain deprioritized.");
             matrix.AppendLine();
             matrix.AppendLine("For each test, stop/break xbWatson on the FIRST exception and record exception code, instruction address, registers/call stack if available.");
             matrix.AppendLine("Back up the known-working FFs; keep sounds, previews, description, t4ff metadata and all other companion files unchanged.");
@@ -264,11 +332,13 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             latest.AppendLine($"Map: {map.Name}");
             latest.AppendLine($"Use folder: {matrixRoot}");
             latest.AppendLine();
-            latest.AppendLine("TEST ORDER");
-            latest.AppendLine("  1) hardware_test_main_matrix\\tracked_shell");
-            latest.AppendLine("  2) hardware_test_main_matrix\\proof_heavy");
+            latest.AppendLine("NEXT TEST");
+            latest.AppendLine("  hardware_test_main_matrix\\script_closure");
             latest.AppendLine();
-            latest.AppendLine("For each folder, copy BOTH generated FFs as a pair.");
+            latest.AppendLine("Already observed: tracked_shell and proof_heavy both faulted at 0x82168594 / 0xC0000005.");
+            latest.AppendLine("Do not repeat them unless specifically requested.");
+            latest.AppendLine();
+            latest.AppendLine("Copy BOTH generated FFs from script_closure as a pair.");
             latest.AppendLine("Keep sounds/preview/description/t4ff and all other companion files unchanged.");
             latest.AppendLine("Set xbWatson to stop/break on the FIRST exception and record the exception code + PC address.");
             latest.AppendLine();
@@ -295,6 +365,10 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             TrackedShellPairDirectory = trackedShellPairDir,
             TrackedShellMainFastFile = trackedShellMain,
             TrackedShellLoadFastFile = trackedShellLoad,
+            ScriptClosurePairReady = scriptClosurePairReady,
+            ScriptClosurePairDirectory = scriptClosurePairDir,
+            ScriptClosureMainFastFile = scriptClosureMain,
+            ScriptClosureLoadFastFile = scriptClosureLoad,
             Notes = notes,
             TextReportFile = txt,
             JsonReportFile = json
@@ -313,6 +387,7 @@ public static class NormalMapLinkerV2LoadHardwarePackager
         if (r.Sha256 is not null) sb.AppendLine($"sha256={r.Sha256}");
         sb.AppendLine($"combinedMainLoadReady={r.CombinedMainLoadReady}; combinedPackage={r.CombinedPackageDirectory ?? "<none>"}; main={r.CombinedMainFastFile ?? "<none>"}; load={r.CombinedLoadFastFile ?? "<none>"}");
         sb.AppendLine($"trackedShellPairReady={r.TrackedShellPairReady}; trackedShellPair={r.TrackedShellPairDirectory ?? "<none>"}; main={r.TrackedShellMainFastFile ?? "<none>"}; load={r.TrackedShellLoadFastFile ?? "<none>"}");
+        sb.AppendLine($"scriptClosurePairReady={r.ScriptClosurePairReady}; scriptClosurePair={r.ScriptClosurePairDirectory ?? "<none>"}; main={r.ScriptClosureMainFastFile ?? "<none>"}; load={r.ScriptClosureLoadFastFile ?? "<none>"}");
         foreach (var note in r.Notes) sb.AppendLine("NOTE: " + note);
         await File.WriteAllTextAsync(r.TextReportFile, sb.ToString(), new UTF8Encoding(false), ct);
         await File.WriteAllTextAsync(r.JsonReportFile, JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false), ct);
