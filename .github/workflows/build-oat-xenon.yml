@@ -54,16 +54,20 @@ jobs:
           # Xenon XModel loops. Release intentionally keeps all other warnings fatal.
           CL: /wd4018
         run: |
-          $projects = @(
-            'build\src\LinkerCli\LinkerCli.vcxproj',
-            'build\src\UnlinkerCli\UnlinkerCli.vcxproj',
-            'build\src\ImageConverter\ImageConverter.vcxproj'
-          )
-          foreach ($project in $projects) {
-            Write-Host "[OAT] Building $project"
-            & msbuild $project /m /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:Configuration=Release /p:Platform=Win32
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $solution = if (Test-Path 'build\OpenAssetTools.slnx') {
+            'build\OpenAssetTools.slnx'
+          } elseif (Test-Path 'build\OpenAssetTools.sln') {
+            'build\OpenAssetTools.sln'
+          } else {
+            throw 'Generated OpenAssetTools solution was not found.'
           }
+
+          # Build through the generated solution so OAT's source-template / ZoneCode
+          # generator dependencies run before the CLI projects. Building the vcxproj
+          # files directly skips those solution-level dependencies.
+          Write-Host "[OAT] Building required solution targets: LinkerCli, UnlinkerCli, ImageConverter"
+          & msbuild $solution /m /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:Configuration=Release /p:Platform=Win32 /t:LinkerCli,UnlinkerCli,ImageConverter
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify required tools
         shell: pwsh
