@@ -217,7 +217,10 @@ public sealed partial class MainForm
                 {
                     var r = await NormalMapLinkerV2RelocationObligations.RunAsync(map, outputRoot, sourceOverride: sourceArchive);
                     relocation = r;
-                    return $"proofAssets={r.ProofAssetsAudited:N0}; fields={r.KnownPointerFieldsAudited:N0}; packedRefs={r.PackedPointerReferences:N0}; uniqueTargets={r.UniquePackedTargets:N0}; invalid={r.InvalidPackedPointers:N0}; sourceAliases={r.SourceTopLevelAliasRoots:N0}; encodingVerified={r.PackedEncodingVerified}; ownershipResolved={r.SharedTargetOwnershipResolved}; verified={r.Verified}; report={r.TextReportFile}";
+                    var topFields = r.Fields.Count == 0
+    ? "<none>"
+    : string.Join(" | ", r.Fields.Take(10).Select(x => $"{x.PackedReferences:N0}x {x.AssetType}.{x.Field} ({x.UniquePackedTargets:N0} targets)"));
+return $"proofAssets={r.ProofAssetsAudited:N0}; fields={r.KnownPointerFieldsAudited:N0}; packedRefs={r.PackedPointerReferences:N0}; uniqueTargets={r.UniquePackedTargets:N0}; invalid={r.InvalidPackedPointers:N0}; sourceAliases={r.SourceTopLevelAliasRoots:N0}; topPackedFields={topFields}; encodingVerified={r.PackedEncodingVerified}; ownershipResolved={r.SharedTargetOwnershipResolved}; verified={r.Verified}; report={r.TextReportFile}";
                 }, cacheable: false);
 
                 await Stage("v2-block-plan", "v2a5|source-derived-seven-block-capacity-plan|no-golden-copy", "LINKER V2 source-derived destination block plan", async () =>
