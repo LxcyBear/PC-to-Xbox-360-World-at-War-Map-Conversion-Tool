@@ -16,6 +16,14 @@ To build the pinned GPLv3 OAT Xenon x86 dependency as a separate executable, run
 
 Prerequisites: Git, .NET 8 SDK, Visual Studio 2026 with C++ toolchain. OAT revision 1f7acb3347bc2e44deb609bc8cf7259bf027f176 is cloned under ignored .deps/OpenAssetTools-xenon. Its x86 Linker.exe and Unlinker.exe should land under build\bin\Release_x86 within the OAT checkout. The source and game assets are not redistributed in this project.
 
+If your original Converter folder is not a Git checkout, clone this branch into a separate sibling folder and point the published GUI at the original Release directory without changing source files:
+
+    git clone --branch xbox360/oat-xenon-integration https://github.com/LxcyBear/PC2XB3-WaW-Converter.git ..\PC2XB3-WaW-Converter
+    cd ..\PC2XB3-WaW-Converter
+    powershell -ExecutionPolicy Bypass -File .\Build-Converter.ps1 -Clean -WithOat -OutputDirectory "C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\Converter\src\WaW360.Gui\Release"
+
+External Release directories are published in-place and are never recursively deleted by -Clean. Only the release outputs may be overwritten. Keep your existing Converter source folder as a backup until you compare it with GitHub.
+
 ## Exit gates
 
 | Milestone | Status | Completion proof |
