@@ -34,19 +34,19 @@ internal static class LinkerV2ProofEvidence
             .Where(x => x.GraphParticipation is "PRIMARY_GRAPH_SOURCE" or "AUXILIARY_GRAPH_SOURCE")
             .ToList();
 
-        bool Needs(string type)
+        var missingByType = TrackedTypes.ToDictionary(x => x, _ => false, StringComparer.OrdinalIgnoreCase);
+        foreach (var container in primary)
         {
-            foreach (var container in primary)
+            var doc = (await FastFileAnalysisCache.GetZoneAsync(container.Path, cancellationToken)).Document;
+            foreach (var type in TrackedTypes)
             {
-                var doc = FastFileAnalysisCache.GetZoneAsync(container.Path, cancellationToken).GetAwaiter().GetResult().Document;
                 var count = doc.Assets.Count(a =>
                     a.TypeName.Equals(type, StringComparison.OrdinalIgnoreCase) &&
                     a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared);
                 if (count == 0) continue;
                 if (!File.Exists(GetProofPath(outputRoot, map.Name, container.Path, container.Role, type)))
-                    return true;
+                    missingByType[type] = true;
             }
-            return false;
         }
 
         // Proof serializers are intentionally serialized across parallel Fast-Mode maps. They are
@@ -55,10 +55,10 @@ internal static class LinkerV2ProofEvidence
         await MaterializeGate.WaitAsync(cancellationToken);
         try
         {
-            var needWeapon = Needs("weapon");
-            var needXAnim = Needs("xanim");
-            var needXModel = Needs("xmodel");
-            var needFx = Needs("fx");
+            var needWeapon = missingByType["weapon"];
+            var needXAnim = missingByType["xanim"];
+            var needXModel = missingByType["xmodel"];
+            var needFx = missingByType["fx"];
 
             async Task TryFamilyAsync(string family, Func<Task> build)
             {
