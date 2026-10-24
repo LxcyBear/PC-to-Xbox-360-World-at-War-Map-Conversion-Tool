@@ -155,6 +155,19 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             }
         }
 
+        // Mirror the proof-heavy pair into a single hardware-matrix parent so A/B testing
+        // does not require choosing between several similarly named top-level folders.
+        var matrixRoot = Path.Combine(outputRoot, map.Name, "hardware_test_main_matrix");
+        string? matrixProofHeavyDir = null;
+        if (combinedReady && combinedMain is not null && combinedLoad is not null)
+        {
+            matrixProofHeavyDir = Path.Combine(matrixRoot, "proof_heavy");
+            if (Directory.Exists(matrixProofHeavyDir)) Directory.Delete(matrixProofHeavyDir, recursive: true);
+            Directory.CreateDirectory(matrixProofHeavyDir);
+            File.Copy(combinedMain, Path.Combine(matrixProofHeavyDir, Path.GetFileName(combinedMain)), overwrite: true);
+            File.Copy(combinedLoad, Path.Combine(matrixProofHeavyDir, Path.GetFileName(combinedLoad)), overwrite: true);
+        }
+
         var trackedShellPairReady = false;
         string? trackedShellPairDir = null;
         string? trackedShellMain = null;
@@ -173,7 +186,7 @@ public static class NormalMapLinkerV2LoadHardwarePackager
                     !string.IsNullOrWhiteSpace(main.ConservativeOutputFastFile) &&
                     File.Exists(main.ConservativeOutputFastFile))
                 {
-                    trackedShellPairDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_matrix", "tracked_shell");
+                    trackedShellPairDir = Path.Combine(matrixRoot, "tracked_shell");
                     if (Directory.Exists(trackedShellPairDir)) Directory.Delete(trackedShellPairDir, recursive: true);
                     Directory.CreateDirectory(trackedShellPairDir);
 
@@ -213,6 +226,37 @@ public static class NormalMapLinkerV2LoadHardwarePackager
             {
                 notes.Add($"Tracked-shell pair skipped: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        if (combinedReady || trackedShellPairReady)
+        {
+            Directory.CreateDirectory(matrixRoot);
+            var matrix = new StringBuilder();
+            matrix.AppendLine("WaW360Converter — MAIN+LOAD HARDWARE MATRIX");
+            matrix.AppendLine(new string('=', 72));
+            matrix.AppendLine($"Map: {map.Name}");
+            matrix.AppendLine();
+            matrix.AppendLine("Both variants use the SAME converter-generated load FF.");
+            matrix.AppendLine("The only intended A/B difference is the tracked main-asset payload policy.");
+            matrix.AppendLine();
+            matrix.AppendLine("TEST A — proof_heavy");
+            matrix.AppendLine("  Uses every self-contained XAnim/XModel/FX payload currently proven safe, plus smoke-promoted XModels.");
+            matrix.AppendLine("  This matches the main policy used at the 0x82168594 / 0xC0000005 hardware frontier.");
+            matrix.AppendLine();
+            matrix.AppendLine("TEST B — tracked_shell");
+            matrix.AppendLine("  XAnim/XModel/Weapon/FX are reduced to named fixed shells; world/material/sound/simple roots stay identical.");
+            matrix.AppendLine();
+            matrix.AppendLine("INTERPRETATION");
+            matrix.AppendLine("  Same first exception address in A and B => tracked promoted payloads are probably not the frontier; prioritize world/material/simple roots.");
+            matrix.AppendLine("  B gets farther or faults elsewhere => at least one promoted tracked payload participates in A's frontier.");
+            matrix.AppendLine();
+            matrix.AppendLine("For each test, stop/break xbWatson on the FIRST exception and record exception code, instruction address, registers/call stack if available.");
+            matrix.AppendLine("Back up the known-working FFs; keep sounds, previews, description, t4ff metadata and all other companion files unchanged.");
+            await File.WriteAllTextAsync(
+                Path.Combine(matrixRoot, "TEST_ORDER_AND_INTERPRETATION.txt"),
+                matrix.ToString(),
+                new UTF8Encoding(false),
+                cancellationToken);
         }
 
         var result = new NormalMapLinkerV2LoadHardwarePackageResult
