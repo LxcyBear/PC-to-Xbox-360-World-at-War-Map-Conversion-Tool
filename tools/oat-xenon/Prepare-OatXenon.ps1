@@ -60,8 +60,26 @@ try {
         $env:PREMAKE_NO_PROMPT = '1'
         & cmd.exe /d /c generate.bat
         if ($LASTEXITCODE -ne 0) { throw 'OAT solution generation failed.' }
-        & $msbuild 'build\OpenAssetTools.sln' /m /p:Configuration=Release /p:Platform=x86 /v:minimal
-        if ($LASTEXITCODE -ne 0) { throw 'OAT x86 build failed.' }
+        # Premake 5 Beta 8 emits .slnx for VS2026. Older Premake/VS generators
+        # may still emit .sln; check both rather than assuming either extension.
+        $buildFolder = Join-Path $checkout 'build'
+        $solutionCandidates = @(
+            (Join-Path $buildFolder 'OpenAssetTools.slnx'),
+            (Join-Path $buildFolder 'OpenAssetTools.sln')
+        )
+        $solution = $solutionCandidates |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+            Select-Object -First 1
+        if (-not $solution) {
+            $contents = if (Test-Path -LiteralPath $buildFolder) {
+                (Get-ChildItem -LiteralPath $buildFolder -File |
+                    Select-Object -ExpandProperty Name) -join ', '
+            } else { '<build directory absent>' }
+            throw "OAT Premake generation did not create OpenAssetTools.slnx or OpenAssetTools.sln. Build folder files: $contents. Review generate.bat output for a Premake error."
+        }
+        Write-Host "[OAT] Building generated solution: $solution"
+        & $msbuild $solution /m /p:Configuration=Release /p:Platform=x86 /v:minimal
+        if ($LASTEXITCODE -ne 0) { throw "OAT x86 build failed: $solution" }
         foreach ($tool in @('Linker.exe','Unlinker.exe')) {
             if (-not (Test-Path (Join-Path 'build\bin\Release_x86' $tool))) { throw "Missing $tool" }
         }
