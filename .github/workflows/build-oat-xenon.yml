@@ -54,20 +54,34 @@ jobs:
           # Xenon XModel loops. Release intentionally keeps all other warnings fatal.
           CL: /wd4018
         run: |
-          $solution = if (Test-Path 'build\OpenAssetTools.slnx') {
-            'build\OpenAssetTools.slnx'
-          } elseif (Test-Path 'build\OpenAssetTools.sln') {
-            'build\OpenAssetTools.sln'
-          } else {
-            throw 'Generated OpenAssetTools solution was not found.'
+          $common = @('/m','/p:TrackFileAccess=false','/p:UseMultiToolTask=true','/p:Configuration=Release','/p:Platform=Win32')
+
+          # OAT generates source in two stages. Build the generator executables first,
+          # then execute the Utility projects that materialize templates/ZoneCode.
+          $bootstrap = @(
+            'build\src\RawTemplater\RawTemplater.vcxproj',
+            'build\src\ZoneCodeGenerator\ZoneCodeGenerator.vcxproj',
+            'build\raw\Raw.vcxproj',
+            'build\src\ZoneCode\ZoneCode.vcxproj'
+          )
+          foreach ($project in $bootstrap) {
+            Write-Host "[OAT] Bootstrap/build $project"
+            & msbuild $project @common
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-          # Build through the generated solution so OAT's source-template / ZoneCode
-          # generator dependencies run before the CLI projects. Building the vcxproj
-          # files directly skips those solution-level dependencies.
-          Write-Host "[OAT] Building required solution targets: LinkerCli, UnlinkerCli, ImageConverter"
-          & msbuild $solution /m /p:TrackFileAccess=false /p:UseMultiToolTask=true /p:Configuration=Release /p:Platform=Win32 /t:LinkerCli,UnlinkerCli,ImageConverter
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Generated headers/sources now exist, so direct project builds preserve
+          # dependency closure without forcing the entire solution/test suite.
+          $tools = @(
+            'build\src\LinkerCli\LinkerCli.vcxproj',
+            'build\src\UnlinkerCli\UnlinkerCli.vcxproj',
+            'build\src\ImageConverter\ImageConverter.vcxproj'
+          )
+          foreach ($project in $tools) {
+            Write-Host "[OAT] Building required tool $project"
+            & msbuild $project @common
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Verify required tools
         shell: pwsh
