@@ -1,0 +1,65 @@
+name: Build pinned OAT Xenon
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - xbox360/oat-xenon-integration
+    paths:
+      - '.github/workflows/build-oat-xenon.yml'
+      - 'tools/oat-xenon/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build-oat-x86:
+    name: OAT Xenon Windows x86
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout converter
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned OpenAssetTools Xenon source
+        uses: actions/checkout@v4
+        with:
+          repository: michaeloliverx/OpenAssetTools
+          ref: 1f7acb3347bc2e44deb609bc8cf7259bf027f176
+          submodules: recursive
+          path: oat
+
+      - name: Validate converter/Xenon contract
+        shell: pwsh
+        run: ./tools/oat-xenon/Test-XenonContract.ps1 -OatDirectory ./oat
+
+      - name: Add MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate VS2026 projects
+        shell: pwsh
+        working-directory: oat
+        env:
+          PREMAKE_NO_PROMPT: '1'
+        run: ./generate.bat
+
+      - name: Build OAT x86 Release
+        shell: pwsh
+        working-directory: oat
+        run: msbuild /m /p:Configuration=Release /p:Platform=Win32 build
+
+      - name: Verify required tools
+        shell: pwsh
+        run: |
+          $bin = Join-Path $PWD 'oat\build\bin\Release_x86'
+          foreach ($tool in @('Linker.exe','Unlinker.exe','ImageConverter.exe')) {
+            $path = Join-Path $bin $tool
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing $path" }
+          }
+
+      - name: Upload OAT Xenon x86 tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: oat-xenon-windows-x86-${{ github.sha }}
+          path: oat/build/bin/Release_x86/
+          if-no-files-found: error
+          retention-days: 30
