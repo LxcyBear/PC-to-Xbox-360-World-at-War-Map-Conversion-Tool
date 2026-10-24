@@ -317,10 +317,10 @@ public static class T4WeaponVariableSerializerProof
                 throw new InvalidDataException("Weapon has no packed direct XString field covered by its authoritative IWD weapon file.");
 
             rebuilt = ApplyInsertions(patched, insertions);
+            localizedStrings = stats.LocalizedIwdStrings;
             if (!TryValidateSelfContainedXboxBlob(rebuilt, name, out reason))
                 return false;
 
-            localizedStrings = stats.LocalizedIwdStrings;
             return true;
         }
         catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
