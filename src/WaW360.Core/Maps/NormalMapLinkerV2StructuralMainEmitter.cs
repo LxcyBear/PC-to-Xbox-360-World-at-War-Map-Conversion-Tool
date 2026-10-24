@@ -664,10 +664,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (i >= 0)
             reason = reason[..i] + " retains packed/source pointer";
 
-        // XModel diagnostics often prefix the model name before the typed child label.
-        var quoteEnd = reason.IndexOf("' ", StringComparison.Ordinal);
-        if (quoteEnd >= 0 && reason.StartsWith("XModel '", StringComparison.OrdinalIgnoreCase))
-            reason = "XModel " + reason[(quoteEnd + 2)..];
+        // Typed diagnostics often prefix the concrete asset name before the child field.
+        // Strip only that name so identical dependency classes group together in the census.
+        foreach (var family in new[] { "XModel", "Weapon", "FX" })
+        {
+            var prefixWithName = family + " '";
+            if (!reason.StartsWith(prefixWithName, StringComparison.OrdinalIgnoreCase)) continue;
+            var quoteEnd = reason.IndexOf("' ", prefixWithName.Length, StringComparison.Ordinal);
+            if (quoteEnd >= 0)
+                reason = family + " " + reason[(quoteEnd + 2)..];
+            break;
+        }
 
         return $"{type}: {reason}";
     }
