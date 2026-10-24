@@ -133,6 +133,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             .ThenBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var weaponStrings = blockers.Count == 0
+            ? await LinkerV2IwdWeaponStringCatalog.BuildAsync(
+                source.SourceArchive
+                    .Where(x => x.Role.Equals("iwd", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => x.Path),
+                cancellationToken)
+            : new Dictionary<string, LinkerV2IwdWeaponStringCatalog.WeaponStrings>(StringComparer.OrdinalIgnoreCase);
+
+        if (weaponStrings.Count != 0)
+            notes.Add($"IWD WEAPON OWNERSHIP: indexed {weaponStrings.Count:N0} authoritative custom weapon file(s) for direct-string localization.");
+
         var contexts = new Dictionary<string, SourceContext>(StringComparer.OrdinalIgnoreCase);
         if (blockers.Count == 0)
         {
@@ -144,7 +155,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 {
                     var payloads = await BuildSourcePayloadsAsync(
                         outputRoot, map.Name, source.CanonicalBaseName,
-                        container.Role, container.Path, cached.Document, cached.Bytes, cancellationToken);
+                        container.Role, container.Path, cached.Document, cached.Bytes, weaponStrings, cancellationToken);
                     contexts[container.Path] = new SourceContext(container.Role, container.Path, cached.Document, cached.Bytes, payloads);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -370,6 +381,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         string sourcePath,
         T4ZoneDocument doc,
         byte[] zone,
+        IReadOnlyDictionary<string, LinkerV2IwdWeaponStringCatalog.WeaponStrings> weaponStrings,
         CancellationToken ct)
     {
         if (doc.Endianness != Endian.Little)
@@ -439,6 +451,31 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                             break;
                         case "weapon":
                             safe = T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
+                            if (!safe &&
+                                weaponStrings.TryGetValue(name, out var iwdWeapon))
+                            {
+                                var iwdSafe = T4WeaponVariableSerializerProof.TryBuildStructuralXboxBlobWithIwdStrings(
+                                    blob,
+                                    name,
+                                    iwdWeapon.ByProofLabel,
+                                    out var iwdBlob,
+                                    out var localizedStrings,
+                                    out var iwdReason);
+
+                                if (iwdSafe)
+                                {
+                                    output[assets[i].Index] = new StructuralPayload(
+                                        type,
+                                        name,
+                                        iwdBlob,
+                                        true,
+                                        $"smoke-promotion[weapon]: localized {localizedStrings:N0} packed direct WeaponDef string/animation field(s) from authoritative IWD '{Path.GetFileName(iwdWeapon.SourceIwd)}:{iwdWeapon.SourceEntry}', then passed the complete typed self-contained Weapon walk");
+                                    continue;
+                                }
+
+                                if (localizedStrings != 0)
+                                    reason = $"after localizing {localizedStrings:N0} authoritative IWD Weapon string/animation field(s): {iwdReason}";
+                            }
                             break;
                         case "fx":
                             safe = T4FxSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
