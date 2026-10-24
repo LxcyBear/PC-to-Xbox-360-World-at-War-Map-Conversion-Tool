@@ -180,7 +180,7 @@ public static class NormalMapMasterDiagnostics
                          .ThenBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
                          .Take(120))
             {
-                sb.AppendLine($"  [{rank++:D02}] refs={g.References:N0}; uniqueTargets(sum)={g.UniqueTargets:N0}; maps={g.Maps.Length:N0}: {g.AssetType}.{g.Field}");
+                sb.AppendLine($"  [{rank++:D2}] refs={g.References:N0}; uniqueTargets(sum)={g.UniqueTargets:N0}; maps={g.Maps.Length:N0}: {g.AssetType}.{g.Field}");
                 sb.AppendLine($"       maps={string.Join(", ", g.Maps)}");
             }
         }
