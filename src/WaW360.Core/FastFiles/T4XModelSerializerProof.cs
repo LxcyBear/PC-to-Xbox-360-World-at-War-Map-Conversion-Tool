@@ -104,6 +104,7 @@ public static class T4XModelSerializerProof
         public int RootStart { get; init; }
         public ZoneHeaderSummary? Header { get; init; }
         public required WalkStats Stats { get; init; }
+        public bool RequireSelfContainedPointers { get; init; }
     }
 
     public static async Task<T4XModelProofResult> BuildProofAsync(
@@ -283,6 +284,42 @@ public static class T4XModelSerializerProof
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, out string name, out string reason)
+    {
+        name = string.Empty;
+        reason = string.Empty;
+        try
+        {
+            if (blob.Length < XModelFixedSize)
+                throw new InvalidDataException($"XModel proof blob is shorter than the {XModelFixedSize}-byte fixed body.");
+
+            var isReferenceStub = blob[4] == 0 && blob[6] == 0;
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Destination = null,
+                RootStart = 0,
+                Header = null,
+                Stats = new WalkStats(),
+                RequireSelfContainedPointers = true
+            };
+            var measured = WalkXModel(ctx, 0, requireTopLevelName: false, requireRenderableBody: !isReferenceStub);
+            if (measured.EndOffset != blob.Length)
+                throw new InvalidDataException($"typed self-contained walk ended at 0x{measured.EndOffset:X}, expected 0x{blob.Length:X}.");
+            if (measured.Name.StartsWith("<packed@", StringComparison.Ordinal))
+                throw new InvalidDataException("top-level XModel name remains a packed source pointer.");
+
+            name = measured.Name;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            return false;
         }
     }
 
@@ -1637,6 +1674,8 @@ public static class T4XModelSerializerProof
     private static void ValidateSerializedPointer(WalkContext c, string label, uint value)
     {
         if (value == 0 || IsInline(value)) return;
+        if (c.RequireSelfContainedPointers)
+            throw new InvalidDataException($"{label} retains packed/source pointer 0x{value:X8}; self-contained promotion refused.");
         var decoded = T4ZonePointer.Decode(value);
         if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block is null)
             throw new InvalidDataException($"{label} contains invalid serialized pointer 0x{value:X8}.");
@@ -1653,6 +1692,8 @@ public static class T4XModelSerializerProof
         foreach (var value in values)
         {
             if (value == 0 || IsInline(value)) continue;
+            if (c.RequireSelfContainedPointers)
+                throw new InvalidDataException($"{label} retains packed/source pointer 0x{value:X8}; self-contained promotion refused.");
             var decoded = T4ZonePointer.Decode(value);
             if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block is null)
                 throw new InvalidDataException($"{label} contains invalid serialized pointer 0x{value:X8}.");
