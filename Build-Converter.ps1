@@ -32,10 +32,11 @@ try {
         }
     }
 
+    if ($RunOatTests) { throw '-RunOatTests is not yet available; run the OAT tests separately once the toolchain is built.' }
     if ($WithOat) {
         Write-Host '[WaW360] Preparing pinned OpenAssetTools Xenon x86 toolchain...'
         $prepare = Join-Path $repoRoot 'tools\oat-xenon\Prepare-OatXenon.ps1'
-        & $prepare -Build -RunTests:$RunOatTests
+        & $prepare -Build
     }
 
     Write-Host '[WaW360] Building complete C# solution (Release)...'
