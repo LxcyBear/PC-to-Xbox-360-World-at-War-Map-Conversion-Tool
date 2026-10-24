@@ -34,7 +34,7 @@ public sealed class NormalMapLinkerV2MainReadinessResult
 }
 
 /// <summary>
-/// Linker V2 alpha 4 consolidated main-FF gate.
+/// Linker V2 alpha 6 consolidated main-FF gate.
 /// This stage emits no fastfile. It distinguishes a first structural/silent hardware diagnostic
 /// from strict-fidelity output so audio work cannot hide structural linker progress, while still
 /// refusing native main emission until identity, dependency and relocation ownership are real.
@@ -55,6 +55,7 @@ public static class NormalMapLinkerV2MainReadiness
         var convergence = convergenceOverride ?? await NormalMapLinkerV2CanonicalConvergence.RunAsync(map, outputRoot, source, cancellationToken);
         var script = scriptOverride ?? await NormalMapLinkerV2ScriptStringMerge.RunAsync(map, outputRoot, source, cancellationToken);
         var identity = identityOverride ?? await NormalMapLinkerV2IdentityEvidence.RunAsync(map, outputRoot, source, cancellationToken);
+        var typed = await NormalMapLinkerV2TypedClosurePlan.RunAsync(map, outputRoot, source, cancellationToken);
         var relocation = relocationOverride ?? await NormalMapLinkerV2RelocationObligations.RunAsync(map, outputRoot, source, cancellationToken);
 
         var scriptReady = script.Verified && script.FullRemapReady && (script.CanonicalNullEntries >= 0 && script.CanonicalNullEntries <= 1);
@@ -66,10 +67,10 @@ public static class NormalMapLinkerV2MainReadiness
         var identityClosureReady = identity.NamedProofRoots == source.PrimaryGraphSourceRoots &&
                                    identity.ExactNameCollisionGroups == 0 && identity.MissingProofFiles == 0;
 
-        // A golden oracle can tell us WHICH families still need canonicalize/promote work, not which
-        // concrete roots to remove/add. Unknown maps likewise remain pending until the generic walkers
-        // actually close the graph. Therefore count deltas alone can never set this gate true.
-        var typedClosureReady = false;
+        // Alpha 6 no longer hardcodes typed closure false. The gate is driven by the
+        // deterministic source/IWD/TechniqueSet closure stage. Golden counts remain validation
+        // only and cannot make this true on their own.
+        var typedClosureReady = typed.Verified && typed.FullTypedClosureReady;
 
         var pointerEncodingReady = relocation.Verified && relocation.PackedEncodingVerified && relocation.InvalidPackedPointers == 0;
         var sharedTargetOwnershipReady = relocation.SharedTargetOwnershipResolved && relocation.NestedPointerWalkComplete;
@@ -94,12 +95,15 @@ public static class NormalMapLinkerV2MainReadiness
         if (!identityClosureReady)
             blockers.Add($"Concrete identity closure pending: proof-backed names cover {identity.NamedProofRoots:N0}/{source.PrimaryGraphSourceRoots:N0} primary roots; exact-name collision groups requiring type-specific policy={identity.ExactNameCollisionGroups:N0}; missing proof files={identity.MissingProofFiles:N0}.");
 
-        if (!typedClosureReady)
+        if (typedClosureReady)
         {
-            if (convergence.GoldenOracleApplied)
-                blockers.Add($"Typed dependency/override closure pending: golden validation still flags {convergence.CanonicalizeFamilies:N0} canonicalize family/families and {convergence.PromoteFamilies:N0} promotion family/families; concrete identities/edges must prove every edit.");
-            else
-                blockers.Add("Typed dependency/override closure pending: generic map has no oracle target, so deterministic walkers must derive the final graph directly.");
+            cleared.Add("Typed dependency closure is source-derived and complete; no production TechniqueSet donor, IWD-promotion, or resident-root action remains pending.");
+        }
+        else
+        {
+            blockers.Add($"Typed dependency/override closure pending: {typed.Blockers.Count:N0} explicit blocker(s); see {typed.TextReportFile}.");
+            foreach (var blocker in typed.Blockers.Take(4))
+                blockers.Add("  typed: " + blocker);
         }
 
         if (!sharedTargetOwnershipReady)
@@ -111,7 +115,7 @@ public static class NormalMapLinkerV2MainReadiness
 
         var notes = new List<string>
         {
-            "Alpha 4 deliberately separates STRUCTURAL hardware readiness from STRICT fidelity. Audio is strict-only; identity/dependency/relocation/block correctness is mandatory for both.",
+            "Alpha 6 deliberately separates STRUCTURAL hardware readiness from STRICT fidelity. Audio is strict-only; identity/dependency/relocation/block correctness is mandatory for both.",
             "A golden count mismatch by itself is never a hardware blocker and never authorizes count-forcing.",
             "No main FF is emitted while StructuralHardwareDiagnosticReady is false."
         };
@@ -146,7 +150,7 @@ public static class NormalMapLinkerV2MainReadiness
             ClearedGates = cleared,
             Blockers = blockers,
             Notes = notes,
-            Verified = script.Verified && identity.Verified && relocation.Verified && convergence.Verified,
+            Verified = script.Verified && identity.Verified && typed.Verified && relocation.Verified && convergence.Verified,
             TextReportFile = txt,
             JsonReportFile = json
         };
@@ -159,7 +163,7 @@ public static class NormalMapLinkerV2MainReadiness
     private static string Render(NormalMapLinkerV2MainReadinessResult r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — LINKER V2 alpha 4 consolidated main-FF native gate");
+        sb.AppendLine("WaW360Converter — LINKER V2 alpha 6 consolidated main-FF native gate");
         sb.AppendLine(new string('=', 98));
         sb.AppendLine($"Map: {r.MapName}");
         sb.AppendLine($"verified={r.Verified}; structuralHardwareReady={r.StructuralHardwareDiagnosticReady}; strictHardwareReady={r.StrictHardwareReady}");
