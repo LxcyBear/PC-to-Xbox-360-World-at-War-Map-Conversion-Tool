@@ -80,6 +80,22 @@ internal static class LinkerV2IwdWeaponStringCatalog
                 Add(fields, byLabel, "flameTableFirstPerson", "flameTableFirstPerson");
                 Add(fields, byLabel, "flameTableThirdPerson", "flameTableThirdPerson");
 
+                // T4/IW3 share this 35-slot WeaponAnimSlot layout. Slot 0 (ROOT) has no raw-file
+                // field; the remaining slots are the exact OAT weapon-field names.
+                foreach (var (key, slot) in new (string Key, int Slot)[]
+                {
+                    ("idleAnim", 1), ("emptyIdleAnim", 2), ("fireAnim", 3), ("holdFireAnim", 4),
+                    ("lastShotAnim", 5), ("rechamberAnim", 6), ("meleeAnim", 7), ("meleeChargeAnim", 8),
+                    ("reloadAnim", 9), ("reloadEmptyAnim", 10), ("reloadStartAnim", 11), ("reloadEndAnim", 12),
+                    ("raiseAnim", 13), ("firstRaiseAnim", 14), ("dropAnim", 15), ("altRaiseAnim", 16),
+                    ("altDropAnim", 17), ("quickRaiseAnim", 18), ("quickDropAnim", 19), ("emptyRaiseAnim", 20),
+                    ("emptyDropAnim", 21), ("sprintInAnim", 22), ("sprintLoopAnim", 23), ("sprintOutAnim", 24),
+                    ("deployAnim", 25), ("breakdownAnim", 26), ("detonateAnim", 27), ("nightVisionWearAnim", 28),
+                    ("nightVisionRemoveAnim", 29), ("adsFireAnim", 30), ("adsLastShotAnim", 31),
+                    ("adsRechamberAnim", 32), ("adsUpAnim", 33), ("adsDownAnim", 34)
+                })
+                    Add(fields, byLabel, key, $"szXAnims[{slot}]");
+
                 // Later archives win deterministically. This mirrors ordinary mod search-path override
                 // semantics without copying the IWD into the Xbox package.
                 output[assetName] = new WeaponStrings(
