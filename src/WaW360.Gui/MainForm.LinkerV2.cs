@@ -285,7 +285,7 @@ return $"nativeCandidate={r.StructuralNativeCandidateReady}; productionReady={r.
                 {
                     loadEmitter ??= await NormalMapLinkerV2LoadEmitter.RunAsync(map, outputRoot, sourceOverride: sourceArchive);
                     var r = await NormalMapLinkerV2LoadHardwarePackager.RunAsync(map, outputRoot, loadEmitter);
-                    return $"ready={r.Ready}; ff={Path.GetFileName(r.FastFile ?? "<none>")}; package={r.PackageDirectory ?? "<none>"}; report={r.TextReportFile}";
+                    return $"ready={r.Ready}; ff={Path.GetFileName(r.FastFile ?? "<none>")}; package={r.PackageDirectory ?? "<none>"}; combinedMainLoadReady={r.CombinedMainLoadReady}; combinedPackage={r.CombinedPackageDirectory ?? "<none>"}; report={r.TextReportFile}";
                 }, cacheable: false);
 
                 await Stage("v2-root-inventory", "v2a5|authoritative-root-table|no-candidate-scan", "LINKER V2 authoritative source-root inventory", async () =>
