@@ -576,6 +576,8 @@ public static class T4WeaponVariableSerializerProof
     private static void ValidateGeneralPointer(WalkContext c, uint raw, string label)
     {
         if (raw == 0 || IsInline(raw)) return;
+        if (c.RequireSelfContainedPointers)
+            throw new InvalidDataException($"Weapon '{c.WeaponName}' {label} retains packed/source pointer 0x{raw:X8}; self-contained promotion refused.");
         var decoded = T4ZonePointer.Decode(raw);
         if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block is null)
             throw new InvalidDataException($"Weapon '{c.WeaponName}' {label} has invalid serialized pointer 0x{raw:X8}.");
