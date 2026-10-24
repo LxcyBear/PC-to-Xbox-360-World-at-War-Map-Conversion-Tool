@@ -184,24 +184,24 @@ public static class NormalMapLinkerV2LoadHardwarePackager
 
                     var mainSha = await Sha256Async(trackedShellMain, cancellationToken);
                     var loadSha = await Sha256Async(trackedShellLoad, cancellationToken);
-                    var readme = new StringBuilder();
-                    readme.AppendLine("WaW360Converter — HARDWARE MATRIX: TRACKED-SHELL MAIN + GENERATED LOAD");
-                    readme.AppendLine(new string('=', 86));
-                    readme.AppendLine($"Map: {map.Name}");
-                    readme.AppendLine($"Main SHA-256: {mainSha}");
-                    readme.AppendLine($"Load SHA-256: {loadSha}");
-                    readme.AppendLine();
-                    readme.AppendLine("This pair is generated entirely by the converter.");
-                    readme.AppendLine("Compared with hardware_test_main_plus_load, only XAnim/XModel/Weapon/FX are reduced to named fixed shells.");
-                    readme.AppendLine("World/material/sound/simple-root behavior is intentionally identical.");
-                    readme.AppendLine();
-                    readme.AppendLine("INTERPRETATION");
-                    readme.AppendLine("  Same exception address as proof-heavy pair => prioritize world/material/simple-root initialization.");
-                    readme.AppendLine("  Different/later exception => promoted tracked payloads contributed to the earlier frontier.");
-                    readme.AppendLine("  This is diagnostic only; it is not a production/fidelity-ready conversion.");
+                    var matrixReadme = new StringBuilder();
+                    matrixReadme.AppendLine("WaW360Converter — HARDWARE MATRIX: TRACKED-SHELL MAIN + GENERATED LOAD");
+                    matrixReadme.AppendLine(new string('=', 86));
+                    matrixReadme.AppendLine($"Map: {map.Name}");
+                    matrixReadme.AppendLine($"Main SHA-256: {mainSha}");
+                    matrixReadme.AppendLine($"Load SHA-256: {loadSha}");
+                    matrixReadme.AppendLine();
+                    matrixReadme.AppendLine("This pair is generated entirely by the converter.");
+                    matrixReadme.AppendLine("Compared with hardware_test_main_plus_load, only XAnim/XModel/Weapon/FX are reduced to named fixed shells.");
+                    matrixReadme.AppendLine("World/material/sound/simple-root behavior is intentionally identical.");
+                    matrixReadme.AppendLine();
+                    matrixReadme.AppendLine("INTERPRETATION");
+                    matrixReadme.AppendLine("  Same exception address as proof-heavy pair => prioritize world/material/simple-root initialization.");
+                    matrixReadme.AppendLine("  Different/later exception => promoted tracked payloads contributed to the earlier frontier.");
+                    matrixReadme.AppendLine("  This is diagnostic only; it is not a production/fidelity-ready conversion.");
                     await File.WriteAllTextAsync(
                         Path.Combine(trackedShellPairDir, "TRACKED_SHELL_PAIR_TEST.txt"),
-                        readme.ToString(),
+                        matrixReadme.ToString(),
                         new UTF8Encoding(false),
                         cancellationToken);
 
