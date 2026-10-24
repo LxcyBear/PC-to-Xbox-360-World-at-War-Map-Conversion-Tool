@@ -77,9 +77,39 @@ try {
             } else { '<build directory absent>' }
             throw "OAT Premake generation did not create OpenAssetTools.slnx or OpenAssetTools.sln. Build folder files: $contents. Review generate.bat output for a Premake error."
         }
+        # VS2026 solution platforms are not necessarily named "x86".
+        # The Premake x86 *project architecture* is commonly exposed as
+        # "Win32" at the solution level. Read what Premake actually generated.
+        $solutionPlatforms = @()
+        if ([System.IO.Path]::GetExtension($solution) -eq '.slnx') {
+            [xml]$solutionXml = Get-Content -LiteralPath $solution -Raw
+            $platformNodes = @($solutionXml.SelectNodes(
+                "/*[local-name()='Solution']/*[local-name()='Configurations']/*[local-name()='Platform']"
+            ))
+            $solutionPlatforms = @($platformNodes |
+                ForEach-Object { $_.GetAttribute('Name') } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        } else {
+            $solutionPlatforms = @(Get-Content -LiteralPath $solution |
+                Where-Object { $_ -match '^\s*Release\|(.+?)\s*=\s*Release\|' } |
+                ForEach-Object { $Matches[1].Trim() })
+        }
+        $solutionPlatforms = @($solutionPlatforms | Sort-Object -Unique)
+        $buildPlatform = @('Win32', 'x86') |
+            Where-Object { $solutionPlatforms -contains $_ } |
+            Select-Object -First 1
+        if (-not $buildPlatform) {
+            $actual = if ($solutionPlatforms.Count -gt 0) {
+                $solutionPlatforms -join ', '
+            } else { '<none discovered>' }
+            throw "No verified 32-bit solution platform. Found: $actual. Inspect generated OpenAssetTools.slnx instead of silently building x64."
+        }
         Write-Host "[OAT] Building generated solution: $solution"
-        & $msbuild $solution /m /p:Configuration=Release /p:Platform=x86 /v:minimal
-        if ($LASTEXITCODE -ne 0) { throw "OAT x86 build failed: $solution" }
+        Write-Host "[OAT] Release solution platform: $buildPlatform (32-bit)"
+        & $msbuild $solution /m /p:Configuration=Release "/p:Platform=$buildPlatform" /v:minimal
+        if ($LASTEXITCODE -ne 0) {
+            throw "OAT Release|$buildPlatform build failed: $solution"
+        }
         foreach ($tool in @('Linker.exe','Unlinker.exe')) {
             if (-not (Test-Path (Join-Path 'build\bin\Release_x86' $tool))) { throw "Missing $tool" }
         }
