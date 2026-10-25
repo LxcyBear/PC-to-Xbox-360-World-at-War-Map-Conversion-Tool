@@ -21,7 +21,10 @@ Real Xbox 360 memory and TU7 executable tracing have established:
 - The XAnim-specific registration wrapper reaches the generic XAsset linker and returns successfully.
 - Working runtime XAnim roots are separated by `0x5C`.
 - Live working headers show a **12-byte bone-count region** at `+0x12..+0x1D`; the final bytes are meaningful and must not be guessed or zero-filled.
+- `+0x1D` is independently proven as `boneCount[11]`, the total/name ScriptString count; `+0x1E` is `notifyCount`.
+- A working Xbox header satisfies two independent totals: `boneCount[0..4] + boneCount[9] == boneCount[11]` and `boneCount[5..8] + boneCount[10] == boneCount[11]`, strongly identifying `[9]` and `[10]` as Xbox-only quaternion/translation buckets.
 - Working names such as `ai_flame_death_a` resolve through the loaded `+0x00` pointer.
+- The CLI now includes `xanim-bone-compare <pc.ff> <xbox.ff> [name]`, a read-only same-animation oracle that reports PC/Xbox bone-count arrays and the exact shared-bucket deficits feeding Xbox-only buckets.
 
 What is **not yet proven** is the exact semantic mapping of every PC XAnim header field into the Xbox TU7 `0x5C` structure, especially the extra bone-count categories and the field around `+0x28`. The next implementation will come from the native loader/oracle, not from padding or guessed offsets.
 
@@ -61,7 +64,8 @@ What is **not yet proven** is the exact semantic mapping of every PC XAnim heade
 - [x] Confirm a 12-byte live bone-count region in working Xbox XAnims.
 - [x] Retain the existing typed PC XAnim walker for names, ScriptStrings, notifies, delta data, scalar streams, random streams, and frame indices.
 - [ ] Finish decompiling `Function_8215F830` and label every Xbox field offset.
-- [ ] Prove which Xbox bone-count entries drive names/rotation/translation groups.
+- [x] Prove `boneCount[11]` drives names and establish the Xbox quaternion/translation total invariants.
+- [ ] Use the same-animation PC/Xbox oracle to identify exactly which PC categories reclassify into Xbox `boneCount[9]` and `boneCount[10]`.
 - [ ] Prove the `+0x28` field and exact framerate/frequency offsets.
 - [ ] Implement the PC `0x58` → Xbox TU7 `0x5C` transform only after those fields are proven.
 - [ ] Add an independent Xbox-layout read-back verifier.
