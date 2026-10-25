@@ -369,7 +369,13 @@ static async Task<int> MainAsync(string[] args)
             {
                 var result = await T4XAnimBoneSplitOracle.AnalyzeAsync(args[1], args[2]);
                 Console.WriteLine(result.Summary);
-                return result.NameOrderMismatches == 0 ? 0 : 4;
+                return result.NameSetMismatches == 0 ? 0 : 4;
+            }
+            case "xanim-split-features" when args.Length >= 3:
+            {
+                var result = await T4XAnimSplitFeatureOracle.AnalyzeAsync(args[1], args[2]);
+                Console.WriteLine(result.Summary);
+                return result.BoneObservations > 0 ? 0 : 4;
             }
             case "xanim-bone-compare" when args.Length >= 3:
             {
@@ -465,6 +471,7 @@ static void PrintHelp()
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
     Console.WriteLine("  xanim-split-bones <pc.ff> <xbox.ff>       Resolve XAnim.names and test whether Xbox quaternion split side follows bone identity");
+    Console.WriteLine("  xanim-split-features <pc.ff> <xbox.ff>    Correlate Xbox A/B split with PC translation type and quat frame count");
     Console.WriteLine("  roundtrip <in.ff> <out.ff>              Decompress/recompress and byte-verify raw zone");
     Console.WriteLine("  scan-maps [folder]                      Scan PC Maps (defaults to Desktop\\World at War\\PC Maps)");
 }
