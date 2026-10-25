@@ -17,6 +17,7 @@ public sealed class T4XAnimBoneSplitOracleResult
     public required int MatchedAnimations { get; init; }
     public required int NameOrderMatches { get; init; }
     public required int NameOrderMismatches { get; init; }
+    public required int NameSetMismatches { get; init; }
     public required int UnresolvedScriptStrings { get; init; }
     public required IReadOnlyList<T4XAnimSplitBoneProfile> Profiles { get; init; }
     public required string Summary { get; init; }
@@ -67,6 +68,7 @@ public static class T4XAnimBoneSplitOracle
         var profiles = new Dictionary<string, MutableProfile>(StringComparer.OrdinalIgnoreCase);
         var nameOrderMatches = 0;
         var nameOrderMismatches = 0;
+        var nameSetMismatches = 0;
         var unresolved = 0;
 
         foreach (var pair in comparison.Matches.Where(x => x.ExpandedLayoutMatches))
@@ -76,38 +78,49 @@ public static class T4XAnimBoneSplitOracle
             var pcNames = ReadNames(pcZone, pair.Pc, ref unresolved);
             var xboxNames = ReadNames(xboxZone, pair.Xbox, ref unresolved);
 
-            if (pcNames.Count != xboxNames.Count ||
-                !pcNames.SequenceEqual(xboxNames, StringComparer.OrdinalIgnoreCase))
+            // Xbox is allowed to reorder names[] when one PC quaternion category is
+            // subdivided into two Xbox categories. Therefore an order mismatch is
+            // evidence we must keep, not a reason to discard the sample. We only
+            // reject a pair when the two assets do not contain the same bone multiset.
+            if (!HaveSameNameMultiset(pcNames, xboxNames))
             {
-                nameOrderMismatches++;
+                nameSetMismatches++;
                 continue;
             }
 
-            nameOrderMatches++;
+            if (pcNames.SequenceEqual(xboxNames, StringComparer.OrdinalIgnoreCase))
+                nameOrderMatches++;
+            else
+                nameOrderMismatches++;
 
-            // PC full-quat category [2] is subdivided into Xbox [2] (A) + [3] (B).
-            var pcFullQuatStart = pair.Pc.BoneCounts[0] + pair.Pc.BoneCounts[1];
+            // Classify from the Xbox names[] ordering itself. Its cumulative boneCount[]
+            // boundaries are the ground truth for the two Xbox-only subdivisions:
+            //   PC[2] -> XB[2] (A) + XB[3] (B)
+            //   PC[4] -> XB[5] (A) + XB[6] (B)
+            var xbFullQuatStart =
+                pair.Xbox.BoneCounts[0] +
+                pair.Xbox.BoneCounts[1];
             var xbFullQuatA = pair.Xbox.BoneCounts[2];
             var xbFullQuatB = pair.Xbox.BoneCounts[3];
             ObserveRange(
-                pcNames,
-                pcFullQuatStart,
+                xboxNames,
+                xbFullQuatStart,
                 xbFullQuatA,
                 xbFullQuatB,
                 profiles,
                 fullQuatNoSize: false);
 
-            // PC full-quat-no-size category [4] is subdivided into Xbox [5] (A) + [6] (B).
-            var pcFullQuatNoSizeStart =
-                pair.Pc.BoneCounts[0] +
-                pair.Pc.BoneCounts[1] +
-                pair.Pc.BoneCounts[2] +
-                pair.Pc.BoneCounts[3];
+            var xbFullQuatNoSizeStart =
+                pair.Xbox.BoneCounts[0] +
+                pair.Xbox.BoneCounts[1] +
+                pair.Xbox.BoneCounts[2] +
+                pair.Xbox.BoneCounts[3] +
+                pair.Xbox.BoneCounts[4];
             var xbFullQuatNoSizeA = pair.Xbox.BoneCounts[5];
             var xbFullQuatNoSizeB = pair.Xbox.BoneCounts[6];
             ObserveRange(
-                pcNames,
-                pcFullQuatNoSizeStart,
+                xboxNames,
+                xbFullQuatNoSizeStart,
                 xbFullQuatNoSizeA,
                 xbFullQuatNoSizeB,
                 profiles,
@@ -127,13 +140,20 @@ public static class T4XAnimBoneSplitOracle
             .ThenBy(x => x.BoneName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var summary = BuildSummary(comparison.Matches.Count, nameOrderMatches, nameOrderMismatches, unresolved, frozen);
+        var summary = BuildSummary(
+            comparison.Matches.Count,
+            nameOrderMatches,
+            nameOrderMismatches,
+            nameSetMismatches,
+            unresolved,
+            frozen);
 
         return new T4XAnimBoneSplitOracleResult
         {
             MatchedAnimations = comparison.Matches.Count,
             NameOrderMatches = nameOrderMatches,
             NameOrderMismatches = nameOrderMismatches,
+            NameSetMismatches = nameSetMismatches,
             UnresolvedScriptStrings = unresolved,
             Profiles = frozen,
             Summary = summary
@@ -185,6 +205,34 @@ public static class T4XAnimBoneSplitOracle
         return result;
     }
 
+    private static bool HaveSameNameMultiset(
+        IReadOnlyList<string> left,
+        IReadOnlyList<string> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in left)
+        {
+            counts.TryGetValue(name, out var count);
+            counts[name] = count + 1;
+        }
+
+        foreach (var name in right)
+        {
+            if (!counts.TryGetValue(name, out var count) || count == 0)
+                return false;
+
+            if (count == 1)
+                counts.Remove(name);
+            else
+                counts[name] = count - 1;
+        }
+
+        return counts.Count == 0;
+    }
+
     private static void ObserveRange(
         IReadOnlyList<string> names,
         int start,
@@ -233,6 +281,7 @@ public static class T4XAnimBoneSplitOracle
         int matchedAnimations,
         int nameOrderMatches,
         int nameOrderMismatches,
+        int nameSetMismatches,
         int unresolved,
         IReadOnlyList<T4XAnimSplitBoneProfile> profiles)
     {
@@ -245,6 +294,7 @@ public static class T4XAnimBoneSplitOracle
         sb.AppendLine($"Same-name count matches:                    {matchedAnimations:N0}");
         sb.AppendLine($"PC/Xbox names[] order identical:            {nameOrderMatches:N0}");
         sb.AppendLine($"PC/Xbox names[] order mismatches:           {nameOrderMismatches:N0}");
+        sb.AppendLine($"PC/Xbox names[] multiset mismatches:        {nameSetMismatches:N0}");
         sb.AppendLine($"Unresolved serialized ScriptString entries: {unresolved:N0}");
         sb.AppendLine($"Unique bones observed in split categories:  {profiles.Count:N0}");
         sb.AppendLine($"Consistent subgroup A bones:                {aOnly:N0}");
@@ -252,10 +302,22 @@ public static class T4XAnimBoneSplitOracle
         sb.AppendLine($"Bones observed on BOTH A and B:             {conflicts.Count:N0}");
         sb.AppendLine();
 
-        if (conflicts.Count == 0 && nameOrderMatches > 0)
+        if (conflicts.Count == 0 && nameSetMismatches == 0 && profiles.Count > 0)
             sb.AppendLine("RESULT: split side is fully consistent with bone identity in the observed corpus.");
         else
-            sb.AppendLine("RESULT: bone identity alone is not yet sufficient; inspect conflicts/name-order mismatches.");
+            sb.AppendLine("RESULT: bone identity alone is not yet sufficient; inspect conflicts/name-set mismatches.");
+
+        sb.AppendLine();
+        sb.AppendLine("SUBGROUP A BONES (name | observations | fullQuat A | fullQuatNoSize A)");
+        var aBones = profiles
+            .Where(x => !x.ConflictingSide && x.FullQuatA + x.FullQuatNoSizeA > 0)
+            .OrderByDescending(x => x.Observations)
+            .ThenBy(x => x.BoneName, StringComparer.OrdinalIgnoreCase)
+            .Take(96)
+            .ToList();
+        if (aBones.Count == 0) sb.AppendLine("  <none>");
+        foreach (var p in aBones)
+            sb.AppendLine($"  {p.BoneName} | {p.Observations} | {p.FullQuatA} | {p.FullQuatNoSizeA}");
 
         sb.AppendLine();
         sb.AppendLine("SUBGROUP B BONES (name | observations | fullQuat B | fullQuatNoSize B)");
