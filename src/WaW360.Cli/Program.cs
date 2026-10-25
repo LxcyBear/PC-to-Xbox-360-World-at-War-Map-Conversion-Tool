@@ -377,9 +377,10 @@ static async Task<int> MainAsync(string[] args)
                     Console.WriteLine(pair.Name);
                     Console.WriteLine($"  PC   @ 0x{pair.Pc.HeaderOffset:X8}  [{string.Join(" ", pair.Pc.BoneCounts.Select(x => x.ToString("X2")))}]");
                     Console.WriteLine($"  Xbox @ 0x{pair.Xbox.HeaderOffset:X8}  [{string.Join(" ", pair.Xbox.BoneCounts.Select(x => x.ToString("X2")))}]");
-                    Console.WriteLine($"  shared delta PC-Xbox [0..8]: [{string.Join(" ", pair.SharedBucketDelta.Select(x => x.ToString("+0;-0;0")))}]");
-                    Console.WriteLine($"  Xbox extra quat/trans: {pair.XboxQuaternionExtra}/{pair.XboxTranslationExtra}");
-                    Console.WriteLine($"  total={pair.TotalMatches}; quatDeficit={pair.QuaternionDeficitExplainsExtra}; transDeficit={pair.TranslationDeficitExplainsExtra}");
+                    Console.WriteLine($"  quat:  PC[2]={pair.Pc.BoneCounts[2]} -> Xbox[2]+Xbox[3]={pair.Xbox.BoneCounts[2]}+{pair.Xbox.BoneCounts[3]}");
+                    Console.WriteLine($"  trans: PC[5]={pair.Pc.BoneCounts[5]} -> Xbox[6]+Xbox[7]={pair.Xbox.BoneCounts[6]}+{pair.Xbox.BoneCounts[7]}");
+                    Console.WriteLine($"  directQuat={pair.DirectQuaternionBucketsMatch}; quatSplit={pair.QuaternionSplitMatches}; directTrans={pair.DirectTranslationBucketsMatch}; transSplit={pair.TranslationSplitMatches}; total={pair.TotalMatches}");
+                    Console.WriteLine($"  completeExpansion={pair.ExpandedLayoutMatches}; Xbox quatTotal={pair.Xbox.QuaternionTotalInvariant}; Xbox transTotal={pair.Xbox.TranslationTotalInvariant}");
                 }
 
                 return result.Matches.Count > 0 ? 0 : 3;
