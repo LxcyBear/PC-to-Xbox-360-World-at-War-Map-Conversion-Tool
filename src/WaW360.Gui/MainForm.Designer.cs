@@ -243,16 +243,16 @@ partial class MainForm
         _xmodelProofButton.Text = "Stage 4a9j: XModel + Bounded Recovery";
         _xmodelProofButton.UseVisualStyleBackColor = true;
 
-        _checkAllNormalButton.Location = new Point(12, 48);
+        _checkAllNormalButton.Location = new Point(112, 12);
         _checkAllNormalButton.Name = "checkAllNormalButton";
         _checkAllNormalButton.Size = new Size(155, 30);
         _checkAllNormalButton.Text = "Check all Normal";
         _checkAllNormalButton.UseVisualStyleBackColor = true;
 
-        _runBatchTestsButton.Location = new Point(175, 48);
+        _runBatchTestsButton.Location = new Point(548, 12);
         _runBatchTestsButton.Name = "runBatchTestsButton";
         _runBatchTestsButton.Size = new Size(365, 30);
-        _runBatchTestsButton.Text = "Run checked Normal maps - FAST iteration";
+        _runBatchTestsButton.Text = "Convert checked maps - FAST mode";
         _runBatchTestsButton.UseVisualStyleBackColor = true;
 
         _weaponProofButton.Location = new Point(548, 48);
@@ -261,14 +261,14 @@ partial class MainForm
         _weaponProofButton.Text = "Stage 4a9b: Recover zero-total FX refs";
         _weaponProofButton.UseVisualStyleBackColor = true;
 
-        _mapsHint.Location = new Point(12, 84);
+        _mapsHint.Location = new Point(12, 52);
         _mapsHint.Name = "mapsHint";
         _mapsHint.Size = new Size(520, 22);
         _mapsHint.Text = "Scanning configured PC map source folder...";
 
         _batchMode.DropDownStyle = ComboBoxStyle.DropDownList;
         _batchMode.Items.AddRange(new object[] { "Fast Mode", "Safe Mode (Full Validation)" });
-        _batchMode.Location = new Point(548, 82);
+        _batchMode.Location = new Point(275, 15);
         _batchMode.Name = "batchMode";
         _batchMode.Size = new Size(240, 23);
 
@@ -282,9 +282,9 @@ partial class MainForm
         _maps.CheckBoxes = true;
         _maps.FullRowSelect = true;
         _maps.HideSelection = false;
-        _maps.Location = new Point(12, 112);
+        _maps.Location = new Point(12, 80);
         _maps.Name = "mapsList";
-        _maps.Size = new Size(1140, 548);
+        _maps.Size = new Size(1140, 580);
         _maps.ShowItemToolTips = true;
         _maps.UseCompatibleStateImageBehavior = false;
         _maps.View = View.Details;
@@ -295,15 +295,8 @@ partial class MainForm
         _maps.Columns.Add("Location", 470);
 
         _mapsTab.Controls.Add(_maps);
-        _mapsTab.Controls.Add(_normalMapAnalyzeButton);
-        _mapsTab.Controls.Add(_normalMapBuildButton);
-        _mapsTab.Controls.Add(_stockResolveButton);
-        _mapsTab.Controls.Add(_xanimProofButton);
-        _mapsTab.Controls.Add(_xmodelProofButton);
-        _mapsTab.Controls.Add(_weaponProofButton);
         _mapsTab.Controls.Add(_runBatchTestsButton);
         _mapsTab.Controls.Add(_checkAllNormalButton);
-        _mapsTab.Controls.Add(_clearAnalysisCacheButton);
         _mapsTab.Controls.Add(_batchMode);
         _mapsTab.Controls.Add(_mapsHint);
         _mapsTab.Controls.Add(_refreshMapsButton);
