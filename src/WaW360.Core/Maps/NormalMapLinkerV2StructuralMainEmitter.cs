@@ -76,12 +76,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var blockPlan = blockPlanOverride ?? await NormalMapLinkerV2DestinationBlockPlan.RunAsync(map, outputRoot, source, cancellationToken);
         var script = scriptOverride ?? await NormalMapLinkerV2ScriptStringMerge.RunAsync(map, outputRoot, source, cancellationToken);
 
-        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_xanim_native_layout");
-        var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout");
+        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural");
+        var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
-        var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_xanim_native_layout.txt");
-        var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_xanim_native_layout.json");
+        var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
+        var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".zone");
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
 
@@ -93,7 +93,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var blockers = new List<string>();
         var notes = new List<string>
         {
-            "STRUCTURAL NATIVE DIAGNOSTIC: XAnim is now emitted as the complete hardware-verified TU7 0x5C Xbox payload; remaining unpromoted families may still use explicit reduced objects.",
+            "STRUCTURAL NATIVE DIAGNOSTIC ONLY: every emitted main-graph root is rebuilt as a self-contained Xbox-endian object; source packed/shared child pointers are not copied or nulled in-place.",
             "This path is intentionally separate from the production main gate. A native boot/load result validates XFile/XAsset/block/wrapper structure, not gameplay, graphics, collision, shader or audio fidelity.",
             "The old smoke XFile header strategy (zoneSize=entire file and one identical capacity in all seven blocks) is retired from this path."
         };
@@ -127,10 +127,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             }
         }
 
-        // One authoritative Xbox traversal order for BOTH XAsset table entries and
-        // their immediately-consumed physical payloads. Keeping these sequences
-        // independent previously allowed a valid payload to be interpreted as the
-        // wrong XAsset type on hardware.
+        // Hardware-proven ordering rule: Xbox XAsset traversal is type-major.
+        // Keep table entries and physical payloads in the exact same sequence.
         var emissionRoots = rootPolicy.Roots
             .OrderBy(r => r.XboxTypeId)
             .ThenBy(r => r.CanonicalSourceOrdinal)
@@ -275,87 +273,30 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var output = new Dictionary<int, StructuralPayload>();
 
-        // Proof-backed payloads for the four already-verified typed families.
-        // XAnim is now promoted as the COMPLETE TU7-native 0x5C serialization.
-        // XModel/Weapon/FX remain reduced shells until their corresponding native
-        // layouts are promoted into this linker.
+        // Proof-backed name-preserving reduced shells for the four already-verified typed families.
         foreach (var type in TrackedTypes)
         {
             var assets = Physical(doc, type);
             if (assets.Count == 0) continue;
-
             var proofPath = LinkerV2ProofEvidence.GetProofPath(outputRoot, mapName, sourcePath, role, type);
-            T4ProofContainerIndex? proof = null;
-
-            if (File.Exists(proofPath))
-            {
-                try
-                {
-                    proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, ct);
-                }
-                catch when (type.Equals("xanim", StringComparison.OrdinalIgnoreCase))
-                {
-                    // A stale/pre-native XAnim proof is safe to replace deterministically.
-                    proof = null;
-                }
-            }
-
-            if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase) &&
-                (proof is null || proof.Version < 5))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(proofPath)!);
-                var weaponProof = LinkerV2ProofEvidence.GetProofPath(outputRoot, mapName, sourcePath, role, "weapon");
-                await T4XAnimSerializerProof.BuildProofAsync(
-                    sourcePath,
-                    proofPath,
-                    File.Exists(weaponProof) ? weaponProof : null,
-                    ct);
-                proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, ct);
-            }
-
-            if (proof is null)
+            if (!File.Exists(proofPath))
                 throw new InvalidDataException($"Alpha 5 structural main emitter needs existing verified {type} proof evidence: {proofPath}");
-
+            var proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, ct);
             if (proof.Records.Count != assets.Count)
                 throw new InvalidDataException($"{Path.GetFileName(sourcePath)} {type} proof count mismatch: roots={assets.Count:N0}, proof={proof.Records.Count:N0}.");
-
             var fixedSize = type.ToLowerInvariant() switch
             {
+                "xanim" => 88,
                 "xmodel" => 228,
                 "weapon" => 0x9AC,
                 "fx" => 36,
-                "xanim" => T4XAnimSerializerProof.XboxFixedSize,
                 _ => throw new InvalidOperationException()
             };
-
             for (var i = 0; i < assets.Count; i++)
             {
                 var name = await LinkerV2ProofEvidence.TryReadNameAsync(proof.Records[i], ct);
                 var fallback = string.IsNullOrWhiteSpace(name);
                 name ??= $"__waw360_{type}_{Path.GetFileNameWithoutExtension(sourcePath)}_{assets[i].Index:D5}";
-
-                if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase))
-                {
-                    var blob = await T4NativeProofContainerReader.ReadBlobAsync(proof.Records[i], ct);
-
-                    // Packed top-level PC names are source-block aliases. The structural
-                    // candidate is self-contained, so rebase ONLY that top-level name to
-                    // FOLLOWING while retaining the complete owned animation payload.
-                    if (fallback)
-                        blob = RebaseXAnimTopLevelName(blob, name);
-
-                    T4XAnimSerializerProof.ValidateXboxNativeBlob(blob, name);
-                    output[assets[i].Index] = new StructuralPayload(
-                        type,
-                        name,
-                        blob,
-                        fallback,
-                        fallback
-                            ? "full TU7 0x5C XAnim payload; packed source name rebased to deterministic fallback identity"
-                            : "full TU7 0x5C XAnim payload; owned animation streams preserved");
-                    continue;
-                }
-
                 output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), fallback,
                     $"reduced {type} shell; owned child data omitted for structural native test");
             }
@@ -493,8 +434,6 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         NormalMapLinkerV2DestinationBlockPlanResult blockPlan,
         out uint headerZoneSize)
     {
-        ValidateEmissionContract(roots, payloads);
-
         using var ms = new MemoryStream();
         for (var i = 0; i < 9; i++) WriteU32(ms, 0);
 
@@ -606,52 +545,6 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                               a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared)
             .OrderBy(a => a.Index).ToList();
 
-    private static void ValidateEmissionContract(
-        IReadOnlyList<LinkerV2CanonicalRoot> roots,
-        IReadOnlyList<StructuralPayload> payloads)
-    {
-        if (roots.Count != payloads.Count)
-            throw new InvalidDataException(
-                $"XAsset/payload count mismatch: roots={roots.Count:N0}, payloads={payloads.Count:N0}.");
-
-        for (var i = 0; i < roots.Count; i++)
-        {
-            if (!T4XboxAssetTypeMap.TryGetXboxTypeId(payloads[i].TypeName, out var payloadType) ||
-                payloadType != roots[i].XboxTypeId)
-            {
-                throw new InvalidDataException(
-                    $"XAsset/payload emission-order mismatch at #{i}: " +
-                    $"table={roots[i].XboxTypeName}({roots[i].XboxTypeId}), " +
-                    $"payload={payloads[i].TypeName}({payloadType}).");
-            }
-
-            if (payloads[i].TypeName.Equals("xanim", StringComparison.OrdinalIgnoreCase))
-                T4XAnimSerializerProof.ValidateXboxNativeBlob(payloads[i].Bytes, payloads[i].Name);
-        }
-    }
-
-    private static byte[] RebaseXAnimTopLevelName(byte[] blob, string name)
-    {
-        if (blob.Length < T4XAnimSerializerProof.XboxFixedSize)
-            throw new InvalidDataException($"Cannot rebase XAnim '{name}': blob shorter than 0x{T4XAnimSerializerProof.XboxFixedSize:X}.");
-
-        var raw = BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(0, 4));
-        var kind = T4ZonePointer.Decode(raw).Kind;
-        if (kind is T4ZonePointerKind.Following or T4ZonePointerKind.Insert)
-            return blob;
-
-        var n = Encoding.ASCII.GetBytes(name);
-        var output = new byte[checked(blob.Length + n.Length + 1)];
-        blob.AsSpan(0, T4XAnimSerializerProof.XboxFixedSize).CopyTo(output);
-        BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(0, 4), T4ZonePointer.Following);
-        n.CopyTo(output.AsSpan(T4XAnimSerializerProof.XboxFixedSize));
-
-        var childSource = T4XAnimSerializerProof.XboxFixedSize;
-        var childDest = checked(T4XAnimSerializerProof.XboxFixedSize + n.Length + 1);
-        blob.AsSpan(childSource).CopyTo(output.AsSpan(childDest));
-        return output;
-    }
-
     private static byte[] BuildFixedNameShell(int fixedSize, string name)
     {
         var n = Encoding.ASCII.GetBytes(name);
@@ -730,7 +623,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
     private static async Task WriteReadmeAsync(string packageDir, string baseName, string sha, int roots, int fallback, CancellationToken ct)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — Linker V2 TU7 XAnim-native MAIN HARDWARE TEST");
+        sb.AppendLine("WaW360Converter — Linker V2 alpha 5 SELF-CONTAINED MAIN NATIVE STRUCTURAL TEST");
         sb.AppendLine(new string('=', 92));
         sb.AppendLine($"FF: {baseName}.ff");
         sb.AppendLine($"SHA-256: {sha}");
@@ -738,7 +631,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"Explicitly reduced/fallback payloads: {fallback:N0}");
         sb.AppendLine();
         sb.AppendLine("THIS IS NOT A FULL CONVERSION.");
-        sb.AppendLine("XAnim is full TU7-native (0x5C root + owned payload). Audio/material/shader/world families may still be deliberately reduced until their native serializers are promoted.");
+        sb.AppendLine("It is a fail-closed loader/zone/XAsset structural diagnostic. Audio is silent; materials/shaders/world data and several unresolved simple assets are deliberately reduced.");
         sb.AppendLine();
         sb.AppendLine("SIMPSONS GOLDEN A/B TEST (preferred first test):");
         sb.AppendLine($"  1. Start with the known-working Xbox {baseName} package.");

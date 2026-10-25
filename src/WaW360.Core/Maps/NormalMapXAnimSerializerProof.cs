@@ -32,9 +32,8 @@ public sealed class NormalMapXAnimSerializerProofResult
 }
 
 /// <summary>
-/// Stage 4 XAnim proof, native-layout revision 5: retain the proven typed PC
-/// walker and emit the hardware-proven TU7 Xbox 360 0x5C XAnimParts root.
-/// The packed-name top-level bridge remains fail-closed for authoritative slots
+/// Stage 4 alpha 9g: retain the proven alpha-4 XAnim serializer and add a
+/// fail-closed packed-name top-level bridge for the few authoritative XAnim slots
 /// whose name strings are reused through packed zone pointers.
 /// Every top-level XAnim in every NORMAL-map fastfile that declares XAnim assets is
 /// parsed from the PC serialization, re-emitted in Xbox big-endian form, and then
@@ -149,7 +148,7 @@ public static class NormalMapXAnimSerializerProof
     private static string Render(NormalMapXAnimSerializerProofResult r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — Stage 4 XAnim serializer proof (TU7 native-layout v5)");
+        sb.AppendLine("WaW360Converter — Stage 4 alpha 9g XAnim serializer proof");
         sb.AppendLine("=========================================================");
         sb.AppendLine("INTERNAL PROOF ONLY: .xbox_xanim_proof.bin files are NOT game fastfiles.");
         sb.AppendLine($"Map: {r.MapName}");
@@ -184,8 +183,8 @@ public static class NormalMapXAnimSerializerProof
             sb.AppendLine();
         }
 
-        sb.AppendLine("Native-layout v5 conclusion");
-        sb.AppendLine("  Every declared XAnim in the participating NORMAL-map fastfiles was re-emitted with the TU7 Xbox 0x5C fixed root plus Xbox big-endian owned payloads and parsed back to the exact record boundary.");
+        sb.AppendLine("Alpha 9g conclusion");
+        sb.AppendLine("  Every declared XAnim in the participating NORMAL-map fastfiles was re-emitted in Xbox big-endian T4 serialization and parsed back to the exact record boundary, including any authoritative packed-name top-level bodies recovered by the alpha 9g bridge.");
         sb.AppendLine("  XAnim can now move from CRITICAL BLOCKER to PROVEN SERIALIZER FOUNDATION for the final zone writer.");
         sb.AppendLine("  No game fastfile was emitted; XModel, Weapon, world/collision and high-priority serializers still gate hardware output.");
         return sb.ToString();

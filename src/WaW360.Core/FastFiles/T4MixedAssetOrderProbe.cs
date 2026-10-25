@@ -753,7 +753,7 @@ public static class T4MixedAssetOrderProbe
         var magic = Encoding.ASCII.GetBytes("W360A4X\0");
         if (data.Length < 16 || !data.AsSpan(0, magic.Length).SequenceEqual(magic)) yield break;
         var p = magic.Length;
-        var version = ReadBE(data, ref p);
+        _ = ReadBE(data, ref p); // version
         var count = checked((int)ReadBE(data, ref p));
         for (var i = 0; i < count; i++)
         {
@@ -761,17 +761,8 @@ public static class T4MixedAssetOrderProbe
             var start = checked((int)ReadBE(data, ref p));
             var len = checked((int)ReadBE(data, ref p));
             if (len < 0 || p > data.Length - len) yield break;
-
-            // Proof v5 emits the native TU7 Xbox root (0x5C) from a PC source
-            // root that occupied 0x58. Alignment must remain in PC source-space,
-            // so do not let the four emitted Xbox-only bytes move the observed end.
-            var sourceLen = version >= 5 ? len - (T4XAnimSerializerProof.XboxFixedSize - 0x58) : len;
-            if (sourceLen <= 0) yield break;
-
             p += len;
-            yield return new T4MixedObservedAsset(
-                "xanim", start, checked(start + sourceLen),
-                $"<xanim@0x{start:X}>", version >= 5 ? "xbox-v5-xanim-proof" : "alpha4-xanim-proof");
+            yield return new T4MixedObservedAsset("xanim", start, checked(start + len), $"<xanim@0x{start:X}>", "alpha4-xanim-proof");
         }
     }
 
