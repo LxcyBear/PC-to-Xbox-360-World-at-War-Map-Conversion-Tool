@@ -65,6 +65,29 @@ public static class T4XAnimSplitFeatureOracle
         public int Total => Enumerable.Range(0, 4).Sum(i => Trans[i, 0] + Trans[i, 1]);
     }
 
+    private sealed class PackingStats
+    {
+        public int Pairs;
+        public int DataByteEqual;
+        public int DataIntEqual;
+        public int RandomDataByteEqual;
+        public int RandomDataIntEqual;
+        public int IndexEqual;
+        public int NormalDynamicThreeShorts;
+        public int PrecisionDynamicThreeShorts;
+        public int NormalConstantThreeShorts;
+        public int PrecisionConstantThreeShorts;
+        public int NormalThreeShortsBoth;
+        public int RandomIntGainEqualsNormalKeys;
+        public int RandomIntGainEqualsTwiceNormalKeys;
+        public int RandomIntGainEqualsPrecisionKeys;
+        public int RandomIntGainEqualsTwicePrecisionKeys;
+        public readonly List<int> RandomShortDeltas = new();
+        public readonly List<int> DataShortDeltas = new();
+        public readonly List<int> RandomIntDeltas = new();
+        public readonly List<int> DataIntDeltas = new();
+    }
+
     private sealed class PrecisionRuleStats
     {
         public int Total;
@@ -96,6 +119,7 @@ public static class T4XAnimSplitFeatureOracle
         var fullQuat = new FamilyStats();
         var fullQuatNoSize = new FamilyStats();
         var precisionRule = new PrecisionRuleStats();
+        var packing = new PackingStats();
         var pairsAnalyzed = 0;
         var observations = 0;
 
@@ -131,10 +155,22 @@ public static class T4XAnimSplitFeatureOracle
                 xboxNames, qNoSizeStart, pair.Xbox.BoneCounts[5], pair.Xbox.BoneCounts[6],
                 byName, fullQuatNoSize, pair.Name, precisionRule, expectedPcQuatBucket: 4);
 
+            var normalDynamicKeys = SumQuatFrames(
+                xboxNames, qStart, pair.Xbox.BoneCounts[2], byName, expectedPcQuatBucket: 2);
+            var precisionDynamicKeys = SumQuatFrames(
+                xboxNames, qStart + pair.Xbox.BoneCounts[2], pair.Xbox.BoneCounts[3], byName, expectedPcQuatBucket: 2);
+            ObservePacking(
+                pair,
+                normalDynamicKeys,
+                precisionDynamicKeys,
+                pair.Xbox.BoneCounts[5],
+                pair.Xbox.BoneCounts[6],
+                packing);
+
             pairsAnalyzed++;
         }
 
-        var summary = BuildSummary(pairsAnalyzed, observations, fullQuat, fullQuatNoSize, precisionRule);
+        var summary = BuildSummary(pairsAnalyzed, observations, fullQuat, fullQuatNoSize, precisionRule, packing);
         return new T4XAnimSplitFeatureOracleResult
         {
             PairsAnalyzed = pairsAnalyzed,
@@ -216,6 +252,74 @@ public static class T4XAnimSplitFeatureOracle
         }
 
         return observed;
+    }
+
+    private static int SumQuatFrames(
+        IReadOnlyList<string> xboxNames,
+        int start,
+        int count,
+        IReadOnlyDictionary<string, PcBoneMeta> pcByName,
+        int expectedPcQuatBucket)
+    {
+        if (start < 0 || count < 0 || start > xboxNames.Count - count)
+            throw new InvalidDataException("Xbox quaternion range exceeds names[] bounds.");
+
+        var sum = 0;
+        for (var i = 0; i < count; i++)
+        {
+            var name = xboxNames[start + i];
+            if (!pcByName.TryGetValue(name, out var meta))
+                throw new InvalidDataException($"Could not resolve PC metadata for Xbox bone '{name}'.");
+            if (meta.QuatBucket != expectedPcQuatBucket)
+                throw new InvalidDataException(
+                    $"Bone '{name}' maps to PC quat bucket {meta.QuatBucket}, expected {expectedPcQuatBucket}.");
+            sum = checked(sum + meta.QuatFrameCount);
+        }
+        return sum;
+    }
+
+    private static void ObservePacking(
+        T4XAnimBoneCountPair pair,
+        int normalDynamicKeys,
+        int precisionDynamicKeys,
+        int normalConstantBones,
+        int precisionConstantBones,
+        PackingStats stats)
+    {
+        stats.Pairs++;
+
+        if (pair.Pc.DataByteCount == pair.Xbox.DataByteCount) stats.DataByteEqual++;
+        if (pair.Pc.DataIntCount == pair.Xbox.DataIntCount) stats.DataIntEqual++;
+        if (pair.Pc.RandomDataByteCount == pair.Xbox.RandomDataByteCount) stats.RandomDataByteEqual++;
+        if (pair.Pc.RandomDataIntCount == pair.Xbox.RandomDataIntCount) stats.RandomDataIntEqual++;
+        if (pair.Pc.IndexCount == pair.Xbox.IndexCount) stats.IndexEqual++;
+
+        var randomShortDelta = checked((int)pair.Pc.RandomDataShortCount - (int)pair.Xbox.RandomDataShortCount);
+        var dataShortDelta = (int)pair.Pc.DataShortCount - pair.Xbox.DataShortCount;
+        var randomIntDelta = (int)pair.Xbox.RandomDataIntCount - pair.Pc.RandomDataIntCount;
+        var dataIntDelta = (int)pair.Xbox.DataIntCount - pair.Pc.DataIntCount;
+
+        stats.RandomShortDeltas.Add(randomShortDelta);
+        stats.DataShortDeltas.Add(dataShortDelta);
+        stats.RandomIntDeltas.Add(randomIntDelta);
+        stats.DataIntDeltas.Add(dataIntDelta);
+
+        // If Xbox NORMAL_QUAT uses a 3x16-bit packed representation while
+        // PRECISION_QUAT preserves PC's 4x16-bit representation, exactly one
+        // randomDataShort is saved per normal dynamic key and exactly one
+        // dataShort is saved per normal constant quat.
+        if (randomShortDelta == normalDynamicKeys) stats.NormalDynamicThreeShorts++;
+        if (randomShortDelta == precisionDynamicKeys) stats.PrecisionDynamicThreeShorts++;
+        if (dataShortDelta == normalConstantBones) stats.NormalConstantThreeShorts++;
+        if (dataShortDelta == precisionConstantBones) stats.PrecisionConstantThreeShorts++;
+        if (randomShortDelta == normalDynamicKeys && dataShortDelta == normalConstantBones)
+            stats.NormalThreeShortsBoth++;
+
+        // Competing hypothesis: one subgroup migrates into the int streams.
+        if (randomIntDelta == normalDynamicKeys) stats.RandomIntGainEqualsNormalKeys++;
+        if (randomIntDelta == checked(normalDynamicKeys * 2)) stats.RandomIntGainEqualsTwiceNormalKeys++;
+        if (randomIntDelta == precisionDynamicKeys) stats.RandomIntGainEqualsPrecisionKeys++;
+        if (randomIntDelta == checked(precisionDynamicKeys * 2)) stats.RandomIntGainEqualsTwicePrecisionKeys++;
     }
 
     private static IReadOnlyList<PcBoneMeta> ReadPcBoneMetadata(
@@ -490,7 +594,8 @@ public static class T4XAnimSplitFeatureOracle
         int observations,
         FamilyStats fullQuat,
         FamilyStats fullQuatNoSize,
-        PrecisionRuleStats precisionRule)
+        PrecisionRuleStats precisionRule,
+        PackingStats packing)
     {
         var sb = new StringBuilder();
         sb.AppendLine("WaW360 XAnim Xbox-split feature oracle");
@@ -527,8 +632,44 @@ public static class T4XAnimSplitFeatureOracle
 
         sb.AppendLine();
         AppendPrecisionRule(sb, precisionRule);
+        sb.AppendLine();
+        AppendPackingStats(sb, packing);
 
         return sb.ToString();
+    }
+
+    private static void AppendPackingStats(StringBuilder sb, PackingStats stats)
+    {
+        static string Range(IReadOnlyList<int> values) =>
+            values.Count == 0 ? "<none>" : $"{values.Min():N0}..{values.Max():N0}";
+
+        sb.AppendLine("XBOX QUATERNION PACKING HYPOTHESES");
+        sb.AppendLine($"  Pairs:                                      {stats.Pairs:N0}");
+        sb.AppendLine("  Unrelated stream equality:");
+        sb.AppendLine($"    dataByteCount identical:                  {stats.DataByteEqual}/{stats.Pairs}");
+        sb.AppendLine($"    dataIntCount identical:                   {stats.DataIntEqual}/{stats.Pairs}");
+        sb.AppendLine($"    randomDataByteCount identical:            {stats.RandomDataByteEqual}/{stats.Pairs}");
+        sb.AppendLine($"    randomDataIntCount identical:             {stats.RandomDataIntEqual}/{stats.Pairs}");
+        sb.AppendLine($"    indexCount identical:                     {stats.IndexEqual}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  Candidate: NORMAL_QUAT is 3x16-bit; PRECISION_QUAT remains 4x16-bit");
+        sb.AppendLine($"    PC randomShort - XB randomShort == normal dynamic key count: {stats.NormalDynamicThreeShorts}/{stats.Pairs}");
+        sb.AppendLine($"    PC dataShort - XB dataShort == normal constant bone count:   {stats.NormalConstantThreeShorts}/{stats.Pairs}");
+        sb.AppendLine($"    BOTH equations true for the pair:                            {stats.NormalThreeShortsBoth}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  Competing checks:");
+        sb.AppendLine($"    randomShort delta == precision dynamic key count:             {stats.PrecisionDynamicThreeShorts}/{stats.Pairs}");
+        sb.AppendLine($"    dataShort delta == precision constant bone count:             {stats.PrecisionConstantThreeShorts}/{stats.Pairs}");
+        sb.AppendLine($"    randomInt gain == normal dynamic keys:                        {stats.RandomIntGainEqualsNormalKeys}/{stats.Pairs}");
+        sb.AppendLine($"    randomInt gain == 2 * normal dynamic keys:                    {stats.RandomIntGainEqualsTwiceNormalKeys}/{stats.Pairs}");
+        sb.AppendLine($"    randomInt gain == precision dynamic keys:                     {stats.RandomIntGainEqualsPrecisionKeys}/{stats.Pairs}");
+        sb.AppendLine($"    randomInt gain == 2 * precision dynamic keys:                 {stats.RandomIntGainEqualsTwicePrecisionKeys}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  Observed PC->Xbox count deltas:");
+        sb.AppendLine($"    randomDataShort decrease: {Range(stats.RandomShortDeltas)}");
+        sb.AppendLine($"    dataShort decrease:       {Range(stats.DataShortDeltas)}");
+        sb.AppendLine($"    randomDataInt increase:   {Range(stats.RandomIntDeltas)}");
+        sb.AppendLine($"    dataInt increase:         {Range(stats.DataIntDeltas)}");
     }
 
     private static void AppendPrecisionRule(StringBuilder sb, PrecisionRuleStats stats)
