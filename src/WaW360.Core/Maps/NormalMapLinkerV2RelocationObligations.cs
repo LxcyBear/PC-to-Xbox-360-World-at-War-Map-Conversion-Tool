@@ -143,7 +143,7 @@ public static class NormalMapLinkerV2RelocationObligations
                     continue;
                 }
 
-                var fields = GetPointerFields(type);
+                var fields = GetPointerFields(type, proof.Version);
                 if (fields.Count == 0) continue;
                 var prefixBytes = fields.Max(f => f.Offset) + 4;
                 var recordIndex = 0;
@@ -322,16 +322,30 @@ public static class NormalMapLinkerV2RelocationObligations
             HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(obj.SourceFastFile), obj.Raw);
     }
 
-    private static IReadOnlyList<PointerField> GetPointerFields(string type)
+    private static IReadOnlyList<PointerField> GetPointerFields(string type, uint proofVersion)
     {
         if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase))
+        {
+            // XAnim proof v5 is the native TU7 0x5C layout. Older proof
+            // artifacts remain readable here only so the relocation ledger can
+            // describe them correctly before Fast Mode regenerates them.
+            if (proofVersion >= 5)
+                return new[]
+                {
+                    new PointerField(0x00, "name"), new PointerField(0x34, "names"), new PointerField(0x38, "dataByte"),
+                    new PointerField(0x3C, "dataShort"), new PointerField(0x40, "dataInt"), new PointerField(0x44, "randomDataShort"),
+                    new PointerField(0x48, "randomDataByte"), new PointerField(0x4C, "randomDataInt"), new PointerField(0x50, "indices"),
+                    new PointerField(0x54, "notify"), new PointerField(0x58, "deltaPart")
+                };
+
             return new[]
             {
-                new PointerField(0, "name"), new PointerField(48, "names"), new PointerField(52, "dataByte"),
-                new PointerField(56, "dataShort"), new PointerField(60, "dataInt"), new PointerField(64, "randomDataShort"),
-                new PointerField(68, "randomDataByte"), new PointerField(72, "randomDataInt"), new PointerField(76, "indices"),
-                new PointerField(80, "notify"), new PointerField(84, "deltaPart")
+                new PointerField(0x00, "name"), new PointerField(0x30, "names"), new PointerField(0x34, "dataByte"),
+                new PointerField(0x38, "dataShort"), new PointerField(0x3C, "dataInt"), new PointerField(0x40, "randomDataShort"),
+                new PointerField(0x44, "randomDataByte"), new PointerField(0x48, "randomDataInt"), new PointerField(0x4C, "indices"),
+                new PointerField(0x50, "notify"), new PointerField(0x54, "deltaPart")
             };
+        }
 
         if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase))
             return new[]
