@@ -78,6 +78,10 @@ public static class T4XAnimSplitFeatureOracle
         public int NormalConstantThreeShorts;
         public int PrecisionConstantThreeShorts;
         public int NormalThreeShortsBoth;
+        public int NormalDynamicPacked32;
+        public int NormalConstantPacked32;
+        public int NormalConstantDataIntGain;
+        public int NormalPacked32All;
         public int RandomIntGainEqualsNormalKeys;
         public int RandomIntGainEqualsTwiceNormalKeys;
         public int RandomIntGainEqualsPrecisionKeys;
@@ -314,6 +318,22 @@ public static class T4XAnimSplitFeatureOracle
         if (dataShortDelta == precisionConstantBones) stats.PrecisionConstantThreeShorts++;
         if (randomShortDelta == normalDynamicKeys && dataShortDelta == normalConstantBones)
             stats.NormalThreeShortsBoth++;
+
+        // Stronger Xbox hypothesis: NORMAL_QUAT is a packed 32-bit quaternion.
+        // PC FULL_QUAT contributes four int16 values per key; Xbox removes all
+        // four from randomDataShort and emits one uint32 in randomDataInt.
+        // The constant NORMAL_QUAT_NO_SIZE path analogously removes four
+        // dataShort values and emits one dataInt value.
+        var dynamicPacked32 =
+            randomShortDelta == checked(normalDynamicKeys * 4) &&
+            randomIntDelta == normalDynamicKeys;
+        var constantPacked32 =
+            dataShortDelta == checked(normalConstantBones * 4) &&
+            dataIntDelta == normalConstantBones;
+        if (dynamicPacked32) stats.NormalDynamicPacked32++;
+        if (dataShortDelta == checked(normalConstantBones * 4)) stats.NormalConstantPacked32++;
+        if (dataIntDelta == normalConstantBones) stats.NormalConstantDataIntGain++;
+        if (dynamicPacked32 && constantPacked32) stats.NormalPacked32All++;
 
         // Competing hypothesis: one subgroup migrates into the int streams.
         if (randomIntDelta == normalDynamicKeys) stats.RandomIntGainEqualsNormalKeys++;
@@ -652,7 +672,13 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    randomDataIntCount identical:             {stats.RandomDataIntEqual}/{stats.Pairs}");
         sb.AppendLine($"    indexCount identical:                     {stats.IndexEqual}/{stats.Pairs}");
         sb.AppendLine();
-        sb.AppendLine("  Candidate: NORMAL_QUAT is 3x16-bit; PRECISION_QUAT remains 4x16-bit");
+        sb.AppendLine("  PRIMARY CANDIDATE: NORMAL_QUAT is packed to one 32-bit word; PRECISION_QUAT stays 4x16-bit");
+        sb.AppendLine($"    randomShort decrease == 4 * normal dynamic keys AND randomInt gain == keys: {stats.NormalDynamicPacked32}/{stats.Pairs}");
+        sb.AppendLine($"    dataShort decrease == 4 * normal constant bones:                          {stats.NormalConstantPacked32}/{stats.Pairs}");
+        sb.AppendLine($"    dataInt gain == normal constant bones:                                    {stats.NormalConstantDataIntGain}/{stats.Pairs}");
+        sb.AppendLine($"    ALL dynamic + constant packed32 equations true:                           {stats.NormalPacked32All}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  Earlier 3x16-bit candidate:");
         sb.AppendLine($"    PC randomShort - XB randomShort == normal dynamic key count: {stats.NormalDynamicThreeShorts}/{stats.Pairs}");
         sb.AppendLine($"    PC dataShort - XB dataShort == normal constant bone count:   {stats.NormalConstantThreeShorts}/{stats.Pairs}");
         sb.AppendLine($"    BOTH equations true for the pair:                            {stats.NormalThreeShortsBoth}/{stats.Pairs}");
