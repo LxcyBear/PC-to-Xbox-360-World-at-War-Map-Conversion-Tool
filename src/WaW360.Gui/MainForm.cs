@@ -53,8 +53,8 @@ public sealed partial class MainForm : Form
             ? "Safe Mode (Full Validation)" : "Fast Mode";
         if (_batchMode.SelectedIndex < 0) _batchMode.SelectedIndex = 0;
         _runBatchTestsButton.Text = IsSafeModeSelected()
-            ? "Run checked Normal maps - SAFE full validation"
-            : "Run checked Normal maps - FAST mode";
+            ? "Convert checked maps - SAFE mode"
+            : "Convert checked maps - FAST mode";
         ConfigureAnalysisCache();
         UpdateMapsHint();
     }
@@ -82,8 +82,8 @@ public sealed partial class MainForm : Form
         {
             _settings.BatchMode = _batchMode.SelectedItem?.ToString() ?? "Fast Mode";
             _runBatchTestsButton.Text = IsSafeModeSelected()
-                ? "Run checked Normal maps - SAFE full validation"
-                : "Run checked Normal maps - FAST mode";
+                ? "Convert checked maps - SAFE mode"
+                : "Convert checked maps - FAST mode";
         };
         _clearAnalysisCacheButton.Click += async (_, _) => await ClearAnalysisCacheAsync();
         _maps.MouseMove += Maps_MouseMove;
