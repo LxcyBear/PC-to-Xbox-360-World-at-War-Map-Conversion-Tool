@@ -8,7 +8,7 @@ The project does **not** distribute retail World at War game files or copyrighte
 
 The deterministic Linker V2 pipeline is in late native-loader bring-up. Source discovery, canonical root accounting, script-string reconstruction, Xbox type mapping, XFile/XAsset emission, block-capacity planning, Xbox single-zlib wrapping, selected-load generation, and real-hardware diagnostics are working foundations.
 
-The current main blocker is the exact **PC → Xbox TU7 XAnimParts layout/stream transform**. The repository intentionally does not claim that this transform is complete yet.
+The current main blocker is now narrower: the Xbox TU7 `XAnimParts` fixed layout and loader-owned stream structure are largely mapped, but the exact **PC bone-category → Xbox bone-category reclassification** still needs to be proven from same-animation oracle data before the final `0x58 → 0x5C` transform is promoted.
 
 ## Hardware-proven TU7 XAnim findings
 
@@ -24,9 +24,57 @@ Real Xbox 360 memory and TU7 executable tracing have established:
 - `+0x1D` is independently proven as `boneCount[11]`, the total/name ScriptString count; `+0x1E` is `notifyCount`.
 - A working Xbox header satisfies two independent totals: `boneCount[0..4] + boneCount[9] == boneCount[11]` and `boneCount[5..8] + boneCount[10] == boneCount[11]`, strongly identifying `[9]` and `[10]` as Xbox-only quaternion/translation buckets.
 - Working names such as `ai_flame_death_a` resolve through the loaded `+0x00` pointer.
+- `+0x24` is proven as `randomDataShortCount`.
+- `+0x28` is proven as `indexCount`; `Function_82159ED0` also proves byte indices when `numFrames < 256` and 16-bit indices otherwise.
+- Loader-consumed pointers are mapped through the full root: `+0x34 names*`, `+0x38 dataByte*`, `+0x3C dataShort*`, `+0x40 dataInt*`, `+0x44 randomDataShort*`, `+0x48 randomDataByte*`, `+0x4C randomDataInt*`, `+0x50 indices*`, `+0x54 notify*`, and `+0x58 deltaPart*`.
+- The generated post-load/mark path independently walks `names[]` using `boneCount[11]` and `notify[]` using `notifyCount`.
+- The type-4 registration wrapper was followed through `FUN_82169F78 → Function_82168968`; that path is generic XAsset bookkeeping rather than animation decoding.
 - The CLI now includes `xanim-bone-compare <pc.ff> <xbox.ff> [name]`, a read-only same-animation oracle that reports PC/Xbox bone-count arrays and the exact shared-bucket deficits feeding Xbox-only buckets.
 
-What is **not yet proven** is the exact semantic mapping of every PC XAnim header field into the Xbox TU7 `0x5C` structure, especially the extra bone-count categories and the field around `+0x28`. The next implementation will come from the native loader/oracle, not from padding or guessed offsets.
+### Loader-consumed Xbox TU7 `XAnimParts` layout
+
+```text
++00  name*
++04  dataByteCount          u16
++06  dataShortCount         u16
++08  dataIntCount           u16
++0A  randomDataByteCount    u16
++0C  randomDataIntCount     u16
++0E  numFrames              u16
++10  flags/loop byte        semantics still being named
++11  flags/delta byte       semantics still being named
++12  boneCount[0]
++13  boneCount[1]
++14  boneCount[2]
++15  boneCount[3]
++16  boneCount[4]
++17  boneCount[5]
++18  boneCount[6]
++19  boneCount[7]
++1A  boneCount[8]
++1B  boneCount[9]           Xbox-only quaternion bucket
++1C  boneCount[10]          Xbox-only translation bucket
++1D  boneCount[11]          total bones / names count
++1E  notifyCount
++1F  asset-type/flags area  exact naming still being finalized
++24  randomDataShortCount   u32
++28  indexCount             u32
++2C  framerate              strong layout match; final native-use proof pending
++30  frequency              strong layout match; final native-use proof pending
++34  names*
++38  dataByte*
++3C  dataShort*
++40  dataInt*
++44  randomDataShort*
++48  randomDataByte*
++4C  randomDataInt*
++50  indices*
++54  notify*
++58  deltaPart*
+= 0x5C bytes
+```
+
+What is **not yet proven** is which PC bone categories are split/reclassified into Xbox `boneCount[9]` and `boneCount[10]`, plus the final semantic naming of the small flag/metadata fields around `+0x10..+0x23` and native-use confirmation for `+0x2C/+0x30`. The final serializer remains fail-closed until the same-animation oracle resolves those pieces.
 
 ## Roadmap
 
@@ -63,10 +111,16 @@ What is **not yet proven** is the exact semantic mapping of every PC XAnim heade
 - [x] Prove XAnim owned loading switches to stream position 4.
 - [x] Confirm a 12-byte live bone-count region in working Xbox XAnims.
 - [x] Retain the existing typed PC XAnim walker for names, ScriptStrings, notifies, delta data, scalar streams, random streams, and frame indices.
-- [ ] Finish decompiling `Function_8215F830` and label every Xbox field offset.
+- [x] Fully decompile `Function_8215F830` and map every loader-consumed Xbox pointer/count field.
+- [x] Prove `+0x24 = randomDataShortCount`.
+- [x] Prove `+0x28 = indexCount` and the `numFrames < 256` byte-index / otherwise 16-bit-index rule.
 - [x] Prove `boneCount[11]` drives names and establish the Xbox quaternion/translation total invariants.
-- [ ] Use the same-animation PC/Xbox oracle to identify exactly which PC categories reclassify into Xbox `boneCount[9]` and `boneCount[10]`.
-- [ ] Prove the `+0x28` field and exact framerate/frequency offsets.
+- [x] Prove `+0x1E = notifyCount` and the generated post-load/mark traversal.
+- [x] Prove the owned-pointer chain from `+0x34` through `+0x58`, including `deltaPart*`.
+- [x] Add the read-only same-animation `xanim-bone-compare` PC/Xbox oracle to the CLI.
+- [ ] Run the oracle against the working FRUmansion pair and identify exactly which PC categories reclassify into Xbox `boneCount[9]` and `boneCount[10]`.
+- [ ] Finalize the semantic names for the small `+0x10..+0x23` flag/metadata fields.
+- [ ] Confirm native-use semantics for `+0x2C` framerate and `+0x30` frequency.
 - [ ] Implement the PC `0x58` → Xbox TU7 `0x5C` transform only after those fields are proven.
 - [ ] Add an independent Xbox-layout read-back verifier.
 - [ ] Promote the full typed XAnim payload into Linker V2.
