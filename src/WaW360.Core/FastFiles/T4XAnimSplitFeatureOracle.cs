@@ -65,6 +65,13 @@ public static class T4XAnimSplitFeatureOracle
         public int Total => Enumerable.Range(0, 4).Sum(i => Trans[i, 0] + Trans[i, 1]);
     }
 
+    private sealed class XboxDynamicQuatMeta
+    {
+        public required Dictionary<string, int> FrameCountByBone { get; init; }
+        public required int NormalKeys { get; init; }
+        public required int PrecisionKeys { get; init; }
+    }
+
     private sealed class PackingStats
     {
         public int Pairs;
@@ -82,6 +89,12 @@ public static class T4XAnimSplitFeatureOracle
         public int NormalConstantPacked32;
         public int NormalConstantDataIntGain;
         public int NormalPacked32All;
+        public int PcVsXboxNormalKeyCountEqual;
+        public int PcVsXboxPrecisionKeyCountEqual;
+        public int PrecisionWidth2Matches;
+        public int PrecisionWidth3Matches;
+        public int PrecisionWidth4Matches;
+        public readonly List<int> PrecisionKeyCountDeltas = new();
         public int RandomIntGainEqualsNormalKeys;
         public int RandomIntGainEqualsTwiceNormalKeys;
         public int RandomIntGainEqualsPrecisionKeys;
@@ -163,10 +176,12 @@ public static class T4XAnimSplitFeatureOracle
                 xboxNames, qStart, pair.Xbox.BoneCounts[2], byName, expectedPcQuatBucket: 2);
             var precisionDynamicKeys = SumQuatFrames(
                 xboxNames, qStart + pair.Xbox.BoneCounts[2], pair.Xbox.BoneCounts[3], byName, expectedPcQuatBucket: 2);
+            var xboxDynamic = ReadXboxDynamicQuatMetadata(xboxZone.Bytes, pair.Xbox, xboxNames);
             ObservePacking(
                 pair,
                 normalDynamicKeys,
                 precisionDynamicKeys,
+                xboxDynamic,
                 pair.Xbox.BoneCounts[5],
                 pair.Xbox.BoneCounts[6],
                 packing);
@@ -286,6 +301,7 @@ public static class T4XAnimSplitFeatureOracle
         T4XAnimBoneCountPair pair,
         int normalDynamicKeys,
         int precisionDynamicKeys,
+        XboxDynamicQuatMeta xboxDynamic,
         int normalConstantBones,
         int precisionConstantBones,
         PackingStats stats)
@@ -307,6 +323,22 @@ public static class T4XAnimSplitFeatureOracle
         stats.DataShortDeltas.Add(dataShortDelta);
         stats.RandomIntDeltas.Add(randomIntDelta);
         stats.DataIntDeltas.Add(dataIntDelta);
+
+        if (normalDynamicKeys == xboxDynamic.NormalKeys) stats.PcVsXboxNormalKeyCountEqual++;
+        if (precisionDynamicKeys == xboxDynamic.PrecisionKeys) stats.PcVsXboxPrecisionKeyCountEqual++;
+        stats.PrecisionKeyCountDeltas.Add(precisionDynamicKeys - xboxDynamic.PrecisionKeys);
+
+        // PC T4 FULL_QUAT contributes four int16 values per dynamic key.
+        // Xbox NORMAL_QUAT is accounted for by randomDataInt. Test how many
+        // int16 values remain per Xbox PRECISION_QUAT key after allowing the
+        // PC and Xbox precision key counts to differ.
+        var pcFullQuatShorts = checked((normalDynamicKeys + precisionDynamicKeys) * 4);
+        if (randomShortDelta == pcFullQuatShorts - checked(xboxDynamic.PrecisionKeys * 2))
+            stats.PrecisionWidth2Matches++;
+        if (randomShortDelta == pcFullQuatShorts - checked(xboxDynamic.PrecisionKeys * 3))
+            stats.PrecisionWidth3Matches++;
+        if (randomShortDelta == pcFullQuatShorts - checked(xboxDynamic.PrecisionKeys * 4))
+            stats.PrecisionWidth4Matches++;
 
         // If Xbox NORMAL_QUAT uses a 3x16-bit packed representation while
         // PRECISION_QUAT preserves PC's 4x16-bit representation, exactly one
@@ -340,6 +372,179 @@ public static class T4XAnimSplitFeatureOracle
         if (randomIntDelta == checked(normalDynamicKeys * 2)) stats.RandomIntGainEqualsTwiceNormalKeys++;
         if (randomIntDelta == precisionDynamicKeys) stats.RandomIntGainEqualsPrecisionKeys++;
         if (randomIntDelta == checked(precisionDynamicKeys * 2)) stats.RandomIntGainEqualsTwicePrecisionKeys++;
+    }
+
+    private static XboxDynamicQuatMeta ReadXboxDynamicQuatMetadata(
+        byte[] bytes,
+        T4XAnimBoneCountSample sample,
+        IReadOnlyList<string> names)
+    {
+        if (sample.Platform != WaWPlatform.Xbox360 || sample.FixedSize != 0x5C)
+            throw new InvalidDataException("Xbox dynamic metadata reader received a non-Xbox XAnim sample.");
+
+        var start = sample.HeaderOffset;
+        var cursor = checked(start + sample.FixedSize);
+
+        while (cursor < bytes.Length && bytes[cursor] != 0) cursor++;
+        if (cursor >= bytes.Length)
+            throw new InvalidDataException($"Xbox XAnim '{sample.Name}' top-level name is unterminated.");
+        cursor++;
+
+        var totalBones = sample.BoneCounts[11];
+        if (names.Count != totalBones)
+            throw new InvalidDataException($"Xbox XAnim '{sample.Name}' names[] count mismatch.");
+
+        var ptrNames = ReadU32Be(bytes, start + 0x34);
+        var ptrDataByte = ReadU32Be(bytes, start + 0x38);
+        var ptrDataShort = ReadU32Be(bytes, start + 0x3C);
+        var ptrNotify = ReadU32Be(bytes, start + 0x54);
+        var ptrDelta = ReadU32Be(bytes, start + 0x58);
+        var notifyCount = bytes[start + 0x1E];
+        var numFrames = ReadU16Be(bytes, start + 0x0E);
+
+        if (ptrNames != 0)
+            cursor = Advance(bytes, cursor, totalBones * 2, "Xbox names[]");
+        if (ptrNotify != 0)
+            cursor = Advance(bytes, cursor, notifyCount * 8, "Xbox notify[]");
+
+        if (ptrDelta != 0)
+        {
+            Ensure(bytes, cursor, 8, "Xbox deltaPart");
+            var transPtr = ReadU32Be(bytes, cursor);
+            var quatPtr = ReadU32Be(bytes, cursor + 4);
+            cursor += 8;
+            if (transPtr != 0)
+                cursor = SkipDeltaTransBe(bytes, cursor, numFrames);
+            if (quatPtr != 0)
+                cursor = SkipDeltaQuatBe(bytes, cursor, numFrames);
+        }
+
+        if (ptrDataByte != 0)
+            cursor = Advance(bytes, cursor, sample.DataByteCount, "Xbox dataByte");
+        else if (sample.DataByteCount != 0)
+            throw new InvalidDataException($"Xbox XAnim '{sample.Name}' has dataByteCount without dataByte pointer.");
+
+        if (ptrDataShort == 0)
+        {
+            if (sample.DataShortCount != 0)
+                throw new InvalidDataException($"Xbox XAnim '{sample.Name}' has dataShortCount without dataShort pointer.");
+            return new XboxDynamicQuatMeta
+            {
+                FrameCountByBone = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                NormalKeys = 0,
+                PrecisionKeys = 0
+            };
+        }
+
+        var dataShortOffset = cursor;
+        var dsPos = 0;
+        ushort PopShort()
+        {
+            if (dsPos >= sample.DataShortCount)
+                throw new InvalidDataException($"Xbox XAnim '{sample.Name}' exhausted dataShort.");
+            var value = ReadU16Be(bytes, dataShortOffset + dsPos * 2);
+            dsPos++;
+            return value;
+        }
+
+        void SkipIndexMetadata(ushort storedSize)
+        {
+            if (numFrames < 256) return;
+            var count = checked((int)storedSize + 1);
+            var shorts = storedSize >= 64
+                ? ((count - 2) / 256) + 2
+                : count;
+            if (dsPos > sample.DataShortCount - shorts)
+                throw new InvalidDataException($"Xbox XAnim '{sample.Name}' exhausted dataShort index metadata.");
+            dsPos += shorts;
+        }
+
+        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var boneIndex = sample.BoneCounts[0];
+        var normalKeys = 0;
+        var precisionKeys = 0;
+
+        // SIMPLE_QUAT dynamic [1].
+        for (var i = 0; i < sample.BoneCounts[1]; i++, boneIndex++)
+        {
+            var storedSize = PopShort();
+            SkipIndexMetadata(storedSize);
+        }
+
+        // NORMAL_QUAT dynamic [2].
+        for (var i = 0; i < sample.BoneCounts[2]; i++, boneIndex++)
+        {
+            var storedSize = PopShort();
+            var frames = checked((int)storedSize + 1);
+            SkipIndexMetadata(storedSize);
+            if (boneIndex >= names.Count) throw new InvalidDataException("Xbox NORMAL_QUAT name index out of range.");
+            map[names[boneIndex]] = frames;
+            normalKeys = checked(normalKeys + frames);
+        }
+
+        // PRECISION_QUAT dynamic [3].
+        for (var i = 0; i < sample.BoneCounts[3]; i++, boneIndex++)
+        {
+            var storedSize = PopShort();
+            var frames = checked((int)storedSize + 1);
+            SkipIndexMetadata(storedSize);
+            if (boneIndex >= names.Count) throw new InvalidDataException("Xbox PRECISION_QUAT name index out of range.");
+            map[names[boneIndex]] = frames;
+            precisionKeys = checked(precisionKeys + frames);
+        }
+
+        return new XboxDynamicQuatMeta
+        {
+            FrameCountByBone = map,
+            NormalKeys = normalKeys,
+            PrecisionKeys = precisionKeys
+        };
+    }
+
+    private static ushort ReadU16Be(byte[] data, int offset)
+    {
+        Ensure(data, offset, 2, "be-u16");
+        return BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset, 2));
+    }
+
+    private static uint ReadU32Be(byte[] data, int offset)
+    {
+        Ensure(data, offset, 4, "be-u32");
+        return BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(offset, 4));
+    }
+
+    private static int SkipDeltaTransBe(byte[] data, int cursor, ushort numFrames)
+    {
+        Ensure(data, cursor, 4, "Xbox delta trans");
+        var size = ReadU16Be(data, cursor);
+        var small = data[cursor + 2] != 0;
+        if (size == 0)
+            return Advance(data, cursor, 16, "Xbox delta trans frame0");
+
+        Ensure(data, cursor, 32, "Xbox delta trans frames");
+        var framesPtr = ReadU32Be(data, cursor + 28);
+        cursor += 32;
+        var count = checked((int)size + 1);
+        cursor = Advance(data, cursor, count * (numFrames < 256 ? 1 : 2), "Xbox delta trans indices");
+        if (framesPtr != 0)
+            cursor = Advance(data, cursor, count * (small ? 3 : 6), "Xbox delta trans frames");
+        return cursor;
+    }
+
+    private static int SkipDeltaQuatBe(byte[] data, int cursor, ushort numFrames)
+    {
+        Ensure(data, cursor, 8, "Xbox delta quat");
+        var size = ReadU16Be(data, cursor);
+        if (size == 0)
+            return cursor + 8;
+
+        var framesPtr = ReadU32Be(data, cursor + 4);
+        cursor += 8;
+        var count = checked((int)size + 1);
+        cursor = Advance(data, cursor, count * (numFrames < 256 ? 1 : 2), "Xbox delta quat indices");
+        if (framesPtr != 0)
+            cursor = Advance(data, cursor, count * 4, "Xbox delta quat frames");
+        return cursor;
     }
 
     private static IReadOnlyList<PcBoneMeta> ReadPcBoneMetadata(
@@ -671,6 +876,16 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    randomDataByteCount identical:            {stats.RandomDataByteEqual}/{stats.Pairs}");
         sb.AppendLine($"    randomDataIntCount identical:             {stats.RandomDataIntEqual}/{stats.Pairs}");
         sb.AppendLine($"    indexCount identical:                     {stats.IndexEqual}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  PC vs Xbox dynamic key counts:");
+        sb.AppendLine($"    NORMAL_QUAT key count identical:                              {stats.PcVsXboxNormalKeyCountEqual}/{stats.Pairs}");
+        sb.AppendLine($"    PRECISION_QUAT key count identical:                           {stats.PcVsXboxPrecisionKeyCountEqual}/{stats.Pairs}");
+        sb.AppendLine($"    PC precision keys - Xbox precision keys range:                {Range(stats.PrecisionKeyCountDeltas)}");
+        sb.AppendLine();
+        sb.AppendLine("  Precision payload width after using Xbox's own key count:");
+        sb.AppendLine($"    Xbox PRECISION_QUAT = 2 shorts/key:                           {stats.PrecisionWidth2Matches}/{stats.Pairs}");
+        sb.AppendLine($"    Xbox PRECISION_QUAT = 3 shorts/key:                           {stats.PrecisionWidth3Matches}/{stats.Pairs}");
+        sb.AppendLine($"    Xbox PRECISION_QUAT = 4 shorts/key:                           {stats.PrecisionWidth4Matches}/{stats.Pairs}");
         sb.AppendLine();
         sb.AppendLine("  PRIMARY CANDIDATE: NORMAL_QUAT is packed to one 32-bit word; PRECISION_QUAT stays 4x16-bit");
         sb.AppendLine($"    randomShort decrease == 4 * normal dynamic keys AND randomInt gain == keys: {stats.NormalDynamicPacked32}/{stats.Pairs}");
