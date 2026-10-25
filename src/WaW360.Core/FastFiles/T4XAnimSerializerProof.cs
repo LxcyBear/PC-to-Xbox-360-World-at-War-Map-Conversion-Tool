@@ -53,7 +53,13 @@ public static class T4XAnimSerializerProof
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("W360A4X\0");
     private const uint Following = 0xFFFFFFFFu;
     private const uint Insert = 0xFFFFFFFEu;
-    private const int FixedSize = 88;
+    // PC WaW serializes the desktop XAnimParts root as 0x58 bytes.
+    // TU7 Xbox 360 was hardware-proven on 2026-10-25 to Load_Stream(..., 0x5C).
+    // Keep the two layouts explicit: source parsing MUST remain PC/0x58 while
+    // native emission expands the bone-count region and shifts all owned pointers.
+    private const int PcFixedSize = 0x58;
+    internal const int XboxFixedSize = 0x5C;
+    private const uint XboxProofVersion = 5;
 
     public static async Task<T4XAnimProofResult> BuildProofAsync(
         string sourceFastFile,
@@ -143,7 +149,7 @@ public static class T4XAnimSerializerProof
             await using (var fs = File.Create(outputFile))
             {
                 await fs.WriteAsync(Magic, cancellationToken);
-                WriteU32(fs, 4);
+                WriteU32(fs, XboxProofVersion);
                 WriteU32(fs, checked((uint)offsets.Count));
 
                 foreach (var sourceOffset in offsets)
@@ -152,16 +158,18 @@ public static class T4XAnimSerializerProof
 
                     var packedTopLevelName = !IsInline(ReadU32(zone, sourceOffset, Endian.Little));
                     var measured = Measure(zone, sourceOffset, Endian.Little, requireInlinePayloads: true, requireTopLevelName: !packedTopLevelName);
-                    using var assetStream = new MemoryStream(Math.Max(256, measured.EndOffset - sourceOffset));
+                    using var assetStream = new MemoryStream(Math.Max(256, measured.EndOffset - sourceOffset + (XboxFixedSize - PcFixedSize)));
                     var converted = WriteXboxAsset(zone, sourceOffset, assetStream, allowPackedTopLevelName: packedTopLevelName);
                     var blob = assetStream.ToArray();
 
-                    if (blob.Length != measured.EndOffset - sourceOffset)
-                        throw new InvalidDataException($"XAnim '{measured.Name}' changed serialized byte length during endian conversion ({measured.EndOffset - sourceOffset:N0} -> {blob.Length:N0}).");
+                    var expectedXboxLength = checked(measured.EndOffset - sourceOffset + (XboxFixedSize - PcFixedSize));
+                    if (blob.Length != expectedXboxLength)
+                        throw new InvalidDataException(
+                            $"XAnim '{measured.Name}' Xbox layout length mismatch: PC={measured.EndOffset - sourceOffset:N0}, expected Xbox={expectedXboxLength:N0}, actual Xbox={blob.Length:N0}.");
 
-                    var verify = Measure(blob, 0, Endian.Big, requireInlinePayloads: true, requireTopLevelName: !packedTopLevelName);
+                    var verify = MeasureXboxSerialized(blob, 0, requireInlinePayloads: true, requireTopLevelName: !packedTopLevelName);
                     if (verify.EndOffset != blob.Length || !verify.Name.Equals(measured.Name, StringComparison.Ordinal))
-                        throw new InvalidDataException($"Big-endian XAnim proof read-back failed for '{measured.Name}'.");
+                        throw new InvalidDataException($"Big-endian Xbox 0x5C XAnim proof read-back failed for '{measured.Name}'.");
 
                     WriteU32(fs, checked((uint)sourceOffset));
                     WriteU32(fs, checked((uint)blob.Length));
@@ -249,15 +257,15 @@ public static class T4XAnimSerializerProof
         var result = new List<T4RejectedInlineXAnimCandidate>();
         var start = Math.Max(0, rangeStart);
         var end = Math.Min(zone.Length, rangeEnd);
-        if (end - start < FixedSize + 5) return result;
+        if (end - start < PcFixedSize + 5) return result;
 
-        for (var offset = start; offset <= end - FixedSize - 5; offset++)
+        for (var offset = start; offset <= end - PcFixedSize - 5; offset++)
         {
             if ((offset & 0x3FFF) == 0) cancellationToken.ThrowIfCancellationRequested();
 
             var namePtr = ReadU32(zone, offset, endian);
             if (!IsInline(namePtr)) continue;
-            if (!TryReadAssetName(zone, offset + FixedSize, out var name)) continue;
+            if (!TryReadAssetName(zone, offset + PcFixedSize, out var name)) continue;
             if (accepted.Contains(offset)) continue;
 
             var numFrames = ReadU16(zone, offset + 14, endian);
@@ -329,9 +337,9 @@ public static class T4XAnimSerializerProof
         var result = new List<T4XAnimDiagnosticCandidate>();
         var start = Math.Max(0, rangeStart);
         var end = Math.Min(zone.Length, rangeEnd);
-        if (end - start < FixedSize) return result;
+        if (end - start < PcFixedSize) return result;
 
-        for (var offset = start; offset <= end - FixedSize; offset++)
+        for (var offset = start; offset <= end - PcFixedSize; offset++)
         {
             if ((offset & 0x3FFF) == 0) cancellationToken.ThrowIfCancellationRequested();
 
@@ -384,7 +392,7 @@ public static class T4XAnimSerializerProof
     private static IReadOnlyList<int> FindXAnimOffsets(byte[] zone, Endian endian)
     {
         var offsets = new List<int>();
-        for (var offset = 0; offset <= zone.Length - FixedSize - 5; offset++)
+        for (var offset = 0; offset <= zone.Length - PcFixedSize - 5; offset++)
         {
             if (!IsInline(ReadU32(zone, offset, endian))) continue;
 
@@ -407,7 +415,7 @@ public static class T4XAnimSerializerProof
             }
             if (!pointersOkay) continue;
 
-            if (!TryReadAssetName(zone, offset + FixedSize, out _)) continue;
+            if (!TryReadAssetName(zone, offset + PcFixedSize, out _)) continue;
 
             try
             {
@@ -425,7 +433,7 @@ public static class T4XAnimSerializerProof
 
     private static XAnimMeasure Measure(byte[] data, int start, Endian endian, bool requireInlinePayloads, bool requireTopLevelName = true)
     {
-        Ensure(data, start, FixedSize, "XAnimParts fixed body");
+        Ensure(data, start, PcFixedSize, "XAnimParts fixed body");
         var namePtr = ReadU32(data, start, endian);
         var dataByteCount = ReadU16(data, start + 4, endian);
         var dataShortCount = ReadU16(data, start + 6, endian);
@@ -458,7 +466,7 @@ public static class T4XAnimSerializerProof
         if (requireInlinePayloads && ownedPointers.Any(p => p != 0 && !IsInline(p)))
             throw new InvalidDataException($"XAnim at 0x{start:X} contains a non-inline owned payload pointer.");
 
-        var cursor = checked(start + FixedSize);
+        var cursor = checked(start + PcFixedSize);
         string name;
         if (IsInline(namePtr))
         {
@@ -547,20 +555,161 @@ public static class T4XAnimSerializerProof
         return cursor;
     }
 
+
+    /// <summary>
+    /// Parses the native TU7 Xbox 360 XAnimParts serialization proven on hardware.
+    ///
+    /// PC root (0x58):
+    ///   +0x12 boneCount[10], total at +0x1B, notify +0x1C, pointers +0x30..+0x54.
+    ///
+    /// Xbox root (0x5C):
+    ///   +0x12 boneCount[12], total at +0x1D, notify +0x1E, pointers +0x34..+0x58.
+    ///
+    /// PC has no values for the two Xbox-only part buckets, so conversion emits
+    /// zero for Xbox boneCount[9] and [10], then moves PC PART_TYPE_ALL to [11].
+    /// </summary>
+    private static XAnimMeasure MeasureXboxSerialized(
+        byte[] data,
+        int start,
+        bool requireInlinePayloads,
+        bool requireTopLevelName = true)
+    {
+        Ensure(data, start, XboxFixedSize, "Xbox XAnimParts fixed body");
+
+        var namePtr = ReadU32(data, start, Endian.Big);
+        var dataByteCount = ReadU16(data, start + 0x04, Endian.Big);
+        var dataShortCount = ReadU16(data, start + 0x06, Endian.Big);
+        var dataIntCount = ReadU16(data, start + 0x08, Endian.Big);
+        var randomDataByteCount = ReadU16(data, start + 0x0A, Endian.Big);
+        var randomDataIntCount = ReadU16(data, start + 0x0C, Endian.Big);
+        var numFrames = ReadU16(data, start + 0x0E, Endian.Big);
+        var boneCount = data[start + 0x1D];
+        var notifyCount = data[start + 0x1E];
+        var randomDataShortCount = ReadU32(data, start + 0x24, Endian.Big);
+        var indexCount = ReadU32(data, start + 0x28, Endian.Big);
+
+        // These two slots do not exist in the PC T4 layout. They are deliberately
+        // zero until a source platform exposes semantic values for them.
+        if (data[start + 0x1B] != 0 || data[start + 0x1C] != 0)
+            throw new InvalidDataException($"Xbox XAnim at 0x{start:X} has non-zero PC-unmapped boneCount slots.");
+
+        var ptrNames = ReadU32(data, start + 0x34, Endian.Big);
+        var ptrDataByte = ReadU32(data, start + 0x38, Endian.Big);
+        var ptrDataShort = ReadU32(data, start + 0x3C, Endian.Big);
+        var ptrDataInt = ReadU32(data, start + 0x40, Endian.Big);
+        var ptrRandomShort = ReadU32(data, start + 0x44, Endian.Big);
+        var ptrRandomByte = ReadU32(data, start + 0x48, Endian.Big);
+        var ptrRandomInt = ReadU32(data, start + 0x4C, Endian.Big);
+        var ptrIndices = ReadU32(data, start + 0x50, Endian.Big);
+        var ptrNotify = ReadU32(data, start + 0x54, Endian.Big);
+        var ptrDelta = ReadU32(data, start + 0x58, Endian.Big);
+
+        if (requireTopLevelName && !IsInline(namePtr))
+            throw new InvalidDataException($"Xbox XAnim at 0x{start:X} does not serialize its top-level name inline.");
+        if (namePtr != 0 && !IsSerializedPointer(namePtr))
+            throw new InvalidDataException($"Xbox XAnim at 0x{start:X} contains invalid name pointer 0x{namePtr:X8}.");
+
+        var ownedPointers = new[] { ptrNames, ptrDataByte, ptrDataShort, ptrDataInt, ptrRandomShort, ptrRandomByte, ptrRandomInt, ptrIndices, ptrNotify, ptrDelta };
+        if (requireInlinePayloads && ownedPointers.Any(p => p != 0 && !IsInline(p)))
+            throw new InvalidDataException($"Xbox XAnim at 0x{start:X} contains a non-inline owned payload pointer.");
+
+        var cursor = checked(start + XboxFixedSize);
+        string name;
+        if (IsInline(namePtr))
+        {
+            if (!TryReadAssetName(data, cursor, out name))
+                throw new InvalidDataException($"Xbox XAnim at 0x{start:X}: invalid inline name.");
+            cursor = checked(cursor + Encoding.ASCII.GetByteCount(name) + 1);
+        }
+        else if (namePtr != 0)
+        {
+            name = $"<packed@0x{namePtr:X8}>";
+        }
+        else
+        {
+            name = "<null>";
+        }
+
+        if (ptrNames != 0) cursor = Advance(data, cursor, checked((long)boneCount * 2), "Xbox XAnim.names");
+        if (ptrNotify != 0) cursor = Advance(data, cursor, checked((long)notifyCount * 8), "Xbox XAnim.notify");
+
+        if (ptrDelta != 0)
+        {
+            Ensure(data, cursor, 8, "Xbox XAnim.deltaPart");
+            var transPtr = ReadU32(data, cursor, Endian.Big);
+            var quatPtr = ReadU32(data, cursor + 4, Endian.Big);
+            if (requireInlinePayloads && ((transPtr != 0 && !IsInline(transPtr)) || (quatPtr != 0 && !IsInline(quatPtr))))
+                throw new InvalidDataException($"Xbox XAnim '{name}': deltaPart contains a non-inline pointer.");
+            cursor += 8;
+
+            if (transPtr != 0)
+                cursor = MeasureTrans(data, cursor, Endian.Big, numFrames, requireInlinePayloads, name);
+            if (quatPtr != 0)
+                cursor = MeasureQuat(data, cursor, Endian.Big, numFrames, requireInlinePayloads, name);
+        }
+
+        if (ptrDataByte != 0) cursor = Advance(data, cursor, dataByteCount, "Xbox XAnim.dataByte");
+        if (ptrDataShort != 0) cursor = Advance(data, cursor, checked((long)dataShortCount * 2), "Xbox XAnim.dataShort");
+        if (ptrDataInt != 0) cursor = Advance(data, cursor, checked((long)dataIntCount * 4), "Xbox XAnim.dataInt");
+        if (ptrRandomShort != 0) cursor = Advance(data, cursor, checked((long)randomDataShortCount * 2), "Xbox XAnim.randomDataShort");
+        if (ptrRandomByte != 0) cursor = Advance(data, cursor, randomDataByteCount, "Xbox XAnim.randomDataByte");
+        if (ptrRandomInt != 0) cursor = Advance(data, cursor, checked((long)randomDataIntCount * 4), "Xbox XAnim.randomDataInt");
+        if (ptrIndices != 0)
+        {
+            var width = numFrames < 256 ? 1 : 2;
+            cursor = Advance(data, cursor, checked((long)indexCount * width), "Xbox XAnim.indices");
+        }
+
+        return new XAnimMeasure(name, cursor, ptrDelta != 0, numFrames, boneCount, notifyCount);
+    }
+
+    internal static void ValidateXboxNativeBlob(byte[] blob, string? expectedName = null)
+    {
+        if (blob.Length < XboxFixedSize)
+            throw new InvalidDataException($"Xbox XAnim blob is only {blob.Length:N0} bytes; fixed root requires 0x{XboxFixedSize:X}.");
+
+        var packedTopLevelName = !IsInline(ReadU32(blob, 0, Endian.Big));
+        var measured = MeasureXboxSerialized(blob, 0, requireInlinePayloads: true, requireTopLevelName: !packedTopLevelName);
+        if (measured.EndOffset != blob.Length)
+            throw new InvalidDataException($"Xbox XAnim '{measured.Name}' ends at 0x{measured.EndOffset:X}, blob length is 0x{blob.Length:X}.");
+
+        if (!packedTopLevelName && !string.IsNullOrWhiteSpace(expectedName) &&
+            !measured.Name.Equals(expectedName, StringComparison.Ordinal))
+            throw new InvalidDataException($"Xbox XAnim name mismatch: expected '{expectedName}', serialized '{measured.Name}'.");
+    }
+
     private static XAnimMeasure WriteXboxAsset(byte[] src, int start, Stream dst, bool allowPackedTopLevelName = false)
     {
         var measured = Measure(src, start, Endian.Little, requireInlinePayloads: true, requireTopLevelName: !allowPackedTopLevelName);
         var cursor = start;
 
-        // XAnimParts fixed body.
-        WriteU32(dst, ReadU32(src, cursor, Endian.Little));
+        // Native TU7 Xbox XAnimParts root (0x5C).
+        // Hardware proof:
+        //   Load_Stream(varXAnimParts, 0x5C)
+        //   names* at +0x34 uses boneCount total byte +0x1D
+        //   notify* at +0x54 uses notifyCount byte +0x1E
+        //   deltaPart* lives at +0x58.
+        WriteU32(dst, ReadU32(src, cursor, Endian.Little)); // name
         for (var p = 4; p <= 14; p += 2) WriteU16(dst, ReadU16(src, cursor + p, Endian.Little));
-        dst.Write(src.AsSpan(cursor + 16, 16)); // bools, boneCount, notify/asset/default/pad
-        WriteU32(dst, ReadU32(src, cursor + 32, Endian.Little));
-        WriteU32(dst, ReadU32(src, cursor + 36, Endian.Little));
-        WriteU32(dst, ReadU32(src, cursor + 40, Endian.Little)); // float bits
-        WriteU32(dst, ReadU32(src, cursor + 44, Endian.Little));
-        for (var p = 48; p <= 84; p += 4) WriteU32(dst, ReadU32(src, cursor + p, Endian.Little));
+
+        dst.Write(src.AsSpan(cursor + 0x10, 2)); // bLoop, bDelta
+        dst.Write(src.AsSpan(cursor + 0x12, 9)); // PC part buckets 0..8
+        dst.WriteByte(0);                        // Xbox-only part bucket 9
+        dst.WriteByte(0);                        // Xbox-only part bucket 10
+        dst.WriteByte(src[cursor + 0x1B]);       // PC PART_TYPE_ALL -> Xbox boneCount[11]
+        dst.WriteByte(src[cursor + 0x1C]);       // notifyCount
+        dst.WriteByte(src[cursor + 0x1D]);       // assetType
+        dst.WriteByte(src[cursor + 0x1E]);       // isDefault
+        dst.WriteByte(0);                        // Xbox alignment padding
+        dst.WriteByte(0);
+        dst.WriteByte(0);
+
+        WriteU32(dst, ReadU32(src, cursor + 0x20, Endian.Little)); // randomDataShortCount -> +0x24
+        WriteU32(dst, ReadU32(src, cursor + 0x24, Endian.Little)); // indexCount           -> +0x28
+        WriteU32(dst, ReadU32(src, cursor + 0x28, Endian.Little)); // framerate            -> +0x2C
+        WriteU32(dst, ReadU32(src, cursor + 0x2C, Endian.Little)); // frequency            -> +0x30
+        for (var p = 0x30; p <= 0x54; p += 4)
+            WriteU32(dst, ReadU32(src, cursor + p, Endian.Little)); // pointers shift +4
 
         var numFrames = ReadU16(src, cursor + 14, Endian.Little);
         var boneCount = src[cursor + 27];
@@ -582,7 +731,7 @@ public static class T4XAnimSerializerProof
         var ptrIndices = ReadU32(src, cursor + 76, Endian.Little);
         var ptrNotify = ReadU32(src, cursor + 80, Endian.Little);
         var ptrDelta = ReadU32(src, cursor + 84, Endian.Little);
-        cursor += FixedSize;
+        cursor += PcFixedSize;
 
         if (IsInline(ReadU32(src, start, Endian.Little)))
         {
@@ -708,7 +857,7 @@ public static class T4XAnimSerializerProof
     {
         var bytes = File.ReadAllBytes(path);
         if (bytes.Length < 16 || !bytes.AsSpan(0, Magic.Length).SequenceEqual(Magic)) return false;
-        if (BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(8, 4)) != 4) return false;
+        if (BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(8, 4)) != XboxProofVersion) return false;
         var count = BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(12, 4));
         if (count != (uint)expected.Count) return false;
 
@@ -722,7 +871,7 @@ public static class T4XAnimSerializerProof
             if (length <= 0 || cursor + length > bytes.Length) return false;
             var blob = bytes.AsSpan(cursor, length).ToArray();
             var packedTopLevelName = !IsInline(ReadU32(blob, 0, Endian.Big));
-            var measured = Measure(blob, 0, Endian.Big, requireInlinePayloads: true, requireTopLevelName: !packedTopLevelName);
+            var measured = MeasureXboxSerialized(blob, 0, requireInlinePayloads: true, requireTopLevelName: !packedTopLevelName);
             if (measured.EndOffset != length || !measured.Name.Equals(expected[i].Name, StringComparison.Ordinal)) return false;
             cursor += length;
         }
