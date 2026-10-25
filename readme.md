@@ -143,13 +143,12 @@ Use the map's normal Xbox-facing filenames (for example `nazi_zombie_FRUmansion.
 
 ## Build
 
-From the repository root:
+The tracked repository builds with the .NET 8 SDK:
 
 ```powershell
-Get-Process WaW360.Gui -ErrorAction SilentlyContinue | Stop-Process -Force
-
-powershell -ExecutionPolicy Bypass -File ".\Build-Converter.ps1" -Clean `
-    -OutputDirectory "C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\Converter\src\WaW360.Gui\Release"
+dotnet build .\WaW360Converter.sln -c Release
 ```
+
+If you use a local publishing/helper script around the solution, keep it outside the repository-specific instructions unless that script is also committed.
 
 The repository is under active development; hardware behavior and output paths may change as each native asset family is promoted.
