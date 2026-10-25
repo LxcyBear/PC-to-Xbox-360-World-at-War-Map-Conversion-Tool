@@ -72,6 +72,17 @@ public static class T4XAnimSplitFeatureOracle
         public required int PrecisionKeys { get; init; }
     }
 
+    private sealed record PackingRow(
+        int NormalDynamicKeys,
+        int PrecisionDynamicKeys,
+        int NormalConstantBones,
+        int PrecisionConstantBones,
+        int RandomShortDelta,
+        int DataShortDelta,
+        int RandomIntDelta,
+        int DataIntDelta,
+        int IndexDelta);
+
     private sealed class PackingStats
     {
         public int Pairs;
@@ -107,6 +118,7 @@ public static class T4XAnimSplitFeatureOracle
         public readonly List<int> DataShortDeltas = new();
         public readonly List<int> RandomIntDeltas = new();
         public readonly List<int> DataIntDeltas = new();
+        public readonly List<PackingRow> Rows = new();
     }
 
     private sealed class PrecisionRuleStats
@@ -327,6 +339,16 @@ public static class T4XAnimSplitFeatureOracle
         stats.DataShortDeltas.Add(dataShortDelta);
         stats.RandomIntDeltas.Add(randomIntDelta);
         stats.DataIntDeltas.Add(dataIntDelta);
+        stats.Rows.Add(new PackingRow(
+            normalDynamicKeys,
+            precisionDynamicKeys,
+            normalConstantBones,
+            precisionConstantBones,
+            randomShortDelta,
+            dataShortDelta,
+            randomIntDelta,
+            dataIntDelta,
+            checked((int)pair.Xbox.IndexCount - (int)pair.Pc.IndexCount)));
 
         if (normalDynamicKeys == xboxDynamic.NormalKeys) stats.PcVsXboxNormalKeyCountEqual++;
         if (precisionDynamicKeys == xboxDynamic.PrecisionKeys) stats.PcVsXboxPrecisionKeyCountEqual++;
@@ -876,6 +898,75 @@ public static class T4XAnimSplitFeatureOracle
         return sb.ToString();
     }
 
+    private static IReadOnlyList<(int A, int B, int Matches)> SolveTwoTerm(
+        IReadOnlyList<PackingRow> rows,
+        Func<PackingRow, int> x,
+        Func<PackingRow, int> y,
+        Func<PackingRow, int> target,
+        int minCoeff = -8,
+        int maxCoeff = 8)
+    {
+        var result = new List<(int A, int B, int Matches)>();
+        for (var a = minCoeff; a <= maxCoeff; a++)
+        {
+            for (var b = minCoeff; b <= maxCoeff; b++)
+            {
+                var matches = 0;
+                foreach (var row in rows)
+                {
+                    if (target(row) == checked(a * x(row) + b * y(row)))
+                        matches++;
+                }
+                result.Add((a, b, matches));
+            }
+        }
+
+        return result
+            .OrderByDescending(v => v.Matches)
+            .ThenBy(v => Math.Abs(v.A) + Math.Abs(v.B))
+            .ThenBy(v => v.A)
+            .ThenBy(v => v.B)
+            .Take(8)
+            .ToList();
+    }
+
+    private static IReadOnlyList<(int A, int B, int C, int Matches)> SolveThreeTerm(
+        IReadOnlyList<PackingRow> rows,
+        Func<PackingRow, int> x,
+        Func<PackingRow, int> y,
+        Func<PackingRow, int> z,
+        Func<PackingRow, int> target,
+        int minCoeff = -8,
+        int maxCoeff = 8)
+    {
+        var result = new List<(int A, int B, int C, int Matches)>();
+        for (var a = minCoeff; a <= maxCoeff; a++)
+        {
+            for (var b = minCoeff; b <= maxCoeff; b++)
+            {
+                for (var cc = minCoeff; cc <= maxCoeff; cc++)
+                {
+                    var matches = 0;
+                    foreach (var row in rows)
+                    {
+                        if (target(row) == checked(a * x(row) + b * y(row) + cc * z(row)))
+                            matches++;
+                    }
+                    result.Add((a, b, cc, matches));
+                }
+            }
+        }
+
+        return result
+            .OrderByDescending(v => v.Matches)
+            .ThenBy(v => Math.Abs(v.A) + Math.Abs(v.B) + Math.Abs(v.C))
+            .ThenBy(v => v.A)
+            .ThenBy(v => v.B)
+            .ThenBy(v => v.C)
+            .Take(8)
+            .ToList();
+    }
+
     private static void AppendPackingStats(StringBuilder sb, PackingStats stats)
     {
         static string Range(IReadOnlyList<int> values) =>
@@ -930,6 +1021,31 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    dataShort decrease:       {Range(stats.DataShortDeltas)}");
         sb.AppendLine($"    randomDataInt increase:   {Range(stats.RandomIntDeltas)}");
         sb.AppendLine($"    dataInt increase:         {Range(stats.DataIntDeltas)}");
+
+        sb.AppendLine();
+        sb.AppendLine("  EXACT INTEGER EQUATION SEARCH");
+        sb.AppendLine("    randomShortDelta = A*normalDynamicKeys + B*precisionDynamicKeys");
+        foreach (var v in SolveTwoTerm(
+                     stats.Rows,
+                     r => r.NormalDynamicKeys,
+                     r => r.PrecisionDynamicKeys,
+                     r => r.RandomShortDelta))
+            sb.AppendLine($"      A={v.A,3}, B={v.B,3} -> {v.Matches}/{stats.Pairs}");
+
+        sb.AppendLine();
+        sb.AppendLine("    dataShortDelta = A*normalConstant + B*precisionConstant + C*indexDelta");
+        foreach (var v in SolveThreeTerm(
+                     stats.Rows,
+                     r => r.NormalConstantBones,
+                     r => r.PrecisionConstantBones,
+                     r => r.IndexDelta,
+                     r => r.DataShortDelta))
+            sb.AppendLine($"      A={v.A,3}, B={v.B,3}, C={v.C,3} -> {v.Matches}/{stats.Pairs}");
+
+        sb.AppendLine();
+        sb.AppendLine("    indexDelta = Xbox.indexCount - PC.indexCount");
+        var indexDeltas = stats.Rows.Select(r => r.IndexDelta).ToList();
+        sb.AppendLine($"      range: {Range(indexDeltas)}");
     }
 
     private static void AppendPrecisionRule(StringBuilder sb, PrecisionRuleStats stats)
