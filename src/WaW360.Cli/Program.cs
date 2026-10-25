@@ -365,6 +365,25 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
             }
+            case "xanim-bone-compare" when args.Length >= 3:
+            {
+                var name = args.Length >= 4 ? args[3] : null;
+                var result = await T4XAnimBoneCountOracle.CompareAsync(args[1], args[2], name);
+                Console.WriteLine(result.Summary);
+                Console.WriteLine();
+
+                foreach (var pair in result.Matches)
+                {
+                    Console.WriteLine(pair.Name);
+                    Console.WriteLine($"  PC   @ 0x{pair.Pc.HeaderOffset:X8}  [{string.Join(" ", pair.Pc.BoneCounts.Select(x => x.ToString("X2")))}]");
+                    Console.WriteLine($"  Xbox @ 0x{pair.Xbox.HeaderOffset:X8}  [{string.Join(" ", pair.Xbox.BoneCounts.Select(x => x.ToString("X2")))}]");
+                    Console.WriteLine($"  shared delta PC-Xbox [0..8]: [{string.Join(" ", pair.SharedBucketDelta.Select(x => x.ToString("+0;-0;0")))}]");
+                    Console.WriteLine($"  Xbox extra quat/trans: {pair.XboxQuaternionExtra}/{pair.XboxTranslationExtra}");
+                    Console.WriteLine($"  total={pair.TotalMatches}; quatDeficit={pair.QuaternionDeficitExplainsExtra}; transDeficit={pair.TranslationDeficitExplainsExtra}");
+                }
+
+                return result.Matches.Count > 0 ? 0 : 3;
+            }
             case "inspect-xbox-reference" when args.Length >= 3:
             {
                 await NormalMapLinkerV2GoldenReference.WriteReportAsync(args[1], args[2]);
@@ -429,6 +448,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
+    Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name]  Compare same-name PC/Xbox XAnim bone-count layouts");
     Console.WriteLine("  roundtrip <in.ff> <out.ff>              Decompress/recompress and byte-verify raw zone");
     Console.WriteLine("  scan-maps [folder]                      Scan PC Maps (defaults to Desktop\\World at War\\PC Maps)");
 }
