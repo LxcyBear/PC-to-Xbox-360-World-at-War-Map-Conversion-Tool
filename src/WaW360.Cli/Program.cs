@@ -377,9 +377,10 @@ static async Task<int> MainAsync(string[] args)
                     Console.WriteLine(pair.Name);
                     Console.WriteLine($"  PC   @ 0x{pair.Pc.HeaderOffset:X8}  [{string.Join(" ", pair.Pc.BoneCounts.Select(x => x.ToString("X2")))}]");
                     Console.WriteLine($"  Xbox @ 0x{pair.Xbox.HeaderOffset:X8}  [{string.Join(" ", pair.Xbox.BoneCounts.Select(x => x.ToString("X2")))}]");
-                    Console.WriteLine($"  quat:  PC[2]={pair.Pc.BoneCounts[2]} -> Xbox[2]+Xbox[3]={pair.Xbox.BoneCounts[2]}+{pair.Xbox.BoneCounts[3]}");
-                    Console.WriteLine($"  trans: PC[5]={pair.Pc.BoneCounts[5]} -> Xbox[6]+Xbox[7]={pair.Xbox.BoneCounts[6]}+{pair.Xbox.BoneCounts[7]}");
-                    Console.WriteLine($"  directQuat={pair.DirectQuaternionBucketsMatch}; quatSplit={pair.QuaternionSplitMatches}; directTrans={pair.DirectTranslationBucketsMatch}; transSplit={pair.TranslationSplitMatches}; total={pair.TotalMatches}");
+                    Console.WriteLine($"  fullQuat:       PC[2]={pair.Pc.BoneCounts[2]} -> Xbox[2]+Xbox[3]={pair.Xbox.BoneCounts[2]}+{pair.Xbox.BoneCounts[3]}");
+                    Console.WriteLine($"  fullQuatNoSize: PC[4]={pair.Pc.BoneCounts[4]} -> Xbox[5]+Xbox[6]={pair.Xbox.BoneCounts[5]}+{pair.Xbox.BoneCounts[6]}");
+                    Console.WriteLine($"  translation:    PC[5..8]=[{string.Join(" ", pair.Pc.BoneCounts.Skip(5).Take(4).Select(x => x.ToString("X2")))}] -> Xbox[7..10]=[{string.Join(" ", pair.Xbox.BoneCounts.Skip(7).Take(4).Select(x => x.ToString("X2")))}]");
+                    Console.WriteLine($"  directQuat={pair.DirectQuaternionBucketsMatch}; fullQuatSplit={pair.FullQuaternionSplitMatches}; fullQuatNoSizeSplit={pair.FullQuaternionNoSizeSplitMatches}; translation={pair.DirectTranslationBucketsMatch}; total={pair.TotalMatches}");
                     Console.WriteLine($"  completeExpansion={pair.ExpandedLayoutMatches}; Xbox quatTotal={pair.Xbox.QuaternionTotalInvariant}; Xbox transTotal={pair.Xbox.TranslationTotalInvariant}");
                 }
 
