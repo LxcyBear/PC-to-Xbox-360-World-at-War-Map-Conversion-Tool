@@ -8,7 +8,7 @@ The project does **not** distribute retail World at War game files or copyrighte
 
 The deterministic Linker V2 pipeline is in late native-loader bring-up. Source discovery, canonical root accounting, script-string reconstruction, Xbox type mapping, XFile/XAsset emission, block-capacity planning, Xbox single-zlib wrapping, selected-load generation, and real-hardware diagnostics are working foundations.
 
-The current main blocker is now very narrow: the Xbox TU7 `XAnimParts` fixed layout, owned stream structure, and the **10-count PC → 12-count Xbox category expansion pattern** are proven from a same-animation FRUmansion oracle pair. What remains is the semantic rule that splits PC quaternion bucket `[2]` into Xbox `[2]/[3]` and PC translation bucket `[5]` into Xbox `[6]/[7]`, plus final serializer promotion.
+The current main blocker is now very narrow: the Xbox TU7 `XAnimParts` fixed layout, owned stream structure, and the **10-count PC → 12-count Xbox category expansion pattern** are proven across 413 valid same-name FRUmansion XAnims. Xbox adds two quaternion subcategories; translation categories remain one-to-one and shift by two slots. What remains is the per-bone semantic rule that splits PC full-quaternion buckets `[2]` and `[4]` into the Xbox sub-buckets, plus final serializer promotion.
 
 ## Hardware-proven TU7 XAnim findings
 
@@ -22,7 +22,7 @@ Real Xbox 360 memory and TU7 executable tracing have established:
 - Working runtime XAnim roots are separated by `0x5C`.
 - Live working headers show a **12-byte bone-count region** at `+0x12..+0x1D`; the final bytes are meaningful and must not be guessed or zero-filled.
 - `+0x1D` is independently proven as `boneCount[11]`, the total/name ScriptString count; `+0x1E` is `notifyCount`.
-- A working Xbox header proves the actual grouping is **six quaternion buckets + five translation buckets + total**: `sum(boneCount[0..5]) == boneCount[11]` and `sum(boneCount[6..10]) == boneCount[11]`.
+- The multi-animation oracle proves the actual grouping is **seven quaternion buckets + four translation buckets + total**: `sum(boneCount[0..6]) == boneCount[11]` and `sum(boneCount[7..10]) == boneCount[11]`.
 - Working names such as `ai_flame_death_a` resolve through the loaded `+0x00` pointer.
 - `+0x24` is proven as `randomDataShortCount`.
 - `+0x28` is proven as `indexCount`; `Function_82159ED0` also proves byte indices when `numFrames < 256` and 16-bit indices otherwise.
@@ -30,18 +30,19 @@ Real Xbox 360 memory and TU7 executable tracing have established:
 - The generated post-load/mark path independently walks `names[]` using `boneCount[11]` and `notify[]` using `notifyCount`.
 - The type-4 registration wrapper was followed through `FUN_82169F78 → Function_82168968`; that path is generic XAsset bookkeeping rather than animation decoding.
 - The CLI includes `xanim-bone-compare <pc.ff> <xbox.ff> [name]`, a read-only same-animation oracle.
-- The first hardware-backed pair, `ai_flame_death_a`, proves the structural expansion:
+- 413 valid same-name FRUmansion XAnims prove the same structural expansion with zero exceptions:
   - PC `[0] -> Xbox[0]`
   - PC `[1] -> Xbox[1]`
   - PC `[2] -> Xbox[2] + Xbox[3]`
   - PC `[3] -> Xbox[4]`
-  - PC `[4] -> Xbox[5]`
-  - PC `[5] -> Xbox[6] + Xbox[7]`
+  - PC `[4] -> Xbox[5] + Xbox[6]`
+  - PC `[5] -> Xbox[7]`
   - PC `[6] -> Xbox[8]`
   - PC `[7] -> Xbox[9]`
   - PC `[8] -> Xbox[10]`
   - PC `[9] -> Xbox[11]`
-- For `ai_flame_death_a`, PC `[04 00 67 01 01 0F 06 01 57 6D]` maps to Xbox `[04 00 55 12 01 01 00 0F 06 01 57 6D]`; both split equations and both total invariants hold exactly.
+- The five apparent failures in the first broad scan were false-positive header matches; enforcing the quaternion/translation total invariants removes them.
+- For `ai_flame_death_a`, PC `[04 00 67 01 01 0F 06 01 57 6D]` maps to Xbox `[04 00 55 12 01 01 00 0F 06 01 57 6D]`; `0x67 = 0x55 + 0x12`, `0x01 = 0x01 + 0x00`, and translation maps directly to Xbox `[7..10]`.
 
 ### Loader-consumed Xbox TU7 `XAnimParts` layout
 
@@ -55,17 +56,17 @@ Real Xbox 360 memory and TU7 executable tracing have established:
 +0E  numFrames              u16
 +10  flags/loop byte        semantics still being named
 +11  flags/delta byte       semantics still being named
-+12  boneCount[0]           quaternion bucket 0
-+13  boneCount[1]           quaternion bucket 1
-+14  boneCount[2]           quaternion bucket 2a
-+15  boneCount[3]           quaternion bucket 2b
-+16  boneCount[4]           quaternion bucket 3
-+17  boneCount[5]           quaternion bucket 4
-+18  boneCount[6]           translation bucket 5a
-+19  boneCount[7]           translation bucket 5b
-+1A  boneCount[8]           translation bucket 6
-+1B  boneCount[9]           translation bucket 7
-+1C  boneCount[10]          translation bucket 8
++12  boneCount[0]           quaternion category 0
++13  boneCount[1]           quaternion category 1
++14  boneCount[2]           full-quaternion subcategory A
++15  boneCount[3]           full-quaternion subcategory B
++16  boneCount[4]           quaternion category 3
++17  boneCount[5]           full-quat-no-size subcategory A
++18  boneCount[6]           full-quat-no-size subcategory B
++19  boneCount[7]           translation category 5
++1A  boneCount[8]           translation category 6
++1B  boneCount[9]           translation category 7
++1C  boneCount[10]          translation category 8
 +1D  boneCount[11]          total bones / names count
 +1E  notifyCount
 +1F  asset-type/flags area  exact naming still being finalized
@@ -86,7 +87,7 @@ Real Xbox 360 memory and TU7 executable tracing have established:
 = 0x5C bytes
 ```
 
-What is **not yet proven** is the per-bone semantic criterion that divides PC `boneCount[2]` between Xbox `boneCount[2]/[3]` and PC `boneCount[5]` between Xbox `boneCount[6]/[7]`. The final semantic naming of small flag/metadata fields around `+0x10..+0x23` and native-use confirmation for `+0x2C/+0x30` also remain. The serializer stays fail-closed until those split rules are derived rather than guessed.
+What is **not yet proven** is the per-bone semantic criterion that divides PC `boneCount[2]` between Xbox `boneCount[2]/[3]` and PC `boneCount[4]` between Xbox `boneCount[5]/[6]`. Translation is now structurally solved. The final semantic naming of small flag/metadata fields around `+0x10..+0x23` and native-use confirmation for `+0x2C/+0x30` also remain. The serializer stays fail-closed until those two quaternion split rules are derived rather than guessed.
 
 ## Roadmap
 
@@ -131,11 +132,12 @@ What is **not yet proven** is the per-bone semantic criterion that divides PC `b
 - [x] Prove the owned-pointer chain from `+0x34` through `+0x58`, including `deltaPart*`.
 - [x] Add the read-only same-animation `xanim-bone-compare` PC/Xbox oracle to the CLI.
 - [x] Run the oracle against the working FRUmansion `ai_flame_death_a` pair.
-- [x] Prove Xbox grouping is 6 quaternion buckets + 5 translation buckets + total.
-- [x] Prove the PC 10-count → Xbox 12-count structural expansion equations.
-- [ ] Derive the per-bone split criterion for PC `[2] -> Xbox[2]/[3]`.
-- [ ] Derive the per-bone split criterion for PC `[5] -> Xbox[6]/[7]`.
-- [ ] Validate the expansion equations across additional same-name XAnims in the working FRUmansion pair.
+- [x] Prove Xbox grouping is 7 quaternion buckets + 4 translation buckets + total.
+- [x] Prove the PC 10-count → Xbox 12-count structural expansion equations across 413/413 valid same-name XAnims.
+- [x] Prove translation categories map directly: PC `[5..8] -> Xbox[7..10]`.
+- [x] Identify and reject the five broad-scan false-positive headers using the count invariants.
+- [ ] Derive the per-bone split criterion for PC full-quat `[2] -> Xbox[2]/[3]`.
+- [ ] Derive the per-bone split criterion for PC full-quat-no-size `[4] -> Xbox[5]/[6]`.
 - [ ] Finalize the semantic names for the small `+0x10..+0x23` flag/metadata fields.
 - [ ] Confirm native-use semantics for `+0x2C` framerate and `+0x30` frequency.
 - [ ] Implement the PC `0x58` → Xbox TU7 `0x5C` transform only after those fields are proven.
