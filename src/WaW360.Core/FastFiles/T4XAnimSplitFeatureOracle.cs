@@ -88,6 +88,10 @@ public static class T4XAnimSplitFeatureOracle
         public int NormalDynamicPacked32;
         public int NormalConstantPacked32;
         public int NormalConstantDataIntGain;
+        public int NormalConstantLeaves0Shorts;
+        public int NormalConstantLeaves1Short;
+        public int NormalConstantLeaves2Shorts;
+        public int NormalConstantLeaves3Shorts;
         public int NormalPacked32All;
         public int PcVsXboxNormalKeyCountEqual;
         public int PcVsXboxPrecisionKeyCountEqual;
@@ -365,6 +369,15 @@ public static class T4XAnimSplitFeatureOracle
         if (dynamicPacked32) stats.NormalDynamicPacked32++;
         if (dataShortDelta == checked(normalConstantBones * 4)) stats.NormalConstantPacked32++;
         if (dataIntDelta == normalConstantBones) stats.NormalConstantDataIntGain++;
+
+        // PC FULL_QUAT_NO_SIZE contributes four shorts. If Xbox emits one
+        // dataInt plus K retained shorts, the dataShort decrease is (4-K)
+        // per NORMAL_QUAT_NO_SIZE bone.
+        if (dataShortDelta == checked(normalConstantBones * 4)) stats.NormalConstantLeaves0Shorts++;
+        if (dataShortDelta == checked(normalConstantBones * 3)) stats.NormalConstantLeaves1Short++;
+        if (dataShortDelta == checked(normalConstantBones * 2)) stats.NormalConstantLeaves2Shorts++;
+        if (dataShortDelta == normalConstantBones) stats.NormalConstantLeaves3Shorts++;
+
         if (dynamicPacked32 && constantPacked32) stats.NormalPacked32All++;
 
         // Competing hypothesis: one subgroup migrates into the int streams.
@@ -892,6 +905,12 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    dataShort decrease == 4 * normal constant bones:                          {stats.NormalConstantPacked32}/{stats.Pairs}");
         sb.AppendLine($"    dataInt gain == normal constant bones:                                    {stats.NormalConstantDataIntGain}/{stats.Pairs}");
         sb.AppendLine($"    ALL dynamic + constant packed32 equations true:                           {stats.NormalPacked32All}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  Constant NORMAL_QUAT_NO_SIZE retained-short width (plus one dataInt):");
+        sb.AppendLine($"    keeps 0 shorts (dataShort decreases by 4/bone):             {stats.NormalConstantLeaves0Shorts}/{stats.Pairs}");
+        sb.AppendLine($"    keeps 1 short  (dataShort decreases by 3/bone):             {stats.NormalConstantLeaves1Short}/{stats.Pairs}");
+        sb.AppendLine($"    keeps 2 shorts (dataShort decreases by 2/bone):             {stats.NormalConstantLeaves2Shorts}/{stats.Pairs}");
+        sb.AppendLine($"    keeps 3 shorts (dataShort decreases by 1/bone):             {stats.NormalConstantLeaves3Shorts}/{stats.Pairs}");
         sb.AppendLine();
         sb.AppendLine("  Earlier 3x16-bit candidate:");
         sb.AppendLine($"    PC randomShort - XB randomShort == normal dynamic key count: {stats.NormalDynamicThreeShorts}/{stats.Pairs}");
