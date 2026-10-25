@@ -367,21 +367,28 @@ static async Task<int> MainAsync(string[] args)
             }
             case "xanim-bone-compare" when args.Length >= 3:
             {
-                var name = args.Length >= 4 ? args[3] : null;
+                var extraArgs = args.Skip(3).ToArray();
+                var verbose = extraArgs.Any(x => x.Equals("--verbose", StringComparison.OrdinalIgnoreCase));
+                var name = extraArgs.FirstOrDefault(x => !x.StartsWith("--", StringComparison.Ordinal));
                 var result = await T4XAnimBoneCountOracle.CompareAsync(args[1], args[2], name);
                 Console.WriteLine(result.Summary);
-                Console.WriteLine();
 
-                foreach (var pair in result.Matches)
+                // Keep the default all-animation oracle compact enough to copy from a console.
+                // A requested animation is always shown; use --verbose to dump every pair.
+                if (verbose || !string.IsNullOrWhiteSpace(name))
                 {
-                    Console.WriteLine(pair.Name);
-                    Console.WriteLine($"  PC   @ 0x{pair.Pc.HeaderOffset:X8}  [{string.Join(" ", pair.Pc.BoneCounts.Select(x => x.ToString("X2")))}]");
-                    Console.WriteLine($"  Xbox @ 0x{pair.Xbox.HeaderOffset:X8}  [{string.Join(" ", pair.Xbox.BoneCounts.Select(x => x.ToString("X2")))}]");
-                    Console.WriteLine($"  fullQuat:       PC[2]={pair.Pc.BoneCounts[2]} -> Xbox[2]+Xbox[3]={pair.Xbox.BoneCounts[2]}+{pair.Xbox.BoneCounts[3]}");
-                    Console.WriteLine($"  fullQuatNoSize: PC[4]={pair.Pc.BoneCounts[4]} -> Xbox[5]+Xbox[6]={pair.Xbox.BoneCounts[5]}+{pair.Xbox.BoneCounts[6]}");
-                    Console.WriteLine($"  translation:    PC[5..8]=[{string.Join(" ", pair.Pc.BoneCounts.Skip(5).Take(4).Select(x => x.ToString("X2")))}] -> Xbox[7..10]=[{string.Join(" ", pair.Xbox.BoneCounts.Skip(7).Take(4).Select(x => x.ToString("X2")))}]");
-                    Console.WriteLine($"  directQuat={pair.DirectQuaternionBucketsMatch}; fullQuatSplit={pair.FullQuaternionSplitMatches}; fullQuatNoSizeSplit={pair.FullQuaternionNoSizeSplitMatches}; translation={pair.DirectTranslationBucketsMatch}; total={pair.TotalMatches}");
-                    Console.WriteLine($"  completeExpansion={pair.ExpandedLayoutMatches}; Xbox quatTotal={pair.Xbox.QuaternionTotalInvariant}; Xbox transTotal={pair.Xbox.TranslationTotalInvariant}");
+                    Console.WriteLine();
+                    foreach (var pair in result.Matches)
+                    {
+                        Console.WriteLine(pair.Name);
+                        Console.WriteLine($"  PC   @ 0x{pair.Pc.HeaderOffset:X8}  [{string.Join(" ", pair.Pc.BoneCounts.Select(x => x.ToString("X2")))}]");
+                        Console.WriteLine($"  Xbox @ 0x{pair.Xbox.HeaderOffset:X8}  [{string.Join(" ", pair.Xbox.BoneCounts.Select(x => x.ToString("X2")))}]");
+                        Console.WriteLine($"  fullQuat:       PC[2]={pair.Pc.BoneCounts[2]} -> Xbox[2]+Xbox[3]={pair.Xbox.BoneCounts[2]}+{pair.Xbox.BoneCounts[3]}");
+                        Console.WriteLine($"  fullQuatNoSize: PC[4]={pair.Pc.BoneCounts[4]} -> Xbox[5]+Xbox[6]={pair.Xbox.BoneCounts[5]}+{pair.Xbox.BoneCounts[6]}");
+                        Console.WriteLine($"  translation:    PC[5..8]=[{string.Join(" ", pair.Pc.BoneCounts.Skip(5).Take(4).Select(x => x.ToString("X2")))}] -> Xbox[7..10]=[{string.Join(" ", pair.Xbox.BoneCounts.Skip(7).Take(4).Select(x => x.ToString("X2")))}]");
+                        Console.WriteLine($"  directQuat={pair.DirectQuaternionBucketsMatch}; fullQuatSplit={pair.FullQuaternionSplitMatches}; fullQuatNoSizeSplit={pair.FullQuaternionNoSizeSplitMatches}; translation={pair.DirectTranslationBucketsMatch}; total={pair.TotalMatches}");
+                        Console.WriteLine($"  completeExpansion={pair.ExpandedLayoutMatches}; Xbox quatTotal={pair.Xbox.QuaternionTotalInvariant}; Xbox transTotal={pair.Xbox.TranslationTotalInvariant}");
+                    }
                 }
 
                 return result.Matches.Count > 0 ? 0 : 3;
@@ -450,7 +457,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
-    Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name]  Compare same-name PC/Xbox XAnim bone-count layouts");
+    Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
     Console.WriteLine("  roundtrip <in.ff> <out.ff>              Decompress/recompress and byte-verify raw zone");
     Console.WriteLine("  scan-maps [folder]                      Scan PC Maps (defaults to Desktop\\World at War\\PC Maps)");
 }
