@@ -54,6 +54,7 @@ public static class T4XAnimSplitFeatureOracle
         public required string Name { get; init; }
         public int QuatBucket { get; set; }
         public int QuatFrameCount { get; set; }
+        public short[]? FullQuatValues { get; set; }
         public int TransBucket { get; set; } = -1;
     }
 
@@ -68,8 +69,10 @@ public static class T4XAnimSplitFeatureOracle
     private sealed class XboxDynamicQuatMeta
     {
         public required Dictionary<string, int> FrameCountByBone { get; init; }
+        public required int SimpleKeys { get; init; }
         public required int NormalKeys { get; init; }
         public required int PrecisionKeys { get; init; }
+        public required int RandomShortOffset { get; init; }
     }
 
     private sealed record PackingRow(
@@ -119,6 +122,10 @@ public static class T4XAnimSplitFeatureOracle
         public readonly List<int> RandomIntDeltas = new();
         public readonly List<int> DataIntDeltas = new();
         public readonly List<PackingRow> Rows = new();
+        public int PrecisionValuePairs;
+        public int PrecisionValuePairsWithNormal;
+        public int PrecisionExact4WhenNormalAbsent;
+        public readonly int[] PrecisionExact4ByNormalShortWidth = new int[5];
     }
 
     private sealed class PrecisionRuleStats
@@ -200,6 +207,13 @@ public static class T4XAnimSplitFeatureOracle
                 xboxDynamic,
                 pair.Xbox.BoneCounts[5],
                 pair.Xbox.BoneCounts[6],
+                packing);
+            ObservePrecisionValueLayout(
+                xboxZone.Bytes,
+                pair.Xbox,
+                xboxNames,
+                byName,
+                xboxDynamic,
                 packing);
 
             pairsAnalyzed++;
@@ -409,6 +423,69 @@ public static class T4XAnimSplitFeatureOracle
         if (randomIntDelta == checked(precisionDynamicKeys * 2)) stats.RandomIntGainEqualsTwicePrecisionKeys++;
     }
 
+    private static void ObservePrecisionValueLayout(
+        byte[] xboxBytes,
+        T4XAnimBoneCountSample xbox,
+        IReadOnlyList<string> xboxNames,
+        IReadOnlyDictionary<string, PcBoneMeta> pcByName,
+        XboxDynamicQuatMeta dynamic,
+        PackingStats stats)
+    {
+        if (dynamic.PrecisionKeys == 0)
+            return;
+
+        stats.PrecisionValuePairs++;
+
+        var precisionBoneStart =
+            xbox.BoneCounts[0] +
+            xbox.BoneCounts[1] +
+            xbox.BoneCounts[2];
+
+        bool CompareAt(int normalShortWidth)
+        {
+            var shortPos = checked(dynamic.SimpleKeys * 2 + dynamic.NormalKeys * normalShortWidth);
+            for (var i = 0; i < xbox.BoneCounts[3]; i++)
+            {
+                var boneIndex = precisionBoneStart + i;
+                if (boneIndex < 0 || boneIndex >= xboxNames.Count)
+                    throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' precision bone index out of range.");
+
+                var name = xboxNames[boneIndex];
+                if (!pcByName.TryGetValue(name, out var pc) ||
+                    pc.QuatBucket != 2 ||
+                    pc.FullQuatValues is null)
+                    throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' cannot resolve PC full-quat values for '{name}'.");
+
+                foreach (var expected in pc.FullQuatValues)
+                {
+                    if (shortPos < 0 || (uint)shortPos >= xbox.RandomDataShortCount)
+                        return false;
+                    var actual = unchecked((short)ReadU16Be(
+                        xboxBytes,
+                        checked(dynamic.RandomShortOffset + shortPos * 2)));
+                    if (actual != expected)
+                        return false;
+                    shortPos++;
+                }
+            }
+            return true;
+        }
+
+        if (dynamic.NormalKeys == 0)
+        {
+            if (CompareAt(0))
+                stats.PrecisionExact4WhenNormalAbsent++;
+            return;
+        }
+
+        stats.PrecisionValuePairsWithNormal++;
+        for (var width = 0; width <= 4; width++)
+        {
+            if (CompareAt(width))
+                stats.PrecisionExact4ByNormalShortWidth[width]++;
+        }
+    }
+
     private static XboxDynamicQuatMeta ReadXboxDynamicQuatMetadata(
         byte[] bytes,
         T4XAnimBoneCountSample sample,
@@ -432,6 +509,8 @@ public static class T4XAnimSplitFeatureOracle
         var ptrNames = ReadU32Be(bytes, start + 0x34);
         var ptrDataByte = ReadU32Be(bytes, start + 0x38);
         var ptrDataShort = ReadU32Be(bytes, start + 0x3C);
+        var ptrDataInt = ReadU32Be(bytes, start + 0x40);
+        var ptrRandomShort = ReadU32Be(bytes, start + 0x44);
         var ptrNotify = ReadU32Be(bytes, start + 0x54);
         var ptrDelta = ReadU32Be(bytes, start + 0x58);
         var notifyCount = bytes[start + 0x1E];
@@ -463,15 +542,27 @@ public static class T4XAnimSplitFeatureOracle
         {
             if (sample.DataShortCount != 0)
                 throw new InvalidDataException($"Xbox XAnim '{sample.Name}' has dataShortCount without dataShort pointer.");
+            var randomShortOffsetNoDataShort = cursor;
+            if (ptrDataInt != 0)
+                randomShortOffsetNoDataShort = Advance(
+                    bytes, randomShortOffsetNoDataShort, checked(sample.DataIntCount * 4), "Xbox dataInt");
             return new XboxDynamicQuatMeta
             {
                 FrameCountByBone = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                SimpleKeys = 0,
                 NormalKeys = 0,
-                PrecisionKeys = 0
+                PrecisionKeys = 0,
+                RandomShortOffset = randomShortOffsetNoDataShort
             };
         }
 
         var dataShortOffset = cursor;
+        var randomShortOffset = checked(dataShortOffset + sample.DataShortCount * 2);
+        if (ptrDataInt != 0)
+            randomShortOffset = Advance(bytes, randomShortOffset, checked(sample.DataIntCount * 4), "Xbox dataInt");
+        if (ptrRandomShort == 0 && sample.RandomDataShortCount != 0)
+            throw new InvalidDataException($"Xbox XAnim '{sample.Name}' has randomDataShortCount without pointer.");
+
         var dsPos = 0;
         ushort PopShort()
         {
@@ -496,6 +587,7 @@ public static class T4XAnimSplitFeatureOracle
 
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var boneIndex = sample.BoneCounts[0];
+        var simpleKeys = 0;
         var normalKeys = 0;
         var precisionKeys = 0;
 
@@ -503,6 +595,7 @@ public static class T4XAnimSplitFeatureOracle
         for (var i = 0; i < sample.BoneCounts[1]; i++, boneIndex++)
         {
             var storedSize = PopShort();
+            simpleKeys = checked(simpleKeys + (int)storedSize + 1);
             SkipIndexMetadata(storedSize);
         }
 
@@ -531,8 +624,10 @@ public static class T4XAnimSplitFeatureOracle
         return new XboxDynamicQuatMeta
         {
             FrameCountByBone = map,
+            SimpleKeys = simpleKeys,
             NormalKeys = normalKeys,
-            PrecisionKeys = precisionKeys
+            PrecisionKeys = precisionKeys,
+            RandomShortOffset = randomShortOffset
         };
     }
 
@@ -605,12 +700,15 @@ public static class T4XAnimSplitFeatureOracle
 
         var dataByteCount = ReadU16(bytes, start + 0x04);
         var dataShortCount = ReadU16(bytes, start + 0x06);
+        var dataIntCount = ReadU16(bytes, start + 0x08);
         var numFrames = ReadU16(bytes, start + 0x0E);
         var notifyCount = bytes[start + 0x1C];
 
         var ptrNames = ReadU32(bytes, start + 0x30);
         var ptrDataByte = ReadU32(bytes, start + 0x34);
         var ptrDataShort = ReadU32(bytes, start + 0x38);
+        var ptrDataInt = ReadU32(bytes, start + 0x3C);
+        var ptrRandomShort = ReadU32(bytes, start + 0x40);
         var ptrNotify = ReadU32(bytes, start + 0x50);
         var ptrDelta = ReadU32(bytes, start + 0x54);
 
@@ -643,6 +741,17 @@ public static class T4XAnimSplitFeatureOracle
             cursor = Advance(bytes, cursor, checked(dataShortCount * 2), "dataShort");
         else if (dataShortCount != 0)
             throw new InvalidDataException($"XAnim '{sample.Name}' has dataShortCount without dataShort pointer.");
+
+        if (ptrDataInt != 0)
+            cursor = Advance(bytes, cursor, checked(dataIntCount * 4), "dataInt");
+        else if (dataIntCount != 0)
+            throw new InvalidDataException($"XAnim '{sample.Name}' has dataIntCount without dataInt pointer.");
+
+        var randomShortOffset = cursor;
+        if (ptrRandomShort != 0)
+            cursor = Advance(bytes, cursor, checked((int)sample.RandomDataShortCount * 2), "randomDataShort");
+        else if (sample.RandomDataShortCount != 0)
+            throw new InvalidDataException($"XAnim '{sample.Name}' has randomDataShortCount without pointer.");
 
         var meta = names.Select(n => new PcBoneMeta { Name = n }).ToArray();
         var dbPos = 0;
@@ -732,6 +841,31 @@ public static class T4XAnimSplitFeatureOracle
 
         if (boneIndex != meta.Length)
             throw new InvalidDataException($"XAnim '{sample.Name}' quaternion buckets do not cover all bones.");
+
+        var randomShortPos = 0;
+        for (var i = 0; i < meta.Length; i++)
+        {
+            var m = meta[i];
+            if (m.QuatBucket == 1)
+            {
+                randomShortPos = checked(randomShortPos + m.QuatFrameCount * 2);
+            }
+            else if (m.QuatBucket == 2)
+            {
+                var valueCount = checked(m.QuatFrameCount * 4);
+                if (randomShortPos < 0 ||
+                    (long)randomShortPos + valueCount > sample.RandomDataShortCount)
+                    throw new InvalidDataException($"XAnim '{sample.Name}' full-quat values exceed randomDataShort.");
+
+                var values = new short[valueCount];
+                for (var q = 0; q < valueCount; q++)
+                    values[q] = unchecked((short)ReadU16(
+                        bytes,
+                        checked(randomShortOffset + (randomShortPos + q) * 2)));
+                m.FullQuatValues = values;
+                randomShortPos += valueCount;
+            }
+        }
 
         for (var transBucket = 5; transBucket <= 8; transBucket++)
         {
@@ -980,6 +1114,13 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    randomDataByteCount identical:            {stats.RandomDataByteEqual}/{stats.Pairs}");
         sb.AppendLine($"    randomDataIntCount identical:             {stats.RandomDataIntEqual}/{stats.Pairs}");
         sb.AppendLine($"    indexCount identical:                     {stats.IndexEqual}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  VALUE-LEVEL PRECISION QUATERNION CHECK");
+        sb.AppendLine($"    pairs with precision dynamic data:                            {stats.PrecisionValuePairs}");
+        sb.AppendLine($"    precision values exact 4x16 when NORMAL_QUAT absent:          {stats.PrecisionExact4WhenNormalAbsent}/{stats.PrecisionValuePairs - stats.PrecisionValuePairsWithNormal}");
+        sb.AppendLine($"    pairs with both NORMAL and PRECISION dynamic data:            {stats.PrecisionValuePairsWithNormal}");
+        for (var width = 0; width <= 4; width++)
+            sb.AppendLine($"    if NORMAL_QUAT keeps {width} short(s)/key, precision 4x16 matches: {stats.PrecisionExact4ByNormalShortWidth[width]}/{stats.PrecisionValuePairsWithNormal}");
         sb.AppendLine();
         sb.AppendLine("  PC vs Xbox dynamic key counts:");
         sb.AppendLine($"    NORMAL_QUAT key count identical:                              {stats.PcVsXboxNormalKeyCountEqual}/{stats.Pairs}");
