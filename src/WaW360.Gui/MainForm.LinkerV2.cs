@@ -25,10 +25,10 @@ public sealed partial class MainForm
         var started = DateTime.Now;
         var batchDir = Path.Combine(outputRoot, "_batch_reports");
         Directory.CreateDirectory(batchDir);
-        var reportPath = Path.Combine(batchDir, $"linker_v2_alpha5_{started:yyyyMMdd_HHmmss}.txt");
+        var reportPath = Path.Combine(batchDir, $"linker_v2_alpha6_{started:yyyyMMdd_HHmmss}.txt");
         var report = new List<string>
         {
-            "WaW360Converter — Linker V2 alpha 5 structural-main native-gate pipeline",
+            "WaW360Converter — Linker V2 alpha 6 TU7 XAnim-native main pipeline",
             new string('=', 72),
             $"Started: {started:O}",
             "Mode: Fast Mode (Linker V2 production architecture)",
@@ -40,7 +40,7 @@ public sealed partial class MainForm
             $"Fast-stage cache: {Path.Combine(outputRoot, "_analysis_cache", "stage_results")}",
             "",
             "FAST MODE POLICY: PC FF/IWD boundaries are source provenance only. Build one canonical source graph, select the canonical load graph, then close typed dependencies and serialize into real Xbox blocks/shared targets.",
-            "LEGACY POLICY: old Stage 4a/5/10 proof stages are retired from Fast Mode. They remain available in Safe Mode (Full Validation) as deep diagnostics until every proven serializer has been absorbed into Linker V2.",
+            "NATIVE PROMOTION: TU7 XAnimParts now emits the hardware-proven 0x5C Xbox root plus complete owned animation payload; stale XAnim proofs are regenerated automatically. Remaining proven serializers continue migrating into Linker V2.",
             "Stages: Source inventory | Linker V2 canonical source archive/package graph | Linker V2 canonical convergence contract | Linker V2 script-string canonicalization/remap | Linker V2 concrete identity evidence | Linker V2 canonical provenance-root policy | Linker V2 typed source-archive closure plan | Linker V2 packed/shared relocation obligations | Linker V2 source-derived destination block plan | Linker V2 consolidated production main-FF gate | Linker V2 self-contained structural main native emitter | Linker V2 selected load dependency graph | Linker V2 selected load Xbox emitter | Linker V2 load dependency resolution | Linker V2 load-only hardware package gate | Linker V2 authoritative root inventory",
             ""
         };
@@ -237,7 +237,7 @@ public sealed partial class MainForm
                     return $"structuralReady={r.StructuralHardwareDiagnosticReady}; strictReady={r.StrictHardwareReady}; script={r.ScriptStringRemapReady}; roots={r.RootAccountingReady}; identity={r.ConcreteIdentityClosureReady}; closure={r.TypedDependencyClosureReady}; ptrEncoding={r.PackedPointerEncodingReady}; sharedOwnership={r.SharedTargetOwnershipReady}; blockAlloc={r.RealXboxBlockAllocationReady}; audio={r.AudioStrictReady}; blockers={r.Blockers.Count:N0}; verified={r.Verified}; report={r.TextReportFile}";
                 }, cacheable: false);
 
-                await Stage("v2-main-structural-emitter", "v2a5|self-contained-main-native|correct-zone-size|per-block-header", "LINKER V2 self-contained structural main native emitter", async () =>
+                await Stage("v2-main-structural-emitter", "v2a6|tu7-xanim-0x5c-full-payload|type-major-order-guard", "LINKER V2 TU7 XAnim-native main emitter", async () =>
                 {
                     rootPolicy ??= await NormalMapLinkerV2CanonicalRootPolicy.RunAsync(map, outputRoot, sourceArchive, identityEvidence);
                     blockPlan ??= await NormalMapLinkerV2DestinationBlockPlan.RunAsync(map, outputRoot, sourceArchive);
