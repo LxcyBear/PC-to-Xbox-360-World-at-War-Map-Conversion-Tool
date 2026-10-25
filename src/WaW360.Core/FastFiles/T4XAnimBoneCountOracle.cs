@@ -25,9 +25,9 @@ public sealed record T4XAnimBoneCountPair(
     T4XAnimBoneCountSample Xbox,
     bool TotalMatches,
     bool DirectQuaternionBucketsMatch,
-    bool QuaternionSplitMatches,
+    bool FullQuaternionSplitMatches,
+    bool FullQuaternionNoSizeSplitMatches,
     bool DirectTranslationBucketsMatch,
-    bool TranslationSplitMatches,
     bool ExpandedLayoutMatches);
 
 public sealed class T4XAnimBoneCountOracleResult
@@ -46,16 +46,16 @@ public sealed class T4XAnimBoneCountOracleResult
 ///
 /// PC WaW XAnimParts uses an 0x58-byte fixed root with ten boneCount bytes at +0x12.
 /// Xbox 360 TU7 uses an 0x5C-byte fixed root with twelve boneCount bytes at +0x12.
-/// The first hardware-backed same-animation pair established that the Xbox array is
-/// not "PC + two tail buckets". It is six quaternion buckets, five translation buckets,
-/// then the total. This oracle verifies the observed expansion equations across as many
-/// same-name animations as are available:
+/// Hardware-backed same-animation comparison establishes that the Xbox array is
+/// seven quaternion buckets, four translation buckets, then the total. Relative to
+/// PC, Xbox subdivides the two full-quaternion categories while translation is only
+/// shifted by the two inserted quaternion buckets:
 ///   PC[0] == XB[0], PC[1] == XB[1], PC[2] == XB[2] + XB[3],
-///   PC[3] == XB[4], PC[4] == XB[5],
-///   PC[5] == XB[6] + XB[7], PC[6] == XB[8], PC[7] == XB[9],
+///   PC[3] == XB[4], PC[4] == XB[5] + XB[6],
+///   PC[5] == XB[7], PC[6] == XB[8], PC[7] == XB[9],
 ///   PC[8] == XB[10], PC[9] == XB[11].
-/// It deliberately does not guess the semantic rule that chooses the two console
-/// sub-buckets inside the PC[2] and PC[5] classes.
+/// It deliberately does not guess the per-bone semantic rule that chooses each
+/// console sub-bucket inside PC[2] and PC[4].
 ///
 /// Only inline top-level XAnim names are considered. This keeps the oracle fail-closed:
 /// packed/aliased names are skipped rather than guessed.
@@ -100,14 +100,14 @@ public static class T4XAnimBoneCountOracle
             var directQuat =
                 p.BoneCounts[0] == x.BoneCounts[0] &&
                 p.BoneCounts[1] == x.BoneCounts[1] &&
-                p.BoneCounts[3] == x.BoneCounts[4] &&
-                p.BoneCounts[4] == x.BoneCounts[5];
-            var quatSplit = p.BoneCounts[2] == x.BoneCounts[2] + x.BoneCounts[3];
+                p.BoneCounts[3] == x.BoneCounts[4];
+            var fullQuatSplit = p.BoneCounts[2] == x.BoneCounts[2] + x.BoneCounts[3];
+            var fullQuatNoSizeSplit = p.BoneCounts[4] == x.BoneCounts[5] + x.BoneCounts[6];
             var directTrans =
+                p.BoneCounts[5] == x.BoneCounts[7] &&
                 p.BoneCounts[6] == x.BoneCounts[8] &&
                 p.BoneCounts[7] == x.BoneCounts[9] &&
                 p.BoneCounts[8] == x.BoneCounts[10];
-            var transSplit = p.BoneCounts[5] == x.BoneCounts[6] + x.BoneCounts[7];
 
             matches.Add(new T4XAnimBoneCountPair(
                 p.Name,
@@ -115,10 +115,10 @@ public static class T4XAnimBoneCountOracle
                 x,
                 totalMatches,
                 directQuat,
-                quatSplit,
+                fullQuatSplit,
+                fullQuatNoSizeSplit,
                 directTrans,
-                transSplit,
-                totalMatches && directQuat && quatSplit && directTrans && transSplit));
+                totalMatches && directQuat && fullQuatSplit && fullQuatNoSizeSplit && directTrans));
         }
 
         var summary = BuildSummary(pcSamples, xboxSamples, matches, animationName);
@@ -248,14 +248,17 @@ public static class T4XAnimBoneCountOracle
         bool transInvariant;
         if (platform == WaWPlatform.Xbox360)
         {
-            quatInvariant = bones.Take(6).Sum(x => (int)x) == total;
-            transInvariant = bones.Skip(6).Take(5).Sum(x => (int)x) == total;
+            quatInvariant = bones.Take(7).Sum(x => (int)x) == total;
+            transInvariant = bones.Skip(7).Take(4).Sum(x => (int)x) == total;
         }
         else
         {
             quatInvariant = bones.Take(5).Sum(x => (int)x) == total;
             transInvariant = bones.Skip(5).Take(4).Sum(x => (int)x) == total;
         }
+
+        if (!quatInvariant || !transInvariant)
+            return false;
 
         sample = new T4XAnimBoneCountSample(
             name,
@@ -297,19 +300,19 @@ public static class T4XAnimBoneCountOracle
 
         var totalMatches = matches.Count(x => x.TotalMatches);
         var quatDirect = matches.Count(x => x.DirectQuaternionBucketsMatch);
-        var quatSplit = matches.Count(x => x.QuaternionSplitMatches);
+        var fullQuatSplit = matches.Count(x => x.FullQuaternionSplitMatches);
+        var fullQuatNoSizeSplit = matches.Count(x => x.FullQuaternionNoSizeSplitMatches);
         var transDirect = matches.Count(x => x.DirectTranslationBucketsMatch);
-        var transSplit = matches.Count(x => x.TranslationSplitMatches);
         var expanded = matches.Count(x => x.ExpandedLayoutMatches);
 
-        sb.AppendLine($"Total count PC[9] == Xbox[11]:                 {totalMatches}/{matches.Count}");
-        sb.AppendLine($"Direct quat remap PC[0,1,3,4] -> XB[0,1,4,5]: {quatDirect}/{matches.Count}");
-        sb.AppendLine($"Quat split PC[2] == XB[2] + XB[3]:            {quatSplit}/{matches.Count}");
-        sb.AppendLine($"Direct trans remap PC[6,7,8] -> XB[8,9,10]:   {transDirect}/{matches.Count}");
-        sb.AppendLine($"Trans split PC[5] == XB[6] + XB[7]:           {transSplit}/{matches.Count}");
-        sb.AppendLine($"Complete 10 -> 12 expansion pattern:           {expanded}/{matches.Count}");
+        sb.AppendLine($"Total count PC[9] == Xbox[11]:                   {totalMatches}/{matches.Count}");
+        sb.AppendLine($"Direct quat PC[0,1,3] -> XB[0,1,4]:             {quatDirect}/{matches.Count}");
+        sb.AppendLine($"Full-quat split PC[2] == XB[2] + XB[3]:         {fullQuatSplit}/{matches.Count}");
+        sb.AppendLine($"Full-quat-no-size PC[4] == XB[5] + XB[6]:       {fullQuatNoSizeSplit}/{matches.Count}");
+        sb.AppendLine($"Translation PC[5..8] -> XB[7..10]:              {transDirect}/{matches.Count}");
+        sb.AppendLine($"Complete 10 -> 12 expansion pattern:             {expanded}/{matches.Count}");
         sb.AppendLine();
-        sb.AppendLine("Xbox grouping: [0..5] = 6 quaternion buckets; [6..10] = 5 translation buckets; [11] = total.");
+        sb.AppendLine("Xbox grouping: [0..6] = 7 quaternion buckets; [7..10] = 4 translation buckets; [11] = total.");
 
         return sb.ToString();
     }
