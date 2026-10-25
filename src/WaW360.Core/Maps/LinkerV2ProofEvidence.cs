@@ -37,20 +37,26 @@ internal static class LinkerV2ProofEvidence
         if (!string.IsNullOrWhiteSpace(record.Name))
             return record.Name;
 
-        var fixedSize = record.TypeName.ToLowerInvariant() switch
+        var fixedSizes = record.TypeName.ToLowerInvariant() switch
         {
-            "xanim" => 88,
-            "xmodel" => 228,
-            _ => 0
+            // v5 proof blobs use the hardware-proven TU7 0x5C root. Keep 0x58
+            // as a read-only compatibility fallback for pre-v5 proof artifacts.
+            "xanim" => new[] { T4XAnimSerializerProof.XboxFixedSize, 0x58 },
+            "xmodel" => new[] { 228 },
+            _ => Array.Empty<int>()
         };
-        if (fixedSize == 0 || record.BlobLength <= fixedSize)
+        if (fixedSizes.Length == 0)
+            return null;
+
+        var maxFixed = fixedSizes.Max();
+        if (record.BlobLength <= fixedSizes.Min())
             return null;
 
         var prefix = await T4NativeProofContainerReader.ReadBlobPrefixAsync(
             record,
-            Math.Min(record.BlobLength, fixedSize + 1024),
+            Math.Min(record.BlobLength, maxFixed + 1024),
             cancellationToken);
-        if (prefix.Length < fixedSize + 1)
+        if (prefix.Length < 5)
             return null;
 
         var nameRaw = BinaryPrimitives.ReadUInt32BigEndian(prefix.AsSpan(0, 4));
@@ -58,13 +64,19 @@ internal static class LinkerV2ProofEvidence
         if (decoded.Kind is not (T4ZonePointerKind.Following or T4ZonePointerKind.Insert))
             return null;
 
-        var end = fixedSize;
-        while (end < prefix.Length && prefix[end] != 0) end++;
-        if (end == fixedSize || end >= prefix.Length)
-            return null;
+        foreach (var fixedSize in fixedSizes)
+        {
+            if (prefix.Length <= fixedSize) continue;
+            var end = fixedSize;
+            while (end < prefix.Length && prefix[end] != 0) end++;
+            if (end == fixedSize || end >= prefix.Length) continue;
 
-        var value = Encoding.UTF8.GetString(prefix, fixedSize, end - fixedSize);
-        return LooksLikeAssetName(value) ? value : null;
+            var value = Encoding.UTF8.GetString(prefix, fixedSize, end - fixedSize);
+            if (LooksLikeAssetName(value))
+                return value;
+        }
+
+        return null;
     }
 
     internal static int RoleRank(string role) => role.ToLowerInvariant() switch
