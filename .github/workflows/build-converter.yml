@@ -1,0 +1,40 @@
+name: Build converter
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - xbox360/oat-xenon-integration
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: .NET Release
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore WaW360Converter.sln
+
+      - name: Build
+        run: dotnet build WaW360Converter.sln -c Release --no-restore
+
+      - name: Publish GUI
+        run: dotnet publish src/WaW360.Gui/WaW360.Gui.csproj -c Release --no-build -o build-artifacts/WaW360.Gui
+
+      - name: Upload GUI
+        uses: actions/upload-artifact@v4
+        with:
+          name: waw360-gui-${{ github.sha }}
+          path: build-artifacts/WaW360.Gui/
+          if-no-files-found: error
+          retention-days: 14

@@ -18,6 +18,13 @@ public sealed class NormalMapLinkerV2TypedClosurePlanResult
     public required int PromotedXAnimCandidates { get; init; }
     public required int PromotedRawFileCandidates { get; init; }
     public required int ResidentMenuCandidates { get; init; }
+    public required int XboxDonorRequiredTechniqueSets { get; init; }
+    public required int ExactXboxDonorIdentityMatches { get; init; }
+    public required int UnresolvedXboxDonorIdentities { get; init; }
+    public required int AmbiguousXboxDonorIdentities { get; init; }
+    public required bool DonorIdentityResolutionComplete { get; init; }
+    public required int DonorCatalogFastFilesScanned { get; init; }
+    public required int DonorCatalogTechniqueSets { get; init; }
     public required IReadOnlyList<LinkerV2IwdPromotionCandidate> Promotions { get; init; }
     public required IReadOnlyList<LinkerV2ResidentRootCandidate> ResidentRoots { get; init; }
     public required int? GoldenExpectedXAnimPromotions { get; init; }
@@ -36,7 +43,7 @@ public sealed class NormalMapLinkerV2TypedClosurePlanResult
 }
 
 /// <summary>
-/// Linker V2 alpha 5 typed source-archive closure plan.
+/// Linker V2 alpha 7 typed source-archive + Xbox TechniqueSet donor closure plan.
 ///
 /// This consumes IWD content as SOURCE material instead of copying the archive to Xbox. It derives
 /// missing RawFile script candidates and XAnim names referenced by weapon source files, then compares
@@ -201,17 +208,40 @@ public static class NormalMapLinkerV2TypedClosurePlan
         }
 
         var promotionReady = blockers.Count == 0;
-        var xMatch = goldenX is not null && xanimPromotions == goldenX;
-        var rMatch = goldenR is not null && rawPromotions == goldenR;
+        var xMatch = goldenX is not null && goldenX >= 0 && xanimPromotions == goldenX;
+        var rMatch = goldenR is not null && goldenR >= 0 && rawPromotions == goldenR;
         var mMatch = goldenM is not null && residentMenus.Count == goldenM;
-        if (xMatch) notes.Add($"INDEPENDENT XANIM CONVERGENCE: weapon-source closure derived exactly {xanimPromotions:N0} missing XAnim name(s), matching the golden family delta without count forcing.");
-        if (rMatch) notes.Add($"INDEPENDENT RAWFILE CONVERGENCE: IWD source closure derived exactly {rawPromotions:N0} missing RawFile name(s), matching the golden family delta without count forcing.");
+        if (goldenX is < 0)
+            notes.Add($"Golden XAnim delta is {goldenX:+#;-#;0}: the working Xbox graph has fewer XAnim roots than the raw PC source, so this is a future canonicalization/removal check, not an expected promotion count.");
+        else if (xMatch)
+            notes.Add($"INDEPENDENT XANIM CONVERGENCE: weapon-source closure derived exactly {xanimPromotions:N0} missing XAnim name(s), matching the golden family delta without count forcing.");
+        if (goldenR is < 0)
+            notes.Add($"Golden RawFile delta is {goldenR:+#;-#;0}: the working Xbox graph has fewer RawFile roots than the raw PC source, so this is a future canonicalization/removal check, not an expected promotion count.");
+        else if (rMatch)
+            notes.Add($"INDEPENDENT RAWFILE CONVERGENCE: IWD source closure derived exactly {rawPromotions:N0} missing RawFile name(s), matching the golden family delta without count forcing.");
         if (mMatch) notes.Add($"INDEPENDENT MENULIST CONVERGENCE: resident UI classification identified exactly {residentMenus.Count:N0} source MenuList root(s) absent from the golden map graph.");
 
-        // TechniqueSet dependency pruning and platform world closure are still independent typed
-        // tasks. Even perfect IWD promotion counts do not make the complete canonical graph ready.
-        var fullClosure = false;
-        blockers.Add("TechniqueSet typed dependency/retention policy is still pending; source contains many declaration roots that the working Xbox graph does not retain as canonical roots.");
+        // Alpha 6 replaces the old hardcoded TechniqueSet blocker with a real deterministic
+        // source walk. Non-null PC shader graphs are classified as Xbox-donor requirements;
+        // they are never copied into an Xbox candidate.
+        var technique = await NormalMapLinkerV2TechniqueClosure.RunAsync(
+            map, outputRoot, source, cancellationToken);
+        notes.Add($"Technique closure: declared={technique.DeclaredTechniqueSets:N0}, walked={technique.DeterministicallyWalkedTechniqueSets:N0}, donorRequired={technique.XboxDonorRequiredTechniqueSets:N0}, donorMatched={technique.ExactXboxDonorIdentityMatches:N0}, donorUnresolved={technique.UnresolvedXboxDonorIdentities:N0}, donorAmbiguous={technique.AmbiguousXboxDonorIdentities:N0}, blocked={technique.BlockedTechniqueSets:N0}; report={technique.TextReportFile}.");
+        foreach (var blocker in technique.Blockers)
+            blockers.Add("TechniqueSet: " + blocker);
+
+        // This stage is now derived from concrete work rather than a permanent false constant.
+        // IWD promotions and resident MenuList removals are still plans until their assets are
+        // actually inserted/removed from the canonical root graph, so they keep the gate closed.
+        if (promotions.Count != 0)
+            blockers.Add($"{promotions.Count:N0} source-derived IWD promotion(s) are proven but not yet materialized into the canonical root graph.");
+        if (residentMenus.Count != 0)
+            blockers.Add($"{residentMenus.Count:N0} resident MenuList root(s) are identified but not yet removed by typed always-loaded/resident policy.");
+
+        var fullClosure = promotionReady &&
+                          promotions.Count == 0 &&
+                          residentMenus.Count == 0 &&
+                          technique.FullTechniqueClosureReady;
 
         var result = new NormalMapLinkerV2TypedClosurePlanResult
         {
@@ -223,6 +253,13 @@ public static class NormalMapLinkerV2TypedClosurePlan
             PromotedXAnimCandidates = xanimPromotions,
             PromotedRawFileCandidates = rawPromotions,
             ResidentMenuCandidates = residentMenus.Count,
+            XboxDonorRequiredTechniqueSets = technique.XboxDonorRequiredTechniqueSets,
+            ExactXboxDonorIdentityMatches = technique.ExactXboxDonorIdentityMatches,
+            UnresolvedXboxDonorIdentities = technique.UnresolvedXboxDonorIdentities,
+            AmbiguousXboxDonorIdentities = technique.AmbiguousXboxDonorIdentities,
+            DonorIdentityResolutionComplete = technique.DonorIdentityResolutionComplete,
+            DonorCatalogFastFilesScanned = technique.DonorCatalogFastFilesScanned,
+            DonorCatalogTechniqueSets = technique.DonorCatalogTechniqueSets,
             Promotions = promotions.OrderBy(x => x.AssetType, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList(),
             ResidentRoots = residentMenus,
             GoldenExpectedXAnimPromotions = goldenX,
@@ -235,7 +272,7 @@ public static class NormalMapLinkerV2TypedClosurePlan
             FullTypedClosureReady = fullClosure,
             Notes = notes,
             Blockers = blockers,
-            Verified = promotionReady,
+            Verified = promotionReady && technique.Verified,
             TextReportFile = txt,
             JsonReportFile = json
         };
@@ -299,11 +336,12 @@ public static class NormalMapLinkerV2TypedClosurePlan
     private static string Render(NormalMapLinkerV2TypedClosurePlanResult r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — LINKER V2 alpha 5 typed source-archive dependency closure plan");
+        sb.AppendLine("WaW360Converter — LINKER V2 alpha 7 typed source-archive + Xbox TechniqueSet donor closure plan");
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}");
         sb.AppendLine($"existingNamedXAnim={r.ExistingNamedXAnims:N0}; existingNamedRawFile={r.ExistingNamedRawFiles:N0}; iwdWeapons={r.IwdWeaponSources:N0}; iwdScripts={r.IwdScriptSources:N0}");
         sb.AppendLine($"derivedPromotions: xanim={r.PromotedXAnimCandidates:N0}; rawfile={r.PromotedRawFileCandidates:N0}; residentMenuCandidates={r.ResidentMenuCandidates:N0}");
+        sb.AppendLine($"techniqueDonors: required={r.XboxDonorRequiredTechniqueSets:N0}; exact={r.ExactXboxDonorIdentityMatches:N0}; unresolved={r.UnresolvedXboxDonorIdentities:N0}; ambiguous={r.AmbiguousXboxDonorIdentities:N0}; identityComplete={r.DonorIdentityResolutionComplete}; catalogFF={r.DonorCatalogFastFilesScanned:N0}; catalogSets={r.DonorCatalogTechniqueSets:N0}");
         if (r.GoldenExpectedXAnimPromotions is not null)
             sb.AppendLine($"goldenValidation: xanimExpected={r.GoldenExpectedXAnimPromotions:+#;-#;0} match={r.XAnimGoldenCountMatched}; rawExpected={r.GoldenExpectedRawFilePromotions:+#;-#;0} match={r.RawFileGoldenCountMatched}; menuExpected={r.GoldenExpectedMenuCanonicalizations:+#;-#;0} match={r.MenuGoldenCountMatched}");
         sb.AppendLine($"promotionEvidenceReady={r.PromotionEvidenceReady}; fullTypedClosureReady={r.FullTypedClosureReady}; verified={r.Verified}");

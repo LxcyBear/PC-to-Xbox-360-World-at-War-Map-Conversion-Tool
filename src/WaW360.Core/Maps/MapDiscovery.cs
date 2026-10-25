@@ -13,18 +13,28 @@ public static class MapDiscovery
             var oneDrive = Environment.GetEnvironmentVariable("OneDrive");
             if (!string.IsNullOrWhiteSpace(oneDrive))
             {
-                var oneDriveRoot = Path.Combine(oneDrive, "Desktop", "My Xbox", "World at War", "PC Maps");
+                var oneDriveRoot = Path.Combine(oneDrive, "Desktop", "My Xbox", "My Projects", "World at War", "PC Maps");
                 if (Directory.Exists(oneDriveRoot))
                     return oneDriveRoot;
+
+                // Compatibility fallback for the pre-My Projects layout.
+                var previousOneDriveRoot = Path.Combine(oneDrive, "Desktop", "My Xbox", "World at War", "PC Maps");
+                if (Directory.Exists(previousOneDriveRoot))
+                    return previousOneDriveRoot;
             }
 
             return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
                 "My Xbox",
+                "My Projects",
                 "World at War",
                 "PC Maps");
         }
     }
+
+    public static string PreviousPcMapsFolder => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "OneDrive", "Desktop", "My Xbox", "World at War", "PC Maps");
 
     public static string LegacyPcMapsFolder => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
@@ -52,7 +62,9 @@ public static class MapDiscovery
         {
             var configuredFull = Path.GetFullPath(configured.Trim());
             var legacyFull = Path.GetFullPath(LegacyPcMapsFolder);
-            if (string.Equals(configuredFull, legacyFull, StringComparison.OrdinalIgnoreCase) &&
+            var previousFull = Path.GetFullPath(PreviousPcMapsFolder);
+            if ((string.Equals(configuredFull, legacyFull, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(configuredFull, previousFull, StringComparison.OrdinalIgnoreCase)) &&
                 Directory.Exists(DefaultPcMapsFolder))
                 return DefaultPcMapsFolder;
         }

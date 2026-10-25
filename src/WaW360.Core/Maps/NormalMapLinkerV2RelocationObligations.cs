@@ -27,6 +27,13 @@ public sealed record LinkerV2PackedTargetSample(
     uint Offset,
     int ReferenceCount);
 
+public sealed record LinkerV2RelocationFieldSummary(
+    string AssetType,
+    string Field,
+    int PackedReferences,
+    int UniquePackedTargets,
+    IReadOnlyDictionary<string, int> PackedTargetsByBlock);
+
 public sealed class NormalMapLinkerV2RelocationObligationsResult
 {
     public required string MapName { get; init; }
@@ -44,6 +51,7 @@ public sealed class NormalMapLinkerV2RelocationObligationsResult
     public required bool SharedTargetOwnershipResolved { get; init; }
     public required bool NestedPointerWalkComplete { get; init; }
     public required IReadOnlyList<LinkerV2RelocationFamilySummary> Families { get; init; }
+    public required IReadOnlyList<LinkerV2RelocationFieldSummary> Fields { get; init; }
     public required IReadOnlyList<LinkerV2PackedTargetSample> PackedTargetSamples { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
     public required IReadOnlyList<string> Blockers { get; init; }
@@ -214,6 +222,28 @@ public static class NormalMapLinkerV2RelocationObligations
             .GroupBy(h => (h.SourceFastFile, h.Raw), new SourceRawComparer())
             .ToList();
 
+        var fieldSummaries = hits
+            .GroupBy(h => (h.Type, h.Field), new TypeFieldComparer())
+            .Select(g =>
+            {
+                var unique = g
+                    .GroupBy(h => (h.SourceFastFile, h.Raw), new SourceRawComparer())
+                    .Count();
+                var byBlock = g
+                    .GroupBy(h => h.Block.ToString(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(x => x.Key, x => x.Count(), StringComparer.OrdinalIgnoreCase);
+                return new LinkerV2RelocationFieldSummary(
+                    g.Key.Type,
+                    g.Key.Field,
+                    g.Count(),
+                    unique,
+                    byBlock);
+            })
+            .OrderByDescending(x => x.PackedReferences)
+            .ThenBy(x => x.AssetType, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         var samples = uniqueTargets
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key.SourceFastFile, StringComparer.OrdinalIgnoreCase)
@@ -287,6 +317,7 @@ public static class NormalMapLinkerV2RelocationObligations
             SharedTargetOwnershipResolved = sharedResolved,
             NestedPointerWalkComplete = nestedComplete,
             Families = familySummaries,
+            Fields = fieldSummaries,
             PackedTargetSamples = samples,
             Notes = notes,
             Blockers = blockers,
@@ -312,6 +343,17 @@ public static class NormalMapLinkerV2RelocationObligations
         public int MissingProofFiles;
         public Dictionary<string, int> Blocks { get; } = new(StringComparer.OrdinalIgnoreCase);
         public void IncrementBlock(string block) => Blocks[block] = Blocks.TryGetValue(block, out var n) ? n + 1 : 1;
+    }
+
+    private sealed class TypeFieldComparer : IEqualityComparer<(string Type, string Field)>
+    {
+        public bool Equals((string Type, string Field) x, (string Type, string Field) y) =>
+            StringComparer.OrdinalIgnoreCase.Equals(x.Type, y.Type) &&
+            StringComparer.OrdinalIgnoreCase.Equals(x.Field, y.Field);
+        public int GetHashCode((string Type, string Field) obj) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Type),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Field));
     }
 
     private sealed class SourceRawComparer : IEqualityComparer<(string SourceFastFile, uint Raw)>
@@ -408,6 +450,19 @@ public static class NormalMapLinkerV2RelocationObligations
             var blocks = f.PackedTargetsByBlock.Count == 0 ? "<none>" : string.Join(",", f.PackedTargetsByBlock.OrderBy(x => x.Key).Select(x => $"{x.Key}:{x.Value:N0}"));
             sb.AppendLine($"  {f.AssetType,-10} assets={f.ProofAssets,5:N0} fields={f.KnownPointerFields,7:N0} follow={f.FollowingPointers,7:N0} packedRefs={f.PackedPointerReferences,7:N0} uniqueTargets={f.UniquePackedTargets,6:N0} invalid={f.InvalidPackedPointers,4:N0} blocks={blocks}");
         }
+        if (r.Fields.Count != 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("PACKED REFERENCES BY TYPED FIELD");
+            foreach (var f in r.Fields.Take(80))
+            {
+                var blocks = f.PackedTargetsByBlock.Count == 0
+                    ? "<none>"
+                    : string.Join(",", f.PackedTargetsByBlock.OrderBy(x => x.Key).Select(x => $"{x.Key}:{x.Value:N0}"));
+                sb.AppendLine($"  {f.AssetType,-10} {f.Field,-34} refs={f.PackedReferences,6:N0} unique={f.UniquePackedTargets,6:N0} blocks={blocks}");
+            }
+        }
+
         if (r.PackedTargetSamples.Count != 0)
         {
             sb.AppendLine();

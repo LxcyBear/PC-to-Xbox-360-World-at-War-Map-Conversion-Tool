@@ -1,0 +1,110 @@
+name: Build pinned OAT Xenon
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - xbox360/oat-xenon-integration
+    paths:
+      - '.github/workflows/build-oat-xenon.yml'
+      - 'tools/oat-xenon/Test-XenonContract.ps1'
+
+concurrency:
+  group: oat-xenon-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-oat-x86:
+    name: OAT Xenon Windows x86
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout converter
+        uses: actions/checkout@v7.0.1
+
+      - name: Checkout pinned OpenAssetTools Xenon source
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: michaeloliverx/OpenAssetTools
+          ref: 1f7acb3347bc2e44deb609bc8cf7259bf027f176
+          submodules: recursive
+          path: oat
+
+      - name: Validate converter/Xenon contract
+        shell: pwsh
+        run: ./tools/oat-xenon/Test-XenonContract.ps1 -OatDirectory ./oat
+
+      - name: Add MSBuild
+        uses: microsoft/setup-msbuild@v3.0.0
+
+      - name: Generate VS2026 projects
+        shell: pwsh
+        working-directory: oat
+        env:
+          PREMAKE_NO_PROMPT: '1'
+        run: ./generate.bat
+
+      - name: Build required OAT x86 Release tools
+        shell: pwsh
+        working-directory: oat
+        env:
+          # Pinned Xenon commit predates VS2026's C4018 diagnostics in several IW3
+          # Xenon XModel loops. Release intentionally keeps all other warnings fatal.
+          CL: /wd4018
+        run: |
+          $solutionDir = ((Resolve-Path 'build').Path.TrimEnd('\') + '\')
+          Write-Host "[OAT] Direct-project SolutionDir=$solutionDir"
+          $common = @(
+            '/m',
+            '/p:TrackFileAccess=false',
+            '/p:UseMultiToolTask=true',
+            '/p:Configuration=Release',
+            '/p:Platform=Win32',
+            "/p:SolutionDir=$solutionDir"
+          )
+
+          # OAT generates source in two stages. Build the generator executables first,
+          # then execute the Utility projects that materialize templates/ZoneCode.
+          $bootstrap = @(
+            'build\src\RawTemplater\RawTemplater.vcxproj',
+            'build\src\ZoneCodeGenerator\ZoneCodeGenerator.vcxproj',
+            'build\raw\Raw.vcxproj',
+            'build\src\ZoneCode\ZoneCode.vcxproj'
+          )
+          foreach ($project in $bootstrap) {
+            Write-Host "[OAT] Bootstrap/build $project"
+            & msbuild $project @common
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          # Generated headers/sources now exist, so direct project builds preserve
+          # dependency closure without forcing the entire solution/test suite.
+          $tools = @(
+            'build\src\LinkerCli\LinkerCli.vcxproj',
+            'build\src\UnlinkerCli\UnlinkerCli.vcxproj',
+            'build\src\ImageConverter\ImageConverter.vcxproj'
+          )
+          foreach ($project in $tools) {
+            Write-Host "[OAT] Building required tool $project"
+            & msbuild $project @common
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Verify required tools
+        shell: pwsh
+        run: |
+          $bin = Join-Path $PWD 'oat\build\bin\Release_x86'
+          foreach ($tool in @('Linker.exe','Unlinker.exe','ImageConverter.exe')) {
+            $path = Join-Path $bin $tool
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing $path" }
+          }
+
+      - name: Upload OAT Xenon x86 tools
+        uses: actions/upload-artifact@v7
+        with:
+          name: oat-xenon-windows-x86-${{ github.sha }}
+          path: oat/build/bin/Release_x86/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,13 @@
+# Dependencies and user-owned game data must never be committed.
+.deps/
+**/bin/
+**/obj/
+src/WaW360.Gui/Release/
+**/*.ff
+**/*.iwd
+**/*.xbe
+**/*.xex
+**/*.xpu
+*.user
+*.suo
+.vs/

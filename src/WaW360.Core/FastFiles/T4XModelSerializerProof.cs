@@ -67,6 +67,8 @@ public static class T4XModelSerializerProof
     private const int XBoneInfoSize = 40;
     private const int MaterialFixedSize = 112;
     private const int XboxMaterialFixedSize = 96;
+    private const int XboxTechniqueSetFixedSize = 216;
+    private const int XboxTechniqueCount = 51;
     private const int MaterialTextureDefSize = 16;
     private const int MaterialConstantDefSize = 32;
     private const int GfxStateBitsSize = 8;
@@ -86,6 +88,7 @@ public static class T4XModelSerializerProof
         public bool HasPhysPreset;
         public bool HasPhysGeoms;
         public bool HasCollmap;
+        public int SmokeTechniqueSets;
     }
 
     private sealed record XModelMeasure(
@@ -96,6 +99,8 @@ public static class T4XModelSerializerProof
         int CollisionSurfaceCount,
         WalkStats Stats);
 
+    private sealed record PlannedInsertion(int Offset, byte[] Bytes);
+
     private sealed class WalkContext
     {
         public required byte[] Source { get; init; }
@@ -104,6 +109,10 @@ public static class T4XModelSerializerProof
         public int RootStart { get; init; }
         public ZoneHeaderSummary? Header { get; init; }
         public required WalkStats Stats { get; init; }
+        public bool RequireSelfContainedPointers { get; init; }
+        public bool PatchOnly { get; init; }
+        public bool PlanSmokeTechniqueSets { get; init; }
+        public List<PlannedInsertion>? PlannedInsertions { get; init; }
     }
 
     public static async Task<T4XModelProofResult> BuildProofAsync(
@@ -283,6 +292,122 @@ public static class T4XModelSerializerProof
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    internal static bool TryBuildStructuralXboxBlobWithSmokeTechniqueSets(
+        byte[] blob,
+        out byte[] rebuilt,
+        out string name,
+        out int smokeTechniqueSets,
+        out string reason)
+    {
+        rebuilt = Array.Empty<byte>();
+        name = string.Empty;
+        smokeTechniqueSets = 0;
+        reason = string.Empty;
+        try
+        {
+            if (blob.Length < XModelFixedSize)
+                throw new InvalidDataException($"XModel proof blob is shorter than the {XModelFixedSize}-byte fixed body.");
+
+            var patched = blob.ToArray();
+            var insertions = new List<PlannedInsertion>();
+            var isReferenceStub = blob[4] == 0 && blob[6] == 0;
+            var planCtx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Destination = patched,
+                RootStart = 0,
+                Header = null,
+                Stats = new WalkStats(),
+                PatchOnly = true,
+                PlanSmokeTechniqueSets = true,
+                PlannedInsertions = insertions
+            };
+            var measured = WalkXModel(planCtx, 0, requireTopLevelName: false, requireRenderableBody: !isReferenceStub);
+            if (measured.EndOffset != blob.Length)
+                throw new InvalidDataException($"XModel smoke-techset planning walk ended at 0x{measured.EndOffset:X}, expected 0x{blob.Length:X}.");
+            if (planCtx.Stats.SmokeTechniqueSets == 0)
+                throw new InvalidDataException("XModel has no packed Material.techniqueSet dependency eligible for smoke localization.");
+
+            rebuilt = ApplyInsertions(patched, insertions);
+            if (!TryValidateSelfContainedXboxBlob(rebuilt, out name, out reason))
+                return false;
+
+            smokeTechniqueSets = planCtx.Stats.SmokeTechniqueSets;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            rebuilt = Array.Empty<byte>();
+            name = string.Empty;
+            smokeTechniqueSets = 0;
+            return false;
+        }
+    }
+
+    private static byte[] ApplyInsertions(byte[] source, IReadOnlyList<PlannedInsertion> insertions)
+    {
+        if (insertions.Count == 0) return source;
+        using var ms = new MemoryStream(source.Length + insertions.Sum(x => x.Bytes.Length));
+        var cursor = 0;
+        foreach (var insertion in insertions.OrderBy(x => x.Offset))
+        {
+            if (insertion.Offset < cursor || insertion.Offset > source.Length)
+                throw new InvalidDataException($"Invalid XModel insertion offset 0x{insertion.Offset:X}.");
+            ms.Write(source, cursor, insertion.Offset - cursor);
+            ms.Write(insertion.Bytes);
+            cursor = insertion.Offset;
+        }
+        ms.Write(source, cursor, source.Length - cursor);
+        return ms.ToArray();
+    }
+
+    private static byte[] BuildXboxNullTechniqueSet(string name)
+    {
+        var n = Encoding.ASCII.GetBytes(name);
+        var payload = new byte[XboxTechniqueSetFixedSize + n.Length + 1];
+        BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(0, 4), Following);
+        n.CopyTo(payload.AsSpan(XboxTechniqueSetFixedSize));
+        return payload;
+    }
+
+    internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, out string name, out string reason)
+    {
+        name = string.Empty;
+        reason = string.Empty;
+        try
+        {
+            if (blob.Length < XModelFixedSize)
+                throw new InvalidDataException($"XModel proof blob is shorter than the {XModelFixedSize}-byte fixed body.");
+
+            var isReferenceStub = blob[4] == 0 && blob[6] == 0;
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Destination = null,
+                RootStart = 0,
+                Header = null,
+                Stats = new WalkStats(),
+                RequireSelfContainedPointers = true
+            };
+            var measured = WalkXModel(ctx, 0, requireTopLevelName: false, requireRenderableBody: !isReferenceStub);
+            if (measured.EndOffset != blob.Length)
+                throw new InvalidDataException($"typed self-contained walk ended at 0x{measured.EndOffset:X}, expected 0x{blob.Length:X}.");
+            if (measured.Name.StartsWith("<packed@", StringComparison.Ordinal))
+                throw new InvalidDataException("top-level XModel name remains a packed source pointer.");
+
+            name = measured.Name;
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            return false;
         }
     }
 
@@ -825,9 +950,21 @@ public static class T4XModelSerializerProof
                 throw new InvalidDataException("XModel zero-body reference stub owns unexpected inline geometry/physics data.");
         }
 
-        ValidateSerializedPointers(c, "XModel", namePtr, ptrBoneNames, ptrParentList, ptrQuats, ptrTrans,
-            ptrPartClass, ptrBaseMat, ptrSurfs, ptrMaterials, ptrCollSurfs, ptrBoneInfo,
-            ptrPhysPreset, ptrPhysGeoms, ptrCollmap, ptrPhysConstraints);
+        ValidateSerializedPointer(c, "XModel.name", namePtr);
+        ValidateSerializedPointer(c, "XModel.boneNames", ptrBoneNames);
+        ValidateSerializedPointer(c, "XModel.parentList", ptrParentList);
+        ValidateSerializedPointer(c, "XModel.quats", ptrQuats);
+        ValidateSerializedPointer(c, "XModel.trans", ptrTrans);
+        ValidateSerializedPointer(c, "XModel.partClassification", ptrPartClass);
+        ValidateSerializedPointer(c, "XModel.baseMat", ptrBaseMat);
+        ValidateSerializedPointer(c, "XModel.surfs", ptrSurfs);
+        ValidateSerializedPointer(c, "XModel.materialHandles", ptrMaterials);
+        ValidateSerializedPointer(c, "XModel.collSurfs", ptrCollSurfs);
+        ValidateSerializedPointer(c, "XModel.boneInfo", ptrBoneInfo);
+        ValidateSerializedPointer(c, "XModel.physPreset", ptrPhysPreset);
+        ValidateSerializedPointer(c, "XModel.physGeoms", ptrPhysGeoms);
+        ValidateSerializedPointer(c, "XModel.collmap", ptrCollmap);
+        ValidateSerializedPointer(c, "XModel.physConstraints", ptrPhysConstraints);
 
         var cursor = checked(start + XModelFixedSize);
         string name;
@@ -1126,8 +1263,21 @@ public static class T4XModelSerializerProof
         if (namePtr != 0 && IsInline(namePtr))
             cursor = ConsumeCString(c, cursor, "Material.name", out _);
 
-        if (techniquePtr != 0 && IsInline(techniquePtr))
-            throw new InvalidDataException($"XModel '{modelName}' material[{materialIndex}] owns an inline MaterialTechniqueSet; Alpha 5 fails closed rather than guess shader dependencies.");
+        if (techniquePtr != 0 && !IsInline(techniquePtr) && c.PlanSmokeTechniqueSets)
+        {
+            if (c.Destination is null || c.PlannedInsertions is null)
+                throw new InvalidDataException("XModel smoke TechniqueSet planning requires a writable destination and insertion list.");
+            var smokeName = $"__waw360_ts_xm_{materialIndex:D3}_{techniquePtr:X8}";
+            WriteDestinationU32BigEndian(c, start + 96, Following);
+            c.PlannedInsertions.Add(new PlannedInsertion(cursor, BuildXboxNullTechniqueSet(smokeName)));
+            c.Stats.SmokeTechniqueSets++;
+        }
+        else if (techniquePtr != 0 && IsInline(techniquePtr))
+        {
+            if (c.Endianness != Endian.Big)
+                throw new InvalidDataException($"XModel '{modelName}' material[{materialIndex}] owns an inline MaterialTechniqueSet; PC shader graphs are not serialized into Xbox output.");
+            cursor = WalkXboxNullTechniqueSet(c, cursor, modelName, materialIndex);
+        }
 
         if (texturePtr != 0 && IsInline(texturePtr))
         {
@@ -1180,6 +1330,27 @@ public static class T4XModelSerializerProof
             cursor += bytes;
         }
 
+        return cursor;
+    }
+
+    private static int WalkXboxNullTechniqueSet(WalkContext c, int cursor, string modelName, int materialIndex)
+    {
+        Ensure(c.Source, cursor, XboxTechniqueSetFixedSize, $"XModel '{modelName}' material[{materialIndex}] Xbox null TechniqueSet");
+        var start = cursor;
+        var namePtr = ReadU32(c.Source, start + 0, c.Endianness);
+        if (!IsInline(namePtr))
+            throw new InvalidDataException($"XModel '{modelName}' material[{materialIndex}] inline Xbox TechniqueSet has non-inline name pointer 0x{namePtr:X8}.");
+        if (ReadU32(c.Source, start + 8, c.Endianness) != 0)
+            throw new InvalidDataException($"XModel '{modelName}' material[{materialIndex}] smoke TechniqueSet remappedTechniqueSet is non-null.");
+        for (var i = 0; i < XboxTechniqueCount; i++)
+        {
+            var raw = ReadU32(c.Source, start + 12 + i * 4, c.Endianness);
+            if (raw != 0)
+                throw new InvalidDataException($"XModel '{modelName}' material[{materialIndex}] smoke TechniqueSet slot {i} is non-null.");
+        }
+
+        cursor += XboxTechniqueSetFixedSize;
+        cursor = ConsumeCString(c, cursor, "MaterialTechniqueSet.name", out _);
         return cursor;
     }
 
@@ -1637,6 +1808,8 @@ public static class T4XModelSerializerProof
     private static void ValidateSerializedPointer(WalkContext c, string label, uint value)
     {
         if (value == 0 || IsInline(value)) return;
+        if (c.RequireSelfContainedPointers)
+            throw new InvalidDataException($"{label} retains packed/source pointer 0x{value:X8}; self-contained promotion refused.");
         var decoded = T4ZonePointer.Decode(value);
         if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block is null)
             throw new InvalidDataException($"{label} contains invalid serialized pointer 0x{value:X8}.");
@@ -1653,6 +1826,8 @@ public static class T4XModelSerializerProof
         foreach (var value in values)
         {
             if (value == 0 || IsInline(value)) continue;
+            if (c.RequireSelfContainedPointers)
+                throw new InvalidDataException($"{label} retains packed/source pointer 0x{value:X8}; self-contained promotion refused.");
             var decoded = T4ZonePointer.Decode(value);
             if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block is null)
                 throw new InvalidDataException($"{label} contains invalid serialized pointer 0x{value:X8}.");
@@ -1691,7 +1866,7 @@ public static class T4XModelSerializerProof
 
     private static void Swap16(WalkContext c, int absoluteOffset)
     {
-        if (c.Destination is null) return;
+        if (c.Destination is null || c.PatchOnly) return;
         var d = absoluteOffset - c.RootStart;
         if (d < 0 || d + 2 > c.Destination.Length)
             throw new InvalidDataException("Endian transform write exceeded proof buffer.");
@@ -1700,7 +1875,7 @@ public static class T4XModelSerializerProof
 
     private static void Swap32(WalkContext c, int absoluteOffset)
     {
-        if (c.Destination is null) return;
+        if (c.Destination is null || c.PatchOnly) return;
         var d = absoluteOffset - c.RootStart;
         if (d < 0 || d + 4 > c.Destination.Length)
             throw new InvalidDataException("Endian transform write exceeded proof buffer.");
@@ -1709,11 +1884,21 @@ public static class T4XModelSerializerProof
 
     private static void Swap64(WalkContext c, int absoluteOffset)
     {
-        if (c.Destination is null) return;
+        if (c.Destination is null || c.PatchOnly) return;
         var d = absoluteOffset - c.RootStart;
         if (d < 0 || d + 8 > c.Destination.Length)
             throw new InvalidDataException("Endian transform write exceeded proof buffer.");
         Array.Reverse(c.Destination, d, 8);
+    }
+
+    private static void WriteDestinationU32BigEndian(WalkContext c, int absoluteOffset, uint value)
+    {
+        if (c.Destination is null)
+            throw new InvalidDataException("XModel patch requested without a destination buffer.");
+        var d = absoluteOffset - c.RootStart;
+        if (d < 0 || d + 4 > c.Destination.Length)
+            throw new InvalidDataException("XModel patch write exceeded proof buffer.");
+        BinaryPrimitives.WriteUInt32BigEndian(c.Destination.AsSpan(d, 4), value);
     }
 
     private static uint ReadU32(byte[] bytes, int offset, Endian endian)

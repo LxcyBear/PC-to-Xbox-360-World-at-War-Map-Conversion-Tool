@@ -381,6 +381,27 @@ public static class T4SoundAliasSmokeSerializer
         return true;
     }
 
+    internal static byte[] BuildFallbackSilentStub(int assetIndex, string? preferredName = null)
+    {
+        var listName = SafeName(preferredName, $"__waw360_silent_sound_{assetIndex}");
+        using var ms = new MemoryStream();
+        WriteBE(ms, T4ZonePointer.Following); // list aliasName
+        WriteBE(ms, T4ZonePointer.Following); // head
+        WriteBE(ms, 1);                       // one inert alias
+        WriteCString(ms, listName);
+
+        var fixedAlias = new byte[AliasSize];
+        BinaryPrimitives.WriteUInt32BigEndian(fixedAlias.AsSpan(0, 4), T4ZonePointer.Following);
+        // soundFile/subtitle/secondary/chain remain null; all scalar fields are zero.
+        ms.Write(fixedAlias);
+        WriteCString(ms, listName);
+
+        var payload = ms.ToArray();
+        if (!VerifySilentStub(payload, 1))
+            throw new InvalidDataException($"Fallback Sound structural stub failed read-back for XAsset#{assetIndex}.");
+        return payload;
+    }
+
     private static byte[] BuildSilentStub(int assetIndex, ParsedList src)
     {
         using var ms = new MemoryStream();

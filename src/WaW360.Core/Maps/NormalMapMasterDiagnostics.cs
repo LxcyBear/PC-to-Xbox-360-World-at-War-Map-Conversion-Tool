@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -12,8 +13,15 @@ namespace WaW360.Core.Maps;
 /// </summary>
 public static class NormalMapMasterDiagnostics
 {
+    private static readonly HashSet<string> TextArtifactExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".json", ".log", ".csv", ".md", ".xml"
+    };
+
     private sealed record Failure(string Map, string Stage, string Detail, string Signature);
     private sealed record MapCounts(string Map, int Pass, int Fail, int Cached, string? HybridDetail);
+    private sealed record PromotionRejectRow(string Map, string Reason, int Count);
+    private sealed record RelocationFieldRow(string Map, string AssetType, string Field, int References, int UniqueTargets);
 
     public static async Task<string> WriteAsync(
         IReadOnlyList<MapCandidate> maps,
@@ -37,6 +45,8 @@ public static class NormalMapMasterDiagnostics
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
         var productionBlockers = await ReadV2ProductionBlockersAsync(maps, outputRoot, cancellationToken);
+        var promotionRejects = await ReadV2PromotionRejectsAsync(maps, outputRoot, cancellationToken);
+        var relocationFields = await ReadV2RelocationFieldsAsync(maps, outputRoot, cancellationToken);
 
         var sb = new StringBuilder(2 * 1024 * 1024);
         sb.AppendLine("WaW360Converter — ALL NORMAL MAPS MASTER DIAGNOSTIC DATASET");
@@ -113,6 +123,69 @@ public static class NormalMapMasterDiagnostics
         }
         sb.AppendLine();
 
+        sb.AppendLine("CROSS-MAP TYPED PROMOTION BLOCKERS");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("Ranked by total rejected payloads first, then number of maps affected. These are the highest-value self-contained/rebase implementation targets.");
+        if (promotionRejects.Count == 0)
+        {
+            sb.AppendLine("  <no typed promotion rejection reports found>");
+        }
+        else
+        {
+            var rank = 1;
+            foreach (var g in promotionRejects
+                         .GroupBy(x => x.Reason, StringComparer.OrdinalIgnoreCase)
+                         .Select(g => new
+                         {
+                             Reason = g.Key,
+                             Total = g.Sum(x => x.Count),
+                             Maps = g.Select(x => x.Map).Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray()
+                         })
+                         .OrderByDescending(x => x.Total)
+                         .ThenByDescending(x => x.Maps.Length)
+                         .ThenBy(x => x.Reason, StringComparer.OrdinalIgnoreCase)
+                         .Take(100))
+            {
+                sb.AppendLine($"  [{rank++:D2}] rejected={g.Total:N0}; maps={g.Maps.Length:N0}: {g.Reason}");
+                sb.AppendLine($"       maps={string.Join(", ", g.Maps)}");
+            }
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("CROSS-MAP PACKED RELOCATION FIELDS");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("Ranked by packed references. Unique targets are summed per map/source ledger; low target counts relative to references identify high-leverage shared objects to own once and rebase.");
+        if (relocationFields.Count == 0)
+        {
+            sb.AppendLine("  <no relocation field reports found>");
+        }
+        else
+        {
+            var rank = 1;
+            foreach (var g in relocationFields
+                         .GroupBy(x => (x.AssetType, x.Field), new AssetFieldComparer())
+                         .Select(g => new
+                         {
+                             AssetType = g.Key.AssetType,
+                             Field = g.Key.Field,
+                             References = g.Sum(x => x.References),
+                             UniqueTargets = g.Sum(x => x.UniqueTargets),
+                             Maps = g.Select(x => x.Map).Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray()
+                         })
+                         .OrderByDescending(x => x.References)
+                         .ThenBy(x => x.UniqueTargets)
+                         .ThenBy(x => x.AssetType, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(x => x.Field, StringComparer.OrdinalIgnoreCase)
+                         .Take(120))
+            {
+                sb.AppendLine($"  [{rank++:D2}] refs={g.References:N0}; uniqueTargets(sum)={g.UniqueTargets:N0}; maps={g.Maps.Length:N0}: {g.AssetType}.{g.Field}");
+                sb.AppendLine($"       maps={string.Join(", ", g.Maps)}");
+            }
+        }
+        sb.AppendLine();
+
         sb.AppendLine("ALL FAILED STAGES BY MAP");
         sb.AppendLine(new string('-', 108));
         if (failures.Count == 0)
@@ -165,9 +238,198 @@ public static class NormalMapMasterDiagnostics
         }
 
         sb.AppendLine();
+        sb.AppendLine("FORENSIC ALL-MAP ARTIFACT INDEX");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("This section is exhaustive for generated map output files. Binary files are represented by path/size/SHA-256; textual diagnostics are embedded verbatim in the next section.");
+        foreach (var map in maps.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await AppendGeneratedArtifactIndexAsync(sb, map, outputRoot, cancellationToken);
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("SOURCE TREE MANIFESTS");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("Source payload bytes are never embedded here. Every source path and size is recorded recursively so missing audio/mod/IWD support files are visible without bloating the sendable dataset.");
+        foreach (var map in maps.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AppendSourceTreeManifest(sb, map);
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("ALL GENERATED TEXTUAL DIAGNOSTICS (RAW, EXHAUSTIVE)");
+        sb.AppendLine(new string('-', 108));
+        sb.AppendLine("Unlike the per-map bundle above, this sweep does not depend on a stage having referenced report=<path>. Every generated TXT/JSON/LOG/CSV/MD/XML artifact is included.");
+        foreach (var map in maps.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await AppendAllGeneratedTextArtifactsAsync(sb, map, outputRoot, cancellationToken);
+        }
+
+        sb.AppendLine();
         sb.AppendLine("END ALL NORMAL MAPS MASTER DIAGNOSTIC DATASET");
         await File.WriteAllTextAsync(outputPath, sb.ToString(), new UTF8Encoding(false), cancellationToken);
         return outputPath;
+    }
+
+    private static async Task AppendGeneratedArtifactIndexAsync(
+        StringBuilder sb,
+        MapCandidate map,
+        string outputRoot,
+        CancellationToken cancellationToken)
+    {
+        var root = Path.Combine(outputRoot, map.Name);
+        sb.AppendLine();
+        sb.AppendLine($"[{map.Name}] generated artifacts");
+        if (!Directory.Exists(root))
+        {
+            sb.AppendLine("  <map output directory missing>");
+            return;
+        }
+
+        List<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .Where(p => !Path.GetFileName(p).StartsWith("SEND_THIS_TO_CHATGPT", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(p => Path.GetRelativePath(root, p), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"  <enumeration failed: {ex.GetType().Name}: {ex.Message}>");
+            return;
+        }
+
+        long total = 0;
+        foreach (var path in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var fi = new FileInfo(path);
+            total += fi.Length;
+            var rel = Path.GetRelativePath(root, path);
+            string sha;
+            try { sha = await Sha256Async(path, cancellationToken); }
+            catch (Exception ex) { sha = $"HASH_FAIL:{ex.GetType().Name}:{ex.Message}"; }
+            sb.AppendLine($"  {rel} | bytes={fi.Length:N0} | sha256={sha}");
+        }
+        sb.AppendLine($"  TOTAL files={files.Count:N0}; bytes={total:N0}");
+    }
+
+    private static void AppendSourceTreeManifest(StringBuilder sb, MapCandidate map)
+    {
+        sb.AppendLine();
+        sb.AppendLine($"[{map.Name}] source trees");
+        var roots = map.SourceFolders
+            .Concat(new[] { map.ModFolder, map.UsermapFolder }.OfType<string>())
+            .Where(Directory.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (roots.Count == 0)
+        {
+            sb.AppendLine("  <no source directories>");
+            return;
+        }
+
+        foreach (var root in roots)
+        {
+            sb.AppendLine($"  ROOT {root}");
+            List<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                    .OrderBy(x => Path.GetRelativePath(root, x), StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"    <enumeration failed: {ex.GetType().Name}: {ex.Message}>");
+                continue;
+            }
+
+            var extStats = files
+                .GroupBy(x => Path.GetExtension(x).Length == 0 ? "<none>" : Path.GetExtension(x), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new { Extension = g.Key, Count = g.Count(), Bytes = g.Sum(x => new FileInfo(x).Length) })
+                .OrderByDescending(x => x.Bytes)
+                .ThenBy(x => x.Extension, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            sb.AppendLine("    EXTENSIONS " + string.Join(" | ", extStats.Select(x => $"{x.Extension}:{x.Count:N0}/{x.Bytes:N0}B")));
+
+            foreach (var path in files)
+            {
+                try
+                {
+                    var fi = new FileInfo(path);
+                    sb.AppendLine($"    {Path.GetRelativePath(root, path)} | bytes={fi.Length:N0}");
+                }
+                catch (Exception ex)
+                {
+                    sb.AppendLine($"    {Path.GetRelativePath(root, path)} | STAT_FAIL:{ex.GetType().Name}:{ex.Message}");
+                }
+            }
+        }
+    }
+
+    private static async Task AppendAllGeneratedTextArtifactsAsync(
+        StringBuilder sb,
+        MapCandidate map,
+        string outputRoot,
+        CancellationToken cancellationToken)
+    {
+        var root = Path.Combine(outputRoot, map.Name);
+        sb.AppendLine();
+        sb.AppendLine($">>>>> BEGIN EXHAUSTIVE TEXT ARTIFACTS: {map.Name}");
+        sb.AppendLine(new string('>', 108));
+        if (!Directory.Exists(root))
+        {
+            sb.AppendLine("<map output directory missing>");
+        }
+        else
+        {
+            List<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                    .Where(p => TextArtifactExtensions.Contains(Path.GetExtension(p)))
+                    .Where(p => !Path.GetFileName(p).StartsWith("SEND_THIS_TO_CHATGPT", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(p => Path.GetRelativePath(root, p), StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                files = new List<string>();
+                sb.AppendLine($"<text-artifact enumeration failed: {ex.GetType().Name}: {ex.Message}>");
+            }
+
+            foreach (var path in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var rel = Path.GetRelativePath(root, path);
+                sb.AppendLine();
+                sb.AppendLine($">>>>> BEGIN RAW ARTIFACT: {rel}");
+                try
+                {
+                    sb.AppendLine(await File.ReadAllTextAsync(path, cancellationToken));
+                }
+                catch (Exception ex)
+                {
+                    sb.AppendLine($"<could not read artifact: {ex.GetType().Name}: {ex.Message}>");
+                }
+                sb.AppendLine($"<<<<< END RAW ARTIFACT: {rel}");
+            }
+        }
+        sb.AppendLine(new string('<', 108));
+        sb.AppendLine($"<<<<< END EXHAUSTIVE TEXT ARTIFACTS: {map.Name}");
+    }
+
+    private static async Task<string> Sha256Async(string path, CancellationToken cancellationToken)
+    {
+        await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var sha = SHA256.Create();
+        return Convert.ToHexString(await sha.ComputeHashAsync(fs, cancellationToken)).ToLowerInvariant();
     }
 
     private static List<Failure> ParseFailures(IReadOnlyList<string> lines)
@@ -245,6 +507,72 @@ public static class NormalMapMasterDiagnostics
         s = Regex.Replace(s, @"\b\d[\d,]*(?:\.\d+)?\b", "<n>");
         s = Regex.Replace(s, @"\s+", " ").Trim();
         return s;
+    }
+
+    private sealed class AssetFieldComparer : IEqualityComparer<(string AssetType, string Field)>
+    {
+        public bool Equals((string AssetType, string Field) x, (string AssetType, string Field) y) =>
+            StringComparer.OrdinalIgnoreCase.Equals(x.AssetType, y.AssetType) &&
+            StringComparer.OrdinalIgnoreCase.Equals(x.Field, y.Field);
+
+        public int GetHashCode((string AssetType, string Field) obj) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.AssetType),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Field));
+    }
+
+    private static async Task<List<PromotionRejectRow>> ReadV2PromotionRejectsAsync(
+        IReadOnlyList<MapCandidate> maps,
+        string outputRoot,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<PromotionRejectRow>();
+        foreach (var map in maps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural", $"{map.Name}_linker_v2_main_structural.json");
+            if (!File.Exists(path)) continue;
+            try
+            {
+                var result = System.Text.Json.JsonSerializer.Deserialize<NormalMapLinkerV2StructuralMainEmitResult>(
+                    await File.ReadAllTextAsync(path, cancellationToken));
+                if (result is null) continue;
+                foreach (var kv in result.PromotionRejectReasons)
+                    rows.Add(new PromotionRejectRow(map.Name, kv.Key, kv.Value));
+            }
+            catch
+            {
+                // Optional cross-map clustering must never prevent the master dataset.
+            }
+        }
+        return rows;
+    }
+
+    private static async Task<List<RelocationFieldRow>> ReadV2RelocationFieldsAsync(
+        IReadOnlyList<MapCandidate> maps,
+        string outputRoot,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<RelocationFieldRow>();
+        foreach (var map in maps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = Path.Combine(outputRoot, map.Name, "linker_v2_relocation", $"{map.Name}_linker_v2_relocation.json");
+            if (!File.Exists(path)) continue;
+            try
+            {
+                var result = System.Text.Json.JsonSerializer.Deserialize<NormalMapLinkerV2RelocationObligationsResult>(
+                    await File.ReadAllTextAsync(path, cancellationToken));
+                if (result is null) continue;
+                foreach (var f in result.Fields)
+                    rows.Add(new RelocationFieldRow(map.Name, f.AssetType, f.Field, f.PackedReferences, f.UniquePackedTargets));
+            }
+            catch
+            {
+                // Optional cross-map clustering must never prevent the master dataset.
+            }
+        }
+        return rows;
     }
 
     private sealed record V2ProductionBlocker(string Map, string Blocker);

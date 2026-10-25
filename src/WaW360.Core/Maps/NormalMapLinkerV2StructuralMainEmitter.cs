@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -13,10 +14,30 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required string? OutputFastFile { get; init; }
     public required string? OutputZone { get; init; }
     public required string? HardwarePackageDirectory { get; init; }
+    public required string? ConservativeOutputFastFile { get; init; }
+    public required string? ConservativeHardwarePackageDirectory { get; init; }
+    public required bool ConservativeCandidateReady { get; init; }
+    public required int ConservativeReadBackErrors { get; init; }
+    public required bool ConservativeWrapperRoundTripVerified { get; init; }
+    public required string? ConservativeFastFileSha256 { get; init; }
+    public required string? ScriptClosureOutputFastFile { get; init; }
+    public required string? ScriptClosureHardwarePackageDirectory { get; init; }
+    public required bool ScriptClosureCandidateReady { get; init; }
+    public required int ScriptClosureReadBackErrors { get; init; }
+    public required bool ScriptClosureWrapperRoundTripVerified { get; init; }
+    public required string? ScriptClosureFastFileSha256 { get; init; }
+    public required int ScriptClosureResidentMenusRemoved { get; init; }
+    public required int ScriptClosureRawFilesPromoted { get; init; }
     public required int XboxAssets { get; init; }
     public required int ScriptStrings { get; init; }
     public required int PayloadsBuilt { get; init; }
     public required int FallbackPayloads { get; init; }
+    public required int RealPromotedPayloads { get; init; }
+    public required IReadOnlyDictionary<string, int> RealPromotedByType { get; init; }
+    public required int SmokePromotedPayloads { get; init; }
+    public required IReadOnlyDictionary<string, int> SmokePromotedByType { get; init; }
+    public required int PromotionRejectedPayloads { get; init; }
+    public required IReadOnlyDictionary<string, int> PromotionRejectReasons { get; init; }
     public required int SourceAliasRoots { get; init; }
     public required int ReadBackErrors { get; init; }
     public required long ZoneBytes { get; init; }
@@ -37,7 +58,7 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
 }
 
 /// <summary>
-/// Linker V2 alpha 5 SELF-CONTAINED STRUCTURAL main-FF emitter.
+/// Linker V2 alpha 7 SELF-CONTAINED STRUCTURAL main-FF emitter.
 ///
 /// This is deliberately NOT the production shared-object linker. It is an explicit native-loader
 /// diagnostic that rebuilds each authoritative primary XAsset root as a self-contained Xbox-endian
@@ -78,17 +99,32 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural");
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural");
+        var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_tracked_shell");
+        var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_script_closure");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
+        Directory.CreateDirectory(conservativePackageDir);
+        Directory.CreateDirectory(scriptClosurePackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".zone");
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
+        var conservativeZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".tracked_shell.zone");
+        var conservativeFfPath = Path.Combine(conservativePackageDir, source.CanonicalBaseName + ".ff");
+        var scriptClosureZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".script_closure.zone");
+        var scriptClosureFfPath = Path.Combine(scriptClosurePackageDir, source.CanonicalBaseName + ".ff");
 
         // Never let a stale candidate survive a failed rerun.
         TryDelete(ffPath);
         TryDelete(zonePath);
         TryDelete(Path.Combine(packageDir, "STRUCTURAL_NATIVE_TEST.txt"));
+        TryDelete(Path.Combine(packageDir, "mod.arena"));
+        TryDelete(conservativeFfPath);
+        TryDelete(conservativeZonePath);
+        TryDelete(Path.Combine(conservativePackageDir, "TRACKED_SHELL_NATIVE_TEST.txt"));
+        TryDelete(scriptClosureFfPath);
+        TryDelete(scriptClosureZonePath);
+        TryDelete(Path.Combine(scriptClosurePackageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"));
 
         var blockers = new List<string>();
         var notes = new List<string>
@@ -113,6 +149,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             .ThenBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var weaponStrings = blockers.Count == 0
+            ? await LinkerV2IwdWeaponStringCatalog.BuildAsync(
+                source.SourceArchive
+                    .Where(x => x.Role.Equals("iwd", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => x.Path),
+                cancellationToken)
+            : new Dictionary<string, LinkerV2IwdWeaponStringCatalog.WeaponStrings>(StringComparer.OrdinalIgnoreCase);
+
+        if (weaponStrings.Count != 0)
+            notes.Add($"IWD WEAPON OWNERSHIP: indexed {weaponStrings.Count:N0} authoritative custom weapon file(s) for direct-string localization.");
+
         var contexts = new Dictionary<string, SourceContext>(StringComparer.OrdinalIgnoreCase);
         if (blockers.Count == 0)
         {
@@ -120,10 +167,18 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var cached = await FastFileAnalysisCache.GetZoneAsync(container.Path, cancellationToken);
-                var payloads = await BuildSourcePayloadsAsync(
-                    outputRoot, map.Name, source.CanonicalBaseName,
-                    container.Role, container.Path, cached.Document, cached.Bytes, cancellationToken);
-                contexts[container.Path] = new SourceContext(container.Role, container.Path, cached.Document, cached.Bytes, payloads);
+                try
+                {
+                    var payloads = await BuildSourcePayloadsAsync(
+                        outputRoot, map.Name, source.CanonicalBaseName,
+                        container.Role, container.Path, cached.Document, cached.Bytes, weaponStrings, cancellationToken);
+                    contexts[container.Path] = new SourceContext(container.Role, container.Path, cached.Document, cached.Bytes, payloads);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    blockers.Add($"{container.FileName}: structural payload construction blocked: {ex.Message}");
+                    break;
+                }
             }
         }
 
@@ -208,16 +263,167 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                              rootPayloads.Count == rootPolicy.Roots.Count &&
                              correctZoneSize && perBlockHeader && readBackErrors == 0 && wrapperRoundTrip;
 
+        // Emit a second main-FF hardware candidate from the SAME analyzed graph. It keeps all
+        // non-tracked structural payloads identical but reduces XAnim/XModel/Weapon/FX to named,
+        // zero-owned-data shells. This is an A/B isolation tool: if both variants fault at the same
+        // hardware frontier, promoted tracked payloads are unlikely to be the cause. If only the
+        // proof-heavy candidate faults, the promoted tracked graph becomes the primary suspect.
+        var conservativeReady = false;
+        var conservativeReadBackErrors = 0;
+        var conservativeRoundTrip = false;
+        string? conservativeSha = null;
+        if (blockers.Count == 0 && rootPayloads.Count == rootPolicy.Roots.Count)
+        {
+            var conservativePayloads = BuildTrackedShellVariant(rootPayloads);
+            var conservativeZone = BuildZone(rootPolicy.Roots, conservativePayloads, canonicalStrings, blockPlan, out var conservativeHeaderZoneSize);
+            var conservativeSizeOk = conservativeHeaderZoneSize == checked((uint)(conservativeZone.Length - FastFileConstants.T4XFileHeaderSize));
+            var conservativeBlockOk = VerifyBlockHeader(conservativeZone, blockPlan);
+            if (conservativeSizeOk && conservativeBlockOk)
+            {
+                await File.WriteAllBytesAsync(conservativeZonePath, conservativeZone, cancellationToken);
+                conservativeReadBackErrors = VerifyReadBack(
+                    conservativeZonePath, conservativeZone, rootPolicy.Roots, conservativePayloads, canonicalStrings, blockPlan);
+                if (conservativeReadBackErrors == 0)
+                {
+                    var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                        conservativeFfPath, conservativeZone, preferNativeLevel6: true, cancellationToken: cancellationToken);
+                    conservativeRoundTrip = write.RoundTripVerified;
+                    if (conservativeRoundTrip)
+                    {
+                        conservativeSha = await Sha256Async(conservativeFfPath, cancellationToken);
+                        conservativeReady = true;
+                        await WriteTrackedShellReadmeAsync(
+                            conservativePackageDir, source.CanonicalBaseName, conservativeSha,
+                            rootPolicy.Roots.Count, cancellationToken);
+                    }
+                }
+            }
+        }
+        if (!conservativeReady)
+            TryDelete(conservativeFfPath);
+
+        // Third hardware matrix candidate: start from the tracked-shell graph, remove only
+        // exact-name resident UI MenuLists proven by typed closure, then add exact IWD .gsc/.csc
+        // RawFiles that the closure stage proves are absent from the current named RawFile set.
+        // This intentionally tests the SP DB/script-lookup frontier; it does NOT claim final graph
+        // convergence because golden validation may still require a different net RawFile count.
+        var scriptClosureReady = false;
+        var scriptClosureReadBackErrors = 0;
+        var scriptClosureRoundTrip = false;
+        string? scriptClosureSha = null;
+        var scriptClosureMenusRemoved = 0;
+        var scriptClosureRawPromoted = 0;
+        if (blockers.Count == 0 && rootPayloads.Count == rootPolicy.Roots.Count)
+        {
+            try
+            {
+                var typedClosure = await LoadTypedClosureAsync(map, outputRoot, source, cancellationToken);
+                var trackedShellPayloads = BuildTrackedShellVariant(rootPayloads);
+                var scriptVariant = await BuildScriptClosureVariantAsync(
+                    rootPolicy.Roots,
+                    trackedShellPayloads,
+                    typedClosure,
+                    cancellationToken);
+
+                scriptClosureMenusRemoved = scriptVariant.ResidentMenusRemoved;
+                scriptClosureRawPromoted = scriptVariant.RawFilesPromoted;
+
+                if (scriptClosureMenusRemoved != 0 || scriptClosureRawPromoted != 0)
+                {
+                    var scriptZone = BuildZone(
+                        scriptVariant.Roots,
+                        scriptVariant.Payloads,
+                        canonicalStrings,
+                        blockPlan,
+                        out var scriptHeaderZoneSize);
+                    var scriptSizeOk = scriptHeaderZoneSize == checked((uint)(scriptZone.Length - FastFileConstants.T4XFileHeaderSize));
+                    var scriptBlockOk = VerifyBlockHeader(scriptZone, blockPlan);
+                    if (scriptSizeOk && scriptBlockOk)
+                    {
+                        await File.WriteAllBytesAsync(scriptClosureZonePath, scriptZone, cancellationToken);
+                        scriptClosureReadBackErrors = VerifyReadBack(
+                            scriptClosureZonePath,
+                            scriptZone,
+                            scriptVariant.Roots,
+                            scriptVariant.Payloads,
+                            canonicalStrings,
+                            blockPlan);
+                        if (scriptClosureReadBackErrors == 0)
+                        {
+                            var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                                scriptClosureFfPath,
+                                scriptZone,
+                                preferNativeLevel6: true,
+                                cancellationToken: cancellationToken);
+                            scriptClosureRoundTrip = write.RoundTripVerified;
+                            if (scriptClosureRoundTrip)
+                            {
+                                scriptClosureSha = await Sha256Async(scriptClosureFfPath, cancellationToken);
+                                scriptClosureReady = true;
+                                await WriteScriptClosureReadmeAsync(
+                                    scriptClosurePackageDir,
+                                    source.CanonicalBaseName,
+                                    scriptClosureSha,
+                                    scriptVariant.Roots.Count,
+                                    scriptClosureMenusRemoved,
+                                    scriptClosureRawPromoted,
+                                    typedClosure.GoldenExpectedRawFilePromotions,
+                                    cancellationToken);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                notes.Add($"SCRIPT-CLOSURE MATRIX SKIPPED: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        if (!scriptClosureReady)
+            TryDelete(scriptClosureFfPath);
+
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
-            CopyMetadata(map, packageDir);
+            var promoted = rootPayloads
+                .Where(p => TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) && !p.Fallback)
+                .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
             notes.Add($"NATIVE GATE OPEN: structural main FF emitted with {rootPolicy.Roots.Count:N0} authoritative source roots and {fallbackCount:N0} explicitly reduced/fallback payload(s).");
+            notes.Add($"REAL PAYLOAD PROMOTION: total={promoted.Values.Sum():N0}; " +
+                      string.Join(", ", TrackedTypes.Select(t => $"{t}={promoted.GetValueOrDefault(t):N0}")) +
+                      ". Every promoted proof blob passed its typed self-contained-pointer audit.");
+            var smoke = rootPayloads
+                .Where(p => p.Note.StartsWith("smoke-promotion[", StringComparison.OrdinalIgnoreCase))
+                .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            if (smoke.Count != 0)
+                notes.Add($"SMOKE PAYLOAD PROMOTION: total={smoke.Values.Sum():N0}; " +
+                          string.Join(", ", TrackedTypes.Select(t => $"{t}={smoke.GetValueOrDefault(t):N0}")) +
+                          ". Smoke promotions remain fallback-class and are not counted as fidelity-ready real payloads.");
         }
         else
         {
             TryDelete(ffPath);
         }
+
+        var realPromotedByType = rootPayloads
+            .Where(p => TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) && !p.Fallback)
+            .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var smokePromotedByType = rootPayloads
+            .Where(p => p.Note.StartsWith("smoke-promotion[", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var promotionRejectReasons = rootPayloads
+            .Where(p => p.Fallback && TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) &&
+                        p.Note.StartsWith("promotion-rejected[", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(p => NormalizePromotionRejectReason(p.TypeName, p.Note), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         // Deliberately false: this stage bypasses packed/shared production ownership by rebuilding
         // self-contained smoke objects. It can native-test the loader but must never satisfy the real
@@ -230,10 +436,30 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             OutputFastFile = candidateReady ? ffPath : null,
             OutputZone = File.Exists(zonePath) ? zonePath : null,
             HardwarePackageDirectory = candidateReady ? packageDir : null,
+            ConservativeOutputFastFile = conservativeReady ? conservativeFfPath : null,
+            ConservativeHardwarePackageDirectory = conservativeReady ? conservativePackageDir : null,
+            ConservativeCandidateReady = conservativeReady,
+            ConservativeReadBackErrors = conservativeReadBackErrors,
+            ConservativeWrapperRoundTripVerified = conservativeRoundTrip,
+            ConservativeFastFileSha256 = conservativeSha,
+            ScriptClosureOutputFastFile = scriptClosureReady ? scriptClosureFfPath : null,
+            ScriptClosureHardwarePackageDirectory = scriptClosureReady ? scriptClosurePackageDir : null,
+            ScriptClosureCandidateReady = scriptClosureReady,
+            ScriptClosureReadBackErrors = scriptClosureReadBackErrors,
+            ScriptClosureWrapperRoundTripVerified = scriptClosureRoundTrip,
+            ScriptClosureFastFileSha256 = scriptClosureSha,
+            ScriptClosureResidentMenusRemoved = scriptClosureMenusRemoved,
+            ScriptClosureRawFilesPromoted = scriptClosureRawPromoted,
             XboxAssets = rootPolicy.Roots.Count,
             ScriptStrings = canonicalStrings.Values.Count + (canonicalStrings.HasNullSentinel ? 1 : 0),
             PayloadsBuilt = rootPayloads.Count,
             FallbackPayloads = fallbackCount,
+            RealPromotedPayloads = realPromotedByType.Values.Sum(),
+            RealPromotedByType = realPromotedByType,
+            SmokePromotedPayloads = smokePromotedByType.Values.Sum(),
+            SmokePromotedByType = smokePromotedByType,
+            PromotionRejectedPayloads = promotionRejectReasons.Values.Sum(),
+            PromotionRejectReasons = promotionRejectReasons,
             SourceAliasRoots = aliasRoots,
             ReadBackErrors = readBackErrors,
             ZoneBytes = zoneBytes,
@@ -266,6 +492,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         string sourcePath,
         T4ZoneDocument doc,
         byte[] zone,
+        IReadOnlyDictionary<string, LinkerV2IwdWeaponStringCatalog.WeaponStrings> weaponStrings,
         CancellationToken ct)
     {
         if (doc.Endianness != Endian.Little)
@@ -280,7 +507,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             if (assets.Count == 0) continue;
             var proofPath = LinkerV2ProofEvidence.GetProofPath(outputRoot, mapName, sourcePath, role, type);
             if (!File.Exists(proofPath))
-                throw new InvalidDataException($"Alpha 5 structural main emitter needs existing verified {type} proof evidence: {proofPath}");
+                throw new InvalidDataException($"typed {type} proof evidence is unavailable after Fast Mode identity materialization: {proofPath}");
             var proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, ct);
             if (proof.Records.Count != assets.Count)
                 throw new InvalidDataException($"{Path.GetFileName(sourcePath)} {type} proof count mismatch: roots={assets.Count:N0}, proof={proof.Records.Count:N0}.");
@@ -294,22 +521,121 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             };
             for (var i = 0; i < assets.Count; i++)
             {
-                var name = await LinkerV2ProofEvidence.TryReadNameAsync(proof.Records[i], ct);
-                var fallback = string.IsNullOrWhiteSpace(name);
+                var record = proof.Records[i];
+                var name = await LinkerV2ProofEvidence.TryReadNameAsync(record, ct);
+
+                var reason = string.Empty;
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    var blob = await T4NativeProofContainerReader.ReadBlobAsync(record, ct);
+                    var safe = false;
+                    var auditedName = name;
+
+                    switch (type.ToLowerInvariant())
+                    {
+                        case "xanim":
+                            safe = IsSelfContainedXboxXAnim(blob);
+                            if (!safe) reason = "typed XAnim fixed body retains a packed/source pointer";
+                            break;
+                        case "xmodel":
+                            safe = T4XModelSerializerProof.TryValidateSelfContainedXboxBlob(blob, out auditedName, out reason) &&
+                                   auditedName.Equals(name, StringComparison.Ordinal);
+                            if (safe && !auditedName.Equals(name, StringComparison.Ordinal))
+                            {
+                                safe = false;
+                                reason = $"typed XModel name mismatch '{auditedName}' != '{name}'";
+                            }
+                            if (!safe &&
+                                reason.Contains("Material.techniqueSet retains packed/source pointer", StringComparison.OrdinalIgnoreCase) &&
+                                T4XModelSerializerProof.TryBuildStructuralXboxBlobWithSmokeTechniqueSets(
+                                    blob, out var smokeBlob, out var smokeName, out var smokeTechniqueSets, out var smokeReason) &&
+                                smokeName.Equals(name, StringComparison.Ordinal))
+                            {
+                                output[assets[i].Index] = new StructuralPayload(
+                                    type,
+                                    name,
+                                    smokeBlob,
+                                    true,
+                                    $"smoke-promotion[xmodel]: preserved verified Xbox-endian model/material/image ownership and localized {smokeTechniqueSets:N0} packed PC TechniqueSet dependency(ies) as inline Xbox 216-byte null-graph TechniqueSets; no PC shader graph copied");
+                                continue;
+                            }
+                            break;
+                        case "weapon":
+                            safe = T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
+                            if (!safe &&
+                                weaponStrings.TryGetValue(name, out var iwdWeapon))
+                            {
+                                var iwdSafe = T4WeaponVariableSerializerProof.TryBuildStructuralXboxBlobWithIwdStrings(
+                                    blob,
+                                    name,
+                                    iwdWeapon.ByProofLabel,
+                                    out var iwdBlob,
+                                    out var localizedStrings,
+                                    out var iwdReason);
+
+                                if (iwdSafe)
+                                {
+                                    output[assets[i].Index] = new StructuralPayload(
+                                        type,
+                                        name,
+                                        iwdBlob,
+                                        true,
+                                        $"smoke-promotion[weapon]: localized {localizedStrings:N0} packed direct WeaponDef string/animation field(s) from authoritative IWD '{Path.GetFileName(iwdWeapon.SourceIwd)}:{iwdWeapon.SourceEntry}', then passed the complete typed self-contained Weapon walk");
+                                    continue;
+                                }
+
+                                if (localizedStrings != 0)
+                                    reason = $"after localizing {localizedStrings:N0} authoritative IWD Weapon string/animation field(s): {iwdReason}";
+                            }
+                            break;
+                        case "fx":
+                            safe = T4FxSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
+                            break;
+                    }
+
+                    if (safe)
+                    {
+                        output[assets[i].Index] = new StructuralPayload(
+                            type,
+                            name,
+                            blob,
+                            false,
+                            $"verified Xbox-endian {type} proof blob promoted with complete typed owned payload; no packed source pointer retained");
+                        continue;
+                    }
+                }
+
                 name ??= $"__waw360_{type}_{Path.GetFileNameWithoutExtension(sourcePath)}_{assets[i].Index:D5}";
-                output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), fallback,
-                    $"reduced {type} shell; owned child data omitted for structural native test");
+                if (string.IsNullOrWhiteSpace(reason))
+                    reason = "verified proof blob retained a source dependency or could not satisfy the self-contained typed audit";
+                output[assets[i].Index] = new StructuralPayload(type, name, BuildFixedNameShell(fixedSize, name), true,
+                    $"promotion-rejected[{type}]: {reason}");
             }
         }
 
-        // Sound parser already closes every source snd_alias_list ownership graph and creates a
-        // self-contained silent Xbox stub. Fail closed if a source sound run cannot be proven.
+        // Audio fidelity is a STRICT gate, not a structural-loader gate. Preserve every sound
+        // alias list the deterministic parser can prove; if a custom source run cannot be mapped
+        // exactly, retain that root as an explicit one-alias silent structural stub instead of
+        // aborting the entire map. This never claims XMA/SDNS fidelity and is reported as fallback.
         var sound = T4SoundAliasSmokeSerializer.Build(doc, zone, ct);
-        if (!sound.Verified && sound.DeclaredPhysicalSoundAssets != 0)
-            throw new InvalidDataException($"Sound structural serialization is not exact for {Path.GetFileName(sourcePath)}: {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}.");
+        if (sound.ReadBackErrors != 0)
+            throw new InvalidDataException($"Sound structural read-back failed for {Path.GetFileName(sourcePath)}: errors={sound.ReadBackErrors:N0}.");
         foreach (var s in sound.AssetsByIndex.Values)
             output[s.AssetIndex] = new StructuralPayload("sound", s.AliasListName, s.XboxSilentStubPayload, false,
                 "silent Sound structural stub; SDNS/XMA fidelity pending");
+
+        var physicalSounds = Physical(doc, "sound");
+        foreach (var asset in physicalSounds)
+        {
+            if (output.ContainsKey(asset.Index)) continue;
+            var fallbackName = $"__waw360_silent_sound_{Path.GetFileNameWithoutExtension(sourcePath)}_{asset.Index:D5}";
+            output[asset.Index] = new StructuralPayload(
+                "sound",
+                fallbackName,
+                T4SoundAliasSmokeSerializer.BuildFallbackSilentStub(asset.Index, fallbackName),
+                true,
+                $"fallback silent Sound root; deterministic sound coverage was {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}; final SDNS/XMA conversion remains required");
+        }
 
         var techsets = T4TechniqueSetNullGraphSerializer.Build(doc);
         if (!techsets.Verified && techsets.DeclaredPhysicalTechniqueSets != 0)
@@ -390,6 +716,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                     var name = $"__waw360_stringtable_{asset.Index:D5}";
                     output[asset.Index] = new StructuralPayload("stringtable", name, BuildStringTableEmpty(name), true,
                         "fallback empty StringTable");
+                    break;
+                }
+                case "font":
+                {
+                    // T4 Font_s is a 24-byte 32-bit root:
+                    // fontName*, pixelHeight, glyphCount, material*, glowMaterial*, glyphs*.
+                    // Structural smoke output owns only a fresh name and leaves all rendering/glyph
+                    // dependencies null with zero counts. This is intentionally fidelity-inert.
+                    var name = $"__waw360_font_{Path.GetFileNameWithoutExtension(sourcePath)}_{asset.Index:D5}";
+                    output[asset.Index] = new StructuralPayload("font", name, BuildFixedNameShell(24, name), true,
+                        "fallback empty T4 Font_s root; pixelHeight/glyphCount/material/glow/glyphs are intentionally zero/null");
                     break;
                 }
                 default:
@@ -545,6 +882,213 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                               a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared)
             .OrderBy(a => a.Index).ToList();
 
+    private static string NormalizePromotionRejectReason(string type, string note)
+    {
+        var prefix = $"promotion-rejected[{type}]: ";
+        var reason = note.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? note[prefix.Length..]
+            : note;
+
+        // Preserve the typed field name while removing per-asset names/addresses so the
+        // census groups the actual dependency class rather than producing one row per asset.
+        var marker = " retains packed/source pointer ";
+        var i = reason.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (i >= 0)
+            reason = reason[..i] + " retains packed/source pointer";
+
+        // Typed diagnostics often prefix the concrete asset name before the child field.
+        // Strip only that name so identical dependency classes group together in the census.
+        foreach (var family in new[] { "XModel", "Weapon", "FX" })
+        {
+            var prefixWithName = family + " '";
+            if (!reason.StartsWith(prefixWithName, StringComparison.OrdinalIgnoreCase)) continue;
+            var quoteEnd = reason.IndexOf("' ", prefixWithName.Length, StringComparison.Ordinal);
+            if (quoteEnd >= 0)
+                reason = family + " " + reason[(quoteEnd + 2)..];
+            break;
+        }
+
+        return $"{type}: {reason}";
+    }
+
+    private static bool IsSelfContainedXboxXAnim(byte[] blob)
+    {
+        const int fixedSize = 88;
+        if (blob.Length < fixedSize) return false;
+
+        static bool SelfContained(uint value) =>
+            value == 0 || value is T4ZonePointer.Following or T4ZonePointer.Insert;
+
+        // XAnimParts::name plus every serialized owned pointer in the fixed body.
+        if (!SelfContained(BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(0, 4))))
+            return false;
+        for (var offset = 48; offset <= 84; offset += 4)
+        {
+            var value = BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(offset, 4));
+            if (!SelfContained(value))
+                return false;
+        }
+        return true;
+    }
+
+    private sealed record ScriptClosureVariant(
+        IReadOnlyList<LinkerV2CanonicalRoot> Roots,
+        IReadOnlyList<StructuralPayload> Payloads,
+        int ResidentMenusRemoved,
+        int RawFilesPromoted);
+
+    private static async Task<NormalMapLinkerV2TypedClosurePlanResult> LoadTypedClosureAsync(
+        MapCandidate map,
+        string outputRoot,
+        NormalMapLinkerV2SourceArchiveResult source,
+        CancellationToken ct)
+    {
+        var json = Path.Combine(
+            outputRoot,
+            map.Name,
+            "linker_v2_typed_closure",
+            $"{map.Name}_linker_v2_typed_closure.json");
+        if (File.Exists(json))
+        {
+            var parsed = JsonSerializer.Deserialize<NormalMapLinkerV2TypedClosurePlanResult>(
+                await File.ReadAllTextAsync(json, ct),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (parsed is not null)
+                return parsed;
+        }
+        return await NormalMapLinkerV2TypedClosurePlan.RunAsync(map, outputRoot, source, ct);
+    }
+
+    private static async Task<ScriptClosureVariant> BuildScriptClosureVariantAsync(
+        IReadOnlyList<LinkerV2CanonicalRoot> roots,
+        IReadOnlyList<StructuralPayload> payloads,
+        NormalMapLinkerV2TypedClosurePlanResult closure,
+        CancellationToken ct)
+    {
+        if (roots.Count != payloads.Count)
+            throw new InvalidDataException("Script-closure matrix requires one payload per canonical provenance root.");
+
+        static string Full(string path) => Path.GetFullPath(path);
+        var resident = closure.ResidentRoots
+            .Select(x => (Path: Full(x.SourceFastFile), x.AssetIndex))
+            .ToHashSet();
+
+        var keptRoots = new List<LinkerV2CanonicalRoot>(roots.Count + closure.Promotions.Count);
+        var keptPayloads = new List<StructuralPayload>(payloads.Count + closure.Promotions.Count);
+        var removed = 0;
+        for (var i = 0; i < roots.Count; i++)
+        {
+            var root = roots[i];
+            if (resident.Contains((Full(root.SourceFastFile), root.SourceAssetIndex)))
+            {
+                removed++;
+                continue;
+            }
+            keptRoots.Add(root);
+            keptPayloads.Add(payloads[i]);
+        }
+
+        var rawPromotions = closure.Promotions
+            .Where(x => x.AssetType.Equals("rawfile", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Archive, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Entry, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var nextOrdinal = keptRoots.Count == 0 ? 0 : keptRoots.Max(x => x.CanonicalSourceOrdinal) + 1;
+        var promoted = 0;
+        foreach (var p in rawPromotions)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!File.Exists(p.Archive))
+                throw new FileNotFoundException("Typed-closure IWD archive disappeared.", p.Archive);
+
+            byte[] sourceBytes;
+            using (var zip = ZipFile.OpenRead(p.Archive))
+            {
+                var entry = zip.Entries.FirstOrDefault(x =>
+                    x.FullName.Replace('\\', '/').Equals(p.Entry.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
+                if (entry is null)
+                    throw new InvalidDataException($"IWD RawFile promotion entry disappeared: {Path.GetFileName(p.Archive)}::{p.Entry}");
+                await using var stream = entry.Open();
+                using var ms = new MemoryStream(checked((int)Math.Min(entry.Length + 1L, int.MaxValue)));
+                await stream.CopyToAsync(ms, ct);
+                sourceBytes = ms.ToArray();
+            }
+
+            var name = p.Name.Replace('\\', '/').TrimStart('/');
+            var payload = BuildRawFileOwned(name, sourceBytes);
+            var root = new LinkerV2CanonicalRoot(
+                nextOrdinal++,
+                "iwd",
+                p.Archive,
+                -1,
+                "rawfile",
+                "rawfile",
+                T4XboxAssetTypeMap.GetXboxTypeId("rawfile"),
+                T4AssetReferenceKind.Inline,
+                T4ZonePointer.Following,
+                $"iwd|{Path.GetFileName(p.Archive)}|{p.Entry}|rawfile",
+                "HARDWARE_DIAGNOSTIC_TYPED_IWD_RAWFILE_PROMOTION");
+            keptRoots.Add(root);
+            keptPayloads.Add(new StructuralPayload(
+                "rawfile",
+                name,
+                payload,
+                false,
+                $"script-closure hardware diagnostic: exact IWD RawFile bytes promoted from {Path.GetFileName(p.Archive)}::{p.Entry}"));
+            promoted++;
+        }
+
+        var ordered = keptRoots
+            .Select((root, i) => (root, payload: keptPayloads[i]))
+            .OrderBy(x => x.root.CanonicalSourceOrdinal)
+            .ToList();
+
+        return new ScriptClosureVariant(
+            ordered.Select(x => x.root).ToList(),
+            ordered.Select(x => x.payload).ToList(),
+            removed,
+            promoted);
+    }
+
+    private static byte[] BuildRawFileOwned(string name, ReadOnlySpan<byte> sourceBytes)
+    {
+        if (sourceBytes.Length > int.MaxValue - 1)
+            throw new InvalidDataException($"IWD RawFile '{name}' is too large.");
+        var n = Encoding.ASCII.GetBytes(name);
+        var bytes = new byte[12 + n.Length + 1 + sourceBytes.Length + 1];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(0, 4), T4ZonePointer.Following);
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(4, 4), checked((uint)sourceBytes.Length));
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(8, 4), T4ZonePointer.Following);
+        n.CopyTo(bytes.AsSpan(12));
+        sourceBytes.CopyTo(bytes.AsSpan(12 + n.Length + 1));
+        // Final byte is the owned RawFile buffer terminator outside the logical len.
+        return bytes;
+    }
+
+    private static IReadOnlyList<StructuralPayload> BuildTrackedShellVariant(IReadOnlyList<StructuralPayload> payloads)
+    {
+        return payloads.Select(p =>
+        {
+            var fixedSize = p.TypeName.ToLowerInvariant() switch
+            {
+                "xanim" => 88,
+                "xmodel" => 228,
+                "weapon" => 0x9AC,
+                "fx" => 36,
+                _ => 0
+            };
+            if (fixedSize == 0) return p;
+            return new StructuralPayload(
+                p.TypeName,
+                p.Name,
+                BuildFixedNameShell(fixedSize, p.Name),
+                true,
+                $"hardware-matrix tracked shell: {p.TypeName} owned children intentionally zeroed");
+        }).ToList();
+    }
+
     private static byte[] BuildFixedNameShell(int fixedSize, string name)
     {
         var n = Encoding.ASCII.GetBytes(name);
@@ -620,38 +1164,95 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return bytes;
     }
 
+    private static async Task WriteScriptClosureReadmeAsync(
+        string packageDir,
+        string baseName,
+        string sha,
+        int roots,
+        int residentMenusRemoved,
+        int rawFilesPromoted,
+        int? goldenExpectedRawPromotions,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WaW360Converter — SCRIPT-CLOSURE HARDWARE MATRIX CANDIDATE");
+        sb.AppendLine(new string('=', 82));
+        sb.AppendLine($"FF: {baseName}.ff");
+        sb.AppendLine($"SHA-256: {sha}");
+        sb.AppendLine($"Xbox XAsset roots in this diagnostic: {roots:N0}");
+        sb.AppendLine($"Resident UI MenuLists removed by exact identity: {residentMenusRemoved:N0}");
+        sb.AppendLine($"Missing IWD .gsc/.csc RawFiles promoted by exact name+bytes: {rawFilesPromoted:N0}");
+        if (goldenExpectedRawPromotions is not null)
+            sb.AppendLine($"Known-working golden RawFile net delta (validation only): {goldenExpectedRawPromotions:+#;-#;0}");
+        sb.AppendLine();
+        sb.AppendLine("PURPOSE");
+        sb.AppendLine("  This variant starts from tracked_shell and changes ONLY typed map-activation closure:");
+        sb.AppendLine("  proven always-loaded resident UI MenuLists are omitted, and missing IWD scripts are emitted as owned RawFile roots.");
+        sb.AppendLine("  It tests the SP TU7 DB/script lookup frontier at 0x82168594 / 0xC0000005.");
+        sb.AppendLine();
+        sb.AppendLine("IMPORTANT");
+        sb.AppendLine("  This is NOT production graph convergence. Golden counts never force additions/removals.");
+        sb.AppendLine("  A different/later hardware frontier proves this closure family matters; the final linker still needs exact identity closure.");
+        await File.WriteAllTextAsync(
+            Path.Combine(packageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"),
+            sb.ToString(),
+            new UTF8Encoding(false),
+            ct);
+    }
+
+    private static async Task WriteTrackedShellReadmeAsync(
+        string packageDir,
+        string baseName,
+        string sha,
+        int roots,
+        CancellationToken ct)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WaW360Converter — TRACKED-SHELL HARDWARE MATRIX CANDIDATE");
+        sb.AppendLine(new string('=', 82));
+        sb.AppendLine($"FF: {baseName}.ff");
+        sb.AppendLine($"SHA-256: {sha}");
+        sb.AppendLine($"Xbox XAsset roots: {roots:N0}");
+        sb.AppendLine();
+        sb.AppendLine("A/B PURPOSE");
+        sb.AppendLine("  This candidate is generated from the exact same Linker V2 root graph as the proof-heavy main FF.");
+        sb.AppendLine("  Only XAnim/XModel/Weapon/FX differ: all four are reduced to named self-contained fixed shells.");
+        sb.AppendLine("  World/material/sound/simple-root behavior is otherwise unchanged.");
+        sb.AppendLine();
+        sb.AppendLine("INTERPRETATION");
+        sb.AppendLine("  - Same hardware fault as proof-heavy main => suspect world/material/simple-root initialization first.");
+        sb.AppendLine("  - Different/later fault => promoted tracked payloads participate in the previous frontier.");
+        sb.AppendLine("  - This is diagnostic only and never satisfies production fidelity.");
+        await File.WriteAllTextAsync(
+            Path.Combine(packageDir, "TRACKED_SHELL_NATIVE_TEST.txt"),
+            sb.ToString(),
+            new UTF8Encoding(false),
+            ct);
+    }
+
     private static async Task WriteReadmeAsync(string packageDir, string baseName, string sha, int roots, int fallback, CancellationToken ct)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — Linker V2 alpha 5 SELF-CONTAINED MAIN NATIVE STRUCTURAL TEST");
+        sb.AppendLine("WaW360Converter — Linker V2 alpha 8 PROOF-PAYLOAD MAIN NATIVE STRUCTURAL TEST");
         sb.AppendLine(new string('=', 92));
         sb.AppendLine($"FF: {baseName}.ff");
         sb.AppendLine($"SHA-256: {sha}");
         sb.AppendLine($"Xbox XAsset roots: {roots:N0}");
         sb.AppendLine($"Explicitly reduced/fallback payloads: {fallback:N0}");
         sb.AppendLine();
-        sb.AppendLine("THIS IS NOT A FULL CONVERSION.");
+        sb.AppendLine("THIS IS NOT A FULL CONVERSION OR STANDALONE MAP PACKAGE.");
+        sb.AppendLine($"ONLY {baseName}.ff in this folder is the structural A/B candidate.");
         sb.AppendLine("It is a fail-closed loader/zone/XAsset structural diagnostic. Audio is silent; materials/shaders/world data and several unresolved simple assets are deliberately reduced.");
         sb.AppendLine();
-        sb.AppendLine("SIMPSONS GOLDEN A/B TEST (preferred first test):");
+        sb.AppendLine("GOLDEN A/B TEST:");
         sb.AppendLine($"  1. Start with the known-working Xbox {baseName} package.");
-        sb.AppendLine($"  2. Replace ONLY {baseName}.ff with this file.");
-        sb.AppendLine("  3. Keep the known-good load FF, sounds folder and metadata untouched.");
-        sb.AppendLine("  4. Record the exact screen/result and xbWatson output if available.");
+        sb.AppendLine($"  2. Back up its original {baseName}.ff.");
+        sb.AppendLine($"  3. Replace ONLY {baseName}.ff with the candidate from this folder.");
+        sb.AppendLine($"  4. Do NOT copy this folder as a map. Keep the known-good {baseName}_load.ff, sounds folder, previews, description, t4ff metadata, arena/IWD files and every other companion file untouched.");
+        sb.AppendLine("  5. Record the exact screen/result and xbWatson output if available.");
         sb.AppendLine();
         sb.AppendLine("A loader success proves structural main-FF emission; it does NOT prove gameplay/fidelity readiness.");
         await File.WriteAllTextAsync(Path.Combine(packageDir, "STRUCTURAL_NATIVE_TEST.txt"), sb.ToString(), new UTF8Encoding(false), ct);
-    }
-
-    private static void CopyMetadata(MapCandidate map, string packageDir)
-    {
-        foreach (var folder in map.SourceFolders.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var arena = Path.Combine(folder, "mod.arena");
-            if (!File.Exists(arena)) continue;
-            File.Copy(arena, Path.Combine(packageDir, "mod.arena"), overwrite: true);
-            break;
-        }
     }
 
     private static async Task<string> Sha256Async(string path, CancellationToken ct)
@@ -676,14 +1277,24 @@ public static class NormalMapLinkerV2StructuralMainEmitter
     private static string Render(NormalMapLinkerV2StructuralMainEmitResult r, NormalMapLinkerV2DestinationBlockPlanResult blocks)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — LINKER V2 alpha 5 self-contained main native structural emitter");
+        sb.AppendLine("WaW360Converter — LINKER V2 alpha 8 proof-payload structural main emitter");
         sb.AppendLine(new string('=', 104));
         sb.AppendLine($"Map: {r.MapName}; canonical={r.CanonicalBaseName}");
         sb.AppendLine($"candidateReady={r.StructuralNativeCandidateReady}; productionMainReady={r.ProductionMainReady}; verified={r.Verified}");
-        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
+        sb.AppendLine($"assets={r.XboxAssets:N0}; scriptStrings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbackPayloads={r.FallbackPayloads:N0}; realPromotedPayloads={r.RealPromotedPayloads:N0}; smokePromotedPayloads={r.SmokePromotedPayloads:N0}; promotionRejected={r.PromotionRejectedPayloads:N0}; sourceAliasRoots={r.SourceAliasRoots:N0}");
+        sb.AppendLine("realPromotedByType: " + string.Join(", ", TrackedTypes.Select(t => $"{t}={r.RealPromotedByType.GetValueOrDefault(t):N0}")));
+        sb.AppendLine("smokePromotedByType: " + string.Join(", ", TrackedTypes.Select(t => $"{t}={r.SmokePromotedByType.GetValueOrDefault(t):N0}")));
+        if (r.PromotionRejectReasons.Count != 0)
+        {
+            sb.AppendLine("PROMOTION REJECTION CENSUS");
+            foreach (var reason in r.PromotionRejectReasons.Take(40))
+                sb.AppendLine($"  {reason.Value,5:N0}  {reason.Key}");
+        }
         sb.AppendLine($"zone={r.ZoneBytes:N0}B; headerZoneSize={r.HeaderZoneSize:N0}B; correctZoneSizeSemantics={r.CorrectZoneSizeSemantics}; perBlockHeader={r.PerBlockCapacityHeader}; readBackErrors={r.ReadBackErrors:N0}");
         sb.AppendLine($"ff={r.FastFileBytes:N0}B; wrapperRoundTrip={r.WrapperRoundTripVerified}; sha256={r.FastFileSha256 ?? "<none>"}");
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
+        sb.AppendLine($"trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; trackedShellSha256={r.ConservativeFastFileSha256 ?? "<none>"}; trackedShellOutput={r.ConservativeOutputFastFile ?? "<none>"}");
+        sb.AppendLine($"scriptClosureCandidate={r.ScriptClosureCandidateReady}; scriptClosureReadBackErrors={r.ScriptClosureReadBackErrors:N0}; scriptClosureRoundTrip={r.ScriptClosureWrapperRoundTripVerified}; residentMenusRemoved={r.ScriptClosureResidentMenusRemoved:N0}; iwdRawFilesPromoted={r.ScriptClosureRawFilesPromoted:N0}; scriptClosureSha256={r.ScriptClosureFastFileSha256 ?? "<none>"}; scriptClosureOutput={r.ScriptClosureOutputFastFile ?? "<none>"}");
         sb.AppendLine();
         sb.AppendLine("SOURCE-DERIVED BLOCK CAPACITIES");
         foreach (var block in Enum.GetValues<T4ZoneBlock>())

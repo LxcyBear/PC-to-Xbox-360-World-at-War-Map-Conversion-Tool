@@ -206,18 +206,21 @@ public sealed partial class MainForm
                     return $"sourceRoots={r.SourceRoots:N0}; provenanceRoots={r.CanonicalProvenanceRoots:N0}; platformTransforms={r.PlatformTypeTransforms:N0}; stableCollisionsRetained={r.StableSameNameCollisionGroupsRetained:N0}/{r.RootsInStableSameNameCollisionGroupsRetained:N0} roots; provenanceReady={r.ProvenanceIdentityComplete}; semanticClosure={r.SemanticClosureComplete}; verified={r.Verified}; report={r.TextReportFile}";
                 }, cacheable: false);
 
-                await Stage("v2-typed-closure-plan", "v2a5|iwd-script-and-weapon-animation-closure|golden-validation-only", "LINKER V2 typed source-archive closure plan", async () =>
+                await Stage("v2-typed-closure-plan", "v2a7|iwd-script-weapon-animation-and-xbox-technique-donor-closure", "LINKER V2 typed source-archive + Xbox donor closure", async () =>
                 {
                     var r = await NormalMapLinkerV2TypedClosurePlan.RunAsync(map, outputRoot, sourceArchive);
                     var golden = r.GoldenExpectedXAnimPromotions is null ? string.Empty : $"; goldenXAnim={r.GoldenExpectedXAnimPromotions:+#;-#;0}/{r.XAnimGoldenCountMatched}; goldenRaw={r.GoldenExpectedRawFilePromotions:+#;-#;0}/{r.RawFileGoldenCountMatched}; goldenMenu={r.GoldenExpectedMenuCanonicalizations:+#;-#;0}/{r.MenuGoldenCountMatched}";
-                    return $"existingXAnim={r.ExistingNamedXAnims:N0}; existingRaw={r.ExistingNamedRawFiles:N0}; iwdWeapons={r.IwdWeaponSources:N0}; iwdScripts={r.IwdScriptSources:N0}; promoteXAnim={r.PromotedXAnimCandidates:N0}; promoteRaw={r.PromotedRawFileCandidates:N0}; residentMenus={r.ResidentMenuCandidates:N0}; promotionEvidence={r.PromotionEvidenceReady}; fullClosure={r.FullTypedClosureReady}{golden}; blockers={r.Blockers.Count:N0}; verified={r.Verified}; report={r.TextReportFile}";
+                    return $"existingXAnim={r.ExistingNamedXAnims:N0}; existingRaw={r.ExistingNamedRawFiles:N0}; iwdWeapons={r.IwdWeaponSources:N0}; iwdScripts={r.IwdScriptSources:N0}; promoteXAnim={r.PromotedXAnimCandidates:N0}; promoteRaw={r.PromotedRawFileCandidates:N0}; residentMenus={r.ResidentMenuCandidates:N0}; donorRequired={r.XboxDonorRequiredTechniqueSets:N0}; donorExact={r.ExactXboxDonorIdentityMatches:N0}; donorUnresolved={r.UnresolvedXboxDonorIdentities:N0}; donorAmbiguous={r.AmbiguousXboxDonorIdentities:N0}; donorCatalogFF={r.DonorCatalogFastFilesScanned:N0}; donorCatalogSets={r.DonorCatalogTechniqueSets:N0}; donorIdentityComplete={r.DonorIdentityResolutionComplete}; promotionEvidence={r.PromotionEvidenceReady}; fullClosure={r.FullTypedClosureReady}{golden}; blockers={r.Blockers.Count:N0}; verified={r.Verified}; report={r.TextReportFile}";
                 }, cacheable: false);
 
                 await Stage("v2-relocation-obligations", "v2a5|typed-top-level-packed-pointer-obligations|no-nulling", "LINKER V2 packed/shared relocation obligations", async () =>
                 {
                     var r = await NormalMapLinkerV2RelocationObligations.RunAsync(map, outputRoot, sourceOverride: sourceArchive);
                     relocation = r;
-                    return $"proofAssets={r.ProofAssetsAudited:N0}; fields={r.KnownPointerFieldsAudited:N0}; packedRefs={r.PackedPointerReferences:N0}; uniqueTargets={r.UniquePackedTargets:N0}; invalid={r.InvalidPackedPointers:N0}; sourceAliases={r.SourceTopLevelAliasRoots:N0}; encodingVerified={r.PackedEncodingVerified}; ownershipResolved={r.SharedTargetOwnershipResolved}; verified={r.Verified}; report={r.TextReportFile}";
+                    var topFields = r.Fields.Count == 0
+    ? "<none>"
+    : string.Join(" | ", r.Fields.Take(10).Select(x => $"{x.PackedReferences:N0}x {x.AssetType}.{x.Field} ({x.UniquePackedTargets:N0} targets)"));
+return $"proofAssets={r.ProofAssetsAudited:N0}; fields={r.KnownPointerFieldsAudited:N0}; packedRefs={r.PackedPointerReferences:N0}; uniqueTargets={r.UniquePackedTargets:N0}; invalid={r.InvalidPackedPointers:N0}; sourceAliases={r.SourceTopLevelAliasRoots:N0}; topPackedFields={topFields}; encodingVerified={r.PackedEncodingVerified}; ownershipResolved={r.SharedTargetOwnershipResolved}; verified={r.Verified}; report={r.TextReportFile}";
                 }, cacheable: false);
 
                 await Stage("v2-block-plan", "v2a5|source-derived-seven-block-capacity-plan|no-golden-copy", "LINKER V2 source-derived destination block plan", async () =>
@@ -243,7 +246,17 @@ public sealed partial class MainForm
                     blockPlan ??= await NormalMapLinkerV2DestinationBlockPlan.RunAsync(map, outputRoot, sourceArchive);
                     scriptStrings ??= await NormalMapLinkerV2ScriptStringMerge.RunAsync(map, outputRoot, sourceOverride: sourceArchive);
                     var r = await NormalMapLinkerV2StructuralMainEmitter.RunAsync(map, outputRoot, sourceArchive, rootPolicy, blockPlan, scriptStrings);
-                    return $"nativeCandidate={r.StructuralNativeCandidateReady}; productionReady={r.ProductionMainReady}; assets={r.XboxAssets:N0}; strings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbacks={r.FallbackPayloads:N0}; zone={r.ZoneBytes:N0}B; ff={r.FastFileBytes:N0}B; zoneSizeSemantics={r.CorrectZoneSizeSemantics}; blockHeader={r.PerBlockCapacityHeader}; readBackErrors={r.ReadBackErrors:N0}; roundTrip={r.WrapperRoundTripVerified}; blockers={r.Blockers.Count:N0}; package={r.HardwarePackageDirectory ?? "<none>"}; report={r.TextReportFile}";
+                    var topRejects = r.PromotionRejectReasons.Count == 0
+    ? "<none>"
+    : string.Join(" | ", r.PromotionRejectReasons
+        .OrderByDescending(kv => kv.Value)
+        .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+        .Take(8)
+        .Select(kv => $"{kv.Value:N0}x {kv.Key}"));
+int RejectCount(string type) => r.PromotionRejectReasons
+    .Where(kv => kv.Key.StartsWith(type + ":", StringComparison.OrdinalIgnoreCase))
+    .Sum(kv => kv.Value);
+return $"nativeCandidate={r.StructuralNativeCandidateReady}; productionReady={r.ProductionMainReady}; assets={r.XboxAssets:N0}; strings={r.ScriptStrings:N0}; payloads={r.PayloadsBuilt:N0}; fallbacks={r.FallbackPayloads:N0}; realPromoted={r.RealPromotedPayloads:N0}; smokePromoted={r.SmokePromotedPayloads:N0}; smokeXModel={r.SmokePromotedByType.GetValueOrDefault("xmodel"):N0}; promotionRejected={r.PromotionRejectedPayloads:N0}; realXAnim={r.RealPromotedByType.GetValueOrDefault("xanim"):N0}; realXModel={r.RealPromotedByType.GetValueOrDefault("xmodel"):N0}; realWeapon={r.RealPromotedByType.GetValueOrDefault("weapon"):N0}; realFx={r.RealPromotedByType.GetValueOrDefault("fx"):N0}; rejectXAnim={RejectCount("xanim"):N0}; rejectXModel={RejectCount("xmodel"):N0}; rejectWeapon={RejectCount("weapon"):N0}; rejectFx={RejectCount("fx"):N0}; rejectTop={topRejects}; zone={r.ZoneBytes:N0}B; ff={r.FastFileBytes:N0}B; zoneSizeSemantics={r.CorrectZoneSizeSemantics}; blockHeader={r.PerBlockCapacityHeader}; readBackErrors={r.ReadBackErrors:N0}; roundTrip={r.WrapperRoundTripVerified}; trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; scriptClosureCandidate={r.ScriptClosureCandidateReady}; scriptClosureReadBackErrors={r.ScriptClosureReadBackErrors:N0}; scriptClosureRoundTrip={r.ScriptClosureWrapperRoundTripVerified}; scriptClosureMenusRemoved={r.ScriptClosureResidentMenusRemoved:N0}; scriptClosureRawPromoted={r.ScriptClosureRawFilesPromoted:N0}; blockers={r.Blockers.Count:N0}; package={r.HardwarePackageDirectory ?? "<none>"}; report={r.TextReportFile}";
                 }, cacheable: false);
 
                 await Stage("v2-load-selection", "v2a5|canonical-load-selector|typed-walker", "LINKER V2 selected load dependency graph", async () =>
@@ -272,7 +285,7 @@ public sealed partial class MainForm
                 {
                     loadEmitter ??= await NormalMapLinkerV2LoadEmitter.RunAsync(map, outputRoot, sourceOverride: sourceArchive);
                     var r = await NormalMapLinkerV2LoadHardwarePackager.RunAsync(map, outputRoot, loadEmitter);
-                    return $"ready={r.Ready}; ff={Path.GetFileName(r.FastFile ?? "<none>")}; package={r.PackageDirectory ?? "<none>"}; report={r.TextReportFile}";
+                    return $"ready={r.Ready}; ff={Path.GetFileName(r.FastFile ?? "<none>")}; package={r.PackageDirectory ?? "<none>"}; combinedMainLoadReady={r.CombinedMainLoadReady}; combinedPackage={r.CombinedPackageDirectory ?? "<none>"}; trackedShellPairReady={r.TrackedShellPairReady}; trackedShellPair={r.TrackedShellPairDirectory ?? "<none>"}; scriptClosurePairReady={r.ScriptClosurePairReady}; scriptClosurePair={r.ScriptClosurePairDirectory ?? "<none>"}; report={r.TextReportFile}";
                 }, cacheable: false);
 
                 await Stage("v2-root-inventory", "v2a5|authoritative-root-table|no-candidate-scan", "LINKER V2 authoritative source-root inventory", async () =>

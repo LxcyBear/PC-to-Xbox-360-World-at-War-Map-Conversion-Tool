@@ -102,6 +102,7 @@ public static class T4FxSerializerProof
         public Stream? Output { get; init; }
         public required TraverseStats Stats { get; init; }
         public required string EffectName { get; init; }
+        public bool RequireSelfContainedPointers { get; init; }
 
         // Alpha 8z diagnostic context. These fields describe the FxElemDef whose
         // owned visual dependency is currently being traversed. They do not alter
@@ -1579,6 +1580,33 @@ public static class T4FxSerializerProof
         return oneLine.Length <= max ? oneLine : oneLine[..max] + "...";
     }
 
+    internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, string name, out string reason)
+    {
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                EffectName = name,
+                RequireSelfContainedPointers = true
+            };
+            var end = WalkEffect(ctx, 0);
+            if (end != blob.Length)
+                throw new InvalidDataException($"typed self-contained walk ended at 0x{end:X}, expected 0x{blob.Length:X}.");
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            return false;
+        }
+    }
+
     private static int WalkEffect(WalkContext c, int start)
     {
         Ensure(c.Source, start, FxEffectDefSize, $"FX '{c.EffectName}' fixed body");
@@ -2028,6 +2056,8 @@ public static class T4FxSerializerProof
     private static void ValidateStringPointer(WalkContext c, uint raw, string label)
     {
         if (raw == 0 || IsInline(raw)) return;
+        if (c.RequireSelfContainedPointers)
+            throw new InvalidDataException($"FX '{c.EffectName}' {label} retains packed/source pointer 0x{raw:X8}; self-contained promotion refused.");
         var decoded = T4ZonePointer.Decode(raw);
         if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block != T4ZoneBlock.Virtual)
             throw new InvalidDataException($"FX '{c.EffectName}' {label} has non-VIRTUAL string pointer 0x{raw:X8}.");
@@ -2038,6 +2068,8 @@ public static class T4FxSerializerProof
     private static void ValidateGeneralPointer(WalkContext c, uint raw, string label)
     {
         if (raw == 0 || IsInline(raw)) return;
+        if (c.RequireSelfContainedPointers)
+            throw new InvalidDataException($"FX '{c.EffectName}' {label} retains packed/source pointer 0x{raw:X8}; self-contained promotion refused.");
         var decoded = T4ZonePointer.Decode(raw);
         if (decoded.Kind != T4ZonePointerKind.Offset || decoded.Block is null)
             throw new InvalidDataException($"FX '{c.EffectName}' {label} has invalid serialized pointer 0x{raw:X8}.");

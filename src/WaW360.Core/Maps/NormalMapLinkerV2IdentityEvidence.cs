@@ -84,12 +84,17 @@ public static class NormalMapLinkerV2IdentityEvidence
             .ThenBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var materialized = await LinkerV2ProofEvidence.EnsureTrackedProofsAsync(
+            map, outputRoot, source, cancellationToken);
+
         var rows = new List<Row>();
         var missingProofFiles = 0;
         var familyRoots = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var familyProofPresent = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var familyProofMissing = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var blockers = new List<string>();
+        foreach (var family in materialized.FailedFamilies)
+            blockers.Add($"Fast Mode typed proof materialization failed for {family}; identity remains unresolved for that family.");
 
         foreach (var container in primary)
         {
@@ -198,11 +203,18 @@ public static class NormalMapLinkerV2IdentityEvidence
 
         var notes = new List<string>
         {
-            "The XAsset table is still the authoritative root count. Proof containers are read-only migration evidence; this stage performs no candidate scan.",
-            "Exact-name collisions are evidence that concrete merge/override/alias policy is needed. Alpha 4 does NOT delete a root merely because two proof names match.",
+            "The XAsset table is still the authoritative root count. Proof containers are read-only migration evidence; Fast Mode may materialize a missing verified proof with the existing fail-closed typed serializer before reading it.",
+            $"Fast Mode proof materialization: generated={string.Join(",", materialized.GeneratedFamilies.DefaultIfEmpty("<none>"))}; failed={string.Join(",", materialized.FailedFamilies.DefaultIfEmpty("<none>"))}.",
+        };
+        notes.AddRange(materialized.Notes);
+        notes.AddRange(new[]
+        {
+            "Proof generation remains an internal evidence step only; no proof container is a game fastfile.",
+            "Exact-name collisions are evidence that concrete merge/override/alias policy is needed. Alpha 7 does NOT delete a root merely because two proof names match.",
             "Families without proof-backed names remain intentionally unresolved until their deterministic source-stream walkers are migrated into Linker V2.",
             "The full per-root evidence ledger is written as TSV so the one-file diagnostic stays compact."
-        };
+        });
+
 
         var result = new NormalMapLinkerV2IdentityEvidenceResult
         {
@@ -260,7 +272,7 @@ public static class NormalMapLinkerV2IdentityEvidence
     private static string Render(NormalMapLinkerV2IdentityEvidenceResult r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — LINKER V2 alpha 4 concrete identity evidence ledger");
+        sb.AppendLine("WaW360Converter — LINKER V2 alpha 7 self-materializing concrete identity evidence ledger");
         sb.AppendLine(new string('=', 96));
         sb.AppendLine($"Map: {r.MapName}");
         sb.AppendLine($"primaryRoots={r.PrimaryRoots:N0}; proofBacked={r.ProofBackedRoots:N0}; named={r.NamedProofRoots:N0}; unnamedProof={r.UnnamedProofRoots:N0}; missingProofFiles={r.MissingProofFiles:N0}");
