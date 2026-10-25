@@ -9,6 +9,11 @@ public sealed record T4XAnimBoneCountSample(
     int HeaderOffset,
     int FixedSize,
     ushort NumFrames,
+    ushort DataByteCount,
+    ushort DataShortCount,
+    ushort DataIntCount,
+    ushort RandomDataByteCount,
+    ushort RandomDataIntCount,
     byte[] BoneCounts,
     byte NotifyCount,
     byte AssetType,
@@ -28,6 +33,8 @@ public sealed record T4XAnimBoneCountPair(
     bool FullQuaternionSplitMatches,
     bool FullQuaternionNoSizeSplitMatches,
     bool DirectTranslationBucketsMatch,
+    bool FlatStreamCountsMatch,
+    bool ScalarHeaderFieldsMatch,
     bool ExpandedLayoutMatches);
 
 public sealed class T4XAnimBoneCountOracleResult
@@ -109,6 +116,22 @@ public static class T4XAnimBoneCountOracle
                 p.BoneCounts[7] == x.BoneCounts[9] &&
                 p.BoneCounts[8] == x.BoneCounts[10];
 
+            var flatCounts =
+                p.DataByteCount == x.DataByteCount &&
+                p.DataShortCount == x.DataShortCount &&
+                p.DataIntCount == x.DataIntCount &&
+                p.RandomDataByteCount == x.RandomDataByteCount &&
+                p.RandomDataIntCount == x.RandomDataIntCount &&
+                p.RandomDataShortCount == x.RandomDataShortCount &&
+                p.IndexCount == x.IndexCount;
+
+            var scalarHeader =
+                p.NumFrames == x.NumFrames &&
+                p.NotifyCount == x.NotifyCount &&
+                p.AssetType == x.AssetType &&
+                BitConverter.SingleToInt32Bits(p.FrameRate) == BitConverter.SingleToInt32Bits(x.FrameRate) &&
+                BitConverter.SingleToInt32Bits(p.Frequency) == BitConverter.SingleToInt32Bits(x.Frequency);
+
             matches.Add(new T4XAnimBoneCountPair(
                 p.Name,
                 p,
@@ -118,6 +141,8 @@ public static class T4XAnimBoneCountOracle
                 fullQuatSplit,
                 fullQuatNoSizeSplit,
                 directTrans,
+                flatCounts,
+                scalarHeader,
                 totalMatches && directQuat && fullQuatSplit && fullQuatNoSizeSplit && directTrans));
         }
 
@@ -266,6 +291,11 @@ public static class T4XAnimBoneCountOracle
             start,
             fixedSize,
             numFrames,
+            ReadU16(zone, start + 0x04, endian),
+            ReadU16(zone, start + 0x06, endian),
+            ReadU16(zone, start + 0x08, endian),
+            ReadU16(zone, start + 0x0A, endian),
+            ReadU16(zone, start + 0x0C, endian),
             bones,
             zone[start + notifyOffset],
             zone[start + assetTypeOffset],
@@ -303,6 +333,8 @@ public static class T4XAnimBoneCountOracle
         var fullQuatSplit = matches.Count(x => x.FullQuaternionSplitMatches);
         var fullQuatNoSizeSplit = matches.Count(x => x.FullQuaternionNoSizeSplitMatches);
         var transDirect = matches.Count(x => x.DirectTranslationBucketsMatch);
+        var flatCounts = matches.Count(x => x.FlatStreamCountsMatch);
+        var scalarHeaders = matches.Count(x => x.ScalarHeaderFieldsMatch);
         var expanded = matches.Count(x => x.ExpandedLayoutMatches);
 
         sb.AppendLine($"Total count PC[9] == Xbox[11]:                   {totalMatches}/{matches.Count}");
@@ -310,6 +342,8 @@ public static class T4XAnimBoneCountOracle
         sb.AppendLine($"Full-quat split PC[2] == XB[2] + XB[3]:         {fullQuatSplit}/{matches.Count}");
         sb.AppendLine($"Full-quat-no-size PC[4] == XB[5] + XB[6]:       {fullQuatNoSizeSplit}/{matches.Count}");
         sb.AppendLine($"Translation PC[5..8] -> XB[7..10]:              {transDirect}/{matches.Count}");
+        sb.AppendLine($"All seven flat-stream counts identical:          {flatCounts}/{matches.Count}");
+        sb.AppendLine($"Scalar header fields byte-equivalent:             {scalarHeaders}/{matches.Count}");
         sb.AppendLine($"Complete 10 -> 12 expansion pattern:             {expanded}/{matches.Count}");
         sb.AppendLine();
         sb.AppendLine("Xbox grouping: [0..6] = 7 quaternion buckets; [7..10] = 4 translation buckets; [11] = total.");
