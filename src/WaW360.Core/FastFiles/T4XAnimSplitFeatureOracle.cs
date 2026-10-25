@@ -22,6 +22,33 @@ public static class T4XAnimSplitFeatureOracle
 {
     private enum SplitSide { A, B }
 
+    // CoD's PC XAnim source loader carries a separate high-precision quaternion
+    // bit that is not represented as a distinct PC boneCount[] category. On
+    // older titles this list is used in addition to making every viewmodel_
+    // animation high precision. Xbox has two extra quaternion buckets, so test
+    // whether those buckets are the serialized form of that hidden distinction.
+    private static readonly HashSet<string> LegacyHighPrecisionBones = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "j_ankle_le",
+        "j_ankle_ri",
+        "j_clavicle_le",
+        "j_clavicle_ri",
+        "j_elbow_le",
+        "j_elbow_ri",
+        "j_hip_le",
+        "j_hip_ri",
+        "j_knee_le",
+        "j_knee_ri",
+        "j_mainroot",
+        "j_shoulder_le",
+        "j_shoulder_ri",
+        "j_spine4",
+        "j_spinelower",
+        "j_spineupper",
+        "j_wrist_le",
+        "j_wrist_ri"
+    };
+
     private sealed class PcBoneMeta
     {
         public required string Name { get; init; }
@@ -36,6 +63,20 @@ public static class T4XAnimSplitFeatureOracle
         public readonly List<int> FramesA = new();
         public readonly List<int> FramesB = new();
         public int Total => Enumerable.Range(0, 4).Sum(i => Trans[i, 0] + Trans[i, 1]);
+    }
+
+    private sealed class PrecisionRuleStats
+    {
+        public int Total;
+        public int Correct;
+        public int ViewmodelTotal;
+        public int ViewmodelCorrect;
+        public int NamedBoneTotal;
+        public int NamedBoneCorrect;
+        public int OtherTotal;
+        public int OtherCorrect;
+        public readonly Dictionary<string, int> MismatchBones = new(StringComparer.OrdinalIgnoreCase);
+        public readonly Dictionary<string, int> MismatchAnimations = new(StringComparer.OrdinalIgnoreCase);
     }
 
     public static async Task<T4XAnimSplitFeatureOracleResult> AnalyzeAsync(
@@ -54,6 +95,7 @@ public static class T4XAnimSplitFeatureOracle
 
         var fullQuat = new FamilyStats();
         var fullQuatNoSize = new FamilyStats();
+        var precisionRule = new PrecisionRuleStats();
         var pairsAnalyzed = 0;
         var observations = 0;
 
@@ -76,7 +118,7 @@ public static class T4XAnimSplitFeatureOracle
             var qStart = pair.Xbox.BoneCounts[0] + pair.Xbox.BoneCounts[1];
             observations += ObserveRange(
                 xboxNames, qStart, pair.Xbox.BoneCounts[2], pair.Xbox.BoneCounts[3],
-                byName, fullQuat, expectedPcQuatBucket: 2);
+                byName, fullQuat, pair.Name, precisionRule, expectedPcQuatBucket: 2);
 
             // Xbox [5]/[6] subdivide PC FULL_QUAT_NO_SIZE.
             var qNoSizeStart =
@@ -87,12 +129,12 @@ public static class T4XAnimSplitFeatureOracle
                 pair.Xbox.BoneCounts[4];
             observations += ObserveRange(
                 xboxNames, qNoSizeStart, pair.Xbox.BoneCounts[5], pair.Xbox.BoneCounts[6],
-                byName, fullQuatNoSize, expectedPcQuatBucket: 4);
+                byName, fullQuatNoSize, pair.Name, precisionRule, expectedPcQuatBucket: 4);
 
             pairsAnalyzed++;
         }
 
-        var summary = BuildSummary(pairsAnalyzed, observations, fullQuat, fullQuatNoSize);
+        var summary = BuildSummary(pairsAnalyzed, observations, fullQuat, fullQuatNoSize, precisionRule);
         return new T4XAnimSplitFeatureOracleResult
         {
             PairsAnalyzed = pairsAnalyzed,
@@ -108,6 +150,8 @@ public static class T4XAnimSplitFeatureOracle
         int countB,
         IReadOnlyDictionary<string, PcBoneMeta> pcByName,
         FamilyStats stats,
+        string animationName,
+        PrecisionRuleStats precisionRule,
         int expectedPcQuatBucket)
     {
         var total = checked(countA + countB);
@@ -129,6 +173,40 @@ public static class T4XAnimSplitFeatureOracle
 
             var side = i < countA ? SplitSide.A : SplitSide.B;
             stats.Trans[meta.TransBucket - 5, side == SplitSide.A ? 0 : 1]++;
+
+            var isViewmodel = animationName.StartsWith("viewmodel_", StringComparison.OrdinalIgnoreCase);
+            var isNamedHighPrecision = LegacyHighPrecisionBones.Contains(name);
+            var predictedB = isViewmodel || isNamedHighPrecision;
+            var actualB = side == SplitSide.B;
+
+            precisionRule.Total++;
+            if (predictedB == actualB)
+                precisionRule.Correct++;
+
+            if (isViewmodel)
+            {
+                precisionRule.ViewmodelTotal++;
+                if (predictedB == actualB) precisionRule.ViewmodelCorrect++;
+            }
+            else if (isNamedHighPrecision)
+            {
+                precisionRule.NamedBoneTotal++;
+                if (predictedB == actualB) precisionRule.NamedBoneCorrect++;
+            }
+            else
+            {
+                precisionRule.OtherTotal++;
+                if (predictedB == actualB) precisionRule.OtherCorrect++;
+            }
+
+            if (predictedB != actualB)
+            {
+                precisionRule.MismatchBones.TryGetValue(name, out var boneMisses);
+                precisionRule.MismatchBones[name] = boneMisses + 1;
+                precisionRule.MismatchAnimations.TryGetValue(animationName, out var animMisses);
+                precisionRule.MismatchAnimations[animationName] = animMisses + 1;
+            }
+
             if (expectedPcQuatBucket == 2)
             {
                 if (side == SplitSide.A) stats.FramesA.Add(meta.QuatFrameCount);
@@ -411,7 +489,8 @@ public static class T4XAnimSplitFeatureOracle
         int pairsAnalyzed,
         int observations,
         FamilyStats fullQuat,
-        FamilyStats fullQuatNoSize)
+        FamilyStats fullQuatNoSize,
+        PrecisionRuleStats precisionRule)
     {
         var sb = new StringBuilder();
         sb.AppendLine("WaW360 XAnim Xbox-split feature oracle");
@@ -446,7 +525,38 @@ public static class T4XAnimSplitFeatureOracle
             AppendBestFrameThreshold(sb, fullQuat);
         }
 
+        sb.AppendLine();
+        AppendPrecisionRule(sb, precisionRule);
+
         return sb.ToString();
+    }
+
+    private static void AppendPrecisionRule(StringBuilder sb, PrecisionRuleStats stats)
+    {
+        static double Pct(int correct, int total) => total == 0 ? 0.0 : 100.0 * correct / total;
+
+        sb.AppendLine("HIGH-PRECISION QUATERNION HYPOTHESIS");
+        sb.AppendLine("  Predict Xbox subgroup B when:");
+        sb.AppendLine("    animation name starts with 'viewmodel_' OR");
+        sb.AppendLine("    bone is in the legacy 18-bone high-precision set.");
+        sb.AppendLine($"  Overall:                         {stats.Correct,7:N0}/{stats.Total,-7:N0} {Pct(stats.Correct, stats.Total),7:F2}%");
+        sb.AppendLine($"  viewmodel_ observations:         {stats.ViewmodelCorrect,7:N0}/{stats.ViewmodelTotal,-7:N0} {Pct(stats.ViewmodelCorrect, stats.ViewmodelTotal),7:F2}%");
+        sb.AppendLine($"  named high-precision bones:      {stats.NamedBoneCorrect,7:N0}/{stats.NamedBoneTotal,-7:N0} {Pct(stats.NamedBoneCorrect, stats.NamedBoneTotal),7:F2}%");
+        sb.AppendLine($"  other non-viewmodel bones:       {stats.OtherCorrect,7:N0}/{stats.OtherTotal,-7:N0} {Pct(stats.OtherCorrect, stats.OtherTotal),7:F2}%");
+
+        var mismatches = stats.Total - stats.Correct;
+        sb.AppendLine($"  Mismatches: {mismatches:N0}");
+
+        if (mismatches > 0)
+        {
+            sb.AppendLine("  Top mismatch bones:");
+            foreach (var kv in stats.MismatchBones.OrderByDescending(x => x.Value).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Take(20))
+                sb.AppendLine($"    {kv.Key,-32} {kv.Value,6:N0}");
+
+            sb.AppendLine("  Top mismatch animations:");
+            foreach (var kv in stats.MismatchAnimations.OrderByDescending(x => x.Value).ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Take(20))
+                sb.AppendLine($"    {kv.Key,-48} {kv.Value,6:N0}");
+        }
     }
 
     private static void AppendFamily(StringBuilder sb, string title, FamilyStats stats, bool includeFrames)
