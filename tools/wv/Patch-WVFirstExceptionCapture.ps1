@@ -54,7 +54,8 @@ elseif ($exceptionMatches.Count -ne 1) {
     throw "Expected exactly one XboxDebugEventType.Exception switch section, found $($exceptionMatches.Count)."
 }
 else {
-    $source = [regex]::Replace($source, $exceptionPattern, $newCase, 1)
+    $exceptionRegex = [regex]::new($exceptionPattern)
+    $source = $exceptionRegex.Replace($source, $newCase, 1)
 }
 
 
