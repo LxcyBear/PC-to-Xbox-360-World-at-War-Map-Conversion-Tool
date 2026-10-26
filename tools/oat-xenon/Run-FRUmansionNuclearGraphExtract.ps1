@@ -68,6 +68,7 @@ if (Test-Path -LiteralPath $report -PathType Leaf) {
         "^expected TechniqueSets",
         "^recovered TechniqueSets",
         "^VERIFIED",
+        "^root ownership",
         "^technique slots"
     ) | ForEach-Object { Write-Host "  $($_.Line)" }
 }
