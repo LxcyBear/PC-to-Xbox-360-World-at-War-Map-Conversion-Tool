@@ -14,30 +14,55 @@ $handlerMarker = "HandleNullXAnimBreak(EventInfo)"
 $armMarker = "ArmNullXAnimProbe(EventInfo);"
 $helperMarker = "private const uint NullXAnimPre = 0x8216858C;"
 
-if (-not $source.Contains($armMarker)) {
-    $needle = "            switch (EventCode)"
-    if (-not $source.Contains($needle)) {
-        throw "Could not find switch(EventCode) in Debugger.cs"
+# Scope all event-handler edits to con_OnStdNotify. The user's WV source is
+# intentionally no longer pristine: earlier probes/helpers can contain other
+# switches and case labels elsewhere in Debugger.cs.
+$notifyStartMarker = "private static void con_OnStdNotify("
+$notifyStart = $source.IndexOf($notifyStartMarker)
+$playStart = $source.IndexOf("public static void Play()", $notifyStart)
+if ($notifyStart -lt 0 -or $playStart -lt 0 -or $playStart -le $notifyStart) {
+    throw "Could not isolate con_OnStdNotify() in Debugger.cs"
+}
+
+$notify = $source.Substring($notifyStart, $playStart - $notifyStart)
+
+if (-not $notify.Contains($armMarker)) {
+    $switchNeedle = "switch (EventCode)"
+    $switchAt = $notify.IndexOf($switchNeedle)
+    if ($switchAt -lt 0) {
+        throw "Could not find switch(EventCode) inside con_OnStdNotify()."
     }
-    $insert = @'
+
+    $activation = @'
             // Safe diagnostic: arm only after CODXE activates a usermap.
             ArmNullXAnimProbe(EventInfo);
 '@
-    $source = $source.Replace($needle, $insert + $needle)
+
+    $absoluteSwitchAt = $notifyStart + $switchAt
+    $source = $source.Insert($absoluteSwitchAt, $activation)
+
+    # Recompute the method slice after insertion before touching ExecutionBreak.
+    $notifyStart = $source.IndexOf($notifyStartMarker)
+    $playStart = $source.IndexOf("public static void Play()", $notifyStart)
+    $notify = $source.Substring($notifyStart, $playStart - $notifyStart)
 }
 
-if (-not $source.Contains($handlerMarker)) {
-    $needle = "case XboxDebugEventType.ExecutionBreak:"
-    $first = $source.IndexOf($needle)
-    if ($first -lt 0 -or $source.IndexOf($needle, $first + 1) -ge 0) {
-        throw "Expected exactly one ExecutionBreak case."
+if (-not $notify.Contains($handlerMarker)) {
+    $caseNeedle = "case XboxDebugEventType.ExecutionBreak:"
+    $caseAt = $notify.IndexOf($caseNeedle)
+    if ($caseAt -lt 0) {
+        throw "Could not find ExecutionBreak inside con_OnStdNotify()."
     }
-    $insert = @'
-case XboxDebugEventType.ExecutionBreak:
+
+    # Only patch the case that belongs to con_OnStdNotify. Do not care how many
+    # other ExecutionBreak strings exist elsewhere in this locally modified file.
+    $handler = @'
                     if (HandleNullXAnimBreak(EventInfo))
                         break;
 '@
-    $source = $source.Replace($needle, $insert)
+
+    $insertAt = $notifyStart + $caseAt + $caseNeedle.Length
+    $source = $source.Insert($insertAt, [Environment]::NewLine + $handler)
 }
 
 $playMarker = @'
