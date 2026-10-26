@@ -55,7 +55,13 @@ try {
         if ($text -notmatch [regex]::Escape($registerNeedle)) { throw 'Could not find T4Xenon PixelShader dumper registration anchor.' }
         $text = $text.Replace($registerNeedle, $registerNeedle + [Environment]::NewLine + '    ' + $registerLine)
     }
-    Set-Content -LiteralPath $writer -Value $text -Encoding UTF8
+    # Set-Content appends a record terminator and can also change BOM semantics.
+    # Preserve UTF-8 without BOM and force exactly one trailing LF.
+    $normalizedText = $text.TrimEnd([char]13, [char]10) + [char]10
+    [System.IO.File]::WriteAllText(
+        $writer,
+        $normalizedText,
+        [System.Text.UTF8Encoding]::new($false))
 
     & git diff --check
     if ($LASTEXITCODE -ne 0) { throw 'OAT graph patch failed git diff --check.' }
