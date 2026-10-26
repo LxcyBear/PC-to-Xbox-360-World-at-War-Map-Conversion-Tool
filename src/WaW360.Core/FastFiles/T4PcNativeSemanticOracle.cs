@@ -428,7 +428,7 @@ public static class T4PcNativeSemanticOracle
         IReadOnlyList<string?> native,
         out bool multisetEqual)
     {
-        static string Key(string? value) => value is null ? "\0<NULL>" : "\1" + value;
+        static string Key(string? value) => value is null ? "\0<NULL>" : "\u0001" + value;
 
         var queues = new Dictionary<string, Queue<int>>(StringComparer.Ordinal);
         for (var i = 0; i < native.Count; i++)
