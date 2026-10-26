@@ -73,6 +73,7 @@ public static class T4XAnimSplitFeatureOracle
         public required int NormalKeys { get; init; }
         public required int PrecisionKeys { get; init; }
         public required int RandomShortOffset { get; init; }
+        public required int RandomIntOffset { get; init; }
     }
 
     private sealed record PackingRow(
@@ -126,6 +127,16 @@ public static class T4XAnimSplitFeatureOracle
         public int PrecisionValuePairsWithNormal;
         public int PrecisionExact4WhenNormalAbsent;
         public readonly int[] PrecisionExact4ByNormalShortWidth = new int[5];
+        public long NormalDecodedSamples;
+        public long PrecisionDecodedSamples;
+        public double NormalAngularErrorSumDeg;
+        public double PrecisionAngularErrorSumDeg;
+        public double NormalAngularErrorMaxDeg;
+        public double PrecisionAngularErrorMaxDeg;
+        public long NormalWithin1Deg;
+        public long NormalWithin05Deg;
+        public long PrecisionWithin01Deg;
+        public long PrecisionWithin005Deg;
     }
 
     private sealed class PrecisionRuleStats
@@ -209,6 +220,13 @@ public static class T4XAnimSplitFeatureOracle
                 pair.Xbox.BoneCounts[6],
                 packing);
             ObservePrecisionValueLayout(
+                xboxZone.Bytes,
+                pair.Xbox,
+                xboxNames,
+                byName,
+                xboxDynamic,
+                packing);
+            ObserveDecodedQuaternionAccuracy(
                 xboxZone.Bytes,
                 pair.Xbox,
                 xboxNames,
@@ -423,6 +441,151 @@ public static class T4XAnimSplitFeatureOracle
         if (randomIntDelta == checked(precisionDynamicKeys * 2)) stats.RandomIntGainEqualsTwicePrecisionKeys++;
     }
 
+    private static void ObserveDecodedQuaternionAccuracy(
+        byte[] xboxBytes,
+        T4XAnimBoneCountSample xbox,
+        IReadOnlyList<string> xboxNames,
+        IReadOnlyDictionary<string, PcBoneMeta> pcByName,
+        XboxDynamicQuatMeta dynamic,
+        PackingStats stats)
+    {
+        var normalBoneStart = xbox.BoneCounts[0] + xbox.BoneCounts[1];
+        var precisionBoneStart = normalBoneStart + xbox.BoneCounts[2];
+
+        var randomIntPos = 0;
+        for (var i = 0; i < xbox.BoneCounts[2]; i++)
+        {
+            var boneIndex = normalBoneStart + i;
+            var name = xboxNames[boneIndex];
+            if (!pcByName.TryGetValue(name, out var pc) || pc.FullQuatValues is null)
+                throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' cannot resolve PC normal-quat values for '{name}'.");
+
+            var expectedFrames = pc.QuatFrameCount;
+            for (var frame = 0; frame < expectedFrames; frame++)
+            {
+                if (randomIntPos >= dynamic.NormalKeys)
+                    throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' exhausted NORMAL_QUAT randomDataInt.");
+
+                var packed = ReadU32Be(
+                    xboxBytes,
+                    checked(dynamic.RandomIntOffset + randomIntPos * 4));
+                randomIntPos++;
+
+                var decoded = DecodeNormalQuat(packed);
+                var expected = ReadPcQuat(pc.FullQuatValues, frame);
+                var error = QuaternionAngularErrorDeg(decoded, expected);
+                stats.NormalDecodedSamples++;
+                stats.NormalAngularErrorSumDeg += error;
+                stats.NormalAngularErrorMaxDeg = Math.Max(stats.NormalAngularErrorMaxDeg, error);
+                if (error <= 1.0) stats.NormalWithin1Deg++;
+                if (error <= 0.5) stats.NormalWithin05Deg++;
+            }
+        }
+
+        var precisionShortPos = checked(dynamic.SimpleKeys * 2);
+        for (var i = 0; i < xbox.BoneCounts[3]; i++)
+        {
+            var boneIndex = precisionBoneStart + i;
+            var name = xboxNames[boneIndex];
+            if (!pcByName.TryGetValue(name, out var pc) || pc.FullQuatValues is null)
+                throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' cannot resolve PC precision-quat values for '{name}'.");
+
+            var expectedFrames = pc.QuatFrameCount;
+            for (var frame = 0; frame < expectedFrames; frame++)
+            {
+                if ((long)precisionShortPos + 3 > xbox.RandomDataShortCount)
+                    throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' exhausted PRECISION_QUAT randomDataShort.");
+
+                var w0 = ReadU16Be(xboxBytes, checked(dynamic.RandomShortOffset + (precisionShortPos + 0) * 2));
+                var w1 = ReadU16Be(xboxBytes, checked(dynamic.RandomShortOffset + (precisionShortPos + 1) * 2));
+                var w2 = ReadU16Be(xboxBytes, checked(dynamic.RandomShortOffset + (precisionShortPos + 2) * 2));
+                precisionShortPos += 3;
+
+                var decoded = DecodePrecisionQuat(w0, w1, w2);
+                var expected = ReadPcQuat(pc.FullQuatValues, frame);
+                var error = QuaternionAngularErrorDeg(decoded, expected);
+                stats.PrecisionDecodedSamples++;
+                stats.PrecisionAngularErrorSumDeg += error;
+                stats.PrecisionAngularErrorMaxDeg = Math.Max(stats.PrecisionAngularErrorMaxDeg, error);
+                if (error <= 0.1) stats.PrecisionWithin01Deg++;
+                if (error <= 0.05) stats.PrecisionWithin005Deg++;
+            }
+        }
+
+        if (randomIntPos != dynamic.NormalKeys)
+            throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' NORMAL_QUAT randomDataInt consumption mismatch.");
+        if (precisionShortPos != checked(dynamic.SimpleKeys * 2 + dynamic.PrecisionKeys * 3))
+            throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' PRECISION_QUAT randomDataShort consumption mismatch.");
+    }
+
+    private static double[] ReadPcQuat(short[] values, int frame)
+    {
+        var offset = checked(frame * 4);
+        double x = values[offset + 0] / 32767.0;
+        double y = values[offset + 1] / 32767.0;
+        double z = values[offset + 2] / 32767.0;
+        double w = values[offset + 3] / 32767.0;
+        NormalizeQuat(ref x, ref y, ref z, ref w);
+        return new[] { x, y, z, w };
+    }
+
+    private static double[] DecodeNormalQuat(uint packed)
+    {
+        double r0 = SignExtend((int)(packed & 0x1FF), 9) / 255.0;
+        double r1 = SignExtend((int)((packed >> 9) & 0x3FF), 10) / 511.0;
+        double r2 = SignExtend((int)((packed >> 19) & 0x3FF), 10) / 511.0;
+        var rotation = (int)((packed >> 29) & 3);
+        var sign = (packed & 0x80000000U) == 0 ? 1.0 : -1.0;
+        return NormalizeAndRotate(r0, r1, r2, rotation, sign);
+    }
+
+    private static double[] DecodePrecisionQuat(ushort word0, ushort word1, ushort word2)
+    {
+        ulong packed = ((ulong)word0 << 32) | ((ulong)word1 << 16) | word2;
+        double r0 = SignExtend((int)(packed & 0x7FFF), 15) / 16383.0;
+        double r1 = SignExtend((int)((packed >> 15) & 0x7FFF), 15) / 16383.0;
+        double r2 = SignExtend((int)((packed >> 30) & 0x7FFF), 15) / 16383.0;
+        var rotation = (int)((packed >> 45) & 3);
+        var sign = (packed & (1UL << 47)) == 0 ? 1.0 : -1.0;
+        return NormalizeAndRotate(r0, r1, r2, rotation, sign);
+    }
+
+    private static double[] NormalizeAndRotate(double r0, double r1, double r2, int rotation, double sign)
+    {
+        var inv = sign / Math.Sqrt(r0 * r0 + r1 * r1 + r2 * r2 + 1.0);
+        var values = new[] { r0 * inv, r1 * inv, r2 * inv, inv };
+        return new[]
+        {
+            values[rotation],
+            values[(rotation + 1) & 3],
+            values[(rotation + 2) & 3],
+            values[(rotation + 3) & 3]
+        };
+    }
+
+    private static int SignExtend(int value, int bits)
+    {
+        var sign = 1 << (bits - 1);
+        return (value ^ sign) - sign;
+    }
+
+    private static void NormalizeQuat(ref double x, ref double y, ref double z, ref double w)
+    {
+        var length = Math.Sqrt(x * x + y * y + z * z + w * w);
+        if (length <= 0.0) return;
+        x /= length;
+        y /= length;
+        z /= length;
+        w /= length;
+    }
+
+    private static double QuaternionAngularErrorDeg(IReadOnlyList<double> a, IReadOnlyList<double> b)
+    {
+        var dot = Math.Abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]);
+        dot = Math.Clamp(dot, 0.0, 1.0);
+        return 2.0 * Math.Acos(dot) * (180.0 / Math.PI);
+    }
+
     private static void ObservePrecisionValueLayout(
         byte[] xboxBytes,
         T4XAnimBoneCountSample xbox,
@@ -552,7 +715,11 @@ public static class T4XAnimSplitFeatureOracle
                 SimpleKeys = 0,
                 NormalKeys = 0,
                 PrecisionKeys = 0,
-                RandomShortOffset = randomShortOffsetNoDataShort
+                RandomShortOffset = randomShortOffsetNoDataShort,
+                RandomIntOffset = checked(
+                    randomShortOffsetNoDataShort +
+                    checked((int)sample.RandomDataShortCount * 2) +
+                    sample.RandomDataByteCount)
             };
         }
 
@@ -560,6 +727,13 @@ public static class T4XAnimSplitFeatureOracle
         var randomShortOffset = checked(dataShortOffset + sample.DataShortCount * 2);
         if (ptrDataInt != 0)
             randomShortOffset = Advance(bytes, randomShortOffset, checked(sample.DataIntCount * 4), "Xbox dataInt");
+        var randomIntOffset = checked(randomShortOffset + checked((int)sample.RandomDataShortCount * 2));
+        var ptrRandomByte = ReadU32Be(bytes, start + 0x48);
+        var ptrRandomInt = ReadU32Be(bytes, start + 0x4C);
+        if (ptrRandomByte != 0)
+            randomIntOffset = Advance(bytes, randomIntOffset, sample.RandomDataByteCount, "Xbox randomDataByte");
+        if (ptrRandomInt == 0 && sample.RandomDataIntCount != 0)
+            throw new InvalidDataException($"Xbox XAnim '{sample.Name}' has randomDataIntCount without pointer.");
         if (ptrRandomShort == 0 && sample.RandomDataShortCount != 0)
             throw new InvalidDataException($"Xbox XAnim '{sample.Name}' has randomDataShortCount without pointer.");
 
@@ -627,7 +801,8 @@ public static class T4XAnimSplitFeatureOracle
             SimpleKeys = simpleKeys,
             NormalKeys = normalKeys,
             PrecisionKeys = precisionKeys,
-            RandomShortOffset = randomShortOffset
+            RandomShortOffset = randomShortOffset,
+            RandomIntOffset = randomIntOffset
         };
     }
 
@@ -1114,6 +1289,20 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    randomDataByteCount identical:            {stats.RandomDataByteEqual}/{stats.Pairs}");
         sb.AppendLine($"    randomDataIntCount identical:             {stats.RandomDataIntEqual}/{stats.Pairs}");
         sb.AppendLine($"    indexCount identical:                     {stats.IndexEqual}/{stats.Pairs}");
+        sb.AppendLine();
+        sb.AppendLine("  CONSOLE DECODER VALUE ACCURACY (vs PC source quaternion)");
+        var normalMean = stats.NormalDecodedSamples == 0 ? 0.0 : stats.NormalAngularErrorSumDeg / stats.NormalDecodedSamples;
+        var precisionMean = stats.PrecisionDecodedSamples == 0 ? 0.0 : stats.PrecisionAngularErrorSumDeg / stats.PrecisionDecodedSamples;
+        sb.AppendLine($"    NORMAL_QUAT samples:       {stats.NormalDecodedSamples:N0}");
+        sb.AppendLine($"      mean angular error:      {normalMean:F6} deg");
+        sb.AppendLine($"      max angular error:       {stats.NormalAngularErrorMaxDeg:F6} deg");
+        sb.AppendLine($"      <= 1.0 deg:              {stats.NormalWithin1Deg:N0}/{stats.NormalDecodedSamples:N0}");
+        sb.AppendLine($"      <= 0.5 deg:              {stats.NormalWithin05Deg:N0}/{stats.NormalDecodedSamples:N0}");
+        sb.AppendLine($"    PRECISION_QUAT samples:    {stats.PrecisionDecodedSamples:N0}");
+        sb.AppendLine($"      mean angular error:      {precisionMean:F6} deg");
+        sb.AppendLine($"      max angular error:       {stats.PrecisionAngularErrorMaxDeg:F6} deg");
+        sb.AppendLine($"      <= 0.10 deg:             {stats.PrecisionWithin01Deg:N0}/{stats.PrecisionDecodedSamples:N0}");
+        sb.AppendLine($"      <= 0.05 deg:             {stats.PrecisionWithin005Deg:N0}/{stats.PrecisionDecodedSamples:N0}");
         sb.AppendLine();
         sb.AppendLine("  VALUE-LEVEL PRECISION QUATERNION CHECK");
         sb.AppendLine($"    pairs with precision dynamic data:                            {stats.PrecisionValuePairs}");
