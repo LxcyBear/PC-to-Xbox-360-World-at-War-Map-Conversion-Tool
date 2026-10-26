@@ -40,8 +40,10 @@ try {
 
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
-    $includeNeedle = '#include "Game/T4Xenon/Techset/PixelShaderDumperT4Xenon.h"'
-    $includeLine = '#include "Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.h"'
+    # ObjWriterT4Xenon.cpp lives in Game/T4Xenon, so this pinned revision
+    # uses paths relative to that directory for local dumpers.
+    $includeNeedle = '#include "Techset/PixelShaderDumperT4Xenon.h"'
+    $includeLine = '#include "Techset/TechniqueSetGraphDumperT4Xenon.h"'
     if ($text -notmatch [regex]::Escape($includeLine)) {
         if ($text -notmatch [regex]::Escape($includeNeedle)) { throw 'Could not find T4Xenon PixelShader dumper include anchor.' }
         $text = $text.Replace($includeNeedle, $includeNeedle + [Environment]::NewLine + $includeLine)
