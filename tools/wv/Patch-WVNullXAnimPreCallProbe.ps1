@@ -56,7 +56,7 @@ $helpers = @'
         {
             try
             {
-                if (e == null || e.Info == null || e.Info.Message == null)
+                if (e == null || e.Info.Message == null)
                     return;
                 if (e.Info.Message.IndexOf("Activated usermap:", StringComparison.OrdinalIgnoreCase) < 0)
                     return;
@@ -94,7 +94,7 @@ $helpers = @'
 
         private static bool HandleNullXAnimBreak(IXboxEventInfo e)
         {
-            if (!nullXAnimArmed || e == null || e.Info == null)
+            if (!nullXAnimArmed || e == null)
                 return false;
 
             uint address;
