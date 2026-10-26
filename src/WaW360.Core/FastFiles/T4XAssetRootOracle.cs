@@ -23,6 +23,9 @@ public sealed class T4XAssetRootOracleResult
     public required int ExactTypeSequencePrefix { get; init; }
     public required int? FirstTypeSequenceMismatch { get; init; }
     public required int ScriptStringExactPrefix { get; init; }
+    public required bool ScriptStringSetsEqual { get; init; }
+    public required int CandidateOnlyScriptStrings { get; init; }
+    public required int NativeOnlyScriptStrings { get; init; }
     public required int CandidateResolvedSimpleNames { get; init; }
     public required int NativeResolvedSimpleNames { get; init; }
     public required IReadOnlyList<T4XAssetRootOracleTypeRow> Types { get; init; }
@@ -97,6 +100,20 @@ public static class T4XAssetRootOracle
                              StringComparison.Ordinal))
             scriptPrefix++;
 
+        var candidateScriptValues = cdoc.ScriptStrings
+            .Select(s => s.Value ?? "<NULL>")
+            .ToList();
+        var nativeScriptValues = ndoc.ScriptStrings
+            .Select(s => s.Value ?? "<NULL>")
+            .ToList();
+        var candidateScriptSet = candidateScriptValues.ToHashSet(StringComparer.Ordinal);
+        var nativeScriptSet = nativeScriptValues.ToHashSet(StringComparer.Ordinal);
+        var candidateOnlyScript = candidateScriptSet.Except(nativeScriptSet, StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        var nativeOnlyScript = nativeScriptSet.Except(candidateScriptSet, StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        var scriptSetsEqual = candidateOnlyScript.Count == 0 && nativeOnlyScript.Count == 0;
+
         var candidateScan = T4PayloadScanner.Scan(cdoc, candidate.Bytes);
         var nativeScan = T4PayloadScanner.Scan(ndoc, native.Bytes);
 
@@ -129,7 +146,18 @@ public static class T4XAssetRootOracle
         sb.AppendLine($"native:    {nativeFastFile}");
         sb.AppendLine();
         sb.AppendLine($"assets: candidate={cdoc.AssetCount:N0}; native={ndoc.AssetCount:N0}; delta={cdoc.AssetCount - ndoc.AssetCount:+#;-#;0}");
-        sb.AppendLine($"script strings: candidate={cdoc.ScriptStringCount:N0}; native={ndoc.ScriptStringCount:N0}; exact-index prefix={scriptPrefix:N0}");
+        sb.AppendLine($"script strings: candidate={cdoc.ScriptStringCount:N0}; native={ndoc.ScriptStringCount:N0}; exact-index prefix={scriptPrefix:N0}; same-set={scriptSetsEqual}");
+        sb.AppendLine($"script-string set delta: candidate-only={candidateOnlyScript.Count:N0}; native-only={nativeOnlyScript.Count:N0}");
+        if (nativeOnlyScript.Count != 0)
+        {
+            sb.AppendLine("  native-only ScriptStrings (first 24):");
+            foreach (var s in nativeOnlyScript.Take(24)) sb.AppendLine("    " + s);
+        }
+        if (candidateOnlyScript.Count != 0)
+        {
+            sb.AppendLine("  candidate-only ScriptStrings (first 24):");
+            foreach (var s in candidateOnlyScript.Take(24)) sb.AppendLine("    " + s);
+        }
         sb.AppendLine($"type-major order: candidate={candidateTypeMajor}; native={nativeTypeMajor}");
         sb.AppendLine($"exact root TYPE sequence prefix: {prefix:N0}/{commonCount:N0}");
         if (firstMismatch is int mismatch)
@@ -198,6 +226,9 @@ public static class T4XAssetRootOracle
             ExactTypeSequencePrefix = prefix,
             FirstTypeSequenceMismatch = firstMismatch,
             ScriptStringExactPrefix = scriptPrefix,
+            ScriptStringSetsEqual = scriptSetsEqual,
+            CandidateOnlyScriptStrings = candidateOnlyScript.Count,
+            NativeOnlyScriptStrings = nativeOnlyScript.Count,
             CandidateResolvedSimpleNames = candidateScan.ResolvedAssets.Count,
             NativeResolvedSimpleNames = nativeScan.ResolvedAssets.Count,
             Types = types,
