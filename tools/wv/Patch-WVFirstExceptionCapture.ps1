@@ -11,23 +11,13 @@ if (-not (Test-Path -LiteralPath $debugger -PathType Leaf)) {
 
 $source = Get-Content -LiteralPath $debugger -Raw
 
-$oldCase = @'
-                case XboxDebugEventType.Exception:
-                    jtag.DebugTarget.FreeEventInfo(EventInfo.Info);
-                    if (EventInfo.Info.Message != null)
-                        Log.WriteLine("Exception @0x" + EventInfo.Info.Address.ToString("X8") + " \"" + EventInfo.Info.Message + "\"");
-                    else
-                        Log.WriteLine("Exception @0x" + EventInfo.Info.Address.ToString("X8"));
-                    breakThreadId = EventInfo.Info.Thread.ThreadId;
-                    refreshCPU = true;
-                    isRunning = false;
-                    break;
-'@
-
+# Be tolerant of local WV edits. Match the entire Exception switch section by
+# structure, not by exact upstream text, and stop at the next XboxDebugEventType
+# case label so unrelated custom code is preserved.
 $newCase = @'
                 case XboxDebugEventType.Exception:
-                    // Capture the event fields BEFORE FreeEventInfo. The original WV
-                    // freed the COM event structure first and then read Address/Thread.
+                {
+                    // Capture the COM event fields BEFORE FreeEventInfo.
                     uint exceptionAddress = EventInfo.Info.Address;
                     uint exceptionThreadId = 0;
                     string exceptionMessage = null;
@@ -46,13 +36,27 @@ $newCase = @'
                     refreshCPU = true;
                     isRunning = false;
                     break;
+                }
 '@
 
-if (-not $source.Contains($oldCase)) {
-    throw "Expected Exception case was not found. Debugger.cs may already be patched or differ from the upstream WV source."
+$exceptionPattern = '(?ms)^[ \t]*case\s+XboxDebugEventType\.Exception\s*:\s*.*?(?=^[ \t]*case\s+XboxDebugEventType\.)'
+$exceptionMatches = [regex]::Matches($source, $exceptionPattern)
+
+if ($exceptionMatches.Count -eq 0) {
+    if ($source.Contains("CaptureFirstExceptionContext(exceptionAddress, exceptionThreadId)")) {
+        Write-Host "[WV] Exception handler already patched."
+    }
+    else {
+        throw "Could not locate the XboxDebugEventType.Exception switch section in: $debugger"
+    }
+}
+elseif ($exceptionMatches.Count -ne 1) {
+    throw "Expected exactly one XboxDebugEventType.Exception switch section, found $($exceptionMatches.Count)."
+}
+else {
+    $source = [regex]::Replace($source, $exceptionPattern, $newCase, 1)
 }
 
-$source = $source.Replace($oldCase, $newCase)
 
 $playMarker = @'
         public static void Play()
@@ -134,10 +138,9 @@ $helpers = @'
                 {
                     try
                     {
-                        XBOX_MODULE_INFO info = mod.ModuleInfo;
                         sb.AppendLine(
-                            "0x" + info.BaseAddress.ToString("X8") +
-                            "  " + info.FullName);
+                            "0x" + mod.ModuleInfo.BaseAddress.ToString("X8") +
+                            "  " + mod.ModuleInfo.FullName);
                     }
                     catch { }
                 }
@@ -188,10 +191,15 @@ $helpers = @'
 
 '@
 
-if (-not $source.Contains($playMarker)) {
-    throw "Play() insertion marker not found."
+if (-not $source.Contains("private static void CaptureFirstExceptionContext(")) {
+    if (-not $source.Contains($playMarker)) {
+        throw "Play() insertion marker not found."
+    }
+    $source = $source.Replace($playMarker, $helpers + $playMarker)
 }
-$source = $source.Replace($playMarker, $helpers + $playMarker)
+else {
+    Write-Host "[WV] First-exception helper methods already present."
+}
 
 $backup = $debugger + ".before-first-exception-capture.bak"
 if (-not (Test-Path -LiteralPath $backup)) {
