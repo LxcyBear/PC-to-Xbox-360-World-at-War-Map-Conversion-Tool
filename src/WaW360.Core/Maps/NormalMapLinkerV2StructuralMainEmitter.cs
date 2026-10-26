@@ -255,7 +255,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 type,
                 nativeRoot.TypeId,
                 T4AssetReferenceKind.InlineShared,
-                T4ZonePointer.Following,
+                T4ZonePointer.Insert,
                 $"native-sequence|{type}|{i}|{name}",
                 "NATIVE_ORACLE_EXACT_IDENTITY__NO_DONOR_PAYLOAD_BYTES"));
             diagnosticPayloads.Add(BuildNativeSequenceSyntheticPayload(type, name, source.CanonicalBaseName));
@@ -1379,18 +1379,21 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         foreach (var root in roots)
         {
             WriteU32(ms, checked((uint)root.XboxTypeId));
-            WriteU32(ms, T4ZonePointer.Following);
+
+            // T4 Xenon top-level XAssets are written through TEMP-block asset
+            // writers. OAT's ZoneOutputStream::MarkFollowing emits INSERT (-2)
+            // for TEMP pointers, not FOLLOWING (-1). INSERT lets the loader
+            // preserve the resolved asset reference instead of leaving callers
+            // pointed at the shared TEMP scratch buffer.
+            WriteU32(ms, T4ZonePointer.Insert);
         }
 
-        // Every top-level XAsset body is allocated as its typed Xenon struct.
-        // All currently supported root structs have at least 4-byte alignment.
-        // Inline owned children (for example the name string) remain inside the
-        // payload blob; align only the NEXT root body, matching DB_AllocStreamPos.
+        // IMPORTANT: do not serialize destination-block alignment padding.
+        // OAT's ZoneOutputStream::Align only advances the selected XFile block's
+        // allocation cursor. It does not append bytes to the zone data stream.
+        // The payload bytes therefore remain contiguous in loader traversal order.
         foreach (var payload in payloads)
-        {
-            AlignStream(ms, 4);
             ms.Write(payload.Bytes);
-        }
 
         if (ms.Length > uint.MaxValue)
             throw new InvalidDataException("Alpha 5 structural main zone exceeds T4's 32-bit zoneSize field.");
@@ -1443,13 +1446,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         for (var i = 0; i < Math.Min(roots.Count, read.Assets.Count); i++)
         {
             if (read.Assets[i].TypeId != roots[i].XboxTypeId) errors++;
-            if (read.Assets[i].RawHeader != T4ZonePointer.Following) errors++;
+            if (read.Assets[i].RawHeader != T4ZonePointer.Insert) errors++;
         }
 
         var cursor = checked((int)(read.AssetTableOffset + (long)read.AssetCount * 8));
         foreach (var p in payloads)
         {
-            cursor = AlignOffset(cursor, 4);
             if (cursor > zone.Length - p.Bytes.Length)
             {
                 errors++;
@@ -1614,8 +1616,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 "rawfile",
                 "rawfile",
                 T4XboxAssetTypeMap.GetXboxTypeId("rawfile"),
-                T4AssetReferenceKind.Inline,
-                T4ZonePointer.Following,
+                T4AssetReferenceKind.InlineShared,
+                T4ZonePointer.Insert,
                 $"iwd|{Path.GetFileName(p.Archive)}|{p.Entry}|rawfile",
                 "HARDWARE_DIAGNOSTIC_TYPED_IWD_RAWFILE_PROMOTION");
             keptRoots.Add(root);
