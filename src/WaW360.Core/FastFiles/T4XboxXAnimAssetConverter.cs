@@ -12,7 +12,8 @@ public sealed record T4XboxXAnimConvertedAsset(
     int NormalDynamicKeys,
     int PrecisionDynamicKeys,
     int NormalConstantBones,
-    int PrecisionConstantBones);
+    int PrecisionConstantBones,
+    bool HasDelta);
 
 /// <summary>
 /// Typed PC T4 XAnimParts -> Xbox 360 T4 XAnimParts converter.
@@ -558,7 +559,8 @@ public static class T4XboxXAnimAssetConverter
             normalDynamicKeys,
             precisionDynamicKeys,
             normalConstantBones,
-            precisionConstantBones);
+            precisionConstantBones,
+            header.DeltaPointer != 0);
     }
 
     public static void ValidateXboxBlob(byte[] data, string? expectedName = null)
