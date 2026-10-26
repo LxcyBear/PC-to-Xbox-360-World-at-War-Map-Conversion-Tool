@@ -401,7 +401,9 @@ static async Task<int> MainAsync(string[] args)
                     map, output, nativeOracle);
                 Console.WriteLine($"Linker V2 native-sequence DB diagnostic: {result.MapName}");
                 Console.WriteLine($"nativeRoots={result.NativeRoots:N0}; reusedSource={result.ReusedSourceRoots:N0}; syntheticDependencies={result.SyntheticDependencyRoots:N0}; droppedSource={result.DroppedSourceRoots:N0}");
-                Console.WriteLine($"nativeScriptStrings={result.NativeScriptStrings:N0}; readBackErrors={result.ReadBackErrors:N0}; wrapperRoundTrip={result.WrapperRoundTripVerified}; ready={result.CandidateReady}");
+                Console.WriteLine($"nativeScriptStrings={result.NativeScriptStrings:N0}; nameContractErrors={result.NameContractErrors:N0}; readBackErrors={result.ReadBackErrors:N0}; wrapperRoundTrip={result.WrapperRoundTripVerified}; ready={result.CandidateReady}");
+                foreach (var failure in result.NameContractFailures.Take(32))
+                    Console.WriteLine("NAME-CONTRACT: " + failure);
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
                 return result.CandidateReady ? 0 : 3;
