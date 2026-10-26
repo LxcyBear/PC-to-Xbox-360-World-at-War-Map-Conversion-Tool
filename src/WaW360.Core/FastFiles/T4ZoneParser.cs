@@ -59,7 +59,11 @@ public static class T4ZoneParser
         // exact body starts so aliases can be resolved without guessing a physical
         // file address or treating the pointer value as a string identity.
         var inlineStringsByVirtualOffset = new Dictionary<uint, string>();
+        var pendingAliases = new List<(int EntryListIndex, int ScriptIndex, uint RawPointer)>();
 
+        // First pass: consume every inline body in serialized order and record its
+        // VIRTUAL block offset. Do not require an alias target to have appeared yet;
+        // native zones may point at another body serialized later in the same region.
         for (var i = 0; i < rawStringPointers.Length; i++)
         {
             var rawPointer = rawStringPointers[i];
@@ -79,18 +83,24 @@ public static class T4ZoneParser
                 continue;
             }
 
-            var decoded = T4ZonePointer.Decode(rawPointer);
+            var listIndex = stringEntries.Count;
+            stringEntries.Add(new T4ScriptStringEntry(i, rawPointer, $"<alias 0x{rawPointer:X8}>", false));
+            pendingAliases.Add((listIndex, i, rawPointer));
+        }
+
+        // Second pass: resolve packed reusable-string pointers against the COMPLETE
+        // set of inline ScriptString body offsets. This handles both backward and
+        // forward aliases while remaining fail-closed for non-VIRTUAL/unknown targets.
+        foreach (var pending in pendingAliases)
+        {
+            var decoded = T4ZonePointer.Decode(pending.RawPointer);
             if (decoded.Kind == T4ZonePointerKind.Offset &&
                 decoded.Block == T4ZoneBlock.Virtual &&
                 inlineStringsByVirtualOffset.TryGetValue(decoded.Offset, out var aliasedValue))
             {
-                stringEntries.Add(new T4ScriptStringEntry(i, rawPointer, aliasedValue, false));
-                continue;
+                stringEntries[pending.EntryListIndex] =
+                    new T4ScriptStringEntry(pending.ScriptIndex, pending.RawPointer, aliasedValue, false);
             }
-
-            // Preserve unresolved offsets faithfully. Callers that require a complete
-            // ScriptString index map must still fail closed on this marker.
-            stringEntries.Add(new T4ScriptStringEntry(i, rawPointer, $"<alias 0x{rawPointer:X8}>", false));
         }
 
         var assetTableOffset = cursor;
