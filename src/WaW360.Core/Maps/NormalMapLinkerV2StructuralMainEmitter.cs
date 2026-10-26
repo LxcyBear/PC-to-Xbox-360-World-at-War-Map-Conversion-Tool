@@ -7,6 +7,24 @@ using WaW360.Core.FastFiles;
 
 namespace WaW360.Core.Maps;
 
+public sealed class NormalMapLinkerV2NativeSequenceDiagnosticResult
+{
+    public required string MapName { get; init; }
+    public required string NativeOracleFastFile { get; init; }
+    public required int NativeRoots { get; init; }
+    public required int ReusedSourceRoots { get; init; }
+    public required int SyntheticDependencyRoots { get; init; }
+    public required int DroppedSourceRoots { get; init; }
+    public required int NativeScriptStrings { get; init; }
+    public required int ReadBackErrors { get; init; }
+    public required bool WrapperRoundTripVerified { get; init; }
+    public required bool CandidateReady { get; init; }
+    public required string? FastFileSha256 { get; init; }
+    public required string? OutputFastFile { get; init; }
+    public required string? HardwarePackageDirectory { get; init; }
+    public required string TextReportFile { get; init; }
+}
+
 public sealed class NormalMapLinkerV2StructuralMainEmitResult
 {
     public required string MapName { get; init; }
@@ -82,6 +100,265 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         T4ZoneDocument Document,
         byte[] Zone,
         IReadOnlyDictionary<int, StructuralPayload> Payloads);
+
+    public static async Task<NormalMapLinkerV2NativeSequenceDiagnosticResult> RunNativeSequenceDiagnosticAsync(
+        MapCandidate map,
+        string outputRoot,
+        string nativeOracleFastFile,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(nativeOracleFastFile))
+            throw new FileNotFoundException("Native Xbox oracle fastfile not found.", nativeOracleFastFile);
+
+        var native = await FastFileAnalysisCache.GetZoneAsync(nativeOracleFastFile, cancellationToken);
+        if (native.Platform != WaWPlatform.Xbox360)
+            throw new InvalidDataException($"Native sequence diagnostic requires an Xbox360 oracle; parsed {native.Platform}.");
+
+        var source = await NormalMapLinkerV2SourceArchive.RunAsync(map, outputRoot, cancellationToken);
+        var rootPolicy = await NormalMapLinkerV2CanonicalRootPolicy.RunAsync(map, outputRoot, source, cancellationToken: cancellationToken);
+        var blockPlan = await NormalMapLinkerV2DestinationBlockPlan.RunAsync(map, outputRoot, source, cancellationToken);
+        var script = await NormalMapLinkerV2ScriptStringMerge.RunAsync(map, outputRoot, source, cancellationToken);
+
+        if (!source.Verified)
+            throw new InvalidDataException("Canonical source archive is not verified.");
+        if (!rootPolicy.Verified || !rootPolicy.ProvenanceIdentityComplete)
+            throw new InvalidDataException("Canonical provenance-root policy is not complete.");
+        if (!blockPlan.Verified || !blockPlan.SourceCapacityPlanReady)
+            throw new InvalidDataException("Source-derived destination block plan is not ready.");
+        if (!script.Verified || !script.FullRemapReady)
+            throw new InvalidDataException("Canonical ScriptString remap is not complete.");
+
+        var aliasRoots = rootPolicy.Roots.Count(r =>
+            r.SourceReferenceKind is T4AssetReferenceKind.OffsetOrAlias or T4AssetReferenceKind.Null);
+        if (aliasRoots != 0)
+            throw new InvalidDataException($"Native-sequence diagnostic refuses {aliasRoots:N0} source alias/null top-level roots.");
+
+        var primary = source.FastFiles
+            .Where(x => x.GraphParticipation is "PRIMARY_GRAPH_SOURCE" or "AUXILIARY_GRAPH_SOURCE")
+            .OrderBy(x => LinkerV2ProofEvidence.RoleRank(x.Role))
+            .ThenBy(x => x.FileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var weaponStrings = await LinkerV2IwdWeaponStringCatalog.BuildAsync(
+            source.SourceArchive
+                .Where(x => x.Role.Equals("iwd", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Path),
+            cancellationToken);
+
+        var contexts = new Dictionary<string, SourceContext>(StringComparer.OrdinalIgnoreCase);
+        foreach (var container in primary)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var cached = await FastFileAnalysisCache.GetZoneAsync(container.Path, cancellationToken);
+            var payloads = await BuildSourcePayloadsAsync(
+                outputRoot,
+                map.Name,
+                source.CanonicalBaseName,
+                container.Role,
+                container.Path,
+                cached.Document,
+                cached.Bytes,
+                weaponStrings,
+                cancellationToken);
+            contexts[container.Path] = new SourceContext(
+                container.Role, container.Path, cached.Document, cached.Bytes, payloads);
+        }
+
+        // Build a source payload pool by Xbox asset type. The tracked families are
+        // deliberately reduced to fixed shells so this diagnostic measures DB graph
+        // shape/order rather than XAnim/XModel/Weapon/FX fidelity.
+        var sourcePairs = new List<(LinkerV2CanonicalRoot Root, StructuralPayload Payload)>();
+        foreach (var root in rootPolicy.Roots.OrderBy(r => r.CanonicalSourceOrdinal))
+        {
+            if (!contexts.TryGetValue(root.SourceFastFile, out var ctx) ||
+                !ctx.Payloads.TryGetValue(root.SourceAssetIndex, out var payload))
+            {
+                throw new InvalidDataException(
+                    $"No structural payload exists for source root {root.IdentityKey} ({root.PcTypeName}).");
+            }
+
+            var shell = BuildTrackedShellVariant(new[] { payload })[0];
+            sourcePairs.Add((root, shell));
+        }
+
+        var pools = sourcePairs
+            .GroupBy(x => x.Root.XboxTypeName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new Queue<(LinkerV2CanonicalRoot Root, StructuralPayload Payload)>(g),
+                StringComparer.OrdinalIgnoreCase);
+
+        var diagnosticRoots = new List<LinkerV2CanonicalRoot>(native.Document.AssetCount);
+        var diagnosticPayloads = new List<StructuralPayload>(native.Document.AssetCount);
+        var reused = 0;
+        var synthetic = 0;
+
+        for (var i = 0; i < native.Document.Assets.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var nativeRoot = native.Document.Assets[i];
+            var type = nativeRoot.TypeName;
+
+            if (pools.TryGetValue(type, out var queue) && queue.Count != 0)
+            {
+                var pair = queue.Dequeue();
+                diagnosticRoots.Add(pair.Root with
+                {
+                    CanonicalSourceOrdinal = i,
+                    XboxTypeName = type,
+                    XboxTypeId = nativeRoot.TypeId
+                });
+                diagnosticPayloads.Add(pair.Payload);
+                reused++;
+                continue;
+            }
+
+            var name = $"__waw360_native_seq_{type}_{i:D5}";
+            diagnosticRoots.Add(new LinkerV2CanonicalRoot(
+                i,
+                "NATIVE_SEQUENCE_DIAGNOSTIC",
+                nativeOracleFastFile,
+                nativeRoot.Index,
+                type,
+                type,
+                nativeRoot.TypeId,
+                T4AssetReferenceKind.InlineShared,
+                T4ZonePointer.Following,
+                $"native-sequence|{type}|{i}",
+                "NATIVE_ORACLE_TYPE_SLOT_ONLY__NO_DONOR_PAYLOAD_BYTES"));
+            diagnosticPayloads.Add(BuildNativeSequenceSyntheticPayload(type, name, source.CanonicalBaseName));
+            synthetic++;
+        }
+
+        var dropped = pools.Values.Sum(q => q.Count);
+
+        // The PC and native oracle were proven to contain the same ScriptString value
+        // set but in a different order. Reproduce the native index order by value only;
+        // no donor pointers or payload bytes are copied.
+        var nativeStrings = native.Document.ScriptStrings;
+        var nullIndices = nativeStrings
+            .Select((s, i) => (s, i))
+            .Where(x => x.s.RawPointer == 0)
+            .Select(x => x.i)
+            .ToList();
+        if (nullIndices.Count > 1 || (nullIndices.Count == 1 && nullIndices[0] != 0))
+            throw new InvalidDataException(
+                $"Native ScriptString layout has unsupported null positions: {string.Join(",", nullIndices)}.");
+
+        var nativeValues = new List<string>(nativeStrings.Count);
+        foreach (var s in nativeStrings)
+        {
+            if (s.RawPointer == 0) continue;
+            if (!s.Inline || string.IsNullOrWhiteSpace(s.Value) || s.Value.StartsWith("<alias ", StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Native ScriptString #{s.Index} is not an inline literal and cannot be used by the diagnostic.");
+            nativeValues.Add(s.Value);
+        }
+        var nativeScriptTable = new CanonicalScriptTable(nullIndices.Count == 1, nativeValues);
+
+        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_native_sequence_diagnostic");
+        var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_shell");
+        Directory.CreateDirectory(outDir);
+        Directory.CreateDirectory(packageDir);
+
+        var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_sequence.zone");
+        var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
+        var reportPath = Path.Combine(outDir, $"{map.Name}_native_sequence_diagnostic.txt");
+        TryDelete(zonePath);
+        TryDelete(ffPath);
+        TryDelete(Path.Combine(packageDir, "NATIVE_SEQUENCE_DB_TEST.txt"));
+
+        var zone = BuildZone(
+            diagnosticRoots,
+            diagnosticPayloads,
+            nativeScriptTable,
+            blockPlan,
+            out var headerZoneSize);
+
+        var sizeOk = headerZoneSize == checked((uint)(zone.Length - FastFileConstants.T4XFileHeaderSize));
+        var blockOk = VerifyBlockHeader(zone, blockPlan);
+        if (!sizeOk || !blockOk)
+            throw new InvalidDataException(
+                $"Native-sequence zone preflight failed: zoneSizeOk={sizeOk}; blockHeaderOk={blockOk}.");
+
+        await File.WriteAllBytesAsync(zonePath, zone, cancellationToken);
+        var readBackErrors = VerifyReadBack(
+            zonePath,
+            zone,
+            diagnosticRoots,
+            diagnosticPayloads,
+            nativeScriptTable,
+            blockPlan);
+
+        var roundTrip = false;
+        string? sha = null;
+        if (readBackErrors == 0)
+        {
+            var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                ffPath,
+                zone,
+                preferNativeLevel6: true,
+                cancellationToken: cancellationToken);
+            roundTrip = write.RoundTripVerified;
+            if (roundTrip)
+                sha = await Sha256Async(ffPath, cancellationToken);
+        }
+
+        var ready = readBackErrors == 0 && roundTrip;
+        if (!ready)
+            TryDelete(ffPath);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("WaW360Converter — NATIVE ROOT-SEQUENCE DB HARDWARE DIAGNOSTIC");
+        sb.AppendLine(new string('=', 86));
+        sb.AppendLine($"Map: {map.Name}");
+        sb.AppendLine($"Native oracle: {nativeOracleFastFile}");
+        sb.AppendLine($"Native root slots reproduced by TYPE only: {diagnosticRoots.Count:N0}");
+        sb.AppendLine($"Source structural payloads reused: {reused:N0}");
+        sb.AppendLine($"Synthetic dependency shells inserted: {synthetic:N0}");
+        sb.AppendLine($"Source roots dropped because native family count is lower: {dropped:N0}");
+        sb.AppendLine($"ScriptStrings reproduced in native value order: {nativeStrings.Count:N0}");
+        sb.AppendLine($"readBackErrors={readBackErrors:N0}; wrapperRoundTrip={roundTrip}; ready={ready}");
+        sb.AppendLine($"sha256={sha ?? "<none>"}");
+        sb.AppendLine();
+        sb.AppendLine("PURPOSE");
+        sb.AppendLine("  This is an A/B test for the recurring SP TU7 0x82168594 / 0xC0000005 frontier.");
+        sb.AppendLine("  It reproduces ONLY the known-working native FF's XAsset TYPE sequence/counts and ScriptString VALUE order.");
+        sb.AppendLine("  It does NOT copy any native/donor asset payload bytes, names, shaders, images, sounds or world data.");
+        sb.AppendLine("  Missing native dependency families are represented by inert self-contained Xbox-layout shells.");
+        sb.AppendLine();
+        sb.AppendLine("INTERPRETATION");
+        sb.AppendLine("  - Different/later first fault: DB root/string graph shape participates in the 0x82168594 crash.");
+        sb.AppendLine("  - Same first fault: exact root names/dependency pointers or another activation contract still dominates.");
+        await File.WriteAllTextAsync(reportPath, sb.ToString(), new UTF8Encoding(false), cancellationToken);
+
+        if (ready)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(packageDir, "NATIVE_SEQUENCE_DB_TEST.txt"),
+                sb.ToString(),
+                new UTF8Encoding(false),
+                cancellationToken);
+        }
+
+        return new NormalMapLinkerV2NativeSequenceDiagnosticResult
+        {
+            MapName = map.Name,
+            NativeOracleFastFile = Path.GetFullPath(nativeOracleFastFile),
+            NativeRoots = diagnosticRoots.Count,
+            ReusedSourceRoots = reused,
+            SyntheticDependencyRoots = synthetic,
+            DroppedSourceRoots = dropped,
+            NativeScriptStrings = nativeStrings.Count,
+            ReadBackErrors = readBackErrors,
+            WrapperRoundTripVerified = roundTrip,
+            CandidateReady = ready,
+            FastFileSha256 = sha,
+            OutputFastFile = ready ? ffPath : null,
+            HardwarePackageDirectory = ready ? packageDir : null,
+            TextReportFile = reportPath
+        };
+    }
 
     public static async Task<NormalMapLinkerV2StructuralMainEmitResult> RunAsync(
         MapCandidate map,
@@ -1129,6 +1406,56 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         n.CopyTo(bytes.AsSpan(12));
         sourceBytes.CopyTo(bytes.AsSpan(12 + n.Length + 1));
         // Final byte is the owned RawFile buffer terminator outside the logical len.
+        return bytes;
+    }
+
+    private static StructuralPayload BuildNativeSequenceSyntheticPayload(
+        string typeName,
+        string name,
+        string canonicalBaseName)
+    {
+        var lower = typeName.ToLowerInvariant();
+        byte[] bytes = lower switch
+        {
+            "xanim" => BuildFixedNameShell(92, name),
+            "xmodel" => BuildFixedNameShell(228, name),
+            "material" => BuildFixedNameShell(96, name),
+            "pixelshader" => BuildFixedNameShell(16, name),
+            "techset" => BuildFixedNameShell(216, name),
+            "image" => BuildImageShell(name),
+            "sound" => T4SoundAliasSmokeSerializer.BuildFallbackSilentStub(0, name),
+            "loaded_sound" => BuildFixedNameShell(12, name),
+            "weapon" => BuildFixedNameShell(0x9AC, name),
+            "fx" => BuildFixedNameShell(36, name),
+            "rawfile" => BuildRawFileEmpty(name),
+            "physpreset" => BuildFixedNameShell(48, name),
+            "clipmap_pvs" => BuildFixedNameShell(332, name),
+            "comworld" => BuildFixedNameShell(64, name),
+            "gameworld_sp" => BuildFixedNameShell(44, name),
+            "gfxworld" => BuildGfxWorld(804, name, canonicalBaseName),
+            "localize" => BuildLocalize(name, string.Empty),
+            "map_ents" => BuildFixedNameShell(12, name),
+            _ => throw new InvalidDataException(
+                $"Native-sequence diagnostic has no safe synthetic shell for Xbox asset type '{typeName}'.")
+        };
+
+        return new StructuralPayload(
+            typeName,
+            name,
+            bytes,
+            true,
+            "native-sequence synthetic dependency shell; donor payload bytes are never copied");
+    }
+
+    private static byte[] BuildImageShell(string name)
+    {
+        // T4 GfxImage is 36 bytes on the 32-bit console ABI. Unlike most simple
+        // roots its name pointer is the final field at +0x20, not the first field.
+        // texture/loadDef remains null; dimensions/category/flags remain zero.
+        var n = Encoding.ASCII.GetBytes(name);
+        var bytes = new byte[36 + n.Length + 1];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(32, 4), T4ZonePointer.Following);
+        n.CopyTo(bytes.AsSpan(36));
         return bytes;
     }
 
