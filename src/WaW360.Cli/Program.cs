@@ -381,6 +381,8 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"zone={result.ZoneBytes:N0}B; ff={result.FastFileBytes:N0}B; readBackErrors={result.ReadBackErrors:N0}");
                 Console.WriteLine($"wrapperRoundTrip={result.WrapperRoundTripVerified}; structuralReady={result.StructuralNativeCandidateReady}; productionReady={result.ProductionMainReady}");
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<none>"}");
+                Console.WriteLine($"scriptClosureReady={result.ScriptClosureCandidateReady}; residentMenusRemoved={result.ScriptClosureResidentMenusRemoved:N0}; rawFilesPromoted={result.ScriptClosureRawFilesPromoted:N0}; readBackErrors={result.ScriptClosureReadBackErrors:N0}; wrapperRoundTrip={result.ScriptClosureWrapperRoundTripVerified}");
+                Console.WriteLine($"script-closure package: {result.ScriptClosureHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
                 foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
                 return result.Verified ? 0 : 3;
