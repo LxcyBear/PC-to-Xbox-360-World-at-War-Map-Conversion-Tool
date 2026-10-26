@@ -106,12 +106,15 @@ if (Test-Path -LiteralPath $report -PathType Leaf) {
     Write-Host "[NUCLEAR-2] CENSUS:"
     Select-String -LiteralPath $report -Pattern @(
         "^PC TechniqueSet roots",
+        "^material-reachable roots",
+        "^dead PC roots dropped",
         "^material-bridge resolved",
         "^exact-name fallback resolved",
         "^DONOR-BOUND TOTAL",
         "^ambiguous bridge",
         "^mapped target missing donor",
-        "^UNRESOLVED TOTAL",
+        "^resident Xbox targets pending",
+        "^REACHABLE UNRESOLVED TOTAL",
         "^distinct Xenon graph targets",
         "^Xenon technique slots",
         "^identityClosureComplete",
