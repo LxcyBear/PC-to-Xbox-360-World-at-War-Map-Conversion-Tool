@@ -1255,7 +1255,15 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                             }
                             break;
                         case "fx":
-                            safe = T4FxSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
+                            // OAT Xenon root-prefix bisection proved that the first promoted
+                            // FxEffectDef at emitted XAsset #3345 turns an otherwise valid zone
+                            // into "Zone tried to reference invalid block 7". The all-tracked-shell
+                            // variant of the exact same 3,501-root graph loads and unloads cleanly
+                            // in OAT with 0 warnings / 0 errors. Quarantine proof-heavy FX until
+                            // its Xbox child serialization/order is corrected against generated
+                            // T4Xenon ZoneCode; retain the authoritative 36-byte named root shell.
+                            safe = false;
+                            reason = "OAT Xenon prefix bisection isolates promoted FxEffectDef payload as invalid; proof-heavy FX quarantined pending exact child-layout repair";
                             break;
                     }
 
