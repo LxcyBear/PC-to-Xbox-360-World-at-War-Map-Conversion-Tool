@@ -102,6 +102,10 @@ public static class NormalMapNativeWriterFoundation
 
                 var proofPath = GetProofPath(outputRoot, map.Name, ff.Path, ff.Role, type);
                 var proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, cancellationToken);
+                if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase) && proof.Version != 12)
+                    throw new InvalidDataException(
+                        $"Stage 5a refuses stale XAnim proof version {proof.Version} in '{proofPath}'. " +
+                        "Run the native Xbox XAnim proof so Stage 5 consumes 0x5C/12-bucket payloads.");
                 if (proof.Records.Count != physicalNeeded)
                     throw new InvalidDataException(
                         $"Stage 5a '{Path.GetFileName(ff.Path)}' {type} proof/body mismatch: " +
