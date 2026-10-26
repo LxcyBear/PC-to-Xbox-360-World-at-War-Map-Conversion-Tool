@@ -1011,26 +1011,16 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         int ResidentMenusRemoved,
         int RawFilesPromoted);
 
-    private static async Task<NormalMapLinkerV2TypedClosurePlanResult> LoadTypedClosureAsync(
+    private static Task<NormalMapLinkerV2TypedClosurePlanResult> LoadTypedClosureAsync(
         MapCandidate map,
         string outputRoot,
         NormalMapLinkerV2SourceArchiveResult source,
         CancellationToken ct)
     {
-        var json = Path.Combine(
-            outputRoot,
-            map.Name,
-            "linker_v2_typed_closure",
-            $"{map.Name}_linker_v2_typed_closure.json");
-        if (File.Exists(json))
-        {
-            var parsed = JsonSerializer.Deserialize<NormalMapLinkerV2TypedClosurePlanResult>(
-                await File.ReadAllTextAsync(json, ct),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (parsed is not null)
-                return parsed;
-        }
-        return await NormalMapLinkerV2TypedClosurePlan.RunAsync(map, outputRoot, source, ct);
+        // Hardware diagnostics must be derived from the CURRENT source/proof graph.
+        // Never reuse an older typed-closure JSON here: XAnim proof identity/version,
+        // source archives and IWD contents can all change while the cache file remains.
+        return NormalMapLinkerV2TypedClosurePlan.RunAsync(map, outputRoot, source, ct);
     }
 
     private static async Task<ScriptClosureVariant> BuildScriptClosureVariantAsync(
