@@ -753,7 +753,7 @@ static async Task<int> RunOatRootBisectAsync(string candidateFastFile, string un
             $"  {(i == failingIndex ? ">" : " ")} #{i,5} doc#{asset.Index,5} type={asset.TypeName,-20} id=0x{asset.TypeId:X2} header=0x{asset.RawHeader:X8}");
     }
 
-    return !lastPass.Pass || firstFail.Pass ? 6 : 4;
+    return !lastPass.Pass || firstFail.Pass ? 6 : 0;
 }
 
 static void TryDeleteCli(string path)
