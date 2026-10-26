@@ -2,7 +2,7 @@
 param([switch]$Build)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$revision = '1f7acb3347bc2e44deb609bc8cf7259bf027f176'
+$revision = '3beaa7c8'
 $remote = 'https://github.com/michaeloliverx/OpenAssetTools.git'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $checkout = Join-Path $root '.deps\OpenAssetTools-xenon'
