@@ -540,6 +540,20 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-techset-bodies" when args.Length >= 3:
+            {
+                var explicitUnlinker = args.Length >= 4 ? args[3] : null;
+                var result = await T4XenonTechniqueSetBodyCatalog.BuildAsync(
+                    args[1],
+                    args[2],
+                    explicitUnlinker);
+                Console.WriteLine("NUCLEAR STAGE 3A Xenon TechniqueSet body catalog");
+                Console.WriteLine($"TechniqueSets={result.RecoveredTechniqueSets:N0}/{result.ExpectedTechniqueSets:N0}; verified={result.Verified}");
+                Console.WriteLine($"slots(nonNull/inline/packed)={result.TotalNonNullTechniqueSlots:N0}/{result.TotalInlineTechniqueSlots:N0}/{result.TotalPackedTechniqueSlots:N0}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonReportFile}");
+                return result.Verified ? 0 : 4;
+            }
             case "xasset-root-oracle" when args.Length >= 3:
             {
                 var result = await T4XAssetRootOracle.CompareAsync(args[1], args[2]);
@@ -840,6 +854,7 @@ static void PrintHelp()
     Console.WriteLine("  pc-native-semantic-oracle <pc.ff> <native.ff> <output-dir> [Unlinker.exe]  Compare OAT-loaded PC semantic identities to native Xbox and emit ScriptString remap");
     Console.WriteLine("  material-techset-bridge <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Derive PC->Xenon TechniqueSet mappings through shared material identity");
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
+    Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
