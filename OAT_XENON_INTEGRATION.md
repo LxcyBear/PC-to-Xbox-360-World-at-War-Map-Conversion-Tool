@@ -14,7 +14,7 @@ To build the pinned GPLv3 OAT Xenon x86 dependency as a separate executable, run
 
     powershell -ExecutionPolicy Bypass -File .\Build-Converter.ps1 -WithOat
 
-Prerequisites: Git, .NET 8 SDK, Visual Studio 2026 with C++ toolchain. OAT revision 3beaa7c8 is cloned under ignored .deps/OpenAssetTools-xenon. Its x86 Linker.exe and Unlinker.exe should land under build\bin\Release_x86 within the OAT checkout. The source and game assets are not redistributed in this project.
+Prerequisites: Git, .NET 8 SDK, Visual Studio 2026 with C++ toolchain. OAT revision 3beaa7c81af517f0c05f2b4612d477ed1541b676 is cloned under ignored .deps/OpenAssetTools-xenon. Its x86 Linker.exe and Unlinker.exe should land under build\bin\Release_x86 within the OAT checkout. The source and game assets are not redistributed in this project.
 
 If your original Converter folder is not a Git checkout, clone this branch into a separate sibling folder and point the published GUI at the original Release directory without changing source files:
 
