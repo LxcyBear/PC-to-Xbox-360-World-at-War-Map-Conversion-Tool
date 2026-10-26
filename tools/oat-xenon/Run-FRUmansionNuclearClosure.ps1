@@ -121,9 +121,15 @@ if (Test-Path -LiteralPath $report -PathType Leaf) {
 
 if ($exitCode -ne 0) {
     Write-Host ""
-    Write-Host "[NUCLEAR-2] Closure is partial, not failed." -ForegroundColor Yellow
-    Write-Host "[NUCLEAR-2] The report now contains the exact unresolved remainder."
-    Write-Host "[NUCLEAR-2] Report: $report"
+    if (Test-Path -LiteralPath $report -PathType Leaf) {
+        Write-Host "[NUCLEAR-2] Closure is partial, not failed." -ForegroundColor Yellow
+        Write-Host "[NUCLEAR-2] The report contains the exact unresolved remainder."
+        Write-Host "[NUCLEAR-2] Report: $report"
+    }
+    else {
+        Write-Host "[NUCLEAR-2] Closure stopped before a report could be emitted." -ForegroundColor Yellow
+        Write-Host "[NUCLEAR-2] Treat the exception above as the active blocker."
+    }
     exit $exitCode
 }
 
