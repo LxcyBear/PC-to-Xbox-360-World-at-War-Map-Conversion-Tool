@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           repository: michaeloliverx/OpenAssetTools
-          ref: 1f7acb3347bc2e44deb609bc8cf7259bf027f176
+          ref: 3beaa7c8
           submodules: recursive
           path: oat
 
