@@ -590,7 +590,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             NativeFootprintFastFileSha256 = nativeFootprintSha,
             NativeFootprintOutputFastFile = nativeFootprintReady ? nativeFootprintFfPath : null,
             NativeFootprintHardwarePackageDirectory = nativeFootprintReady ? nativeFootprintPackageDir : null,
-            NativeOracleZoneBytes = native.ZoneBytes,
+            NativeOracleZoneBytes = native.Bytes.LongLength,
             NativeFootprintCandidateZoneBytes = nativeFootprintZone.Length,
             TextReportFile = reportPath
         };
