@@ -326,6 +326,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         string? scriptClosureSha = null;
         var scriptClosureMenusRemoved = 0;
         var scriptClosureRawPromoted = 0;
+        var scriptClosureSkipReason = string.Empty;
         if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             try
@@ -383,17 +384,57 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                     typedClosure.GoldenExpectedRawFilePromotions,
                                     cancellationToken);
                             }
+                            else
+                            {
+                                scriptClosureSkipReason = "Xbox fastfile wrapper round-trip verification failed.";
+                            }
+                        }
+                        else
+                        {
+                            scriptClosureSkipReason = $"Independent script-closure zone read-back reported {scriptClosureReadBackErrors:N0} error(s).";
                         }
                     }
+                    else
+                    {
+                        scriptClosureSkipReason =
+                            $"Script-closure zone preflight failed: zoneSizeOk={scriptSizeOk}; blockHeaderOk={scriptBlockOk}.";
+                    }
+                }
+                else
+                {
+                    scriptClosureSkipReason =
+                        "Typed closure produced no script-closure delta: residentMenusRemoved=0 and rawFilesPromoted=0.";
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                notes.Add($"SCRIPT-CLOSURE MATRIX SKIPPED: {ex.GetType().Name}: {ex.Message}");
+                scriptClosureSkipReason = $"{ex.GetType().Name}: {ex.Message}";
+                notes.Add($"SCRIPT-CLOSURE MATRIX SKIPPED: {scriptClosureSkipReason}");
             }
         }
+        else
+        {
+            scriptClosureSkipReason =
+                $"Main structural prerequisites were not satisfied: blockers={blockers.Count:N0}; payloads={rootPayloads.Count:N0}/{emissionRoots.Count:N0}.";
+        }
+
         if (!scriptClosureReady)
+        {
             TryDelete(scriptClosureFfPath);
+            Directory.CreateDirectory(scriptClosurePackageDir);
+            await File.WriteAllTextAsync(
+                Path.Combine(scriptClosurePackageDir, "SCRIPT_CLOSURE_SKIPPED.txt"),
+                "WaW360Converter — SCRIPT-CLOSURE CANDIDATE NOT EMITTED" + Environment.NewLine +
+                new string('=', 64) + Environment.NewLine +
+                $"Map: {map.Name}" + Environment.NewLine +
+                $"Reason: {scriptClosureSkipReason}" + Environment.NewLine +
+                $"residentMenusRemoved={scriptClosureMenusRemoved:N0}" + Environment.NewLine +
+                $"rawFilesPromoted={scriptClosureRawPromoted:N0}" + Environment.NewLine +
+                $"readBackErrors={scriptClosureReadBackErrors:N0}" + Environment.NewLine +
+                $"wrapperRoundTrip={scriptClosureRoundTrip}" + Environment.NewLine,
+                new UTF8Encoding(false),
+                cancellationToken);
+        }
 
         if (candidateReady)
         {
