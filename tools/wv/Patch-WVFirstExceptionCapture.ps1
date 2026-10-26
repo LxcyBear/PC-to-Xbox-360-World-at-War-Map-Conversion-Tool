@@ -36,6 +36,10 @@ $newCase = @'
                     else
                         Log.WriteLine("Exception @0x" + exceptionAddress.ToString("X8") + " TID=0x" + exceptionThreadId.ToString("X8"));
 
+                    // Freeze immediately so a first-chance AV cannot machine-gun the
+                    // same fault while we are collecting context.
+                    try { Pause(); } catch { }
+
                     CaptureFirstExceptionContext(exceptionAddress, exceptionThreadId, exceptionThread);
 
                     try { jtag.DebugTarget.FreeEventInfo(EventInfo.Info); } catch { }
@@ -141,12 +145,24 @@ $helpers = @'
                     uint iar = unchecked((uint)r32[1]);
                     uint lr = unchecked((uint)r32[2]);
                     uint sp = unchecked((uint)r64[2]); // r64[0]=CTR, [1]=R0, [2]=R1
+                    uint r26 = unchecked((uint)r64[27]); // [1]=R0 => [27]=R26
+                    uint r30 = unchecked((uint)r64[31]);
+                    uint r31 = unchecked((uint)r64[32]);
 
                     AppendMemoryWindow(sb, "CODE AROUND IAR", iar >= 0x80 ? iar - 0x80 : 0, 0x200);
                     if (lr != 0)
                         AppendMemoryWindow(sb, "CODE AROUND LR", lr >= 0x40 ? lr - 0x40 : 0, 0x100);
+                    // 0x8216858C branches to this helper; its return in R3 is copied
+                    // to R27 and immediately dereferenced at 0x82168594.
+                    AppendMemoryWindow(sb, "ASSET-NAME HELPER 0x82159240", 0x821591C0, 0x300);
                     if (sp != 0)
                         AppendMemoryWindow(sb, "STACK AROUND R1", sp, 0x400);
+                    if (r30 != 0)
+                        AppendMemoryWindow(sb, "CALLER ARG / R30", r30, 0x200);
+                    if (r26 != 0)
+                        AppendMemoryWindow(sb, "R26 CONTEXT", r26, 0x100);
+                    if (r31 != 0)
+                        AppendMemoryWindow(sb, "R31 CONTEXT", r31, 0x100);
                 }
             }
             catch (Exception ex)
@@ -244,3 +260,4 @@ Write-Host "     Source:  $debugger"
 Write-Host "     Backup:  $backup"
 Write-Host "     Runtime: <WV exe folder>\first_exception_context.txt"
 Write-Host "              <WV exe folder>\watson_log.txt"
+Write-Host "     Behavior: pauses target on FIRST exception before capture to prevent exception loops."
