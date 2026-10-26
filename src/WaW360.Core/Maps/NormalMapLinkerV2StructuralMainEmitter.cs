@@ -502,6 +502,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             if (!File.Exists(proofPath))
                 throw new InvalidDataException($"typed {type} proof evidence is unavailable after Fast Mode identity materialization: {proofPath}");
             var proof = await T4NativeProofContainerReader.IndexAsync(proofPath, type, ct);
+            if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase) && proof.Version != 12)
+                throw new InvalidDataException(
+                    $"typed XAnim proof is stale (version={proof.Version}, required=12): {proofPath}. " +
+                    "Regenerate the native Xbox XAnim proof before emitting a structural main candidate.");
             if (proof.Records.Count != assets.Count)
                 throw new InvalidDataException($"{Path.GetFileName(sourcePath)} {type} proof count mismatch: roots={assets.Count:N0}, proof={proof.Records.Count:N0}.");
             var fixedSize = type.ToLowerInvariant() switch
