@@ -50,8 +50,8 @@ public sealed class T4NuclearTechniqueClosurePlanResult
 ///  3. fail closed for bridge conflicts, missing native targets, or unknown names.
 ///
 /// This stage does NOT copy graph bytes. It proves which of the 426 PC TechniqueSet roots
-/// can immediately be backed by one concrete native Xenon graph and records the donor
-/// asset/body location for the typed graph extractor that follows.
+/// can immediately be backed by one concrete native Xenon graph and records the verified
+/// native root identity for the typed graph extractor that follows.
 /// </summary>
 public static class T4NuclearTechniqueClosurePlanner
 {
@@ -298,7 +298,7 @@ public static class T4NuclearTechniqueClosurePlanner
         sb.AppendLine($"mapped target missing donor  : {r.MissingDonorTargets:N0}");
         sb.AppendLine($"UNRESOLVED TOTAL             : {r.UnresolvedTechniqueRoots:N0}");
         sb.AppendLine($"distinct Xenon graph targets : {r.DistinctXboxTechniqueTargets:N0}");
-        sb.AppendLine($"Xenon technique slots        : nonNull={r.TotalXboxNonNullTechniqueSlots:N0}; inline={r.TotalXboxInlineTechniqueSlots:N0}; packed={r.TotalXboxPackedTechniqueSlots:N0}");
+        sb.AppendLine("Xenon graph body/slot census : <typed extractor pending>");
         sb.AppendLine($"identityClosureComplete      : {r.IdentityClosureComplete}");
         sb.AppendLine($"graphExtractionReady         : {r.GraphExtractionReady}");
         sb.AppendLine();
