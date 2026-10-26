@@ -225,10 +225,10 @@ public static class NormalMapNativeRelocationAudit
         if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase))
             return new[]
             {
-                new PointerField(0, "name"), new PointerField(48, "names"), new PointerField(52, "dataByte"),
-                new PointerField(56, "dataShort"), new PointerField(60, "dataInt"), new PointerField(64, "randomDataShort"),
-                new PointerField(68, "randomDataByte"), new PointerField(72, "randomDataInt"), new PointerField(76, "indices"),
-                new PointerField(80, "notify"), new PointerField(84, "deltaPart")
+                new PointerField(0, "name"), new PointerField(52, "names"), new PointerField(56, "dataByte"),
+                new PointerField(60, "dataShort"), new PointerField(64, "dataInt"), new PointerField(68, "randomDataShort"),
+                new PointerField(72, "randomDataByte"), new PointerField(76, "randomDataInt"), new PointerField(80, "indices"),
+                new PointerField(84, "notify"), new PointerField(88, "deltaPart")
             };
 
         if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase))
