@@ -1,5 +1,5 @@
 name: Build pinned OAT Xenon
-# Cloud-build trigger: native identity oracle
+# Cloud-build trigger: native identity oracle + generated T4Xenon ABI/load sources
 
 on:
   workflow_dispatch:
@@ -96,7 +96,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-      - name: Verify required tools
+      - name: Verify required tools and generated T4Xenon ZoneCode
         shell: pwsh
         run: |
           $bin = Join-Path $PWD 'oat\build\bin\Release_x86'
@@ -105,10 +105,34 @@ jobs:
             if (-not (Test-Path -LiteralPath $path)) { throw "Missing $path" }
           }
 
+          $zone = Join-Path $PWD 'oat\build\src\ZoneCode\Game\T4Xenon\XAssets'
+          $required = @(
+            'gameworldsp\gameworldsp_t4xenon_struct_test.cpp',
+            'gameworldsp\gameworldsp_t4xenon_load_db.cpp',
+            'clipmap_t\clipmap_t_t4xenon_struct_test.cpp',
+            'clipmap_t\clipmap_t_t4xenon_load_db.cpp',
+            'gfxworld\gfxworld_t4xenon_struct_test.cpp',
+            'gfxworld\gfxworld_t4xenon_load_db.cpp'
+          )
+          foreach ($rel in $required) {
+            $path = Join-Path $zone $rel
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing generated ZoneCode file $path" }
+          }
+
       - name: Upload OAT Xenon x86 tools
         uses: actions/upload-artifact@v7
         with:
           name: oat-xenon-windows-x86-${{ github.sha }}
           path: oat/build/bin/Release_x86/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload generated T4Xenon ABI/load sources
+        uses: actions/upload-artifact@v7
+        with:
+          name: oat-t4xenon-zonecode-${{ github.sha }}
+          path: |
+            oat/build/src/ZoneCode/Game/T4Xenon/XAssets/**/*_struct_test.cpp
+            oat/build/src/ZoneCode/Game/T4Xenon/XAssets/**/*_load_db.cpp
           if-no-files-found: error
           retention-days: 30
