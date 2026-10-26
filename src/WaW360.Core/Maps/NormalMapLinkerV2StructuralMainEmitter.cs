@@ -1201,6 +1201,62 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 $"native-sequence-safe empty SoundAliasList shell; deterministic sound coverage was {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}; final SDNS/XMA conversion remains required");
         }
 
+        // Promote exact source-owned RawFiles directly into the structural hardware
+        // candidate.  Alpha 10o already proved how to recover these safely: subtract
+        // every byte-verified tracked-family/Sound owned span, require an exact
+        // non-overlapping RawFile count, and emit only inline-name bodies whose Xbox
+        // payload round-trips.  Anything ambiguous remains on the fail-safe empty
+        // RawFile path below.
+        var rawOccupied = new List<(long Start, long End, string Owner)>();
+        foreach (var trackedType in TrackedTypes)
+        {
+            var trackedAssets = Physical(doc, trackedType);
+            if (trackedAssets.Count == 0) continue;
+
+            var trackedProofPath = LinkerV2ProofEvidence.GetProofPath(
+                outputRoot, mapName, sourcePath, role, trackedType);
+            var trackedProof = await T4NativeProofContainerReader.IndexAsync(
+                trackedProofPath, trackedType, ct);
+            if (trackedProof.Records.Count != trackedAssets.Count)
+                throw new InvalidDataException(
+                    $"RawFile occupied-span proof mismatch for {Path.GetFileName(sourcePath)} {trackedType}: " +
+                    $"expected {trackedAssets.Count:N0}, proof={trackedProof.Records.Count:N0}.");
+
+            rawOccupied.AddRange(trackedProof.Records.Select(r => (
+                r.SourceOffset,
+                r.SourceOffset + (long)r.BlobLength,
+                $"{trackedType} proof")));
+        }
+
+        rawOccupied.AddRange(sound.AssetsByIndex.Values.Select(s => (
+            s.SourceOffset,
+            s.SourceEndOffset,
+            "sound proof")));
+
+        var rawFiles = T4RawFileOccupiedSpanSerializer.Build(
+            doc,
+            zone,
+            rawOccupied.OrderBy(x => x.Start).ToList(),
+            ct);
+        if (rawFiles.ReadBackErrors != 0)
+            throw new InvalidDataException(
+                $"RawFile structural read-back failed for {Path.GetFileName(sourcePath)}: " +
+                $"errors={rawFiles.ReadBackErrors:N0}.");
+
+        if (rawFiles.Verified)
+        {
+            foreach (var raw in rawFiles.AssetsByIndex.Values
+                         .Where(x => x.NativePromotable && x.XboxPayload is not null))
+            {
+                output[raw.AssetIndex] = new StructuralPayload(
+                    "rawfile",
+                    raw.Name,
+                    raw.XboxPayload!,
+                    false,
+                    "verified Xbox-endian RawFile occupied-span payload promoted from exact source-owned body");
+            }
+        }
+
         var techsets = T4TechniqueSetNullGraphSerializer.Build(doc);
         if (!techsets.Verified && techsets.DeclaredPhysicalTechniqueSets != 0)
             throw new InvalidDataException($"TechniqueSet structural serialization failed for {Path.GetFileName(sourcePath)}.");
