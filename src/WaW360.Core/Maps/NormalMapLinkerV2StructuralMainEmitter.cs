@@ -249,9 +249,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         foreach (var s in nativeStrings)
         {
             if (s.RawPointer == 0) continue;
-            if (!s.Inline || string.IsNullOrWhiteSpace(s.Value) || s.Value.StartsWith("<alias ", StringComparison.Ordinal))
+            if (string.IsNullOrWhiteSpace(s.Value) || s.Value.StartsWith("<alias ", StringComparison.Ordinal))
                 throw new InvalidDataException(
-                    $"Native ScriptString #{s.Index} is not an inline literal and cannot be used by the diagnostic.");
+                    $"Native ScriptString #{s.Index} could not be resolved to a concrete value.");
             nativeValues.Add(s.Value);
         }
         var nativeScriptTable = new CanonicalScriptTable(nullIndices.Count == 1, nativeValues);
