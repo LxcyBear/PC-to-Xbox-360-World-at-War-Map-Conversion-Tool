@@ -365,6 +365,13 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
             }
+            case "xanim-console-proof" when args.Length >= 3:
+            {
+                var result = await T4XboxXAnimTransformProof.BuildAsync(args[1], args[2]);
+                Console.WriteLine(result.Summary);
+                Console.WriteLine($"Proof container: {result.OutputFile}");
+                return result.Verified && result.ConvertedXAnim == result.DeclaredXAnim ? 0 : 4;
+            }
             case "xanim-split-bones" when args.Length >= 3:
             {
                 var result = await T4XAnimBoneSplitOracle.AnalyzeAsync(args[1], args[2]);
@@ -469,6 +476,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
+    Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
     Console.WriteLine("  xanim-split-bones <pc.ff> <xbox.ff>       Resolve XAnim.names and test whether Xbox quaternion split side follows bone identity");
     Console.WriteLine("  xanim-split-features <pc.ff> <xbox.ff>    Correlate Xbox A/B split with PC translation type and quat frame count");
