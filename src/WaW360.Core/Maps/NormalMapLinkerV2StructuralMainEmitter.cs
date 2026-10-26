@@ -31,6 +31,14 @@ public sealed class NormalMapLinkerV2NativeSequenceDiagnosticResult
     public required string? AllShellFastFileSha256 { get; init; }
     public required string? AllShellOutputFastFile { get; init; }
     public required string? AllShellHardwarePackageDirectory { get; init; }
+    public required bool NativeFootprintCandidateReady { get; init; }
+    public required int NativeFootprintReadBackErrors { get; init; }
+    public required bool NativeFootprintWrapperRoundTripVerified { get; init; }
+    public required string? NativeFootprintFastFileSha256 { get; init; }
+    public required string? NativeFootprintOutputFastFile { get; init; }
+    public required string? NativeFootprintHardwarePackageDirectory { get; init; }
+    public required long NativeOracleZoneBytes { get; init; }
+    public required long NativeFootprintCandidateZoneBytes { get; init; }
     public required string TextReportFile { get; init; }
 }
 
@@ -285,21 +293,28 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_shell");
         var allShellPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_all_name_shell");
+        var nativeFootprintPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_native_footprint");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
         Directory.CreateDirectory(allShellPackageDir);
+        Directory.CreateDirectory(nativeFootprintPackageDir);
 
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_sequence.zone");
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
         var allShellZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_sequence_all_name_shell.zone");
         var allShellFfPath = Path.Combine(allShellPackageDir, source.CanonicalBaseName + ".ff");
+        var nativeFootprintZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_sequence_native_footprint.zone");
+        var nativeFootprintFfPath = Path.Combine(nativeFootprintPackageDir, source.CanonicalBaseName + ".ff");
         var reportPath = Path.Combine(outDir, $"{map.Name}_native_sequence_diagnostic.txt");
         TryDelete(zonePath);
         TryDelete(ffPath);
         TryDelete(allShellZonePath);
         TryDelete(allShellFfPath);
+        TryDelete(nativeFootprintZonePath);
+        TryDelete(nativeFootprintFfPath);
         TryDelete(Path.Combine(packageDir, "NATIVE_SEQUENCE_DB_TEST.txt"));
         TryDelete(Path.Combine(allShellPackageDir, "ALL_NAME_SHELL_DB_TEST.txt"));
+        TryDelete(Path.Combine(nativeFootprintPackageDir, "NATIVE_FOOTPRINT_DB_TEST.txt"));
 
         var nameContractFailures = AuditXAssetNameContracts(diagnosticRoots, diagnosticPayloads);
         var nameContractErrors = nameContractFailures.Count;
@@ -399,6 +414,78 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (!allShellReady)
             TryDelete(allShellFfPath);
 
+        // Fifth isolation layer: keep the exact 6,811-slot native identity graph and
+        // exact native ScriptString order from ALL-NAME-SHELL, but replace the structural
+        // PC-derived block reservation table with the working Xbox oracle's exact seven
+        // XFile block capacities. These header fields are what drive DB/runtime arena
+        // allocation pressure; compressed .ff byte size is not the allocation contract.
+        var nativeBlockCaps = Enum.GetValues<T4ZoneBlock>()
+            .ToDictionary(
+                block => block.ToString(),
+                block => native.Document.Header.BlockSizes[(int)block],
+                StringComparer.OrdinalIgnoreCase);
+        var nativeFootprintPlan = new NormalMapLinkerV2DestinationBlockPlanResult
+        {
+            MapName = blockPlan.MapName,
+            Sources = blockPlan.Sources,
+            StructuralCapacities = nativeBlockCaps,
+            GoldenBlockSizes = nativeBlockCaps,
+            UsesGoldenForAllocation = true,
+            SourceCapacityPlanReady = true,
+            ProductionOwnershipComplete = false,
+            Notes = blockPlan.Notes.Concat(new[]
+            {
+                "NATIVE-FOOTPRINT DIAGNOSTIC ONLY: seven XFile block capacities are copied from the user-supplied known-working native oracle to reproduce allocation pressure. No donor payload bytes are copied."
+            }).ToList(),
+            Blockers = Array.Empty<string>(),
+            Verified = true,
+            TextReportFile = blockPlan.TextReportFile,
+            JsonReportFile = blockPlan.JsonReportFile
+        };
+
+        var nativeFootprintZone = BuildZone(
+            diagnosticRoots,
+            allShellPayloads,
+            nativeScriptTable,
+            nativeFootprintPlan,
+            out var nativeFootprintHeaderZoneSize);
+        var nativeFootprintSizeOk =
+            nativeFootprintHeaderZoneSize == checked((uint)(nativeFootprintZone.Length - FastFileConstants.T4XFileHeaderSize));
+        var nativeFootprintBlockOk = VerifyBlockHeader(nativeFootprintZone, nativeFootprintPlan);
+        var nativeFootprintReadBackErrors = 1;
+        var nativeFootprintRoundTrip = false;
+        string? nativeFootprintSha = null;
+        if (nativeFootprintSizeOk && nativeFootprintBlockOk && allShellNameErrors == 0)
+        {
+            await File.WriteAllBytesAsync(nativeFootprintZonePath, nativeFootprintZone, cancellationToken);
+            nativeFootprintReadBackErrors = VerifyReadBack(
+                nativeFootprintZonePath,
+                nativeFootprintZone,
+                diagnosticRoots,
+                allShellPayloads,
+                nativeScriptTable,
+                nativeFootprintPlan);
+            if (nativeFootprintReadBackErrors == 0)
+            {
+                var nativeFootprintWrite = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                    nativeFootprintFfPath,
+                    nativeFootprintZone,
+                    preferNativeLevel6: true,
+                    cancellationToken: cancellationToken);
+                nativeFootprintRoundTrip = nativeFootprintWrite.RoundTripVerified;
+                if (nativeFootprintRoundTrip)
+                    nativeFootprintSha = await Sha256Async(nativeFootprintFfPath, cancellationToken);
+            }
+        }
+        var nativeFootprintReady =
+            allShellNameErrors == 0 &&
+            nativeFootprintSizeOk &&
+            nativeFootprintBlockOk &&
+            nativeFootprintReadBackErrors == 0 &&
+            nativeFootprintRoundTrip;
+        if (!nativeFootprintReady)
+            TryDelete(nativeFootprintFfPath);
+
         var sb = new StringBuilder();
         sb.AppendLine("WaW360Converter — NATIVE ROOT-SEQUENCE DB HARDWARE DIAGNOSTIC");
         sb.AppendLine(new string('=', 86));
@@ -424,6 +511,15 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"  package={(allShellReady ? allShellPackageDir : "<not emitted>")}");
         foreach (var failure in allShellNameFailures.Take(32))
             sb.AppendLine("  ALL-SHELL NAME-CONTRACT: " + failure);
+        sb.AppendLine();
+        sb.AppendLine("NATIVE ALLOCATION-FOOTPRINT ISOLATION");
+        sb.AppendLine($"  nativeOracleZoneBytes={native.ZoneBytes:N0}; candidateZoneBytes={nativeFootprintZone.Length:N0}");
+        foreach (var block in Enum.GetValues<T4ZoneBlock>())
+            sb.AppendLine($"  {block,-18} nativeCapacity={nativeBlockCaps[block.ToString()],14:N0} B");
+        sb.AppendLine($"  readBackErrors={nativeFootprintReadBackErrors:N0}; wrapperRoundTrip={nativeFootprintRoundTrip}; ready={nativeFootprintReady}");
+        sb.AppendLine($"  sha256={nativeFootprintSha ?? "<none>"}");
+        sb.AppendLine($"  package={(nativeFootprintReady ? nativeFootprintPackageDir : "<not emitted>")}");
+        sb.AppendLine("  NOTE: compressed FF bytes remain small because payload shells are mostly zero; the exact native block table reproduces the loader/DB allocation contract without meaningless random padding.");
         sb.AppendLine();
         sb.AppendLine("PURPOSE");
         sb.AppendLine("  This is an A/B test for the recurring SP TU7 0x82168594 / 0xC0000005 frontier.");
@@ -455,6 +551,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 new UTF8Encoding(false),
                 cancellationToken);
         }
+        if (nativeFootprintReady)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(nativeFootprintPackageDir, "NATIVE_FOOTPRINT_DB_TEST.txt"),
+                sb.ToString(),
+                new UTF8Encoding(false),
+                cancellationToken);
+        }
 
         return new NormalMapLinkerV2NativeSequenceDiagnosticResult
         {
@@ -480,6 +584,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             AllShellFastFileSha256 = allShellSha,
             AllShellOutputFastFile = allShellReady ? allShellFfPath : null,
             AllShellHardwarePackageDirectory = allShellReady ? allShellPackageDir : null,
+            NativeFootprintCandidateReady = nativeFootprintReady,
+            NativeFootprintReadBackErrors = nativeFootprintReadBackErrors,
+            NativeFootprintWrapperRoundTripVerified = nativeFootprintRoundTrip,
+            NativeFootprintFastFileSha256 = nativeFootprintSha,
+            NativeFootprintOutputFastFile = nativeFootprintReady ? nativeFootprintFfPath : null,
+            NativeFootprintHardwarePackageDirectory = nativeFootprintReady ? nativeFootprintPackageDir : null,
+            NativeOracleZoneBytes = native.ZoneBytes,
+            NativeFootprintCandidateZoneBytes = nativeFootprintZone.Length,
             TextReportFile = reportPath
         };
     }
