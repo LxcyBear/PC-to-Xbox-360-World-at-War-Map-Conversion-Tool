@@ -640,11 +640,13 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_xanim_native_layout");
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout");
         var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_tracked_shell");
+        var realTechsetNamePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_real_techset_names");
         var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_script_closure");
         var nativeBlockPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_native_blocks");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
         Directory.CreateDirectory(conservativePackageDir);
+        Directory.CreateDirectory(realTechsetNamePackageDir);
         Directory.CreateDirectory(scriptClosurePackageDir);
         Directory.CreateDirectory(nativeBlockPackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
@@ -653,6 +655,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
         var conservativeZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".tracked_shell.zone");
         var conservativeFfPath = Path.Combine(conservativePackageDir, source.CanonicalBaseName + ".ff");
+        var realTechsetNameZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".real_techset_names.zone");
+        var realTechsetNameFfPath = Path.Combine(realTechsetNamePackageDir, source.CanonicalBaseName + ".ff");
         var scriptClosureZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".script_closure.zone");
         var scriptClosureFfPath = Path.Combine(scriptClosurePackageDir, source.CanonicalBaseName + ".ff");
         var nativeBlockZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_blocks.zone");
@@ -666,6 +670,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(conservativeFfPath);
         TryDelete(conservativeZonePath);
         TryDelete(Path.Combine(conservativePackageDir, "TRACKED_SHELL_NATIVE_TEST.txt"));
+        TryDelete(realTechsetNameFfPath);
+        TryDelete(realTechsetNameZonePath);
+        TryDelete(Path.Combine(realTechsetNamePackageDir, "REAL_TECHSET_NAMES_AB_TEST.txt"));
         TryDelete(scriptClosureFfPath);
         TryDelete(scriptClosureZonePath);
         TryDelete(Path.Combine(scriptClosurePackageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"));
@@ -842,6 +849,103 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         }
         if (!conservativeReady)
             TryDelete(conservativeFfPath);
+
+        // TechniqueSet identity A/B: preserve the exact same type-major root graph,
+        // payload families, ScriptStrings and block capacities as the OAT-green baseline,
+        // but replace only diagnostic "__waw360_ts_#####" TechniqueSet names with names
+        // recovered by the deterministic PC Material/TechniqueSet walker. The 51 Xbox
+        // graph pointers remain null. This isolates DB identity/name semantics from the
+        // still-unimplemented Xenos TechniqueSet graph materialization.
+        var realTechsetNameReady = false;
+        var realTechsetNameReadBackErrors = 0;
+        var realTechsetNameRoundTrip = false;
+        var realTechsetNamesRecovered = 0;
+        string? realTechsetNameSha = null;
+        if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
+        {
+            try
+            {
+                var realTechsetPayloads = BuildRealNameTechniqueSetVariant(
+                    emissionRoots,
+                    rootPayloads,
+                    contexts,
+                    cancellationToken,
+                    out realTechsetNamesRecovered,
+                    out var realTechsetNamesUnresolved);
+
+                if (realTechsetNamesUnresolved != 0)
+                    throw new InvalidDataException(
+                        $"TechniqueSet real-name A/B requires complete identity recovery; unresolved={realTechsetNamesUnresolved:N0}.");
+
+                var expectedTechsets = emissionRoots.Count(r =>
+                    r.XboxTypeName.Equals("techset", StringComparison.OrdinalIgnoreCase));
+                if (realTechsetNamesRecovered != expectedTechsets)
+                    throw new InvalidDataException(
+                        $"TechniqueSet real-name A/B recovered {realTechsetNamesRecovered:N0}/{expectedTechsets:N0} names.");
+
+                var realTechsetZone = BuildZone(
+                    emissionRoots,
+                    realTechsetPayloads,
+                    canonicalStrings,
+                    blockPlan,
+                    out var realTechsetHeaderZoneSize);
+                var realTechsetSizeOk =
+                    realTechsetHeaderZoneSize == checked((uint)(realTechsetZone.Length - FastFileConstants.T4XFileHeaderSize));
+                var realTechsetBlockOk = VerifyBlockHeader(realTechsetZone, blockPlan);
+                if (!realTechsetSizeOk || !realTechsetBlockOk)
+                    throw new InvalidDataException(
+                        $"TechniqueSet real-name zone preflight failed: zoneSizeOk={realTechsetSizeOk}; blockHeaderOk={realTechsetBlockOk}.");
+
+                await File.WriteAllBytesAsync(realTechsetNameZonePath, realTechsetZone, cancellationToken);
+                realTechsetNameReadBackErrors = VerifyReadBack(
+                    realTechsetNameZonePath,
+                    realTechsetZone,
+                    emissionRoots,
+                    realTechsetPayloads,
+                    canonicalStrings,
+                    blockPlan);
+                if (realTechsetNameReadBackErrors != 0)
+                    throw new InvalidDataException(
+                        $"TechniqueSet real-name zone read-back reported {realTechsetNameReadBackErrors:N0} error(s).");
+
+                var realTechsetWrite = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                    realTechsetNameFfPath,
+                    realTechsetZone,
+                    preferNativeLevel6: true,
+                    cancellationToken: cancellationToken);
+                realTechsetNameRoundTrip = realTechsetWrite.RoundTripVerified;
+                if (!realTechsetNameRoundTrip)
+                    throw new InvalidDataException("TechniqueSet real-name Xbox fastfile wrapper round-trip failed.");
+
+                realTechsetNameSha = await Sha256Async(realTechsetNameFfPath, cancellationToken);
+                realTechsetNameReady = true;
+                await File.WriteAllTextAsync(
+                    Path.Combine(realTechsetNamePackageDir, "REAL_TECHSET_NAMES_AB_TEST.txt"),
+                    "WaW360Converter — REAL TECHNIQUESET NAME A/B TEST" + Environment.NewLine +
+                    new string('=', 68) + Environment.NewLine +
+                    $"Map: {map.Name}" + Environment.NewLine +
+                    $"TechniqueSet names recovered: {realTechsetNamesRecovered:N0}" + Environment.NewLine +
+                    $"SHA256: {realTechsetNameSha}" + Environment.NewLine +
+                    "Only TechniqueSet identity strings differ from the structural baseline." + Environment.NewLine +
+                    "All 51 Xbox TechniqueSet graph slots remain null; this is NOT shader fidelity." + Environment.NewLine +
+                    "OAT Xenon must pass before hardware testing." + Environment.NewLine,
+                    new UTF8Encoding(false),
+                    cancellationToken);
+                notes.Add(
+                    $"REAL-TECHSET-NAME A/B READY: recovered {realTechsetNamesRecovered:N0} exact source TechniqueSet name(s); " +
+                    $"candidate='{realTechsetNameFfPath}'.");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                notes.Add($"REAL-TECHSET-NAME A/B SKIPPED: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        if (!realTechsetNameReady)
+        {
+            TryDelete(realTechsetNameFfPath);
+            TryDelete(realTechsetNameZonePath);
+        }
 
         // Third hardware matrix candidate: start from the tracked-shell graph, remove only
         // exact-name resident UI MenuLists proven by typed closure, then add exact IWD .gsc/.csc
@@ -1951,6 +2055,72 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 true,
                 $"hardware-matrix tracked shell: {p.TypeName} owned children intentionally zeroed");
         }).ToList();
+    }
+
+    private static List<StructuralPayload> BuildRealNameTechniqueSetVariant(
+        IReadOnlyList<LinkerV2CanonicalRoot> roots,
+        IReadOnlyList<StructuralPayload> baselinePayloads,
+        IReadOnlyDictionary<string, SourceContext> contexts,
+        CancellationToken cancellationToken,
+        out int recovered,
+        out int unresolved)
+    {
+        if (roots.Count != baselinePayloads.Count)
+            throw new InvalidDataException(
+                $"TechniqueSet real-name A/B root/payload count mismatch: roots={roots.Count:N0}; payloads={baselinePayloads.Count:N0}.");
+
+        recovered = 0;
+        unresolved = 0;
+        var scans = new Dictionary<string, T4MaterialTechniqueLoadScan>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<StructuralPayload>(baselinePayloads.Count);
+
+        for (var i = 0; i < roots.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var root = roots[i];
+            var baseline = baselinePayloads[i];
+            if (!root.XboxTypeName.Equals("techset", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(baseline);
+                continue;
+            }
+
+            if (!contexts.TryGetValue(root.SourceFastFile, out var context))
+            {
+                unresolved++;
+                result.Add(baseline);
+                continue;
+            }
+
+            if (!scans.TryGetValue(root.SourceFastFile, out var scan))
+            {
+                scan = T4MaterialTechniqueLoadSerializer.Build(
+                    context.Document,
+                    context.Zone,
+                    cancellationToken);
+                scans[root.SourceFastFile] = scan;
+            }
+
+            if (!scan.TechniqueSetsByIndex.TryGetValue(root.SourceAssetIndex, out var sourceTechset) ||
+                string.IsNullOrWhiteSpace(sourceTechset.Name))
+            {
+                unresolved++;
+                result.Add(baseline);
+                continue;
+            }
+
+            const int XboxTechniqueSetFixedSize = 216;
+            result.Add(new StructuralPayload(
+                "techset",
+                sourceTechset.Name,
+                BuildFixedNameShell(XboxTechniqueSetFixedSize, sourceTechset.Name),
+                true,
+                "real-name null-graph TechniqueSet A/B; exact source identity restored while all 51 Xbox graph slots remain null"));
+            recovered++;
+        }
+
+        return result;
     }
 
     private static byte[] BuildFixedNameShell(int fixedSize, string name)
