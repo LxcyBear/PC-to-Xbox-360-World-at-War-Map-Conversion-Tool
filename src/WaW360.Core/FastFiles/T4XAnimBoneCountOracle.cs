@@ -254,11 +254,12 @@ public static class T4XAnimBoneCountOracle
 
         var notifyOffset = platform == WaWPlatform.Xbox360 ? 0x1E : 0x1C;
         var assetTypeOffset = platform == WaWPlatform.Xbox360 ? 0x1F : 0x1D;
-        // Xbox expands boneCount[] from 10 to 12 bytes but keeps the two
-        // 32-bit stream-count fields at +0x20/+0x24; +0x28 is the inserted
-        // padding/unknown word before framerate at +0x2C.
-        var randomShortOffset = 0x20;
-        var indexOffset = 0x24;
+        // Xbox expands boneCount[] from 10 to 12 bytes. The byte-sized
+        // notify/asset/default fields then end at +0x21 and the following
+        // 32-bit fields realign to +0x24. This shifts randomDataShortCount,
+        // indexCount, framerate and frequency by four bytes versus PC.
+        var randomShortOffset = platform == WaWPlatform.Xbox360 ? 0x24 : 0x20;
+        var indexOffset = platform == WaWPlatform.Xbox360 ? 0x28 : 0x24;
         var frameRateOffset = platform == WaWPlatform.Xbox360 ? 0x2C : 0x28;
         var frequencyOffset = platform == WaWPlatform.Xbox360 ? 0x30 : 0x2C;
         var firstPointerOffset = platform == WaWPlatform.Xbox360 ? 0x34 : 0x30;
