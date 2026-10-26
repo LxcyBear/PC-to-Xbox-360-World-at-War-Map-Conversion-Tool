@@ -1347,66 +1347,22 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"    PRECISION_QUAT key count identical:                           {stats.PcVsXboxPrecisionKeyCountEqual}/{stats.Pairs}");
         sb.AppendLine($"    PC precision keys - Xbox precision keys range:                {Range(stats.PrecisionKeyCountDeltas)}");
         sb.AppendLine();
-        sb.AppendLine("  Precision payload width after using Xbox's own key count:");
-        sb.AppendLine($"    Xbox PRECISION_QUAT = 2 shorts/key:                           {stats.PrecisionWidth2Matches}/{stats.Pairs}");
-        sb.AppendLine($"    Xbox PRECISION_QUAT = 3 shorts/key:                           {stats.PrecisionWidth3Matches}/{stats.Pairs}");
-        sb.AppendLine($"    Xbox PRECISION_QUAT = 4 shorts/key:                           {stats.PrecisionWidth4Matches}/{stats.Pairs}");
+        sb.AppendLine("  PROVEN CONSOLE QUATERNION STREAM MODEL");
+        sb.AppendLine("    SIMPLE_QUAT:             1 x randomDataShort per dynamic key");
+        sb.AppendLine("    NORMAL_QUAT:             1 x randomDataInt per dynamic key (32-bit packed)");
+        sb.AppendLine("    PRECISION_QUAT:          3 x randomDataShort per dynamic key (48-bit packed)");
+        sb.AppendLine("    NORMAL_QUAT_NO_SIZE:     1 x dataInt per constant bone");
+        sb.AppendLine("    PRECISION_QUAT_NO_SIZE:  3 x dataShort per constant bone");
+        sb.AppendLine($"    randomDataInt gain == NORMAL_QUAT keys:       {stats.RandomIntGainEqualsNormalKeys}/{stats.Pairs}");
+        sb.AppendLine($"    dataInt gain == NORMAL_QUAT_NO_SIZE bones:    {stats.NormalConstantDataIntGain}/{stats.Pairs}");
         sb.AppendLine();
-        sb.AppendLine("  PRIMARY CANDIDATE: NORMAL_QUAT is packed to one 32-bit word; PRECISION_QUAT stays 4x16-bit");
-        sb.AppendLine($"    randomShort decrease == 4 * normal dynamic keys AND randomInt gain == keys: {stats.NormalDynamicPacked32}/{stats.Pairs}");
-        sb.AppendLine($"    dataShort decrease == 4 * normal constant bones:                          {stats.NormalConstantPacked32}/{stats.Pairs}");
-        sb.AppendLine($"    dataInt gain == normal constant bones:                                    {stats.NormalConstantDataIntGain}/{stats.Pairs}");
-        sb.AppendLine($"    ALL dynamic + constant packed32 equations true:                           {stats.NormalPacked32All}/{stats.Pairs}");
-        sb.AppendLine();
-        sb.AppendLine("  Constant NORMAL_QUAT_NO_SIZE retained-short width (plus one dataInt):");
-        sb.AppendLine($"    keeps 0 shorts (dataShort decreases by 4/bone):             {stats.NormalConstantLeaves0Shorts}/{stats.Pairs}");
-        sb.AppendLine($"    keeps 1 short  (dataShort decreases by 3/bone):             {stats.NormalConstantLeaves1Short}/{stats.Pairs}");
-        sb.AppendLine($"    keeps 2 shorts (dataShort decreases by 2/bone):             {stats.NormalConstantLeaves2Shorts}/{stats.Pairs}");
-        sb.AppendLine($"    keeps 3 shorts (dataShort decreases by 1/bone):             {stats.NormalConstantLeaves3Shorts}/{stats.Pairs}");
-        sb.AppendLine();
-        sb.AppendLine("  Earlier 3x16-bit candidate:");
-        sb.AppendLine($"    PC randomShort - XB randomShort == normal dynamic key count: {stats.NormalDynamicThreeShorts}/{stats.Pairs}");
-        sb.AppendLine($"    PC dataShort - XB dataShort == normal constant bone count:   {stats.NormalConstantThreeShorts}/{stats.Pairs}");
-        sb.AppendLine($"    BOTH equations true for the pair:                            {stats.NormalThreeShortsBoth}/{stats.Pairs}");
-        sb.AppendLine();
-        sb.AppendLine("  Competing checks:");
-        sb.AppendLine($"    randomShort delta == precision dynamic key count:             {stats.PrecisionDynamicThreeShorts}/{stats.Pairs}");
-        sb.AppendLine($"    dataShort delta == precision constant bone count:             {stats.PrecisionConstantThreeShorts}/{stats.Pairs}");
-        sb.AppendLine($"    randomInt gain == normal dynamic keys:                        {stats.RandomIntGainEqualsNormalKeys}/{stats.Pairs}");
-        sb.AppendLine($"    randomInt gain == 2 * normal dynamic keys:                    {stats.RandomIntGainEqualsTwiceNormalKeys}/{stats.Pairs}");
-        sb.AppendLine($"    randomInt gain == precision dynamic keys:                     {stats.RandomIntGainEqualsPrecisionKeys}/{stats.Pairs}");
-        sb.AppendLine($"    randomInt gain == 2 * precision dynamic keys:                 {stats.RandomIntGainEqualsTwicePrecisionKeys}/{stats.Pairs}");
-        sb.AppendLine();
+
         sb.AppendLine("  Observed PC->Xbox count deltas:");
         sb.AppendLine($"    randomDataShort decrease: {Range(stats.RandomShortDeltas)}");
         sb.AppendLine($"    dataShort decrease:       {Range(stats.DataShortDeltas)}");
         sb.AppendLine($"    randomDataInt increase:   {Range(stats.RandomIntDeltas)}");
         sb.AppendLine($"    dataInt increase:         {Range(stats.DataIntDeltas)}");
 
-        sb.AppendLine();
-        sb.AppendLine("  EXACT INTEGER EQUATION SEARCH");
-        sb.AppendLine("    randomShortDelta = A*normalDynamicKeys + B*precisionDynamicKeys");
-        foreach (var v in SolveTwoTerm(
-                     stats.Rows,
-                     r => r.NormalDynamicKeys,
-                     r => r.PrecisionDynamicKeys,
-                     r => r.RandomShortDelta))
-            sb.AppendLine($"      A={v.A,3}, B={v.B,3} -> {v.Matches}/{stats.Pairs}");
-
-        sb.AppendLine();
-        sb.AppendLine("    dataShortDelta = A*normalConstant + B*precisionConstant + C*indexDelta");
-        foreach (var v in SolveThreeTerm(
-                     stats.Rows,
-                     r => r.NormalConstantBones,
-                     r => r.PrecisionConstantBones,
-                     r => r.IndexDelta,
-                     r => r.DataShortDelta))
-            sb.AppendLine($"      A={v.A,3}, B={v.B,3}, C={v.C,3} -> {v.Matches}/{stats.Pairs}");
-
-        sb.AppendLine();
-        sb.AppendLine("    indexDelta = Xbox.indexCount - PC.indexCount");
-        var indexDeltas = stats.Rows.Select(r => r.IndexDelta).ToList();
-        sb.AppendLine($"      range: {Range(indexDeltas)}");
     }
 
     private static void AppendPrecisionRule(StringBuilder sb, PrecisionRuleStats stats)
