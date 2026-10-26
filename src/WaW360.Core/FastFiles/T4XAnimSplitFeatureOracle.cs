@@ -482,7 +482,7 @@ public static class T4XAnimSplitFeatureOracle
             }
         }
 
-        var precisionShortPos = checked(dynamic.SimpleKeys * 2);
+        var precisionShortPos = checked(dynamic.SimpleKeys);
         for (var i = 0; i < xbox.BoneCounts[3]; i++)
         {
             var boneIndex = precisionBoneStart + i;
@@ -514,7 +514,7 @@ public static class T4XAnimSplitFeatureOracle
 
         if (randomIntPos != dynamic.NormalKeys)
             throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' NORMAL_QUAT randomDataInt consumption mismatch.");
-        if (precisionShortPos != checked(dynamic.SimpleKeys * 2 + dynamic.PrecisionKeys * 3))
+        if (precisionShortPos != checked(dynamic.SimpleKeys + dynamic.PrecisionKeys * 3))
             throw new InvalidDataException($"Xbox XAnim '{xbox.Name}' PRECISION_QUAT randomDataShort consumption mismatch.");
     }
 
@@ -606,7 +606,7 @@ public static class T4XAnimSplitFeatureOracle
 
         bool CompareAt(int normalShortWidth)
         {
-            var shortPos = checked(dynamic.SimpleKeys * 2 + dynamic.NormalKeys * normalShortWidth);
+            var shortPos = checked(dynamic.SimpleKeys + dynamic.NormalKeys * normalShortWidth);
             for (var i = 0; i < xbox.BoneCounts[3]; i++)
             {
                 var boneIndex = precisionBoneStart + i;
