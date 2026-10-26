@@ -366,6 +366,25 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
             }
+            case "linker-v2-main-structural" when args.Length >= 4:
+            {
+                var root = args[1];
+                var mapName = args[2];
+                var output = args[3];
+                var map = MapDiscovery.DiscoverSourceFolder(root)
+                    .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
+                var result = await NormalMapLinkerV2StructuralMainEmitter.RunAsync(map, output);
+                Console.WriteLine($"Linker V2 structural main emitter: {result.MapName}");
+                Console.WriteLine($"payloads={result.PayloadsBuilt:N0}; fallback={result.FallbackPayloads:N0}; assets={result.XboxAssets:N0}");
+                Console.WriteLine($"zone={result.ZoneBytes:N0}B; ff={result.FastFileBytes:N0}B; readBackErrors={result.ReadBackErrors:N0}");
+                Console.WriteLine($"wrapperRoundTrip={result.WrapperRoundTripVerified}; structuralReady={result.StructuralNativeCandidateReady}; productionReady={result.ProductionMainReady}");
+                Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<none>"}");
+                Console.WriteLine($"report: {result.TextReportFile}");
+                foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
+                return result.Verified ? 0 : 3;
+            }
             case "linker-v2-source" when args.Length >= 4:
             {
                 var root = args[1];
@@ -494,6 +513,7 @@ static void PrintHelp()
     Console.WriteLine("  stage4-alpha9a-mixed <root> <map> <output>      Run mixed XAnim/XModel/Weapon/FX XAsset-order probe");
     Console.WriteLine("  link-load <pc_load.ff> [out.json]        Deterministic XAsset-stream graph + dependency-first Xbox plan");
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
+    Console.WriteLine("  linker-v2-main-structural <root> <map> <output>  Emit current self-contained native main hardware diagnostic");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
