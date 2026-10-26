@@ -1408,7 +1408,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         foreach (var asset in Physical(doc, "clipmap"))
             output[asset.Index] = new StructuralPayload("clipmap_pvs", worldName, BuildFixedNameShell(332, worldName), true, "reduced Xbox clipmap_pvs world root");
         foreach (var asset in Physical(doc, "gfxworld"))
-            output[asset.Index] = new StructuralPayload("gfxworld", worldName, BuildGfxWorld(804, worldName, canonicalBaseName), true, "reduced GfxWorld root");
+            output[asset.Index] = new StructuralPayload("gfxworld", worldName, BuildGfxWorld(900, worldName, canonicalBaseName), true, "reduced GfxWorld root");
         foreach (var asset in Physical(doc, "lightdef"))
         {
             var name = $"__waw360_lightdef_{asset.Index:D5}";
@@ -1868,7 +1868,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         byte[] bytes = lower switch
         {
             "xanim" => BuildFixedNameShell(92, name),
-            "xmodel" => BuildFixedNameShell(228, name),
+            "xmodel" => BuildFixedNameShell(0xD4, name),
             "material" => BuildFixedNameShell(96, name),
             "pixelshader" => BuildFixedNameShell(16, name),
             "techset" => BuildFixedNameShell(216, name),
@@ -1882,7 +1882,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             "clipmap_pvs" => BuildFixedNameShell(332, name),
             "comworld" => BuildFixedNameShell(64, name),
             "gameworld_sp" => BuildFixedNameShell(44, name),
-            "gfxworld" => BuildGfxWorld(804, name, canonicalBaseName),
+            "gfxworld" => BuildGfxWorld(900, name, canonicalBaseName),
             "localize" => BuildLocalize(name, string.Empty),
             "map_ents" => BuildFixedNameShell(12, name),
             _ => throw new InvalidDataException(
