@@ -12,11 +12,11 @@ if (-not (Test-Path -LiteralPath $debugger -PathType Leaf)) {
 $source = Get-Content -LiteralPath $debugger -Raw
 $handlerMarker = "HandleNullXAnimBreak(EventInfo)"
 $armMarker = "ArmNullXAnimProbe(EventInfo);"
+$gateMarker = "if (EventCode == XboxDebugEventType.ExecutionBreak && HandleNullXAnimBreak(EventInfo))"
 $helperMarker = "private const uint NullXAnimPre = 0x8216858C;"
 
-# Scope all event-handler edits to con_OnStdNotify. The user's WV source is
-# intentionally no longer pristine: earlier probes/helpers can contain other
-# switches and case labels elsewhere in Debugger.cs.
+# Scope all event-handler edits to con_OnStdNotify. Do NOT depend on the
+# existing ExecutionBreak case: older parser probes may have rewritten it.
 $notifyStartMarker = "private static void con_OnStdNotify("
 $notifyStart = $source.IndexOf($notifyStartMarker)
 $playStart = $source.IndexOf("public static void Play()", $notifyStart)
@@ -26,43 +26,32 @@ if ($notifyStart -lt 0 -or $playStart -lt 0 -or $playStart -le $notifyStart) {
 
 $notify = $source.Substring($notifyStart, $playStart - $notifyStart)
 
-if (-not $notify.Contains($armMarker)) {
+if (-not $notify.Contains($armMarker) -or -not $notify.Contains($gateMarker)) {
     $switchNeedle = "switch (EventCode)"
     $switchAt = $notify.IndexOf($switchNeedle)
     if ($switchAt -lt 0) {
         throw "Could not find switch(EventCode) inside con_OnStdNotify()."
     }
 
-    $activation = @'
+    $prefix = ""
+    if (-not $notify.Contains($armMarker)) {
+        $prefix += @'
             // Safe diagnostic: arm only after CODXE activates a usermap.
             ArmNullXAnimProbe(EventInfo);
 '@
-
-    $absoluteSwitchAt = $notifyStart + $switchAt
-    $source = $source.Insert($absoluteSwitchAt, $activation)
-
-    # Recompute the method slice after insertion before touching ExecutionBreak.
-    $notifyStart = $source.IndexOf($notifyStartMarker)
-    $playStart = $source.IndexOf("public static void Play()", $notifyStart)
-    $notify = $source.Substring($notifyStart, $playStart - $notifyStart)
-}
-
-if (-not $notify.Contains($handlerMarker)) {
-    $caseNeedle = "case XboxDebugEventType.ExecutionBreak:"
-    $caseAt = $notify.IndexOf($caseNeedle)
-    if ($caseAt -lt 0) {
-        throw "Could not find ExecutionBreak inside con_OnStdNotify()."
     }
 
-    # Only patch the case that belongs to con_OnStdNotify. Do not care how many
-    # other ExecutionBreak strings exist elsewhere in this locally modified file.
-    $handler = @'
-                    if (HandleNullXAnimBreak(EventInfo))
-                        break;
+    if (-not $notify.Contains($gateMarker)) {
+        $prefix += @'
+            // Handle our two probe breakpoints BEFORE any legacy ExecutionBreak
+            // logic. This keeps the probe compatible with previously patched WV.
+            if (EventCode == XboxDebugEventType.ExecutionBreak && HandleNullXAnimBreak(EventInfo))
+                return;
 '@
+    }
 
-    $insertAt = $notifyStart + $caseAt + $caseNeedle.Length
-    $source = $source.Insert($insertAt, [Environment]::NewLine + $handler)
+    $absoluteSwitchAt = $notifyStart + $switchAt
+    $source = $source.Insert($absoluteSwitchAt, $prefix)
 }
 
 $playMarker = @'
