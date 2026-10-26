@@ -44,8 +44,8 @@ Write-Host ""
 
 $candidates = @(
     "$SourceZoneName.ff",
-    "\${SourceZoneName}_load.ff",
-    "\${SourceZoneName}_patch.ff",
+    "${SourceZoneName}_load.ff",
+    "${SourceZoneName}_patch.ff",
     "preview.dds"
 )
 
