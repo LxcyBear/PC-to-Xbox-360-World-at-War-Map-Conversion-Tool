@@ -476,6 +476,23 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine(result.Summary);
                 return 0;
             }
+            case "pc-native-semantic-oracle" when args.Length >= 4:
+            {
+                var explicitUnlinker = args.Length >= 5 ? args[4] : null;
+                var result = await T4PcNativeSemanticOracle.CompareAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    explicitUnlinker);
+                Console.WriteLine("T4 PC semantic pool -> native Xbox identity oracle");
+                Console.WriteLine($"pcRoots={result.PcRootAssets:N0}; pcOatPool={result.PcOatPoolAssets:N0}; nativeRoots={result.NativeRootAssets:N0}; semanticDelta={result.NativeVsPcSemanticDelta:+#;-#;0}");
+                Console.WriteLine($"matched={result.MatchedSemanticIdentities:N0}; pcOnly={result.PcOnlySemanticIdentities:N0}; xboxOnly={result.NativeOnlySemanticIdentities:N0}");
+                Console.WriteLine($"scriptStringMultisetEqual={result.ScriptStringMultisetEqual}; exactIndexMatches={result.ScriptStringExactIndexMatches:N0}; remap={result.ScriptStringRemap.Count:N0}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonManifestFile}");
+                Console.WriteLine($"PC OAT:   {result.PcOatLogFile}");
+                return 0;
+            }
             case "xasset-root-oracle" when args.Length >= 3:
             {
                 var result = await T4XAssetRootOracle.CompareAsync(args[1], args[2]);
@@ -599,6 +616,7 @@ static void PrintHelp()
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  native-oat-identity <native.ff> <output-dir> [Unlinker.exe]  Extract exact native Xbox (index,type,name) sequence through pinned OAT Xenon");
     Console.WriteLine("  pc-native-root-oracle <pc.ff> <native.ff>       Compare original PC root/type order and ScriptStrings to native Xbox");
+    Console.WriteLine("  pc-native-semantic-oracle <pc.ff> <native.ff> <output-dir> [Unlinker.exe]  Compare OAT-loaded PC semantic identities to native Xbox and emit ScriptString remap");
     Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
