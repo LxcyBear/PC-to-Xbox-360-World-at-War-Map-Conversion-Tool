@@ -30,7 +30,14 @@ try {
         Remove-Item -LiteralPath $target -Recurse -Force
     }
     New-Item -ItemType Directory -Force -Path $target | Out-Null
-    Copy-Item -LiteralPath (Join-Path $sourceDir '*') -Destination $target -Recurse -Force
+    Copy-Item -Path (Join-Path $sourceDir '*') -Destination $target -Recurse -Force
+
+    foreach ($tool in @('Linker.exe','Unlinker.exe','ImageConverter.exe')) {
+        $toolPath = Join-Path $target $tool
+        if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "Installed prebuilt tool is missing after copy: $toolPath"
+        }
+    }
 
     Write-Host '[OAT] PREBUILT INSTALL PASS'
     Write-Host "      $target"
