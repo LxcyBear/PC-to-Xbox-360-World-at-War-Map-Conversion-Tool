@@ -323,6 +323,7 @@ public static class T4XenonNativeIdentityOracle
 
         foreach (var root in CandidateRoots())
         {
+            candidates.Add(Path.Combine(root, ".deps", "OpenAssetTools-xenon-prebuilt", "Release_x86", "Unlinker.exe"));
             candidates.Add(Path.Combine(root, ".deps", "OpenAssetTools-xenon", "build", "bin", "Release_x86", "Unlinker.exe"));
             candidates.Add(Path.Combine(root, "oat", "build", "bin", "Release_x86", "Unlinker.exe"));
         }
