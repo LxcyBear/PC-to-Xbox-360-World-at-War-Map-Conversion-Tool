@@ -1719,7 +1719,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             "pixelshader" => BuildFixedNameShell(16, name),
             "techset" => BuildFixedNameShell(216, name),
             "image" => BuildImageShell(name),
-            "sound" => T4SoundAliasSmokeSerializer.BuildFallbackSilentStub(0, name),
+            "sound" => BuildSoundListEmpty(name),
             "loaded_sound" => BuildFixedNameShell(12, name),
             "weapon" => BuildFixedNameShell(0x9AC, name),
             "fx" => BuildFixedNameShell(36, name),
@@ -1741,6 +1741,20 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             bytes,
             true,
             "native-sequence synthetic dependency shell; donor payload bytes are never copied");
+    }
+
+    private static byte[] BuildSoundListEmpty(string name)
+    {
+        // Native-sequence diagnostic only: snd_alias_list_t is 12 bytes on T4's
+        // 32-bit ABI: aliasName*, head*, count. Keep the canonical DB name owned
+        // and make the list completely inert so no child alias traversal can
+        // perturb this name/fixup isolation test.
+        var n = Encoding.ASCII.GetBytes(name);
+        var bytes = new byte[12 + n.Length + 1];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(0, 4), T4ZonePointer.Following);
+        // head = NULL, count = 0
+        n.CopyTo(bytes.AsSpan(12));
+        return bytes;
     }
 
     private static byte[] BuildImageShell(string name)
