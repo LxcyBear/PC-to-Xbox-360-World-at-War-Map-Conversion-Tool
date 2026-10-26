@@ -132,7 +132,7 @@ internal static class LinkerV2ProofEvidence
 
         var fixedSize = record.TypeName.ToLowerInvariant() switch
         {
-            "xanim" => 88,
+            "xanim" => 92,
             "xmodel" => 228,
             _ => 0
         };
