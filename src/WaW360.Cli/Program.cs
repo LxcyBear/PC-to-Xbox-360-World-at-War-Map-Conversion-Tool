@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Text.Json;
 using WaW360.Core.Diagnostics;
 using WaW360.Core.FastFiles;
@@ -441,6 +443,10 @@ static async Task<int> MainAsync(string[] args)
                 foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
                 return result.Verified ? 0 : 3;
             }
+            case "oat-root-bisect" when args.Length >= 4:
+            {
+                return await RunOatRootBisectAsync(args[1], args[2], args[3]);
+            }
             case "linker-v2-source" when args.Length >= 4:
             {
                 var root = args[1];
@@ -589,6 +595,179 @@ static async Task<int> MainAsync(string[] args)
     }
 }
 
+
+static async Task<int> RunOatRootBisectAsync(string candidateFastFile, string unlinkerExe, string outputDir)
+{
+    candidateFastFile = Path.GetFullPath(candidateFastFile);
+    unlinkerExe = Path.GetFullPath(unlinkerExe);
+    outputDir = Path.GetFullPath(outputDir);
+
+    if (!File.Exists(candidateFastFile))
+        throw new FileNotFoundException("Candidate fastfile not found.", candidateFastFile);
+    if (!File.Exists(unlinkerExe))
+        throw new FileNotFoundException("OAT Unlinker not found.", unlinkerExe);
+
+    Directory.CreateDirectory(outputDir);
+
+    var document = await T4ZoneParser.ParseFastFileAsync(candidateFastFile);
+    if (document.Platform != WaWPlatform.Xbox360 || document.Endianness != Endian.Big)
+        throw new InvalidDataException(
+            $"OAT root bisection requires an Xbox360 big-endian candidate; parsed {document.Platform}/{document.Endianness}.");
+
+    var rawZonePath = Path.Combine(outputDir, "oat_root_bisect_source.zone");
+    TryDeleteCli(rawZonePath);
+    var decompressed = await FastFileDecompressor.DecompressAutoAsync(candidateFastFile, rawZonePath);
+    if (decompressed.Platform != WaWPlatform.Xbox360)
+        throw new InvalidDataException($"Expected Xbox360 wrapper, parsed {decompressed.Platform}.");
+
+    var sourceZone = await File.ReadAllBytesAsync(rawZonePath);
+    var assetTableOffset = checked((int)document.AssetTableOffset);
+    var tableBytes = checked(document.AssetCount * 8);
+    if (assetTableOffset < 0 || assetTableOffset > sourceZone.Length - tableBytes)
+        throw new InvalidDataException(
+            $"XAsset table 0x{document.AssetTableOffset:X}+0x{tableBytes:X} is outside the {sourceZone.Length:N0}-byte raw zone.");
+
+    Console.WriteLine($"OAT root bisection: assets={document.AssetCount:N0}; table=0x{document.AssetTableOffset:X}; zone={sourceZone.Length:N0}B");
+
+    async Task<(bool Pass, int ExitCode, string Output)> ProbeAsync(int activeRoots, string ffPath)
+    {
+        if (activeRoots < 0 || activeRoots > document.AssetCount)
+            throw new ArgumentOutOfRangeException(nameof(activeRoots));
+
+        var zone = sourceZone.ToArray();
+        for (var i = activeRoots; i < document.AssetCount; i++)
+        {
+            var headerOffset = checked(assetTableOffset + i * 8 + 4);
+            BinaryPrimitives.WriteUInt32BigEndian(zone.AsSpan(headerOffset, 4), 0u);
+        }
+
+        TryDeleteCli(ffPath);
+        var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+            ffPath,
+            zone,
+            preferNativeLevel6: true);
+        if (!write.RoundTripVerified)
+            throw new InvalidDataException($"Probe wrapper round-trip failed for activeRoots={activeRoots:N0}.");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = unlinkerExe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("--list");
+        psi.ArgumentList.Add("--no-color");
+        psi.ArgumentList.Add(ffPath);
+
+        using var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start OAT Unlinker.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        var combined = string.IsNullOrEmpty(stderr)
+            ? stdout
+            : string.IsNullOrEmpty(stdout) ? stderr : stdout + Environment.NewLine + stderr;
+
+        return (process.ExitCode == 0, process.ExitCode, combined);
+    }
+
+    static string Tail(string value, int lines)
+    {
+        return string.Join(
+            Environment.NewLine,
+            value.Replace("\r\n", "\n", StringComparison.Ordinal)
+                 .Split('\n')
+                 .TakeLast(lines));
+    }
+
+    var probePath = Path.Combine(outputDir, "oat_root_bisect_probe.ff");
+
+    var zero = await ProbeAsync(0, probePath);
+    Console.WriteLine($"control active=0       exit={zero.ExitCode} {(zero.Pass ? "PASS" : "FAIL")}");
+    if (!zero.Pass)
+    {
+        Console.WriteLine("ZERO-ROOT CONTROL FAILED; prefix-null bisection is not valid for this zone.");
+        Console.WriteLine(Tail(zero.Output, 12));
+        TryDeleteCli(probePath);
+        return 5;
+    }
+
+    var full = await ProbeAsync(document.AssetCount, probePath);
+    Console.WriteLine($"control active={document.AssetCount,-7:N0} exit={full.ExitCode} {(full.Pass ? "PASS" : "FAIL")}");
+    if (full.Pass)
+    {
+        Console.WriteLine("Full candidate now passes OAT; there is no failing root to bisect.");
+        TryDeleteCli(probePath);
+        return 0;
+    }
+
+    var lo = 0;
+    var hi = document.AssetCount;
+
+    while (lo + 1 < hi)
+    {
+        var mid = lo + (hi - lo) / 2;
+        var result = await ProbeAsync(mid, probePath);
+        Console.WriteLine($"probe active={mid,-7:N0} exit={result.ExitCode} {(result.Pass ? "PASS" : "FAIL")}");
+
+        if (result.Pass)
+            lo = mid;
+        else
+            hi = mid;
+    }
+
+    TryDeleteCli(probePath);
+
+    var failingIndex = hi - 1;
+    var failing = document.Assets[failingIndex];
+
+    var lastPassPath = Path.Combine(outputDir, $"oat_root_bisect_last_pass_{lo:D4}.ff");
+    var firstFailPath = Path.Combine(outputDir, $"oat_root_bisect_first_fail_{hi:D4}.ff");
+    var lastPass = await ProbeAsync(lo, lastPassPath);
+    var firstFail = await ProbeAsync(hi, firstFailPath);
+
+    Console.WriteLine();
+    Console.WriteLine("========== OAT ROOT FAILURE FRONTIER ==========");
+    Console.WriteLine($"last PASS active roots : {lo:N0}");
+    Console.WriteLine($"first FAIL active roots: {hi:N0}");
+    Console.WriteLine($"failing XAsset index   : {failingIndex:N0} (0-based)");
+    Console.WriteLine($"document asset index   : {failing.Index:N0}");
+    Console.WriteLine($"type                    : {failing.TypeName} (0x{failing.TypeId:X})");
+    Console.WriteLine($"raw top-level header    : 0x{failing.RawHeader:X8}");
+    Console.WriteLine($"last-pass FF            : {lastPassPath}");
+    Console.WriteLine($"first-fail FF           : {firstFailPath}");
+    Console.WriteLine();
+    Console.WriteLine("First-fail OAT tail:");
+    Console.WriteLine(Tail(firstFail.Output, 12));
+
+    Console.WriteLine();
+    Console.WriteLine("Nearby XAsset entries:");
+    for (var i = Math.Max(0, failingIndex - 3); i <= Math.Min(document.AssetCount - 1, failingIndex + 3); i++)
+    {
+        var asset = document.Assets[i];
+        Console.WriteLine(
+            $"  {(i == failingIndex ? ">" : " ")} #{i,5} doc#{asset.Index,5} type={asset.TypeName,-20} id=0x{asset.TypeId:X2} header=0x{asset.RawHeader:X8}");
+    }
+
+    return !lastPass.Pass || firstFail.Pass ? 6 : 4;
+}
+
+static void TryDeleteCli(string path)
+{
+    try
+    {
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+    catch
+    {
+    }
+}
+
 static void PrintHelp()
 {
     Console.WriteLine("WaW360Converter Linker V2 / legacy proof CLI");
@@ -620,6 +799,7 @@ static void PrintHelp()
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
+    Console.WriteLine("  oat-root-bisect <candidate.ff> <Unlinker.exe> <output-dir>  Binary-search first top-level root that makes OAT fail");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  native-oat-identity <native.ff> <output-dir> [Unlinker.exe]  Extract exact native Xbox (index,type,name) sequence through pinned OAT Xenon");
