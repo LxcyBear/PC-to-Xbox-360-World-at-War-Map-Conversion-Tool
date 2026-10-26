@@ -5,6 +5,10 @@ using WaW360.Core.FastFiles;
 
 namespace WaW360.Core.Linker;
 
+public sealed record T4MaterialTechniqueObservation(
+    string MaterialName,
+    string TechniqueSet);
+
 public sealed record T4MaterialTechniqueBridgeEntry(
     string MaterialName,
     string PcTechniqueSet,
@@ -37,6 +41,8 @@ public sealed class T4OatMaterialTechsetBridgeResult
     public required int DeterministicTechniqueMappings { get; init; }
     public required int AmbiguousTechniqueMappings { get; init; }
     public required int DistinctMappedXboxTechniqueSets { get; init; }
+    public required IReadOnlyList<T4MaterialTechniqueObservation> PcMaterialTechniques { get; init; }
+    public required IReadOnlyList<T4MaterialTechniqueObservation> XboxMaterialTechniques { get; init; }
     public required IReadOnlyList<T4MaterialTechniqueBridgeEntry> MaterialPairs { get; init; }
     public required IReadOnlyList<T4TechniqueSetPlatformMapping> Mappings { get; init; }
     public required IReadOnlyList<T4TechniqueSetPlatformConflict> Conflicts { get; init; }
@@ -185,6 +191,17 @@ public static class T4OatMaterialTechsetBridgeOracle
         var mappedXbox = mappings.Select(x => x.XboxTechniqueSet)
             .Distinct(StringComparer.OrdinalIgnoreCase).Count();
 
+        var pcMaterialTechniques = pcMaterials
+            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new T4MaterialTechniqueObservation(x.Key, x.Value))
+            .ToList();
+        var xboxMaterialTechniques = xboxMaterials
+            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => new T4MaterialTechniqueObservation(x.Key, x.Value))
+            .ToList();
+
         var notes = new List<string>
         {
             "NUCLEAR BRIDGE: shared material identity is used as the cross-platform semantic key; PC shader/pass bytecode is never copied to Xbox.",
@@ -216,6 +233,8 @@ public static class T4OatMaterialTechsetBridgeOracle
             DeterministicTechniqueMappings = mappings.Count,
             AmbiguousTechniqueMappings = conflicts.Count,
             DistinctMappedXboxTechniqueSets = mappedXbox,
+            PcMaterialTechniques = pcMaterialTechniques,
+            XboxMaterialTechniques = xboxMaterialTechniques,
             MaterialPairs = pairs,
             Mappings = mappings,
             Conflicts = conflicts,
