@@ -66,10 +66,13 @@ jobs:
             "/p:SolutionDir=$solutionDir"
           )
 
-          # OAT generates source in two stages. Build the generator executables first,
-          # then execute the Utility projects that materialize templates/ZoneCode.
+          # OAT generates source in multiple stages. Build the generator executables first,
+          # then materialize shared ObjCommon templates before parallel consumers start.
+          # Without the explicit ObjCommon build, ObjCompiling/ObjLoading can race ahead
+          # and include JsonFont/JsonMaterial headers before RawTemplater creates them.
           $bootstrap = @(
             'build\src\RawTemplater\RawTemplater.vcxproj',
+            'build\src\ObjCommon\ObjCommon.vcxproj',
             'build\src\ZoneCodeGenerator\ZoneCodeGenerator.vcxproj',
             'build\raw\Raw.vcxproj',
             'build\src\ZoneCode\ZoneCode.vcxproj'
