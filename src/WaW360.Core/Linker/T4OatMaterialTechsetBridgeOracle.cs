@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using WaW360.Core.FastFiles;
 
 namespace WaW360.Core.Linker;
 
@@ -85,12 +86,12 @@ public static class T4OatMaterialTechsetBridgeOracle
         if (!File.Exists(xboxFastFile))
             throw new FileNotFoundException("Xbox fastfile not found.", xboxFastFile);
 
-        var pc = await FastFiles.FastFileAnalysisCache.GetZoneAsync(pcFastFile, cancellationToken);
-        var xbox = await FastFiles.FastFileAnalysisCache.GetZoneAsync(xboxFastFile, cancellationToken);
-        if (pc.Platform != FastFiles.WaWPlatform.PC || pc.Document.Endianness != FastFiles.Endian.Little)
+        var pc = await FastFileAnalysisCache.GetZoneAsync(pcFastFile, cancellationToken);
+        var xbox = await FastFileAnalysisCache.GetZoneAsync(xboxFastFile, cancellationToken);
+        if (pc.Platform != WaWPlatform.PC || pc.Document.Endianness != Endian.Little)
             throw new InvalidDataException(
                 $"Material bridge PC input must be PC/little-endian; parsed {pc.Platform}/{pc.Document.Endianness}.");
-        if (xbox.Platform != FastFiles.WaWPlatform.Xbox360 || xbox.Document.Endianness != FastFiles.Endian.Big)
+        if (xbox.Platform != WaWPlatform.Xbox360 || xbox.Document.Endianness != Endian.Big)
             throw new InvalidDataException(
                 $"Material bridge Xbox input must be Xbox360/big-endian; parsed {xbox.Platform}/{xbox.Document.Endianness}.");
 
