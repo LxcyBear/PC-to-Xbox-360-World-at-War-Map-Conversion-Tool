@@ -35,6 +35,32 @@ External Release directories are published in-place and are never recursively de
 
 Current NormalMapLinkerV2StructuralMainEmitter deliberately emits reduced diagnostic payloads and always reports ProductionMainReady=false. NormalMapLinkerV2TypedClosurePlan says TechniqueSet closure is pending. NormalMapLinkerV2MainReadiness hardcodes typed closure and real block allocation as unfinished. Do not bypass these guards to claim playability.
 
-OpenAssetTools is not an automatic PC T4 to T4Xenon converter. Its per-game asset pools are distinct, and real Xbox graphics require native Xenos shaders rather than renamed PC DX9 bytecode. The next feature is an explicit typed source-to-Xenon intermediate graph and faithful writers, followed by independent readback and hardware validation.
+OpenAssetTools is not an automatic PC T4 to T4Xenon converter. Its per-game asset pools are distinct, and real Xbox graphics require native Xenos shaders rather than renamed PC DX9 bytecode.
+
+## Native-oracle convergence strategy
+
+The primary Linker V2 strategy is now **structural reproduction of a known-working native Xbox graph**, not repeated reduced-payload hardware permutations.
+
+For a user-supplied, known-working Xbox fastfile (for example a native conversion of the same PC custom map), the pinned T4Xenon OAT `Unlinker.exe --list` is used as a loader/fixup oracle. The converter records the exact native XAsset identity sequence:
+
+- root index / insertion order;
+- Xbox XAsset type;
+- exact resolved asset name;
+- duplicate identity behavior;
+- ScriptString table identity/order evidence.
+
+The first convergence target is exact `(index,type,name)` identity parity. The following targets are dependency edges, ScriptString index remaps, type-specific platform layouts, pointer/fixup relationships, deduplication, and cross-asset reference parity. Native files are **analysis/oracle inputs only**; their proprietary payload bytes are never embedded in or redistributed by the converter.
+
+Use:
+
+    dotnet run --project .\src\WaW360.Cli\WaW360.Cli.csproj -c Release -- native-oat-identity "<native.ff>" "<output-dir>"
+
+The command auto-discovers the pinned Xenon OAT build under `.deps\OpenAssetTools-xenon\build\bin\Release_x86\Unlinker.exe`. If OAT is not built, run:
+
+    powershell -ExecutionPolicy Bypass -File .\tools\oat-xenon\Prepare-OatXenon.ps1 -Build
+
+The generated native identity manifest is a deterministic convergence oracle, not a donor payload source.
+
+The next feature is an explicit typed source-to-Xenon intermediate graph that is measured against this native identity/dependency oracle, followed by faithful writers, independent readback, and hardware validation.
 
 GPLv3 warning: keep the OAT program separate, or review distribution and license obligations before linking or copying its implementation. Never commit game FF/IWD files or native shader binaries.
