@@ -22,11 +22,14 @@ public sealed class T4NuclearTechniqueClosurePlanResult
     public required string PcFastFile { get; init; }
     public required string XboxFastFile { get; init; }
     public required int PcTechniqueRoots { get; init; }
+    public required int ReachablePcTechniqueRoots { get; init; }
+    public required int DeadPcTechniqueRoots { get; init; }
     public required int MaterialBridgeResolved { get; init; }
     public required int ExactNameFallbackResolved { get; init; }
     public required int DonorBoundTechniqueRoots { get; init; }
     public required int AmbiguousBridgeTechniqueRoots { get; init; }
     public required int MissingDonorTargets { get; init; }
+    public required int ResidentXboxTargetsPending { get; init; }
     public required int UnresolvedTechniqueRoots { get; init; }
     public required int DistinctXboxTechniqueTargets { get; init; }
     public required int TotalXboxNonNullTechniqueSlots { get; init; }
@@ -127,10 +130,36 @@ public static class T4NuclearTechniqueClosurePlanner
             x => x.Name,
             StringComparer.OrdinalIgnoreCase);
 
+        // Linker closure is driven by reachability, not by every physical root that
+        // happened to be serialized into the PC zone. OAT's material dump gives us the
+        // authoritative set of TechniqueSets referenced by actual PC materials. Roots
+        // outside that set are dead for the material graph and must not block Xenon output.
+        var reachablePcTechniqueSets = bridge.PcMaterialTechniques
+            .Select(x => x.TechniqueSet)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var rows = new List<T4NuclearTechniqueClosureRow>(pcCatalog.ByAssetIndex.Count);
         foreach (var pc in pcCatalog.ByAssetIndex.Values.OrderBy(x => x.AssetIndex))
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (!reachablePcTechniqueSets.Contains(pc.Name))
+            {
+                rows.Add(new T4NuclearTechniqueClosureRow(
+                    pc.AssetIndex,
+                    pc.Name,
+                    "DROP_UNREACHABLE_PC_ROOT",
+                    null,
+                    0,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "No PC material references this TechniqueSet in the OAT semantic material graph; it is dead-root input and does not participate in Xenon material closure."));
+                continue;
+            }
 
             string resolution;
             string? xboxName = null;
@@ -190,7 +219,7 @@ public static class T4NuclearTechniqueClosurePlanner
                 rows.Add(new T4NuclearTechniqueClosureRow(
                     pc.AssetIndex,
                     pc.Name,
-                    "MAPPED_TARGET_MISSING_DONOR",
+                    "RESIDENT_XBOX_TARGET_PENDING",
                     xboxName,
                     support,
                     null,
@@ -198,7 +227,7 @@ public static class T4NuclearTechniqueClosurePlanner
                     null,
                     null,
                     null,
-                    evidence + " The mapped Xbox identity is absent from the OAT-verified native TechniqueSet root set."));
+                    evidence + " The Xbox material references this TechniqueSet, but it is not a root of the native map main FF; classify it as a resident/common-zone target pending base-game donor lookup."));
                 continue;
             }
 
@@ -218,12 +247,18 @@ public static class T4NuclearTechniqueClosurePlanner
                 "Raw serialized body ownership is intentionally deferred to the typed graph extractor."));
         }
 
+        var dead = rows.Count(x => x.Resolution == "DROP_UNREACHABLE_PC_ROOT");
+        var reachable = rows.Count - dead;
         var materialResolved = rows.Count(x => x.Resolution == "MATERIAL_BRIDGE");
         var exactResolved = rows.Count(x => x.Resolution == "EXACT_NAME_NATIVE_FALLBACK");
         var bound = materialResolved + exactResolved;
         var ambiguous = rows.Count(x => x.Resolution == "AMBIGUOUS_MATERIAL_BRIDGE");
-        var missingDonor = rows.Count(x => x.Resolution == "MAPPED_TARGET_MISSING_DONOR");
-        var unresolved = rows.Count - bound;
+        var residentPending = rows.Count(x => x.Resolution == "RESIDENT_XBOX_TARGET_PENDING");
+        var missingDonor = 0;
+        var unresolved = rows.Count(x =>
+            x.Resolution is "AMBIGUOUS_MATERIAL_BRIDGE" or
+                            "RESIDENT_XBOX_TARGET_PENDING" or
+                            "UNRESOLVED_NO_NATIVE_MAPPING");
         var distinctTargets = rows
             .Where(x => x.XboxDonorAssetIndex is not null && !string.IsNullOrWhiteSpace(x.XboxTechniqueSet))
             .Select(x => x.XboxTechniqueSet!)
@@ -237,14 +272,16 @@ public static class T4NuclearTechniqueClosurePlanner
         var notes = new List<string>
         {
             "NUCLEAR STAGE 2: every row is one physical PC TechniqueSet root from the OAT-verified 426-root identity catalog.",
+            $"REACHABILITY CUT: only {reachable:N0}/{rows.Count:N0} physical PC TechniqueSet roots are referenced by OAT-semantic PC materials; {dead:N0} dead roots are dropped from Xenon material closure.",
             "MATERIAL_BRIDGE rows are the strongest mapping class: one or more shared material identities directly prove the PC -> Xenon TechniqueSet transform.",
             "EXACT_NAME_NATIVE_FALLBACK is used only when the material bridge has no observation and the exact TechniqueSet identity exists in the same known-good native map.",
+            "RESIDENT_XBOX_TARGET_PENDING means the native material proves the Xbox TechniqueSet identity but that identity lives outside this map's main FF; the next resolver searches the configured base-game Xbox zones.",
             "No donor graph bytes are copied at this stage. The OAT-verified native root index authorizes the next typed graph extraction/rebase stage; raw body offsets are deliberately not guessed.",
-            $"Immediate graph-extraction coverage: {bound:N0}/{rows.Count:N0} PC TechniqueSet roots bind by semantic identity to {distinctTargets:N0} distinct Xenon TechniqueSet graph target(s)."
+            $"Immediate graph-extraction coverage: {bound:N0}/{reachable:N0} reachable PC TechniqueSet roots bind to {distinctTargets:N0} native map-local Xenon graph target(s); dead PC roots are excluded."
         };
 
-        var identityComplete = rows.Count != 0 && unresolved == 0;
-        var graphReady = bound != 0 && missingDonor == 0;
+        var identityComplete = reachable != 0 && unresolved == 0;
+        var graphReady = bound != 0;
 
         var txt = Path.Combine(outputDirectory, "nuclear_techset_closure_plan.txt");
         var json = Path.Combine(outputDirectory, "nuclear_techset_closure_plan.json");
@@ -254,11 +291,14 @@ public static class T4NuclearTechniqueClosurePlanner
             PcFastFile = pcFastFile,
             XboxFastFile = xboxFastFile,
             PcTechniqueRoots = rows.Count,
+            ReachablePcTechniqueRoots = reachable,
+            DeadPcTechniqueRoots = dead,
             MaterialBridgeResolved = materialResolved,
             ExactNameFallbackResolved = exactResolved,
             DonorBoundTechniqueRoots = bound,
             AmbiguousBridgeTechniqueRoots = ambiguous,
             MissingDonorTargets = missingDonor,
+            ResidentXboxTargetsPending = residentPending,
             UnresolvedTechniqueRoots = unresolved,
             DistinctXboxTechniqueTargets = distinctTargets,
             TotalXboxNonNullTechniqueSlots = totalNonNull,
@@ -291,12 +331,15 @@ public static class T4NuclearTechniqueClosurePlanner
         sb.AppendLine($"Xbox: {r.XboxFastFile}");
         sb.AppendLine();
         sb.AppendLine($"PC TechniqueSet roots       : {r.PcTechniqueRoots:N0}");
+        sb.AppendLine($"material-reachable roots     : {r.ReachablePcTechniqueRoots:N0}");
+        sb.AppendLine($"dead PC roots dropped        : {r.DeadPcTechniqueRoots:N0}");
         sb.AppendLine($"material-bridge resolved     : {r.MaterialBridgeResolved:N0}");
         sb.AppendLine($"exact-name fallback resolved : {r.ExactNameFallbackResolved:N0}");
         sb.AppendLine($"DONOR-BOUND TOTAL            : {r.DonorBoundTechniqueRoots:N0}");
         sb.AppendLine($"ambiguous bridge             : {r.AmbiguousBridgeTechniqueRoots:N0}");
         sb.AppendLine($"mapped target missing donor  : {r.MissingDonorTargets:N0}");
-        sb.AppendLine($"UNRESOLVED TOTAL             : {r.UnresolvedTechniqueRoots:N0}");
+        sb.AppendLine($"resident Xbox targets pending: {r.ResidentXboxTargetsPending:N0}");
+        sb.AppendLine($"REACHABLE UNRESOLVED TOTAL   : {r.UnresolvedTechniqueRoots:N0}");
         sb.AppendLine($"distinct Xenon graph targets : {r.DistinctXboxTechniqueTargets:N0}");
         sb.AppendLine("Xenon graph body/slot census : <typed extractor pending>");
         sb.AppendLine($"identityClosureComplete      : {r.IdentityClosureComplete}");
@@ -309,9 +352,11 @@ public static class T4NuclearTechniqueClosurePlanner
         sb.AppendLine();
 
         sb.AppendLine("UNRESOLVED / AMBIGUOUS ROOTS");
-        foreach (var row in r.Rows.Where(x => x.XboxDonorAssetIndex is null))
+        foreach (var row in r.Rows.Where(x =>
+                     x.Resolution != "DROP_UNREACHABLE_PC_ROOT" &&
+                     x.XboxDonorAssetIndex is null))
             sb.AppendLine($"  pcAsset#{row.PcAssetIndex,5} {row.PcTechniqueSet} | {row.Resolution} | {row.Evidence}");
-        if (r.Rows.All(x => x.XboxDonorAssetIndex is not null))
+        if (r.Rows.All(x => x.Resolution == "DROP_UNREACHABLE_PC_ROOT" || x.XboxDonorAssetIndex is not null))
             sb.AppendLine("  <none>");
         sb.AppendLine();
 
