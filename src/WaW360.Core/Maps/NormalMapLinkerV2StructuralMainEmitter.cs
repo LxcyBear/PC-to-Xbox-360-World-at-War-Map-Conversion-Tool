@@ -123,6 +123,21 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (native.Platform != WaWPlatform.Xbox360)
             throw new InvalidDataException($"Native sequence diagnostic requires an Xbox360 oracle; parsed {native.Platform}.");
 
+        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_native_sequence_diagnostic");
+        Directory.CreateDirectory(outDir);
+
+        // The semantic oracle proved that native root N has one exact (type,name)
+        // identity. Reuse that evidence here so the hardware candidate does not fall
+        // back to fake __waw360_* DB names for promoted Xbox-only dependencies.
+        var nativeIdentity = await T4XenonNativeIdentityOracle.RunAsync(
+            nativeOracleFastFile,
+            outDir,
+            cancellationToken: cancellationToken);
+        if (nativeIdentity.Entries.Count != native.Document.AssetCount)
+            throw new InvalidDataException(
+                $"Native identity evidence count mismatch: identity={nativeIdentity.Entries.Count:N0}; " +
+                $"XAssetList={native.Document.AssetCount:N0}.");
+
         var source = await NormalMapLinkerV2SourceArchive.RunAsync(map, outputRoot, cancellationToken);
         var rootPolicy = await NormalMapLinkerV2CanonicalRootPolicy.RunAsync(map, outputRoot, source, cancellationToken: cancellationToken);
         var blockPlan = await NormalMapLinkerV2DestinationBlockPlan.RunAsync(map, outputRoot, source, cancellationToken);
@@ -222,7 +237,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 continue;
             }
 
-            var name = $"__waw360_native_seq_{type}_{i:D5}";
+            var name = nativeIdentity.Entries[i].Name;
             diagnosticRoots.Add(new LinkerV2CanonicalRoot(
                 i,
                 "NATIVE_SEQUENCE_DIAGNOSTIC",
@@ -233,8 +248,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 nativeRoot.TypeId,
                 T4AssetReferenceKind.InlineShared,
                 T4ZonePointer.Following,
-                $"native-sequence|{type}|{i}",
-                "NATIVE_ORACLE_TYPE_SLOT_ONLY__NO_DONOR_PAYLOAD_BYTES"));
+                $"native-sequence|{type}|{i}|{name}",
+                "NATIVE_ORACLE_EXACT_IDENTITY__NO_DONOR_PAYLOAD_BYTES"));
             diagnosticPayloads.Add(BuildNativeSequenceSyntheticPayload(type, name, source.CanonicalBaseName));
             synthetic++;
         }
@@ -268,7 +283,6 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         }
         var nativeScriptTable = new CanonicalScriptTable(nullIndices.Count == 1, nativeValues);
 
-        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_native_sequence_diagnostic");
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_shell");
         var allShellPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_all_name_shell");
         Directory.CreateDirectory(outDir);
@@ -337,7 +351,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var allShellPayloads = diagnosticRoots
             .Select((root, i) => BuildNativeSequenceSyntheticPayload(
                 root.XboxTypeName,
-                $"__waw360_all_name_shell_{root.XboxTypeName}_{i:D5}",
+                nativeIdentity.Entries[i].Name,
                 source.CanonicalBaseName))
             .ToList();
         var allShellNameFailures = AuditXAssetNameContracts(diagnosticRoots, allShellPayloads);
@@ -390,7 +404,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine(new string('=', 86));
         sb.AppendLine($"Map: {map.Name}");
         sb.AppendLine($"Native oracle: {nativeOracleFastFile}");
-        sb.AppendLine($"Native root slots reproduced by TYPE only: {diagnosticRoots.Count:N0}");
+        sb.AppendLine($"Native root slots reproduced: {diagnosticRoots.Count:N0}");
+        sb.AppendLine($"Native exact (type,name) identities available: {nativeIdentity.Entries.Count:N0}");
         sb.AppendLine($"Source structural payloads reused: {reused:N0}");
         sb.AppendLine($"Synthetic dependency shells inserted: {synthetic:N0}");
         sb.AppendLine($"Source roots dropped because native family count is lower: {dropped:N0}");
@@ -412,9 +427,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine();
         sb.AppendLine("PURPOSE");
         sb.AppendLine("  This is an A/B test for the recurring SP TU7 0x82168594 / 0xC0000005 frontier.");
-        sb.AppendLine("  It reproduces ONLY the known-working native FF's XAsset TYPE sequence/counts and ScriptString VALUE order.");
-        sb.AppendLine("  It does NOT copy any native/donor asset payload bytes, names, shaders, images, sounds or world data.");
-        sb.AppendLine("  Missing native dependency families are represented by inert self-contained Xbox-layout shells.");
+        sb.AppendLine("  It reproduces the known-working native FF's XAsset TYPE sequence/counts and ScriptString VALUE order.");
+        sb.AppendLine("  The ALL-NAME-SHELL variant also reproduces every exact native XAsset (type,name) identity.");
+        sb.AppendLine("  It does NOT copy any native/donor asset payload bytes, shaders, images, sounds or world data.");
+        sb.AppendLine("  Missing native dependency families are represented by inert self-contained Xbox-layout shells using identity evidence only.");
         sb.AppendLine();
         sb.AppendLine("INTERPRETATION");
         sb.AppendLine("  - Different/later first fault: DB root/string graph shape participates in the 0x82168594 crash.");
