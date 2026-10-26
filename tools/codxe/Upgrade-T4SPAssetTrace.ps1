@@ -64,7 +64,7 @@ const char *DB_GetXAssetName_Hook(const XAsset *asset)
         return DB_GetXAssetName_Detour.GetOriginal<DB_GetXAssetName_t>()(asset);
 
     const unsigned int sequence =
-        static_cast<unsigned int>(InterlockedIncrement(const_cast<volatile LONG *>(&waw360TraceAssetSeq)));
+        static_cast<unsigned int>(InterlockedIncrement(&waw360TraceAssetSeq));
     Waw360TraceAssetBreadcrumb &breadcrumb = waw360TraceAssetRing[(sequence - 1) % ARRAYSIZE(waw360TraceAssetRing)];
 
     breadcrumb.sequence = sequence;
