@@ -549,6 +549,7 @@ static async Task<int> MainAsync(string[] args)
                     explicitUnlinker);
                 Console.WriteLine("NUCLEAR STAGE 3A Xenon TechniqueSet body catalog");
                 Console.WriteLine($"TechniqueSets={result.RecoveredTechniqueSets:N0}/{result.ExpectedTechniqueSets:N0}; verified={result.Verified}");
+                Console.WriteLine($"rootOwnership(inline/alias/distinctBodies)={result.InlineOwnedTechniqueRoots:N0}/{result.AliasTechniqueRoots:N0}/{result.DistinctTechniqueBodies:N0}");
                 Console.WriteLine($"slots(nonNull/inline/packed)={result.TotalNonNullTechniqueSlots:N0}/{result.TotalInlineTechniqueSlots:N0}/{result.TotalPackedTechniqueSlots:N0}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
