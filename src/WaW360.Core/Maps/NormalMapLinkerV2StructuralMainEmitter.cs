@@ -1193,8 +1193,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (sound.ReadBackErrors != 0)
             throw new InvalidDataException($"Sound structural read-back failed for {Path.GetFileName(sourcePath)}: errors={sound.ReadBackErrors:N0}.");
         foreach (var s in sound.AssetsByIndex.Values)
-            output[s.AssetIndex] = new StructuralPayload("sound", s.AliasListName, s.XboxSilentStubPayload, false,
-                "silent Sound structural stub; SDNS/XMA fidelity pending");
+            output[s.AssetIndex] = new StructuralPayload(
+                "sound",
+                s.AliasListName,
+                BuildSoundListEmpty(s.AliasListName),
+                true,
+                "native-sequence-safe empty SoundAliasList shell; source child alias graph intentionally suppressed");
 
         var physicalSounds = Physical(doc, "sound");
         foreach (var asset in physicalSounds)
@@ -1204,9 +1208,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             output[asset.Index] = new StructuralPayload(
                 "sound",
                 fallbackName,
-                T4SoundAliasSmokeSerializer.BuildFallbackSilentStub(asset.Index, fallbackName),
+                BuildSoundListEmpty(fallbackName),
                 true,
-                $"fallback silent Sound root; deterministic sound coverage was {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}; final SDNS/XMA conversion remains required");
+                $"native-sequence-safe empty SoundAliasList shell; deterministic sound coverage was {sound.ParsedPhysicalSoundAssets:N0}/{sound.DeclaredPhysicalSoundAssets:N0}; final SDNS/XMA conversion remains required");
         }
 
         var techsets = T4TechniqueSetNullGraphSerializer.Build(doc);
