@@ -427,6 +427,12 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
             }
+            case "xasset-root-oracle" when args.Length >= 3:
+            {
+                var result = await T4XAssetRootOracle.CompareAsync(args[1], args[2]);
+                Console.WriteLine(result.Summary);
+                return 0;
+            }
             case "xanim-console-proof" when args.Length >= 3:
             {
                 var result = await T4XboxXAnimTransformProof.BuildAsync(args[1], args[2]);
@@ -541,6 +547,7 @@ static void PrintHelp()
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output>  Emit current self-contained native main hardware diagnostic");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
+    Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
     Console.WriteLine("  xanim-split-bones <pc.ff> <xbox.ff>       Resolve XAnim.names and test whether Xbox quaternion split side follows bone identity");
