@@ -24,6 +24,13 @@ public sealed class NormalMapLinkerV2NativeSequenceDiagnosticResult
     public required string? FastFileSha256 { get; init; }
     public required string? OutputFastFile { get; init; }
     public required string? HardwarePackageDirectory { get; init; }
+    public required int AllShellNameContractErrors { get; init; }
+    public required int AllShellReadBackErrors { get; init; }
+    public required bool AllShellWrapperRoundTripVerified { get; init; }
+    public required bool AllShellCandidateReady { get; init; }
+    public required string? AllShellFastFileSha256 { get; init; }
+    public required string? AllShellOutputFastFile { get; init; }
+    public required string? AllShellHardwarePackageDirectory { get; init; }
     public required string TextReportFile { get; init; }
 }
 
@@ -263,15 +270,22 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_native_sequence_diagnostic");
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_shell");
+        var allShellPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_native_sequence_all_name_shell");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
+        Directory.CreateDirectory(allShellPackageDir);
 
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_sequence.zone");
         var ffPath = Path.Combine(packageDir, source.CanonicalBaseName + ".ff");
+        var allShellZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_sequence_all_name_shell.zone");
+        var allShellFfPath = Path.Combine(allShellPackageDir, source.CanonicalBaseName + ".ff");
         var reportPath = Path.Combine(outDir, $"{map.Name}_native_sequence_diagnostic.txt");
         TryDelete(zonePath);
         TryDelete(ffPath);
+        TryDelete(allShellZonePath);
+        TryDelete(allShellFfPath);
         TryDelete(Path.Combine(packageDir, "NATIVE_SEQUENCE_DB_TEST.txt"));
+        TryDelete(Path.Combine(allShellPackageDir, "ALL_NAME_SHELL_DB_TEST.txt"));
 
         var nameContractFailures = AuditXAssetNameContracts(diagnosticRoots, diagnosticPayloads);
         var nameContractErrors = nameContractFailures.Count;
@@ -316,6 +330,61 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (!ready)
             TryDelete(ffPath);
 
+        // Fourth isolation layer: preserve the proven native TYPE sequence/count and
+        // native ScriptString order, but replace EVERY root body with a minimal type-correct
+        // name-only shell. This separates runtime name/fixup corruption in reused structural
+        // payloads from errors in the shell layouts themselves.
+        var allShellPayloads = diagnosticRoots
+            .Select((root, i) => BuildNativeSequenceSyntheticPayload(
+                root.XboxTypeName,
+                $"__waw360_all_name_shell_{root.XboxTypeName}_{i:D5}",
+                source.CanonicalBaseName))
+            .ToList();
+        var allShellNameFailures = AuditXAssetNameContracts(diagnosticRoots, allShellPayloads);
+        var allShellNameErrors = allShellNameFailures.Count;
+        var allShellZone = BuildZone(
+            diagnosticRoots,
+            allShellPayloads,
+            nativeScriptTable,
+            blockPlan,
+            out var allShellHeaderZoneSize);
+        var allShellSizeOk =
+            allShellHeaderZoneSize == checked((uint)(allShellZone.Length - FastFileConstants.T4XFileHeaderSize));
+        var allShellBlockOk = VerifyBlockHeader(allShellZone, blockPlan);
+        var allShellReadBackErrors = 1;
+        var allShellRoundTrip = false;
+        string? allShellSha = null;
+        if (allShellSizeOk && allShellBlockOk && allShellNameErrors == 0)
+        {
+            await File.WriteAllBytesAsync(allShellZonePath, allShellZone, cancellationToken);
+            allShellReadBackErrors = VerifyReadBack(
+                allShellZonePath,
+                allShellZone,
+                diagnosticRoots,
+                allShellPayloads,
+                nativeScriptTable,
+                blockPlan);
+            if (allShellReadBackErrors == 0)
+            {
+                var allShellWrite = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                    allShellFfPath,
+                    allShellZone,
+                    preferNativeLevel6: true,
+                    cancellationToken: cancellationToken);
+                allShellRoundTrip = allShellWrite.RoundTripVerified;
+                if (allShellRoundTrip)
+                    allShellSha = await Sha256Async(allShellFfPath, cancellationToken);
+            }
+        }
+        var allShellReady =
+            allShellNameErrors == 0 &&
+            allShellSizeOk &&
+            allShellBlockOk &&
+            allShellReadBackErrors == 0 &&
+            allShellRoundTrip;
+        if (!allShellReady)
+            TryDelete(allShellFfPath);
+
         var sb = new StringBuilder();
         sb.AppendLine("WaW360Converter — NATIVE ROOT-SEQUENCE DB HARDWARE DIAGNOSTIC");
         sb.AppendLine(new string('=', 86));
@@ -334,6 +403,13 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"readBackErrors={readBackErrors:N0}; wrapperRoundTrip={roundTrip}; ready={ready}");
         sb.AppendLine($"sha256={sha ?? "<none>"}");
         sb.AppendLine();
+        sb.AppendLine("ALL-NAME-SHELL ISOLATION");
+        sb.AppendLine($"  nameContractErrors={allShellNameErrors:N0}; readBackErrors={allShellReadBackErrors:N0}; wrapperRoundTrip={allShellRoundTrip}; ready={allShellReady}");
+        sb.AppendLine($"  sha256={allShellSha ?? "<none>"}");
+        sb.AppendLine($"  package={(allShellReady ? allShellPackageDir : "<not emitted>")}");
+        foreach (var failure in allShellNameFailures.Take(32))
+            sb.AppendLine("  ALL-SHELL NAME-CONTRACT: " + failure);
+        sb.AppendLine();
         sb.AppendLine("PURPOSE");
         sb.AppendLine("  This is an A/B test for the recurring SP TU7 0x82168594 / 0xC0000005 frontier.");
         sb.AppendLine("  It reproduces ONLY the known-working native FF's XAsset TYPE sequence/counts and ScriptString VALUE order.");
@@ -343,12 +419,22 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine("INTERPRETATION");
         sb.AppendLine("  - Different/later first fault: DB root/string graph shape participates in the 0x82168594 crash.");
         sb.AppendLine("  - Same first fault: exact root names/dependency pointers or another activation contract still dominates.");
+        sb.AppendLine("  - ALL-NAME-SHELL moves the fault: one of the reused structural payloads corrupts its runtime DB name/fixup.");
+        sb.AppendLine("  - ALL-NAME-SHELL still hits 0x82168594: at least one type shell layout/name-fixup contract is wrong, or the caller is not the XAsset-name path we currently infer.");
         await File.WriteAllTextAsync(reportPath, sb.ToString(), new UTF8Encoding(false), cancellationToken);
 
         if (ready)
         {
             await File.WriteAllTextAsync(
                 Path.Combine(packageDir, "NATIVE_SEQUENCE_DB_TEST.txt"),
+                sb.ToString(),
+                new UTF8Encoding(false),
+                cancellationToken);
+        }
+        if (allShellReady)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(allShellPackageDir, "ALL_NAME_SHELL_DB_TEST.txt"),
                 sb.ToString(),
                 new UTF8Encoding(false),
                 cancellationToken);
@@ -371,6 +457,13 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             FastFileSha256 = sha,
             OutputFastFile = ready ? ffPath : null,
             HardwarePackageDirectory = ready ? packageDir : null,
+            AllShellNameContractErrors = allShellNameErrors,
+            AllShellReadBackErrors = allShellReadBackErrors,
+            AllShellWrapperRoundTripVerified = allShellRoundTrip,
+            AllShellCandidateReady = allShellReady,
+            AllShellFastFileSha256 = allShellSha,
+            AllShellOutputFastFile = allShellReady ? allShellFfPath : null,
+            AllShellHardwarePackageDirectory = allShellReady ? allShellPackageDir : null,
             TextReportFile = reportPath
         };
     }
