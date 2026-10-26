@@ -513,7 +513,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             sb.AppendLine("  ALL-SHELL NAME-CONTRACT: " + failure);
         sb.AppendLine();
         sb.AppendLine("NATIVE ALLOCATION-FOOTPRINT ISOLATION");
-        sb.AppendLine($"  nativeOracleZoneBytes={native.ZoneBytes:N0}; candidateZoneBytes={nativeFootprintZone.Length:N0}");
+        sb.AppendLine($"  nativeOracleZoneBytes={native.Bytes.LongLength:N0}; candidateZoneBytes={nativeFootprintZone.Length:N0}");
         foreach (var block in Enum.GetValues<T4ZoneBlock>())
             sb.AppendLine($"  {block,-18} nativeCapacity={nativeBlockCaps[block.ToString()],14:N0} B");
         sb.AppendLine($"  readBackErrors={nativeFootprintReadBackErrors:N0}; wrapperRoundTrip={nativeFootprintRoundTrip}; ready={nativeFootprintReady}");
