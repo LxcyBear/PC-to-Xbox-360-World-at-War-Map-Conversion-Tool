@@ -10,6 +10,7 @@ public sealed class T4XboxXAnimTransformProofResult
     public required int DeclaredXAnim { get; init; }
     public required int InlineCandidates { get; init; }
     public required int ConvertedXAnim { get; init; }
+    public required int DeltaXAnim { get; init; }
     public required long SourceSerializedBytes { get; init; }
     public required long XboxSerializedBytes { get; init; }
     public required long NormalDynamicKeys { get; init; }
@@ -26,8 +27,10 @@ public sealed class T4XboxXAnimTransformProofResult
 /// </summary>
 public static class T4XboxXAnimTransformProof
 {
-    private static readonly byte[] Magic = Encoding.ASCII.GetBytes("W360X12\0");
-    private const uint Version = 1;
+    // Reuse the established Stage-4 XAnim proof-container contract so Stage 5
+    // consumes the real 0x5C Xbox payloads without a parallel container format.
+    private static readonly byte[] Magic = Encoding.ASCII.GetBytes("W360A4X\0");
+    private const uint Version = 12;
 
     public static async Task<T4XboxXAnimTransformProofResult> BuildAsync(
         string pcFastFile,
@@ -81,6 +84,7 @@ public static class T4XboxXAnimTransformProof
         long precisionKeys = 0;
         var normalConstants = 0;
         var precisionConstants = 0;
+        var deltaCount = 0;
 
         await using (var fs = new FileStream(
                          outputFile,
@@ -121,6 +125,7 @@ public static class T4XboxXAnimTransformProof
                 precisionKeys += asset.PrecisionDynamicKeys;
                 normalConstants += asset.NormalConstantBones;
                 precisionConstants += asset.PrecisionConstantBones;
+                if (asset.HasDelta) deltaCount++;
             }
         }
 
@@ -134,6 +139,7 @@ public static class T4XboxXAnimTransformProof
         sb.AppendLine($"Declared XAnim:                 {declared:N0}");
         sb.AppendLine($"Inline typed candidates:        {candidates.Count:N0}");
         sb.AppendLine($"Converted + read-back verified: {converted.Count:N0}/{declared:N0}");
+        sb.AppendLine($"Delta XAnim:                    {deltaCount:N0}");
         sb.AppendLine($"PC serialized XAnim bytes:      {sourceBytes:N0}");
         sb.AppendLine($"Xbox serialized XAnim bytes:    {xboxBytes:N0}");
         sb.AppendLine($"NORMAL_QUAT dynamic keys:        {normalKeys:N0}");
@@ -157,6 +163,7 @@ public static class T4XboxXAnimTransformProof
             DeclaredXAnim = declared,
             InlineCandidates = candidates.Count,
             ConvertedXAnim = converted.Count,
+            DeltaXAnim = deltaCount,
             SourceSerializedBytes = sourceBytes,
             XboxSerializedBytes = xboxBytes,
             NormalDynamicKeys = normalKeys,
