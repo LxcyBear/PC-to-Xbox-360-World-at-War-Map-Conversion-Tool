@@ -527,6 +527,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine("  The ALL-NAME-SHELL variant also reproduces every exact native XAsset (type,name) identity.");
         sb.AppendLine("  It does NOT copy any native/donor asset payload bytes, shaders, images, sounds or world data.");
         sb.AppendLine("  Missing native dependency families are represented by inert self-contained Xbox-layout shells using identity evidence only.");
+        sb.AppendLine("  Top-level XAsset bodies are 4-byte aligned before each typed root, matching Xenon struct allocation semantics.");
         sb.AppendLine();
         sb.AppendLine("INTERPRETATION");
         sb.AppendLine("  - Different/later first fault: DB root/string graph shape participates in the 0x82168594 crash.");
@@ -1380,7 +1381,16 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             WriteU32(ms, checked((uint)root.XboxTypeId));
             WriteU32(ms, T4ZonePointer.Following);
         }
-        foreach (var payload in payloads) ms.Write(payload.Bytes);
+
+        // Every top-level XAsset body is allocated as its typed Xenon struct.
+        // All currently supported root structs have at least 4-byte alignment.
+        // Inline owned children (for example the name string) remain inside the
+        // payload blob; align only the NEXT root body, matching DB_AllocStreamPos.
+        foreach (var payload in payloads)
+        {
+            AlignStream(ms, 4);
+            ms.Write(payload.Bytes);
+        }
 
         if (ms.Length > uint.MaxValue)
             throw new InvalidDataException("Alpha 5 structural main zone exceeds T4's 32-bit zoneSize field.");
@@ -1439,6 +1449,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var cursor = checked((int)(read.AssetTableOffset + (long)read.AssetCount * 8));
         foreach (var p in payloads)
         {
+            cursor = AlignOffset(cursor, 4);
             if (cursor > zone.Length - p.Bytes.Length)
             {
                 errors++;
@@ -1942,6 +1953,20 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         Span<byte> b = stackalloc byte[4];
         BinaryPrimitives.WriteUInt32BigEndian(b, value);
         stream.Write(b);
+    }
+
+    private static int AlignOffset(int offset, int alignment)
+    {
+        if (alignment <= 0 || (alignment & (alignment - 1)) != 0)
+            throw new ArgumentOutOfRangeException(nameof(alignment), "Alignment must be a positive power of two.");
+        return checked((offset + alignment - 1) & ~(alignment - 1));
+    }
+
+    private static void AlignStream(Stream stream, int alignment)
+    {
+        var aligned = AlignOffset(checked((int)stream.Position), alignment);
+        while (stream.Position < aligned)
+            stream.WriteByte(0);
     }
 
     private static void TryDelete(string path)
