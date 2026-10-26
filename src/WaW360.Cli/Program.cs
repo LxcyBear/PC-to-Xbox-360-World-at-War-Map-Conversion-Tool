@@ -401,6 +401,8 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"zone={result.ZoneBytes:N0}B; ff={result.FastFileBytes:N0}B; readBackErrors={result.ReadBackErrors:N0}");
                 Console.WriteLine($"wrapperRoundTrip={result.WrapperRoundTripVerified}; structuralReady={result.StructuralNativeCandidateReady}; productionReady={result.ProductionMainReady}");
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<none>"}");
+                Console.WriteLine($"trackedShellReady={result.ConservativeCandidateReady}; readBackErrors={result.ConservativeReadBackErrors:N0}; wrapperRoundTrip={result.ConservativeWrapperRoundTripVerified}");
+                Console.WriteLine($"tracked-shell package: {result.ConservativeHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"scriptClosureReady={result.ScriptClosureCandidateReady}; residentMenusRemoved={result.ScriptClosureResidentMenusRemoved:N0}; rawFilesPromoted={result.ScriptClosureRawFilesPromoted:N0}; readBackErrors={result.ScriptClosureReadBackErrors:N0}; wrapperRoundTrip={result.ScriptClosureWrapperRoundTripVerified}");
                 Console.WriteLine($"script-closure package: {result.ScriptClosureHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
