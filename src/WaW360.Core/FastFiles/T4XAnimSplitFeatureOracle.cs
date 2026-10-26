@@ -219,13 +219,6 @@ public static class T4XAnimSplitFeatureOracle
                 pair.Xbox.BoneCounts[5],
                 pair.Xbox.BoneCounts[6],
                 packing);
-            ObservePrecisionValueLayout(
-                xboxZone.Bytes,
-                pair.Xbox,
-                xboxNames,
-                byName,
-                xboxDynamic,
-                packing);
             ObserveDecodedQuaternionAccuracy(
                 xboxZone.Bytes,
                 pair.Xbox,
@@ -1303,13 +1296,6 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"      max angular error:       {stats.PrecisionAngularErrorMaxDeg:F6} deg");
         sb.AppendLine($"      <= 0.10 deg:             {stats.PrecisionWithin01Deg:N0}/{stats.PrecisionDecodedSamples:N0}");
         sb.AppendLine($"      <= 0.05 deg:             {stats.PrecisionWithin005Deg:N0}/{stats.PrecisionDecodedSamples:N0}");
-        sb.AppendLine();
-        sb.AppendLine("  VALUE-LEVEL PRECISION QUATERNION CHECK");
-        sb.AppendLine($"    pairs with precision dynamic data:                            {stats.PrecisionValuePairs}");
-        sb.AppendLine($"    precision values exact 4x16 when NORMAL_QUAT absent:          {stats.PrecisionExact4WhenNormalAbsent}/{stats.PrecisionValuePairs - stats.PrecisionValuePairsWithNormal}");
-        sb.AppendLine($"    pairs with both NORMAL and PRECISION dynamic data:            {stats.PrecisionValuePairsWithNormal}");
-        for (var width = 0; width <= 4; width++)
-            sb.AppendLine($"    if NORMAL_QUAT keeps {width} short(s)/key, precision 4x16 matches: {stats.PrecisionExact4ByNormalShortWidth[width]}/{stats.PrecisionValuePairsWithNormal}");
         sb.AppendLine();
         sb.AppendLine("  PC vs Xbox dynamic key counts:");
         sb.AppendLine($"    NORMAL_QUAT key count identical:                              {stats.PcVsXboxNormalKeyCountEqual}/{stats.Pairs}");
