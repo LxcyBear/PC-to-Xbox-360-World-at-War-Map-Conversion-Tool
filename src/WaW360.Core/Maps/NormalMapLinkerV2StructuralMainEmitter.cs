@@ -1086,7 +1086,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             var fixedSize = type.ToLowerInvariant() switch
             {
                 "xanim" => 92,
-                "xmodel" => 228,
+                "xmodel" => 0xD4,
                 "weapon" => 0x9AC,
                 "fx" => 36,
                 _ => throw new InvalidOperationException()
@@ -1110,27 +1110,15 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                             if (!safe) reason = "typed XAnim fixed body retains a packed/source pointer";
                             break;
                         case "xmodel":
-                            safe = T4XModelSerializerProof.TryValidateSelfContainedXboxBlob(blob, out auditedName, out reason) &&
-                                   auditedName.Equals(name, StringComparison.Ordinal);
-                            if (safe && !auditedName.Equals(name, StringComparison.Ordinal))
-                            {
-                                safe = false;
-                                reason = $"typed XModel name mismatch '{auditedName}' != '{name}'";
-                            }
-                            if (!safe &&
-                                reason.Contains("Material.techniqueSet retains packed/source pointer", StringComparison.OrdinalIgnoreCase) &&
-                                T4XModelSerializerProof.TryBuildStructuralXboxBlobWithSmokeTechniqueSets(
-                                    blob, out var smokeBlob, out var smokeName, out var smokeTechniqueSets, out var smokeReason) &&
-                                smokeName.Equals(name, StringComparison.Ordinal))
-                            {
-                                output[assets[i].Index] = new StructuralPayload(
-                                    type,
-                                    name,
-                                    smokeBlob,
-                                    true,
-                                    $"smoke-promotion[xmodel]: preserved verified Xbox-endian model/material/image ownership and localized {smokeTechniqueSets:N0} packed PC TechniqueSet dependency(ies) as inline Xbox 216-byte null-graph TechniqueSets; no PC shader graph copied");
-                                continue;
-                            }
+                            // Hardware TU7 DB_GetXAssetTypeSize returns 0xD4 for XModel.
+                            // The current proof serializer still carries the legacy 0xE4
+                            // PC-shaped fixed body, so promoting it shifts the loader stream
+                            // by 16 bytes and eventually leaves the runtime XModel name NULL.
+                            // Quarantine proof-heavy XModels until a native 0xD4 serializer
+                            // is implemented; the fallback below emits a hardware-correct
+                            // 212-byte named shell instead.
+                            safe = false;
+                            reason = "Xbox TU7 XModel fixed body is 0xD4; legacy 0xE4 proof payload quarantined pending native 212-byte serializer";
                             break;
                         case "weapon":
                             safe = T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(blob, name, out reason);
@@ -1780,7 +1768,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             var fixedSize = p.TypeName.ToLowerInvariant() switch
             {
                 "xanim" => 92,
-                "xmodel" => 228,
+                "xmodel" => 0xD4,
                 "weapon" => 0x9AC,
                 "fx" => 36,
                 _ => 0
