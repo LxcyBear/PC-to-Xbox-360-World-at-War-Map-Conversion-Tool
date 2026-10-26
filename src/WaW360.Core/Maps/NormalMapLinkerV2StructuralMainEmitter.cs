@@ -865,13 +865,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         {
             try
             {
-                var realTechsetPayloads = BuildRealNameTechniqueSetVariant(
+                var realTechsetVariant = await BuildRealNameTechniqueSetVariantAsync(
                     emissionRoots,
                     rootPayloads,
                     contexts,
-                    cancellationToken,
-                    out realTechsetNamesRecovered,
-                    out var realTechsetNamesUnresolved);
+                    cancellationToken);
+                var realTechsetPayloads = realTechsetVariant.Payloads;
+                realTechsetNamesRecovered = realTechsetVariant.Recovered;
+                var realTechsetNamesUnresolved = realTechsetVariant.Unresolved;
 
                 if (realTechsetNamesUnresolved != 0)
                     throw new InvalidDataException(
@@ -2057,21 +2058,24 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         }).ToList();
     }
 
-    private static List<StructuralPayload> BuildRealNameTechniqueSetVariant(
+    private sealed record RealNameTechniqueSetVariantResult(
+        List<StructuralPayload> Payloads,
+        int Recovered,
+        int Unresolved);
+
+    private static async Task<RealNameTechniqueSetVariantResult> BuildRealNameTechniqueSetVariantAsync(
         IReadOnlyList<LinkerV2CanonicalRoot> roots,
         IReadOnlyList<StructuralPayload> baselinePayloads,
         IReadOnlyDictionary<string, SourceContext> contexts,
-        CancellationToken cancellationToken,
-        out int recovered,
-        out int unresolved)
+        CancellationToken cancellationToken)
     {
         if (roots.Count != baselinePayloads.Count)
             throw new InvalidDataException(
                 $"TechniqueSet real-name A/B root/payload count mismatch: roots={roots.Count:N0}; payloads={baselinePayloads.Count:N0}.");
 
-        recovered = 0;
-        unresolved = 0;
-        var scans = new Dictionary<string, T4MaterialTechniqueLoadScan>(StringComparer.OrdinalIgnoreCase);
+        var recovered = 0;
+        var unresolved = 0;
+        var catalogs = new Dictionary<string, T4PcOatTechniqueSetIdentityResult>(StringComparer.OrdinalIgnoreCase);
         var result = new List<StructuralPayload>(baselinePayloads.Count);
 
         for (var i = 0; i < roots.Count; i++)
@@ -2093,16 +2097,22 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 continue;
             }
 
-            if (!scans.TryGetValue(root.SourceFastFile, out var scan))
+            if (!catalogs.TryGetValue(root.SourceFastFile, out var catalog))
             {
-                scan = T4MaterialTechniqueLoadSerializer.Build(
-                    context.Document,
-                    context.Zone,
-                    cancellationToken);
-                scans[root.SourceFastFile] = scan;
+                catalog = await T4PcOatTechniqueSetIdentityCatalog.BuildAsync(
+                    context.Path,
+                    cancellationToken: cancellationToken);
+                catalogs[root.SourceFastFile] = catalog;
+
+                if (!catalog.Verified)
+                {
+                    var details = string.Join(" | ", catalog.Notes);
+                    throw new InvalidDataException(
+                        $"OAT TechniqueSet identity catalog refused {Path.GetFileName(context.Path)}: {details}");
+                }
             }
 
-            if (!scan.TechniqueSetsByIndex.TryGetValue(root.SourceAssetIndex, out var sourceTechset) ||
+            if (!catalog.ByAssetIndex.TryGetValue(root.SourceAssetIndex, out var sourceTechset) ||
                 string.IsNullOrWhiteSpace(sourceTechset.Name))
             {
                 unresolved++;
@@ -2116,11 +2126,11 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 sourceTechset.Name,
                 BuildFixedNameShell(XboxTechniqueSetFixedSize, sourceTechset.Name),
                 true,
-                "real-name null-graph TechniqueSet A/B; exact source identity restored while all 51 Xbox graph slots remain null"));
+                "OAT-semantic real-name null-graph TechniqueSet A/B; source identity restored while all 51 Xbox graph slots remain null"));
             recovered++;
         }
 
-        return result;
+        return new RealNameTechniqueSetVariantResult(result, recovered, unresolved);
     }
 
     private static byte[] BuildFixedNameShell(int fixedSize, string name)
