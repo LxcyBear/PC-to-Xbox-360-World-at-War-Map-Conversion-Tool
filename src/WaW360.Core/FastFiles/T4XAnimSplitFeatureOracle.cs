@@ -137,6 +137,12 @@ public static class T4XAnimSplitFeatureOracle
         public long NormalWithin05Deg;
         public long PrecisionWithin01Deg;
         public long PrecisionWithin005Deg;
+        public long NormalEncodedExact;
+        public long PrecisionEncodedExact;
+        public double NormalEncoderErrorSumDeg;
+        public double PrecisionEncoderErrorSumDeg;
+        public double NormalEncoderErrorMaxDeg;
+        public double PrecisionEncoderErrorMaxDeg;
     }
 
     private sealed class PrecisionRuleStats
@@ -464,14 +470,27 @@ public static class T4XAnimSplitFeatureOracle
                     checked(dynamic.RandomIntOffset + randomIntPos * 4));
                 randomIntPos++;
 
-                var decoded = DecodeNormalQuat(packed);
-                var expected = ReadPcQuat(pc.FullQuatValues, frame);
-                var error = QuaternionAngularErrorDeg(decoded, expected);
+                var qOffset = checked(frame * 4);
+                var sx = pc.FullQuatValues[qOffset + 0];
+                var sy = pc.FullQuatValues[qOffset + 1];
+                var sz = pc.FullQuatValues[qOffset + 2];
+                var sw = pc.FullQuatValues[qOffset + 3];
+
+                var decoded = T4XboxXAnimQuaternionCodec.DecodeNormal(packed);
+                var expected = T4XboxXAnimQuaternionCodec.NormalizeFromShorts(sx, sy, sz, sw);
+                var error = T4XboxXAnimQuaternionCodec.AngularErrorDeg(decoded, expected);
                 stats.NormalDecodedSamples++;
                 stats.NormalAngularErrorSumDeg += error;
                 stats.NormalAngularErrorMaxDeg = Math.Max(stats.NormalAngularErrorMaxDeg, error);
                 if (error <= 1.0) stats.NormalWithin1Deg++;
                 if (error <= 0.5) stats.NormalWithin05Deg++;
+
+                var generated = T4XboxXAnimQuaternionCodec.EncodeNormal(sx, sy, sz, sw);
+                if (generated == packed) stats.NormalEncodedExact++;
+                var generatedDecoded = T4XboxXAnimQuaternionCodec.DecodeNormal(generated);
+                var encoderError = T4XboxXAnimQuaternionCodec.AngularErrorDeg(generatedDecoded, expected);
+                stats.NormalEncoderErrorSumDeg += encoderError;
+                stats.NormalEncoderErrorMaxDeg = Math.Max(stats.NormalEncoderErrorMaxDeg, encoderError);
             }
         }
 
@@ -494,14 +513,29 @@ public static class T4XAnimSplitFeatureOracle
                 var w2 = ReadU16Be(xboxBytes, checked(dynamic.RandomShortOffset + (precisionShortPos + 2) * 2));
                 precisionShortPos += 3;
 
-                var decoded = DecodePrecisionQuat(w0, w1, w2);
-                var expected = ReadPcQuat(pc.FullQuatValues, frame);
-                var error = QuaternionAngularErrorDeg(decoded, expected);
+                var qOffset = checked(frame * 4);
+                var sx = pc.FullQuatValues[qOffset + 0];
+                var sy = pc.FullQuatValues[qOffset + 1];
+                var sz = pc.FullQuatValues[qOffset + 2];
+                var sw = pc.FullQuatValues[qOffset + 3];
+
+                var decoded = T4XboxXAnimQuaternionCodec.DecodePrecision(w0, w1, w2);
+                var expected = T4XboxXAnimQuaternionCodec.NormalizeFromShorts(sx, sy, sz, sw);
+                var error = T4XboxXAnimQuaternionCodec.AngularErrorDeg(decoded, expected);
                 stats.PrecisionDecodedSamples++;
                 stats.PrecisionAngularErrorSumDeg += error;
                 stats.PrecisionAngularErrorMaxDeg = Math.Max(stats.PrecisionAngularErrorMaxDeg, error);
                 if (error <= 0.1) stats.PrecisionWithin01Deg++;
                 if (error <= 0.05) stats.PrecisionWithin005Deg++;
+
+                var generated = T4XboxXAnimQuaternionCodec.EncodePrecision(sx, sy, sz, sw);
+                if (generated.Word0 == w0 && generated.Word1 == w1 && generated.Word2 == w2)
+                    stats.PrecisionEncodedExact++;
+                var generatedDecoded = T4XboxXAnimQuaternionCodec.DecodePrecision(
+                    generated.Word0, generated.Word1, generated.Word2);
+                var encoderError = T4XboxXAnimQuaternionCodec.AngularErrorDeg(generatedDecoded, expected);
+                stats.PrecisionEncoderErrorSumDeg += encoderError;
+                stats.PrecisionEncoderErrorMaxDeg = Math.Max(stats.PrecisionEncoderErrorMaxDeg, encoderError);
             }
         }
 
@@ -1296,6 +1330,17 @@ public static class T4XAnimSplitFeatureOracle
         sb.AppendLine($"      max angular error:       {stats.PrecisionAngularErrorMaxDeg:F6} deg");
         sb.AppendLine($"      <= 0.10 deg:             {stats.PrecisionWithin01Deg:N0}/{stats.PrecisionDecodedSamples:N0}");
         sb.AppendLine($"      <= 0.05 deg:             {stats.PrecisionWithin005Deg:N0}/{stats.PrecisionDecodedSamples:N0}");
+        sb.AppendLine();
+
+        var normalEncodeMean = stats.NormalDecodedSamples == 0 ? 0.0 : stats.NormalEncoderErrorSumDeg / stats.NormalDecodedSamples;
+        var precisionEncodeMean = stats.PrecisionDecodedSamples == 0 ? 0.0 : stats.PrecisionEncoderErrorSumDeg / stats.PrecisionDecodedSamples;
+        sb.AppendLine("  INVERSE ENCODER VALIDATION");
+        sb.AppendLine($"    NORMAL exact retail packed words:       {stats.NormalEncodedExact:N0}/{stats.NormalDecodedSamples:N0}");
+        sb.AppendLine($"      encode->decode mean error:             {normalEncodeMean:F6} deg");
+        sb.AppendLine($"      encode->decode max error:              {stats.NormalEncoderErrorMaxDeg:F6} deg");
+        sb.AppendLine($"    PRECISION exact retail packed words:    {stats.PrecisionEncodedExact:N0}/{stats.PrecisionDecodedSamples:N0}");
+        sb.AppendLine($"      encode->decode mean error:             {precisionEncodeMean:F6} deg");
+        sb.AppendLine($"      encode->decode max error:              {stats.PrecisionEncoderErrorMaxDeg:F6} deg");
         sb.AppendLine();
         sb.AppendLine("  PC vs Xbox dynamic key counts:");
         sb.AppendLine($"    NORMAL_QUAT key count identical:                              {stats.PcVsXboxNormalKeyCountEqual}/{stats.Pairs}");
