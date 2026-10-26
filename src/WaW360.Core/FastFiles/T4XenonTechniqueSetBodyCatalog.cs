@@ -20,6 +20,9 @@ public sealed class T4XenonTechniqueSetBodyCatalogResult
     public required string XboxFastFile { get; init; }
     public required int ExpectedTechniqueSets { get; init; }
     public required int RecoveredTechniqueSets { get; init; }
+    public required int InlineOwnedTechniqueRoots { get; init; }
+    public required int AliasTechniqueRoots { get; init; }
+    public required int DistinctTechniqueBodies { get; init; }
     public required int TotalNonNullTechniqueSlots { get; init; }
     public required int TotalInlineTechniqueSlots { get; init; }
     public required int TotalPackedTechniqueSlots { get; init; }
@@ -80,10 +83,14 @@ public static class T4XenonTechniqueSetBodyCatalog
             throw new InvalidDataException("Native identity oracle contains zero TechniqueSet roots.");
 
         var expectedByName = expected.ToDictionary(x => x.Name, StringComparer.OrdinalIgnoreCase);
+        var nativeAssetsByIndex = cached.Document.Assets.ToDictionary(x => x.Index);
         var payloadStart = checked((int)(cached.Document.AssetTableOffset + cached.Document.AssetCount * 8L));
         var zone = cached.Bytes;
-        var candidates = new Dictionary<string, List<T4XenonTechniqueSetBody>>(StringComparer.OrdinalIgnoreCase);
 
+        // First recover only the inline-owned TechniqueSet bodies. Offset/alias roots do
+        // not own another copy; their XAsset.header is itself the packed pointer to the
+        // previously serialized TEMP body.
+        var scannedInlineBodies = new Dictionary<string, List<T4XenonTechniqueSetBody>>(StringComparer.OrdinalIgnoreCase);
         var first = (payloadStart + 3) & ~3;
         for (var offset = first; offset <= zone.Length - TechniqueSetSize; offset += 4)
         {
@@ -98,10 +105,10 @@ public static class T4XenonTechniqueSetBodyCatalog
                     out var body))
                 continue;
 
-            if (!candidates.TryGetValue(body!.Name, out var list))
+            if (!scannedInlineBodies.TryGetValue(body!.Name, out var list))
             {
                 list = new List<T4XenonTechniqueSetBody>();
-                candidates[body.Name] = list;
+                scannedInlineBodies[body.Name] = list;
             }
             list.Add(body);
         }
@@ -109,28 +116,82 @@ public static class T4XenonTechniqueSetBodyCatalog
         var resolved = new List<T4XenonTechniqueSetBody>(expected.Count);
         var missing = new List<string>();
         var ambiguous = new List<string>();
+        var inlineRootCount = 0;
+        var aliasRootCount = 0;
 
         foreach (var root in expected)
         {
-            if (!candidates.TryGetValue(root.Name, out var matches) || matches.Count == 0)
+            if (!nativeAssetsByIndex.TryGetValue(root.Index, out var asset))
             {
-                missing.Add(root.Name);
+                missing.Add(root.Name + " [native XAsset row missing]");
                 continue;
             }
 
-            var distinct = matches
-                .GroupBy(x => x.SourceOffset)
-                .Select(g => g.First())
-                .OrderBy(x => x.SourceOffset)
-                .ToList();
-            if (distinct.Count != 1)
+            if (asset.TypeId != 8)
             {
-                ambiguous.Add($"{root.Name} ({distinct.Count} candidates: {string.Join(", ", distinct.Take(8).Select(x => $"0x{x.SourceOffset:X}"))})");
+                missing.Add(root.Name + $" [native XAsset type={asset.TypeId}, expected 8]");
                 continue;
             }
 
-            var match = distinct[0] with { NativeRootIndex = root.Index };
-            resolved.Add(match);
+            if (asset.ReferenceKind is T4AssetReferenceKind.OffsetOrAlias)
+            {
+                aliasRootCount++;
+                var decoded = T4ZonePointer.Decode(asset.RawHeader);
+                if (decoded.Kind != T4ZonePointerKind.Offset ||
+                    decoded.Block != T4ZoneBlock.Temp ||
+                    decoded.Offset > int.MaxValue)
+                {
+                    missing.Add(root.Name + $" [alias header {T4ZonePointer.Describe(asset.RawHeader)} is not TEMP]");
+                    continue;
+                }
+
+                var absolute = FastFileConstants.T4XFileHeaderSize + checked((int)decoded.Offset);
+                if (!TryParseCandidate(
+                        zone,
+                        cached.Document.Header,
+                        absolute,
+                        expectedByName,
+                        out var aliasBody))
+                {
+                    missing.Add(root.Name + $" [TEMP alias target 0x{absolute:X8} did not parse as a TechniqueSet body]");
+                    continue;
+                }
+
+                if (!string.Equals(aliasBody!.Name, root.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    missing.Add(root.Name + $" [TEMP alias target resolves to '{aliasBody.Name}']");
+                    continue;
+                }
+
+                resolved.Add(aliasBody with { NativeRootIndex = root.Index });
+                continue;
+            }
+
+            if (asset.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared)
+            {
+                inlineRootCount++;
+                if (!scannedInlineBodies.TryGetValue(root.Name, out var matches) || matches.Count == 0)
+                {
+                    missing.Add(root.Name + " [inline-owned body not found]");
+                    continue;
+                }
+
+                var distinct = matches
+                    .GroupBy(x => x.SourceOffset)
+                    .Select(g => g.First())
+                    .OrderBy(x => x.SourceOffset)
+                    .ToList();
+                if (distinct.Count != 1)
+                {
+                    ambiguous.Add($"{root.Name} ({distinct.Count} inline body candidates: {string.Join(", ", distinct.Take(8).Select(x => $"0x{x.SourceOffset:X}"))})");
+                    continue;
+                }
+
+                resolved.Add(distinct[0] with { NativeRootIndex = root.Index });
+                continue;
+            }
+
+            missing.Add(root.Name + $" [unsupported XAsset header kind {asset.ReferenceKind}, raw=0x{asset.RawHeader:X8}]");
         }
 
         var totalNonNull = resolved.Sum(x => x.NonNullTechniqueSlots);
@@ -139,8 +200,9 @@ public static class T4XenonTechniqueSetBodyCatalog
 
         var notes = new List<string>
         {
-            "NUCLEAR STAGE 3A: fixed-body candidates are accepted only when their resolved name matches one OAT-verified native TechniqueSet identity.",
-            "Packed TEMP names are resolved as XFileHeader(36 bytes) + logical TEMP offset; inline FOLLOWING/INSERT names are read immediately after the 216-byte fixed body.",
+            "NUCLEAR STAGE 3A: XAsset.header drives ownership. Inline/InlineShared roots own serialized bodies; OffsetOrAlias roots resolve their packed TEMP header directly to an existing body.",
+            "Fixed-body candidates are accepted only when their resolved name matches one OAT-verified native TechniqueSet identity.",
+            "Packed TEMP pointers resolve as XFileHeader(36 bytes) + logical TEMP offset; inline FOLLOWING/INSERT names are read immediately after the 216-byte fixed body.",
             "Technique pointers are preserved as raw serialized values for the next typed graph walker; no donor payload bytes are emitted by this stage.",
             $"Pointer census across recovered sets: nonNull={totalNonNull:N0}; inline={totalInline:N0}; packed={totalPacked:N0}."
         };
@@ -157,6 +219,9 @@ public static class T4XenonTechniqueSetBodyCatalog
             XboxFastFile = xboxFastFile,
             ExpectedTechniqueSets = expected.Count,
             RecoveredTechniqueSets = resolved.Count,
+            InlineOwnedTechniqueRoots = inlineRootCount,
+            AliasTechniqueRoots = aliasRootCount,
+            DistinctTechniqueBodies = resolved.Select(x => x.SourceOffset).Distinct().Count(),
             TotalNonNullTechniqueSlots = totalNonNull,
             TotalInlineTechniqueSlots = totalInline,
             TotalPackedTechniqueSlots = totalPacked,
@@ -309,6 +374,7 @@ public static class T4XenonTechniqueSetBodyCatalog
         sb.AppendLine($"expected TechniqueSets : {result.ExpectedTechniqueSets:N0}");
         sb.AppendLine($"recovered TechniqueSets: {result.RecoveredTechniqueSets:N0}");
         sb.AppendLine($"VERIFIED               : {result.Verified}");
+        sb.AppendLine($"root ownership         : inlineOwned={result.InlineOwnedTechniqueRoots:N0}; alias={result.AliasTechniqueRoots:N0}; distinctBodies={result.DistinctTechniqueBodies:N0}");
         sb.AppendLine($"technique slots        : nonNull={result.TotalNonNullTechniqueSlots:N0}; inline={result.TotalInlineTechniqueSlots:N0}; packed={result.TotalPackedTechniqueSlots:N0}");
         sb.AppendLine();
 
