@@ -52,6 +52,14 @@ public static class T4ZoneParser
         var stringEntries = new List<T4ScriptStringEntry>(scriptStringCount);
         cursor += pointerTableBytes;
 
+        // The ScriptString pointer array is the first object written after T4 pushes
+        // XFILE_BLOCK_VIRTUAL, so its first byte is VIRTUAL+0. Inline string bodies
+        // then follow that pointer array in index order. Reused strings are encoded
+        // as packed VIRTUAL offsets to an already-written inline body. Track those
+        // exact body starts so aliases can be resolved without guessing a physical
+        // file address or treating the pointer value as a string identity.
+        var inlineStringsByVirtualOffset = new Dictionary<uint, string>();
+
         for (var i = 0; i < rawStringPointers.Length; i++)
         {
             var rawPointer = rawStringPointers[i];
@@ -63,14 +71,25 @@ public static class T4ZoneParser
 
             if (rawPointer == InlinePointer)
             {
+                var virtualOffset = checked((uint)(cursor - FastFileConstants.WaWZoneHeaderSize));
                 var (value, bytesRead) = ReadCString(zoneBytes, cursor);
                 stringEntries.Add(new T4ScriptStringEntry(i, rawPointer, value, true));
+                inlineStringsByVirtualOffset[virtualOffset] = value;
                 cursor += bytesRead;
                 continue;
             }
 
-            // Some zones can reuse a previously serialized string through an alias/offset.
-            // Stage 2 records it faithfully; pointer resolution is a later writer task.
+            var decoded = T4ZonePointer.Decode(rawPointer);
+            if (decoded.Kind == T4ZonePointerKind.Offset &&
+                decoded.Block == T4ZoneBlock.Virtual &&
+                inlineStringsByVirtualOffset.TryGetValue(decoded.Offset, out var aliasedValue))
+            {
+                stringEntries.Add(new T4ScriptStringEntry(i, rawPointer, aliasedValue, false));
+                continue;
+            }
+
+            // Preserve unresolved offsets faithfully. Callers that require a complete
+            // ScriptString index map must still fail closed on this marker.
             stringEntries.Add(new T4ScriptStringEntry(i, rawPointer, $"<alias 0x{rawPointer:X8}>", false));
         }
 
