@@ -50,12 +50,31 @@ finally {
     Pop-Location
 }
 
+$report = Join-Path (Join-Path (Join-Path $OutputRoot $MapName) "linker_v2_main_xanim_native_layout") ($MapName + "_linker_v2_main_structural.txt")
+
 if (-not (Test-Path -LiteralPath $packageDir -PathType Container)) {
+    if (Test-Path -LiteralPath $report -PathType Leaf) {
+        $reason = Select-String -LiteralPath $report -Pattern "REAL-TECHSET-NAME A/B (READY|SKIPPED):" |
+            Select-Object -Last 1
+        if ($reason) {
+            Write-Host ""
+            Write-Host "[TECHSET-A/B] $($reason.Line)" -ForegroundColor Yellow
+        }
+    }
     throw "Real-TechniqueSet-name package directory was not emitted: $packageDir"
 }
 
 $candidates = @(Get-ChildItem -LiteralPath $packageDir -Filter "*.ff" -File)
 if ($candidates.Count -ne 1) {
+    if (Test-Path -LiteralPath $report -PathType Leaf) {
+        $reason = Select-String -LiteralPath $report -Pattern "REAL-TECHSET-NAME A/B (READY|SKIPPED):" |
+            Select-Object -Last 1
+        if ($reason) {
+            Write-Host ""
+            Write-Host "[TECHSET-A/B] $($reason.Line)" -ForegroundColor Yellow
+        }
+    }
+
     $names = ($candidates | ForEach-Object { $_.FullName }) -join [Environment]::NewLine
     throw "Expected exactly one A/B fastfile in '$packageDir'; found $($candidates.Count).$([Environment]::NewLine)$names"
 }
