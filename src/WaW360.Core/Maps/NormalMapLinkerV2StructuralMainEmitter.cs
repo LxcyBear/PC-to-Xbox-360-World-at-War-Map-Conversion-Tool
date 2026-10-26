@@ -63,6 +63,12 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required string? ScriptClosureFastFileSha256 { get; init; }
     public required int ScriptClosureResidentMenusRemoved { get; init; }
     public required int ScriptClosureRawFilesPromoted { get; init; }
+    public required string? NativeBlockOutputFastFile { get; init; }
+    public required string? NativeBlockHardwarePackageDirectory { get; init; }
+    public required bool NativeBlockCandidateReady { get; init; }
+    public required int NativeBlockReadBackErrors { get; init; }
+    public required bool NativeBlockWrapperRoundTripVerified { get; init; }
+    public required string? NativeBlockFastFileSha256 { get; init; }
     public required int XboxAssets { get; init; }
     public required int ScriptStrings { get; init; }
     public required int PayloadsBuilt { get; init; }
@@ -604,7 +610,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         NormalMapLinkerV2CanonicalRootPolicyResult? rootPolicyOverride = null,
         NormalMapLinkerV2DestinationBlockPlanResult? blockPlanOverride = null,
         NormalMapLinkerV2ScriptStringMergeResult? scriptOverride = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? nativeBlockOracleFastFile = null)
     {
         var source = sourceOverride ?? await NormalMapLinkerV2SourceArchive.RunAsync(map, outputRoot, cancellationToken);
         var rootPolicy = rootPolicyOverride ?? await NormalMapLinkerV2CanonicalRootPolicy.RunAsync(map, outputRoot, source, cancellationToken: cancellationToken);
@@ -634,10 +641,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout");
         var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_tracked_shell");
         var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_script_closure");
+        var nativeBlockPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_native_blocks");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
         Directory.CreateDirectory(conservativePackageDir);
         Directory.CreateDirectory(scriptClosurePackageDir);
+        Directory.CreateDirectory(nativeBlockPackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
         var zonePath = Path.Combine(outDir, source.CanonicalBaseName + ".zone");
@@ -646,6 +655,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var conservativeFfPath = Path.Combine(conservativePackageDir, source.CanonicalBaseName + ".ff");
         var scriptClosureZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".script_closure.zone");
         var scriptClosureFfPath = Path.Combine(scriptClosurePackageDir, source.CanonicalBaseName + ".ff");
+        var nativeBlockZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_blocks.zone");
+        var nativeBlockFfPath = Path.Combine(nativeBlockPackageDir, source.CanonicalBaseName + ".ff");
 
         // Never let a stale candidate survive a failed rerun.
         TryDelete(ffPath);
@@ -658,6 +669,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(scriptClosureFfPath);
         TryDelete(scriptClosureZonePath);
         TryDelete(Path.Combine(scriptClosurePackageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"));
+        TryDelete(nativeBlockFfPath);
+        TryDelete(nativeBlockZonePath);
+        TryDelete(Path.Combine(nativeBlockPackageDir, "NATIVE_BLOCK_CAPACITY_AB_TEST.txt"));
 
         var blockers = new List<string>();
         var notes = new List<string>
@@ -950,6 +964,92 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 cancellationToken);
         }
 
+        // Fourth main-graph A/B: keep the exact same roots, payload bytes and ScriptStrings
+        // as the proof-heavy candidate, but replace only the seven XFile block capacities with
+        // the user-supplied known-working native FRUmansion values. This isolates Codxe/DB arena
+        // allocation pressure from asset fidelity without copying any donor payload bytes.
+        var nativeBlockReady = false;
+        var nativeBlockReadBackErrors = 0;
+        var nativeBlockRoundTrip = false;
+        string? nativeBlockSha = null;
+        if (candidateReady && !string.IsNullOrWhiteSpace(nativeBlockOracleFastFile))
+        {
+            try
+            {
+                if (!File.Exists(nativeBlockOracleFastFile))
+                    throw new FileNotFoundException("Native block-capacity oracle fastfile not found.", nativeBlockOracleFastFile);
+
+                var nativeBlockOracle = await FastFileAnalysisCache.GetZoneAsync(nativeBlockOracleFastFile, cancellationToken);
+                if (nativeBlockOracle.Platform != WaWPlatform.Xbox360)
+                    throw new InvalidDataException($"Native block-capacity A/B requires an Xbox360 oracle; parsed {nativeBlockOracle.Platform}.");
+
+                var nativeBlockCaps = Enum.GetValues<T4ZoneBlock>()
+                    .ToDictionary(
+                        block => block.ToString(),
+                        block => nativeBlockOracle.Document.Header.BlockSizes[(int)block],
+                        StringComparer.OrdinalIgnoreCase);
+                var nativeBlockPlan = new NormalMapLinkerV2DestinationBlockPlanResult
+                {
+                    MapName = blockPlan.MapName,
+                    Sources = blockPlan.Sources,
+                    StructuralCapacities = nativeBlockCaps,
+                    GoldenBlockSizes = nativeBlockCaps,
+                    UsesGoldenForAllocation = true,
+                    SourceCapacityPlanReady = true,
+                    ProductionOwnershipComplete = false,
+                    Notes = blockPlan.Notes.Concat(new[]
+                    {
+                        "NATIVE-BLOCK A/B ONLY: seven XFile block capacities copied from the user-supplied working native oracle; roots, ScriptStrings and payload bytes remain the current converter output."
+                    }).ToList(),
+                    Blockers = Array.Empty<string>(),
+                    Verified = true,
+                    TextReportFile = blockPlan.TextReportFile,
+                    JsonReportFile = blockPlan.JsonReportFile
+                };
+
+                var nativeBlockZone = BuildZone(
+                    emissionRoots, rootPayloads, canonicalStrings, nativeBlockPlan, out var nativeBlockHeaderZoneSize);
+                var nativeBlockSizeOk = nativeBlockHeaderZoneSize == checked((uint)(nativeBlockZone.Length - FastFileConstants.T4XFileHeaderSize));
+                var nativeBlockHeaderOk = VerifyBlockHeader(nativeBlockZone, nativeBlockPlan);
+                if (nativeBlockSizeOk && nativeBlockHeaderOk)
+                {
+                    await File.WriteAllBytesAsync(nativeBlockZonePath, nativeBlockZone, cancellationToken);
+                    nativeBlockReadBackErrors = VerifyReadBack(
+                        nativeBlockZonePath, nativeBlockZone, emissionRoots, rootPayloads, canonicalStrings, nativeBlockPlan);
+                    if (nativeBlockReadBackErrors == 0)
+                    {
+                        var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                            nativeBlockFfPath, nativeBlockZone, preferNativeLevel6: true, cancellationToken: cancellationToken);
+                        nativeBlockRoundTrip = write.RoundTripVerified;
+                        if (nativeBlockRoundTrip)
+                        {
+                            nativeBlockSha = await Sha256Async(nativeBlockFfPath, cancellationToken);
+                            nativeBlockReady = true;
+                            await File.WriteAllTextAsync(
+                                Path.Combine(nativeBlockPackageDir, "NATIVE_BLOCK_CAPACITY_AB_TEST.txt"),
+                                "WaW360Converter — NATIVE BLOCK-CAPACITY A/B TEST" + Environment.NewLine +
+                                new string('=', 64) + Environment.NewLine +
+                                $"Map: {map.Name}" + Environment.NewLine +
+                                $"Oracle: {nativeBlockOracleFastFile}" + Environment.NewLine +
+                                "Only the seven XFile block capacities differ from hardware_test_main_xanim_native_layout." + Environment.NewLine +
+                                "No donor payload bytes are copied." + Environment.NewLine +
+                                string.Join(Environment.NewLine, Enum.GetValues<T4ZoneBlock>().Select(b =>
+                                    $"{b}={nativeBlockCaps.GetValueOrDefault(b.ToString()):N0} B")) + Environment.NewLine,
+                                new UTF8Encoding(false),
+                                cancellationToken);
+                            notes.Add("NATIVE-BLOCK A/B READY: emitted same proof-heavy payload graph with only the seven XFile block capacities replaced by the working native oracle values.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                notes.Add($"NATIVE-BLOCK A/B SKIPPED: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        if (!nativeBlockReady)
+            TryDelete(nativeBlockFfPath);
+
         if (candidateReady)
         {
             await WriteReadmeAsync(packageDir, source.CanonicalBaseName, sha!, rootPolicy.Roots.Count, fallbackCount, cancellationToken);
@@ -1018,6 +1118,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ScriptClosureFastFileSha256 = scriptClosureSha,
             ScriptClosureResidentMenusRemoved = scriptClosureMenusRemoved,
             ScriptClosureRawFilesPromoted = scriptClosureRawPromoted,
+            NativeBlockOutputFastFile = nativeBlockReady ? nativeBlockFfPath : null,
+            NativeBlockHardwarePackageDirectory = nativeBlockReady ? nativeBlockPackageDir : null,
+            NativeBlockCandidateReady = nativeBlockReady,
+            NativeBlockReadBackErrors = nativeBlockReadBackErrors,
+            NativeBlockWrapperRoundTripVerified = nativeBlockRoundTrip,
+            NativeBlockFastFileSha256 = nativeBlockSha,
             XboxAssets = emissionRoots.Count,
             ScriptStrings = canonicalStrings.Values.Count + (canonicalStrings.HasNullSentinel ? 1 : 0),
             PayloadsBuilt = rootPayloads.Count,
@@ -2059,6 +2165,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
         sb.AppendLine($"trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; trackedShellSha256={r.ConservativeFastFileSha256 ?? "<none>"}; trackedShellOutput={r.ConservativeOutputFastFile ?? "<none>"}");
         sb.AppendLine($"scriptClosureCandidate={r.ScriptClosureCandidateReady}; scriptClosureReadBackErrors={r.ScriptClosureReadBackErrors:N0}; scriptClosureRoundTrip={r.ScriptClosureWrapperRoundTripVerified}; residentMenusRemoved={r.ScriptClosureResidentMenusRemoved:N0}; iwdRawFilesPromoted={r.ScriptClosureRawFilesPromoted:N0}; scriptClosureSha256={r.ScriptClosureFastFileSha256 ?? "<none>"}; scriptClosureOutput={r.ScriptClosureOutputFastFile ?? "<none>"}");
+        sb.AppendLine($"nativeBlockCandidate={r.NativeBlockCandidateReady}; nativeBlockReadBackErrors={r.NativeBlockReadBackErrors:N0}; nativeBlockRoundTrip={r.NativeBlockWrapperRoundTripVerified}; nativeBlockSha256={r.NativeBlockFastFileSha256 ?? "<none>"}; nativeBlockOutput={r.NativeBlockOutputFastFile ?? "<none>"}");
         sb.AppendLine();
         sb.AppendLine("SOURCE-DERIVED BLOCK CAPACITIES");
         foreach (var block in Enum.GetValues<T4ZoneBlock>())
