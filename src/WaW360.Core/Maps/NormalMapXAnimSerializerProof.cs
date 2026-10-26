@@ -32,12 +32,14 @@ public sealed class NormalMapXAnimSerializerProofResult
 }
 
 /// <summary>
-/// Stage 4 alpha 9g: retain the proven alpha-4 XAnim serializer and add a
-/// fail-closed packed-name top-level bridge for the few authoritative XAnim slots
-/// whose name strings are reused through packed zone pointers.
-/// Every top-level XAnim in every NORMAL-map fastfile that declares XAnim assets is
-/// parsed from the PC serialization, re-emitted in Xbox big-endian form, and then
-/// parsed back independently. Proof containers are internal artifacts, never game FFs.
+/// Stage 4 native Xbox XAnim serializer proof.
+///
+/// Every top-level XAnim in each participating NORMAL-map fastfile is decoded from
+/// the PC 0x58/10-bucket layout and re-emitted in the Xbox 0x5C/12-bucket layout,
+/// including the retail-proven simple/normal/precision quaternion encodings and
+/// translation bone-index remapping. Every output body is parsed back independently.
+/// Packed-name top-level XAnims remain fail-closed until their asset names can be
+/// resolved for the viewmodel precision rule. Proof containers are internal artifacts.
 /// </summary>
 public static class NormalMapXAnimSerializerProof
 {
@@ -69,47 +71,32 @@ public static class NormalMapXAnimSerializerProof
             var stem = Path.GetFileNameWithoutExtension(ff.Path) + $"_{SanitizeRole(ff.Role)}";
             var proofName = stem + ".xbox_xanim_proof.bin";
             var proofPath = Path.Combine(workspace, proofName);
-            var weaponProof = Path.Combine(outputRoot, map.Name, "stage4_alpha7b_weapon_owned", stem + ".xbox_weapon_owned_proof.bin");
 
-            if (!File.Exists(weaponProof) && ff.AssetTypes.TryGetValue("weapon", out var weaponCount) && weaponCount > 0)
+            // Real console transform: 0x58 PC/10-bucket XAnimParts -> 0x5C Xbox/12-bucket
+            // XAnimParts, including simple/normal/precision quaternion packing and
+            // translation bone-index remapping after quaternion-order sorting.
+            var proof = await T4XboxXAnimTransformProof.BuildAsync(
+                ff.Path, proofPath, cancellationToken);
+
+            if (!proof.Verified ||
+                proof.DeclaredXAnim != proof.ConvertedXAnim ||
+                proof.InlineCandidates != proof.DeclaredXAnim)
             {
-                try
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(weaponProof)!);
-                    var anchor = await T4WeaponVariableSerializerProof.BuildProofAsync(ff.Path, weaponProof, cancellationToken);
-                    if (!anchor.Verified || anchor.CoveredWeaponCount != anchor.DeclaredWeaponCount)
-                    {
-                        try { File.Delete(weaponProof); } catch { }
-                        warnings.Add($"{Path.GetFileName(ff.Path)}: Alpha 9g could not create a complete Weapon-owned XAnim alignment anchor; continuing without it.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    try { File.Delete(weaponProof); } catch { }
-                    warnings.Add($"{Path.GetFileName(ff.Path)}: Weapon-owned XAnim alignment anchor unavailable ({ex.Message}); continuing without it.");
-                }
+                throw new InvalidDataException(
+                    $"Real Xbox XAnim proof for '{Path.GetFileName(ff.Path)}' did not cover every declared animation " +
+                    $"({proof.ConvertedXAnim:N0}/{proof.DeclaredXAnim:N0}).");
             }
-
-            var proof = await T4XAnimSerializerProof.BuildProofAsync(
-                ff.Path, proofPath, File.Exists(weaponProof) ? weaponProof : null, cancellationToken);
-            var serializedBytes = proof.Assets.Sum(x => (long)x.XboxSerializedBytes);
-            var deltaCount = proof.Assets.Count(x => x.HasDelta);
-
-            if (!proof.Verified || proof.DeclaredXAnimCount != proof.ResolvedXAnimCount || proof.Assets.Count != proof.DeclaredXAnimCount)
-                throw new InvalidDataException($"XAnim proof for '{Path.GetFileName(ff.Path)}' did not cover every declared animation.");
 
             proofs.Add(new T4XAnimFastFileProof(
                 ff.Role,
                 ff.Path,
                 proof.OutputFile,
-                proof.DeclaredXAnimCount,
-                proof.Assets.Count,
-                deltaCount,
-                serializedBytes,
+                proof.DeclaredXAnim,
+                proof.ConvertedXAnim,
+                proof.DeltaXAnim,
+                proof.XboxSerializedBytes,
                 proof.Verified,
-                proof.Warnings));
-
-            warnings.AddRange(proof.Warnings.Select(w => $"{Path.GetFileName(ff.Path)}: {w}"));
+                Array.Empty<string>()));
         }
 
         var declared = proofs.Sum(x => x.DeclaredXAnim);
@@ -148,8 +135,8 @@ public static class NormalMapXAnimSerializerProof
     private static string Render(NormalMapXAnimSerializerProofResult r)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("WaW360Converter — Stage 4 alpha 9g XAnim serializer proof");
-        sb.AppendLine("=========================================================");
+        sb.AppendLine("WaW360Converter — Stage 4 native Xbox XAnim serializer proof");
+        sb.AppendLine("============================================================");
         sb.AppendLine("INTERNAL PROOF ONLY: .xbox_xanim_proof.bin files are NOT game fastfiles.");
         sb.AppendLine($"Map: {r.MapName}");
         sb.AppendLine($"Profile: {r.Profile}");
@@ -183,10 +170,10 @@ public static class NormalMapXAnimSerializerProof
             sb.AppendLine();
         }
 
-        sb.AppendLine("Alpha 9g conclusion");
-        sb.AppendLine("  Every declared XAnim in the participating NORMAL-map fastfiles was re-emitted in Xbox big-endian T4 serialization and parsed back to the exact record boundary, including any authoritative packed-name top-level bodies recovered by the alpha 9g bridge.");
-        sb.AppendLine("  XAnim can now move from CRITICAL BLOCKER to PROVEN SERIALIZER FOUNDATION for the final zone writer.");
-        sb.AppendLine("  No game fastfile was emitted; XModel, Weapon, world/collision and high-priority serializers still gate hardware output.");
+        sb.AppendLine("Native XAnim conclusion");
+        sb.AppendLine("  Every declared XAnim was transformed from the PC 0x58/10-bucket form into the real Xbox 0x5C/12-bucket form and independently parsed back.");
+        sb.AppendLine("  NORMAL_QUAT uses packed 32-bit randomDataInt, PRECISION_QUAT uses packed 48-bit randomDataShort, SIMPLE_QUAT uses packed 16-bit storage, and translation bone indices are remapped after Xbox quaternion sorting.");
+        sb.AppendLine("  These proof blobs are now suitable as the XAnim payload source for the Stage-5 native writer.");
         return sb.ToString();
     }
 
