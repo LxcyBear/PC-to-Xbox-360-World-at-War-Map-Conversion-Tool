@@ -24,6 +24,45 @@ public static class T4XboxXAnimQuaternionCodec
             Word2;
     }
 
+    public static ushort EncodeSimple(short a, short b)
+    {
+        double da = a / 32767.0;
+        double db = b / 32767.0;
+        var length = Math.Sqrt(da * da + db * db);
+        if (!(length > 0.0) || !double.IsFinite(length))
+            return 0;
+
+        da /= length;
+        db /= length;
+
+        // Decoder's unswapped order is [value, omitted], so choose the
+        // largest-magnitude component as the omitted component.
+        var omitFirst = Math.Abs(da) >= Math.Abs(db);
+        var omitted = omitFirst ? da : db;
+        var value = omitFirst ? db : da;
+        if (Math.Abs(omitted) < 1e-20)
+            return 0;
+
+        var ratio = Math.Clamp(value / omitted, -1.0, 1.0);
+        var encoded = QuantizeSigned(ratio, 8191, 14);
+        ushort packed = unchecked((ushort)encoded);
+        if (omitFirst) packed |= 0x4000;
+        if (omitted < 0.0) packed |= 0x8000;
+        return packed;
+    }
+
+    public static (double A, double B) DecodeSimple(ushort packed)
+    {
+        var ratio = SignExtend(packed & 0x3FFF, 14) / 8191.0;
+        var sign = (packed & 0x8000) == 0 ? 1.0 : -1.0;
+        var inverseLength = sign / Math.Sqrt(ratio * ratio + 1.0);
+        var value = ratio * inverseLength;
+        var omitted = inverseLength;
+        if ((packed & 0x4000) != 0)
+            (value, omitted) = (omitted, value);
+        return (value, omitted);
+    }
+
     public static uint EncodeNormal(short x, short y, short z, short w)
     {
         var q = NormalizeFromShorts(x, y, z, w);
