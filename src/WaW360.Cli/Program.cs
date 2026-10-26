@@ -533,7 +533,7 @@ static async Task<int> MainAsync(string[] args)
                     explicitUnlinker);
                 Console.WriteLine("NUCLEAR STAGE 2 TechniqueSet closure plan");
                 Console.WriteLine($"PC roots={result.PcTechniqueRoots:N0}; materialBridge={result.MaterialBridgeResolved:N0}; exactName={result.ExactNameFallbackResolved:N0}; donorBound={result.DonorBoundTechniqueRoots:N0}; unresolved={result.UnresolvedTechniqueRoots:N0}");
-                Console.WriteLine($"distinctXboxTargets={result.DistinctXboxTechniqueTargets:N0}; slots(nonNull/inline/packed)={result.TotalXboxNonNullTechniqueSlots:N0}/{result.TotalXboxInlineTechniqueSlots:N0}/{result.TotalXboxPackedTechniqueSlots:N0}");
+                Console.WriteLine($"distinctXboxTargets={result.DistinctXboxTechniqueTargets:N0}; graphBodies=typed-extractor-pending");
                 Console.WriteLine($"identityClosureComplete={result.IdentityClosureComplete}; graphExtractionReady={result.GraphExtractionReady}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
