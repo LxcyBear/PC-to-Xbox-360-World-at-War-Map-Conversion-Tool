@@ -44,8 +44,33 @@ internal static class LinkerV2ProofEvidence
                     a.TypeName.Equals(type, StringComparison.OrdinalIgnoreCase) &&
                     a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared);
                 if (count == 0) continue;
-                if (!File.Exists(GetProofPath(outputRoot, map.Name, container.Path, container.Role, type)))
+                var proofPath = GetProofPath(outputRoot, map.Name, container.Path, container.Role, type);
+                if (!File.Exists(proofPath))
+                {
                     missingByType[type] = true;
+                    continue;
+                }
+
+                // Version 12 is the real Xbox 0x5C/12-bucket XAnim transform.
+                // Older W360A4X containers are the retired endian-only 0x58 proof
+                // and must never be reused by Linker V2 merely because the file exists.
+                if (type.Equals("xanim", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var proof = await T4NativeProofContainerReader.IndexAsync(proofPath, "xanim", cancellationToken);
+                        if (proof.Version != 12)
+                        {
+                            missingByType[type] = true;
+                            notes.Add($"Fast Mode marked stale XAnim proof for regeneration: {Path.GetFileName(container.Path)} version={proof.Version}, required=12.");
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        missingByType[type] = true;
+                        notes.Add($"Fast Mode marked unreadable XAnim proof for regeneration: {Path.GetFileName(container.Path)} ({ex.Message}).");
+                    }
+                }
             }
         }
 
