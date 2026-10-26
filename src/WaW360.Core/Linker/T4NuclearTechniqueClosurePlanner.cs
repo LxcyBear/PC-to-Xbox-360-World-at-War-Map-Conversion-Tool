@@ -86,13 +86,36 @@ public static class T4NuclearTechniqueClosurePlanner
                 "Full-main PC TechniqueSet identity catalog is not verified: " +
                 string.Join(" | ", pcCatalog.Notes));
 
-        var donorCatalog = await T4XboxTechniqueDonorCatalog.BuildFastFileAsync(
+        // Identity closure must use the authoritative Xenon loader/fixup oracle,
+        // not the older conservative raw-body scanner. Native T4Xenon zones can reuse
+        // or pack TechniqueSet graph objects in ways that make a flat aligned byte scan
+        // deliberately incomplete. OAT, however, resolves the real XAsset pool and has
+        // already proven exact root-for-root type order against the native XAsset table.
+        var nativeIdentityDir = Path.Combine(outputDirectory, "native_identity");
+        var nativeIdentity = await T4XenonNativeIdentityOracle.RunAsync(
             xboxFastFile,
+            nativeIdentityDir,
+            explicitUnlinkerExe,
             cancellationToken);
-        if (donorCatalog.FastFilesScanned != 1 || donorCatalog.ResolvedTechniqueSets == 0)
+        if (!nativeIdentity.TypeSequenceVerified)
+            throw new InvalidDataException("Known-good native identity oracle did not verify the complete root type sequence.");
+
+        var nativeTechsets = nativeIdentity.Entries
+            .Where(x => x.OatTypeName.Equals("techniqueset", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Index)
+            .ToList();
+        if (nativeTechsets.Count == 0)
+            throw new InvalidDataException("Known-good native identity oracle returned zero TechniqueSet roots.");
+
+        var duplicateNativeNames = nativeTechsets
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (duplicateNativeNames.Count != 0)
             throw new InvalidDataException(
-                "Known-good native fastfile did not produce a usable TechniqueSet donor catalog: " +
-                string.Join(" | ", donorCatalog.Warnings));
+                "Known-good native TechniqueSet identity list contains duplicate names and cannot be bound by identity: " +
+                string.Join(", ", duplicateNativeNames.Take(12)));
 
         var bridgeByPc = bridge.Mappings.ToDictionary(
             x => x.PcTechniqueSet,
@@ -100,7 +123,7 @@ public static class T4NuclearTechniqueClosurePlanner
         var conflictByPc = bridge.Conflicts.ToDictionary(
             x => x.PcTechniqueSet,
             StringComparer.OrdinalIgnoreCase);
-        var donorByName = donorCatalog.Donors.ToDictionary(
+        var donorByName = nativeTechsets.ToDictionary(
             x => x.Name,
             StringComparer.OrdinalIgnoreCase);
 
@@ -175,7 +198,7 @@ public static class T4NuclearTechniqueClosurePlanner
                     null,
                     null,
                     null,
-                    evidence + " The mapped Xbox identity is absent from the native donor catalog."));
+                    evidence + " The mapped Xbox identity is absent from the OAT-verified native TechniqueSet root set."));
                 continue;
             }
 
@@ -185,12 +208,14 @@ public static class T4NuclearTechniqueClosurePlanner
                 resolution,
                 xboxName,
                 support,
-                donor.AssetIndex,
-                donor.SourceOffset,
-                donor.NonNullTechniqueSlots,
-                donor.InlineTechniqueSlots,
-                donor.PackedTechniqueSlots,
-                evidence + $" Donor asset #{donor.AssetIndex:N0} body=0x{donor.SourceOffset:X}; nonNullSlots={donor.NonNullTechniqueSlots:N0}."));
+                donor.Index,
+                null,
+                null,
+                null,
+                null,
+                evidence +
+                $" OAT/native root identity #{donor.Index:N0} is the concrete Xenon TechniqueSet target. " +
+                "Raw serialized body ownership is intentionally deferred to the typed graph extractor."));
         }
 
         var materialResolved = rows.Count(x => x.Resolution == "MATERIAL_BRIDGE");
@@ -214,8 +239,8 @@ public static class T4NuclearTechniqueClosurePlanner
             "NUCLEAR STAGE 2: every row is one physical PC TechniqueSet root from the OAT-verified 426-root identity catalog.",
             "MATERIAL_BRIDGE rows are the strongest mapping class: one or more shared material identities directly prove the PC -> Xenon TechniqueSet transform.",
             "EXACT_NAME_NATIVE_FALLBACK is used only when the material bridge has no observation and the exact TechniqueSet identity exists in the same known-good native map.",
-            "No donor graph bytes are copied at this stage. Donor asset index/body offset merely authorizes the next typed extraction/rebase stage.",
-            $"Immediate graph-extraction coverage: {bound:N0}/{rows.Count:N0} PC TechniqueSet roots bind to {distinctTargets:N0} distinct Xenon TechniqueSet graph(s)."
+            "No donor graph bytes are copied at this stage. The OAT-verified native root index authorizes the next typed graph extraction/rebase stage; raw body offsets are deliberately not guessed.",
+            $"Immediate graph-extraction coverage: {bound:N0}/{rows.Count:N0} PC TechniqueSet roots bind by semantic identity to {distinctTargets:N0} distinct Xenon TechniqueSet graph target(s)."
         };
 
         var identityComplete = rows.Count != 0 && unresolved == 0;
@@ -293,10 +318,15 @@ public static class T4NuclearTechniqueClosurePlanner
         sb.AppendLine("DONOR-BOUND ROOTS");
         foreach (var row in r.Rows.Where(x => x.XboxDonorAssetIndex is not null))
         {
+            var donorLocation = row.XboxDonorSourceOffset is int offset
+                ? $"nativeRoot#{row.XboxDonorAssetIndex,5} @0x{offset:X8}"
+                : $"nativeRoot#{row.XboxDonorAssetIndex,5} via OAT identity";
+            var slotInfo = row.XboxNonNullTechniqueSlots is int slots
+                ? $"slots={slots}"
+                : "slots=<typed extractor pending>";
             sb.AppendLine(
                 $"  pcAsset#{row.PcAssetIndex,5} {row.PcTechniqueSet} -> {row.XboxTechniqueSet} | " +
-                $"{row.Resolution} | donorAsset#{row.XboxDonorAssetIndex,5} @0x{row.XboxDonorSourceOffset:X8} | " +
-                $"slots={row.XboxNonNullTechniqueSlots}");
+                $"{row.Resolution} | {donorLocation} | {slotInfo}");
         }
         sb.AppendLine();
 
