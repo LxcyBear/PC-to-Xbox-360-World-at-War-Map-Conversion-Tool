@@ -215,6 +215,25 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.CanEmitXboxMapFastFile ? 0 : 3;
             }
+            case "stage4-native-xanim" when args.Length >= 4:
+            {
+                var root = args[1];
+                var mapName = args[2];
+                var output = args[3];
+                var map = MapDiscovery.DiscoverSourceFolder(root)
+                    .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
+                var result = await NormalMapXAnimSerializerProof.RunAsync(map, output);
+                Console.WriteLine($"Stage 4 native Xbox XAnim serializer proof PASS: {result.MapName}");
+                Console.WriteLine($"Profile: {result.Profile}");
+                Console.WriteLine($"XAnim: {result.SerializedXAnim:N0}/{result.DeclaredXAnim:N0}");
+                Console.WriteLine($"Delta XAnim: {result.DeltaXAnim:N0}");
+                Console.WriteLine($"Xbox payload bytes: {result.SerializedBytes:N0}");
+                Console.WriteLine($"Report: {result.TextReportFile}");
+                Console.WriteLine("Stage-5 proof source updated: real 0x5C/12-bucket Xbox XAnim payloads.");
+                return result.Verified ? 0 : 3;
+            }
             case "stage4-alpha5-xmodel" or "stage4-alpha9c-xmodel" or "stage4-alpha9d-xmodel" or "stage4-alpha9e-xmodel" or "stage4-alpha9g-xmodel" when args.Length >= 4:
             {
                 var root = args[1];
@@ -467,6 +486,7 @@ static void PrintHelp()
     Console.WriteLine("  stage3-alpha4e-audit <patch_ui.ff> <report.txt>  Read-only second 62-pointer-run classification");
     Console.WriteLine("  stage4-normal-analyze <root> <map> <output>  Read-only normal-map FF/IWD conversion manifest");
     Console.WriteLine("  stage4-alpha2-build <root> <map> <output>    Start fail-closed Xbox serializer build workspace");
+    Console.WriteLine("  stage4-native-xanim <root> <map> <output>    Emit real 0x5C/12-bucket Xbox XAnim proof payloads for Stage 5");
     Console.WriteLine("  stage4-alpha9g-xmodel <root> <map> <output>  Prove XModel bodies; unresolved assets emit alpha9g rejected-forensics reports");
     Console.WriteLine("  stage4-alpha6-weapon <root> <map> <output>   Prove all WeaponDef fixed bodies in Xbox big-endian form");
     Console.WriteLine("  stage4-alpha7b-weapon <root> <map> <output>   Prove WeaponDef owned payloads + exact read-back");
