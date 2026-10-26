@@ -366,6 +366,26 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
             }
+            case "linker-v2-typed-closure" when args.Length >= 4:
+            {
+                var root = args[1];
+                var mapName = args[2];
+                var output = args[3];
+                var map = MapDiscovery.DiscoverSourceFolder(root)
+                    .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
+
+                var result = await NormalMapLinkerV2TypedClosurePlan.RunAsync(map, output);
+                Console.WriteLine($"Linker V2 typed closure: {result.MapName}");
+                Console.WriteLine($"existingXAnim={result.ExistingNamedXAnims:N0}; existingRawFile={result.ExistingNamedRawFiles:N0}");
+                Console.WriteLine($"iwdWeapons={result.IwdWeaponSources:N0}; iwdScripts={result.IwdScriptSources:N0}");
+                Console.WriteLine($"xanimPromotions={result.PromotedXAnimCandidates:N0}; rawFilePromotions={result.PromotedRawFileCandidates:N0}; residentMenus={result.ResidentMenuCandidates:N0}");
+                Console.WriteLine($"promotionEvidenceReady={result.PromotionEvidenceReady}; fullTypedClosureReady={result.FullTypedClosureReady}; verified={result.Verified}");
+                Console.WriteLine($"report: {result.TextReportFile}");
+                foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
+                return result.Verified ? 0 : 3;
+            }
             case "linker-v2-main-structural" when args.Length >= 4:
             {
                 var root = args[1];
@@ -515,6 +535,7 @@ static void PrintHelp()
     Console.WriteLine("  stage4-alpha9a-mixed <root> <map> <output>      Run mixed XAnim/XModel/Weapon/FX XAsset-order probe");
     Console.WriteLine("  link-load <pc_load.ff> [out.json]        Deterministic XAsset-stream graph + dependency-first Xbox plan");
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
+    Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output>  Emit current self-contained native main hardware diagnostic");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
