@@ -16,6 +16,8 @@ public sealed class NormalMapLinkerV2NativeSequenceDiagnosticResult
     public required int SyntheticDependencyRoots { get; init; }
     public required int DroppedSourceRoots { get; init; }
     public required int NativeScriptStrings { get; init; }
+    public required int NameContractErrors { get; init; }
+    public required IReadOnlyList<string> NameContractFailures { get; init; }
     public required int ReadBackErrors { get; init; }
     public required bool WrapperRoundTripVerified { get; init; }
     public required bool CandidateReady { get; init; }
@@ -271,6 +273,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(ffPath);
         TryDelete(Path.Combine(packageDir, "NATIVE_SEQUENCE_DB_TEST.txt"));
 
+        var nameContractFailures = AuditXAssetNameContracts(diagnosticRoots, diagnosticPayloads);
+        var nameContractErrors = nameContractFailures.Count;
+
         var zone = BuildZone(
             diagnosticRoots,
             diagnosticPayloads,
@@ -307,7 +312,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 sha = await Sha256Async(ffPath, cancellationToken);
         }
 
-        var ready = readBackErrors == 0 && roundTrip;
+        var ready = nameContractErrors == 0 && readBackErrors == 0 && roundTrip;
         if (!ready)
             TryDelete(ffPath);
 
@@ -321,6 +326,11 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"Synthetic dependency shells inserted: {synthetic:N0}");
         sb.AppendLine($"Source roots dropped because native family count is lower: {dropped:N0}");
         sb.AppendLine($"ScriptStrings reproduced in native value order: {nativeStrings.Count:N0}");
+        sb.AppendLine($"XAsset name-contract errors: {nameContractErrors:N0}");
+        foreach (var failure in nameContractFailures.Take(64))
+            sb.AppendLine("  NAME-CONTRACT: " + failure);
+        if (nameContractFailures.Count > 64)
+            sb.AppendLine($"  ... {nameContractFailures.Count - 64:N0} additional name-contract failure(s)");
         sb.AppendLine($"readBackErrors={readBackErrors:N0}; wrapperRoundTrip={roundTrip}; ready={ready}");
         sb.AppendLine($"sha256={sha ?? "<none>"}");
         sb.AppendLine();
@@ -353,6 +363,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             SyntheticDependencyRoots = synthetic,
             DroppedSourceRoots = dropped,
             NativeScriptStrings = nativeStrings.Count,
+            NameContractErrors = nameContractErrors,
+            NameContractFailures = nameContractFailures,
             ReadBackErrors = readBackErrors,
             WrapperRoundTripVerified = roundTrip,
             CandidateReady = ready,
@@ -1410,6 +1422,53 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sourceBytes.CopyTo(bytes.AsSpan(12 + n.Length + 1));
         // Final byte is the owned RawFile buffer terminator outside the logical len.
         return bytes;
+    }
+
+    private static IReadOnlyList<string> AuditXAssetNameContracts(
+        IReadOnlyList<LinkerV2CanonicalRoot> roots,
+        IReadOnlyList<StructuralPayload> payloads)
+    {
+        var failures = new List<string>();
+        for (var i = 0; i < Math.Min(roots.Count, payloads.Count); i++)
+        {
+            var root = roots[i];
+            var payload = payloads[i];
+            var nameOffset = root.XboxTypeName.ToLowerInvariant() switch
+            {
+                // T4 GfxImage keeps name as its final 32-bit field, not at +0.
+                "image" => 32,
+                // T4 LocalizeEntry is { value*, name* }.
+                "localize" => 4,
+                // Every other asset family emitted by this diagnostic has its
+                // canonical DB name pointer as the first 32-bit field.
+                _ => 0
+            };
+
+            if (payload.Bytes.Length < nameOffset + 4)
+            {
+                failures.Add(
+                    $"root#{i:N0} type={root.XboxTypeName} payload='{payload.Name}' is only {payload.Bytes.Length:N0} byte(s); " +
+                    $"name field +0x{nameOffset:X} is outside the payload");
+                continue;
+            }
+
+            var raw = BinaryPrimitives.ReadUInt32BigEndian(payload.Bytes.AsSpan(nameOffset, 4));
+            if (raw == 0)
+            {
+                failures.Add(
+                    $"root#{i:N0} type={root.XboxTypeName} payload='{payload.Name}' has NULL DB name pointer at +0x{nameOffset:X}");
+                continue;
+            }
+
+            var decoded = T4ZonePointer.Decode(raw);
+            if (decoded.Kind == T4ZonePointerKind.Offset && decoded.Block is null)
+            {
+                failures.Add(
+                    $"root#{i:N0} type={root.XboxTypeName} payload='{payload.Name}' has undecodable DB name pointer " +
+                    $"0x{raw:X8} at +0x{nameOffset:X}");
+            }
+        }
+        return failures;
     }
 
     private static StructuralPayload BuildNativeSequenceSyntheticPayload(
