@@ -53,6 +53,86 @@ public static class T4XboxTechniqueDonorCatalog
     private static readonly ConcurrentDictionary<string, Lazy<Task<T4XboxTechniqueDonorCatalogResult>>> Cache =
         new(StringComparer.OrdinalIgnoreCase);
 
+    public static async Task<T4XboxTechniqueDonorCatalogResult> BuildFastFileAsync(
+        string xboxFastFile,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(xboxFastFile))
+            return Empty(string.Empty, "Xbox donor fastfile is not configured.");
+
+        var full = Path.GetFullPath(xboxFastFile);
+        if (!File.Exists(full))
+            return Empty(Path.GetDirectoryName(full) ?? string.Empty, $"Xbox donor fastfile does not exist: {full}");
+
+        var warnings = new List<string>();
+        try
+        {
+            var cached = await FastFileAnalysisCache.GetZoneAsync(full, cancellationToken);
+            if (cached.Platform != WaWPlatform.Xbox360 || cached.Document.Endianness != Endian.Big)
+                return Empty(Path.GetDirectoryName(full) ?? string.Empty,
+                    $"Xbox donor fastfile is not Xbox360/big-endian: {cached.Platform}/{cached.Document.Endianness}");
+
+            var physical = cached.Document.Assets
+                .Where(a => a.TypeName.Equals("techset", StringComparison.OrdinalIgnoreCase) &&
+                            a.ReferenceKind is T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared)
+                .OrderBy(a => a.Index)
+                .ToList();
+
+            var rows = ScanExact(cached.Bytes, cached.Document, physical.Count, out var reason);
+            if (rows is null)
+                return Empty(Path.GetDirectoryName(full) ?? string.Empty,
+                    $"{Path.GetFileName(full)}: TechniqueSet donor identity refused: {reason}");
+
+            var donors = new List<T4XboxTechniqueDonor>(rows.Count);
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                var asset = physical[i];
+                donors.Add(new T4XboxTechniqueDonor(
+                    row.Name,
+                    full,
+                    cached.SourceSha256,
+                    asset.Index,
+                    row.Offset,
+                    row.NonNull,
+                    row.Inline,
+                    row.Packed,
+                    row.RemappedNonNull,
+                    $"exact single-file declared-count/order mapping in Xbox big-endian zone; fixedBody=0x{row.Offset:X}; slots={row.NonNull}"));
+            }
+
+            return new T4XboxTechniqueDonorCatalogResult
+            {
+                XboxGameFolder = Path.GetDirectoryName(full) ?? string.Empty,
+                FastFilesDiscovered = 1,
+                FastFilesScanned = 1,
+                FastFilesRejected = 0,
+                DeclaredTechniqueSets = physical.Count,
+                ResolvedTechniqueSets = donors.Count,
+                Donors = donors
+                    .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(x => x.AssetIndex)
+                    .ToList(),
+                Warnings = warnings
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            warnings.Add($"{Path.GetFileName(full)}: donor scan skipped: {ex.Message}");
+            return new T4XboxTechniqueDonorCatalogResult
+            {
+                XboxGameFolder = Path.GetDirectoryName(full) ?? string.Empty,
+                FastFilesDiscovered = 1,
+                FastFilesScanned = 0,
+                FastFilesRejected = 1,
+                DeclaredTechniqueSets = 0,
+                ResolvedTechniqueSets = 0,
+                Donors = Array.Empty<T4XboxTechniqueDonor>(),
+                Warnings = warnings
+            };
+        }
+    }
+
     public static Task<T4XboxTechniqueDonorCatalogResult> BuildAsync(
         string xboxGameFolder,
         CancellationToken cancellationToken = default)
