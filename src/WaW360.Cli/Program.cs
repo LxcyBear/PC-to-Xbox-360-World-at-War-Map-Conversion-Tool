@@ -386,6 +386,26 @@ static async Task<int> MainAsync(string[] args)
                 foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
                 return result.Verified ? 0 : 3;
             }
+            case "linker-v2-native-sequence" when args.Length >= 5:
+            {
+                var root = args[1];
+                var mapName = args[2];
+                var output = args[3];
+                var nativeOracle = args[4];
+                var map = MapDiscovery.DiscoverSourceFolder(root)
+                    .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
+
+                var result = await NormalMapLinkerV2StructuralMainEmitter.RunNativeSequenceDiagnosticAsync(
+                    map, output, nativeOracle);
+                Console.WriteLine($"Linker V2 native-sequence DB diagnostic: {result.MapName}");
+                Console.WriteLine($"nativeRoots={result.NativeRoots:N0}; reusedSource={result.ReusedSourceRoots:N0}; syntheticDependencies={result.SyntheticDependencyRoots:N0}; droppedSource={result.DroppedSourceRoots:N0}");
+                Console.WriteLine($"nativeScriptStrings={result.NativeScriptStrings:N0}; readBackErrors={result.ReadBackErrors:N0}; wrapperRoundTrip={result.WrapperRoundTripVerified}; ready={result.CandidateReady}");
+                Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<not emitted>"}");
+                Console.WriteLine($"report: {result.TextReportFile}");
+                return result.CandidateReady ? 0 : 3;
+            }
             case "linker-v2-main-structural" when args.Length >= 4:
             {
                 var root = args[1];
@@ -550,6 +570,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load <pc_load.ff> [out.json]        Deterministic XAsset-stream graph + dependency-first Xbox plan");
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
+    Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output>  Emit current self-contained native main hardware diagnostic");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
