@@ -506,7 +506,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 throw new InvalidDataException($"{Path.GetFileName(sourcePath)} {type} proof count mismatch: roots={assets.Count:N0}, proof={proof.Records.Count:N0}.");
             var fixedSize = type.ToLowerInvariant() switch
             {
-                "xanim" => 88,
+                "xanim" => 92,
                 "xmodel" => 228,
                 "weapon" => 0x9AC,
                 "fx" => 36,
@@ -906,16 +906,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
     private static bool IsSelfContainedXboxXAnim(byte[] blob)
     {
-        const int fixedSize = 88;
+        const int fixedSize = 92;
         if (blob.Length < fixedSize) return false;
 
         static bool SelfContained(uint value) =>
             value == 0 || value is T4ZonePointer.Following or T4ZonePointer.Insert;
 
-        // XAnimParts::name plus every serialized owned pointer in the fixed body.
+        // Xbox T4 XAnimParts is 0x5C. name remains at +0x00; the expanded
+        // 12-byte boneCount table shifts the ten owned pointer fields to +0x34..+0x58.
         if (!SelfContained(BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(0, 4))))
             return false;
-        for (var offset = 48; offset <= 84; offset += 4)
+        for (var offset = 52; offset <= 88; offset += 4)
         {
             var value = BinaryPrimitives.ReadUInt32BigEndian(blob.AsSpan(offset, 4));
             if (!SelfContained(value))
@@ -1066,7 +1067,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         {
             var fixedSize = p.TypeName.ToLowerInvariant() switch
             {
-                "xanim" => 88,
+                "xanim" => 92,
                 "xmodel" => 228,
                 "weapon" => 0x9AC,
                 "fx" => 36,
