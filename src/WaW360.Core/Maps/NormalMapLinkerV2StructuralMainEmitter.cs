@@ -1669,8 +1669,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             var payload = payloads[i];
             var nameOffset = root.XboxTypeName.ToLowerInvariant() switch
             {
-                // T4 GfxImage keeps name as its final 32-bit field, not at +0.
-                "image" => 32,
+                // Xbox T4 GfxImage is 0x28 bytes; name is its final 32-bit field at +0x24.
+                "image" => 36,
                 // T4 LocalizeEntry is { value*, name* }.
                 "localize" => 4,
                 // Every other asset family emitted by this diagnostic has its
@@ -1745,13 +1745,13 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
     private static byte[] BuildImageShell(string name)
     {
-        // T4 GfxImage is 36 bytes on the 32-bit console ABI. Unlike most simple
-        // roots its name pointer is the final field at +0x20, not the first field.
+        // Xbox T4 GfxImage is 0x28 / 40 bytes. Unlike most simple roots its
+        // canonical DB name pointer is the final 32-bit field at +0x24.
         // texture/loadDef remains null; dimensions/category/flags remain zero.
         var n = Encoding.ASCII.GetBytes(name);
-        var bytes = new byte[36 + n.Length + 1];
-        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(32, 4), T4ZonePointer.Following);
-        n.CopyTo(bytes.AsSpan(36));
+        var bytes = new byte[40 + n.Length + 1];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(36, 4), T4ZonePointer.Following);
+        n.CopyTo(bytes.AsSpan(40));
         return bytes;
     }
 
