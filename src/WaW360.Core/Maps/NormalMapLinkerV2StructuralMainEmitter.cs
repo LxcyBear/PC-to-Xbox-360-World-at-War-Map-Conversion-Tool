@@ -97,10 +97,29 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var blockPlan = blockPlanOverride ?? await NormalMapLinkerV2DestinationBlockPlan.RunAsync(map, outputRoot, source, cancellationToken);
         var script = scriptOverride ?? await NormalMapLinkerV2ScriptStringMerge.RunAsync(map, outputRoot, source, cancellationToken);
 
-        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_structural");
-        var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural");
-        var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_tracked_shell");
-        var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_structural_script_closure");
+        // WaW360Converter XBOX ROOT ORDER HARDWARE DIAGNOSTIC
+        //
+        // PC source XAsset ordinal order is provenance evidence, not the final
+        // Xbox serialization order. Emit roots type-major by Xbox XAsset id,
+        // retaining stable source provenance order inside each Xbox asset family.
+        // This exact list is shared by the XAsset table, payload construction and
+        // read-back verification so table/payload ordering cannot diverge.
+        var emissionRoots = rootPolicy.Roots
+            .OrderBy(r => r.XboxTypeId)
+            .ThenBy(r => r.CanonicalSourceOrdinal)
+            .ToList();
+
+        var reorderedRootCount = 0;
+        for (var i = 0; i < emissionRoots.Count; i++)
+        {
+            if (emissionRoots[i].CanonicalSourceOrdinal != i)
+                reorderedRootCount++;
+        }
+
+        var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_main_xanim_native_layout");
+        var packageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout");
+        var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_tracked_shell");
+        var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_script_closure");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
         Directory.CreateDirectory(conservativePackageDir);
@@ -131,7 +150,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         {
             "STRUCTURAL NATIVE DIAGNOSTIC ONLY: every emitted main-graph root is rebuilt as a self-contained Xbox-endian object; source packed/shared child pointers are not copied or nulled in-place.",
             "This path is intentionally separate from the production main gate. A native boot/load result validates XFile/XAsset/block/wrapper structure, not gameplay, graphics, collision, shader or audio fidelity.",
-            "The old smoke XFile header strategy (zoneSize=entire file and one identical capacity in all seven blocks) is retired from this path."
+            "The old smoke XFile header strategy (zoneSize=entire file and one identical capacity in all seven blocks) is retired from this path.",
+            $"XBOX ROOT ORDER DIAGNOSTIC: {reorderedRootCount:N0}/{emissionRoots.Count:N0} root position(s) differ from canonical source ordinal order after stable Xbox type-major sorting."
         };
 
         if (!source.Verified) blockers.Add("Canonical source archive is not verified.");
@@ -182,12 +202,12 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             }
         }
 
-        var rootPayloads = new List<StructuralPayload>(rootPolicy.Roots.Count);
+        var rootPayloads = new List<StructuralPayload>(emissionRoots.Count);
         var fallbackCount = 0;
         var byType = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         if (blockers.Count == 0)
         {
-            foreach (var root in rootPolicy.Roots.OrderBy(r => r.CanonicalSourceOrdinal))
+            foreach (var root in emissionRoots)
             {
                 if (!contexts.TryGetValue(root.SourceFastFile, out var ctx))
                 {
@@ -227,7 +247,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         if (blockers.Count == 0)
         {
-            var zone = BuildZone(rootPolicy.Roots, rootPayloads, canonicalStrings, blockPlan, out headerZoneSize);
+            var zone = BuildZone(emissionRoots, rootPayloads, canonicalStrings, blockPlan, out headerZoneSize);
             zoneBytes = zone.LongLength;
             correctZoneSize = headerZoneSize == checked((uint)(zone.Length - FastFileConstants.T4XFileHeaderSize));
             perBlockHeader = VerifyBlockHeader(zone, blockPlan);
@@ -237,7 +257,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             if (blockers.Count == 0)
             {
                 await File.WriteAllBytesAsync(zonePath, zone, cancellationToken);
-                readBackErrors = VerifyReadBack(zonePath, zone, rootPolicy.Roots, rootPayloads, canonicalStrings, blockPlan);
+                readBackErrors = VerifyReadBack(zonePath, zone, emissionRoots, rootPayloads, canonicalStrings, blockPlan);
                 if (readBackErrors != 0)
                     blockers.Add($"Independent structural zone read-back reported {readBackErrors:N0} error(s).");
             }
@@ -253,7 +273,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         }
 
         var candidateReady = blockers.Count == 0 &&
-                             rootPayloads.Count == rootPolicy.Roots.Count &&
+                             rootPayloads.Count == emissionRoots.Count &&
                              correctZoneSize && perBlockHeader && readBackErrors == 0 && wrapperRoundTrip;
 
         // Emit a second main-FF hardware candidate from the SAME analyzed graph. It keeps all
@@ -265,17 +285,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var conservativeReadBackErrors = 0;
         var conservativeRoundTrip = false;
         string? conservativeSha = null;
-        if (blockers.Count == 0 && rootPayloads.Count == rootPolicy.Roots.Count)
+        if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             var conservativePayloads = BuildTrackedShellVariant(rootPayloads);
-            var conservativeZone = BuildZone(rootPolicy.Roots, conservativePayloads, canonicalStrings, blockPlan, out var conservativeHeaderZoneSize);
+            var conservativeZone = BuildZone(emissionRoots, conservativePayloads, canonicalStrings, blockPlan, out var conservativeHeaderZoneSize);
             var conservativeSizeOk = conservativeHeaderZoneSize == checked((uint)(conservativeZone.Length - FastFileConstants.T4XFileHeaderSize));
             var conservativeBlockOk = VerifyBlockHeader(conservativeZone, blockPlan);
             if (conservativeSizeOk && conservativeBlockOk)
             {
                 await File.WriteAllBytesAsync(conservativeZonePath, conservativeZone, cancellationToken);
                 conservativeReadBackErrors = VerifyReadBack(
-                    conservativeZonePath, conservativeZone, rootPolicy.Roots, conservativePayloads, canonicalStrings, blockPlan);
+                    conservativeZonePath, conservativeZone, emissionRoots, conservativePayloads, canonicalStrings, blockPlan);
                 if (conservativeReadBackErrors == 0)
                 {
                     var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
@@ -287,7 +307,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                         conservativeReady = true;
                         await WriteTrackedShellReadmeAsync(
                             conservativePackageDir, source.CanonicalBaseName, conservativeSha,
-                            rootPolicy.Roots.Count, cancellationToken);
+                            emissionRoots.Count, cancellationToken);
                     }
                 }
             }
@@ -306,14 +326,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         string? scriptClosureSha = null;
         var scriptClosureMenusRemoved = 0;
         var scriptClosureRawPromoted = 0;
-        if (blockers.Count == 0 && rootPayloads.Count == rootPolicy.Roots.Count)
+        if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             try
             {
                 var typedClosure = await LoadTypedClosureAsync(map, outputRoot, source, cancellationToken);
                 var trackedShellPayloads = BuildTrackedShellVariant(rootPayloads);
                 var scriptVariant = await BuildScriptClosureVariantAsync(
-                    rootPolicy.Roots,
+                    emissionRoots,
                     trackedShellPayloads,
                     typedClosure,
                     cancellationToken);
@@ -382,7 +402,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 .Where(p => TrackedTypes.Contains(p.TypeName, StringComparer.OrdinalIgnoreCase) && !p.Fallback)
                 .GroupBy(p => p.TypeName, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
-            notes.Add($"NATIVE GATE OPEN: structural main FF emitted with {rootPolicy.Roots.Count:N0} authoritative source roots and {fallbackCount:N0} explicitly reduced/fallback payload(s).");
+            notes.Add($"NATIVE GATE OPEN: structural main FF emitted with {emissionRoots.Count:N0} authoritative source roots and {fallbackCount:N0} explicitly reduced/fallback payload(s).");
             notes.Add($"REAL PAYLOAD PROMOTION: total={promoted.Values.Sum():N0}; " +
                       string.Join(", ", TrackedTypes.Select(t => $"{t}={promoted.GetValueOrDefault(t):N0}")) +
                       ". Every promoted proof blob passed its typed self-contained-pointer audit.");
@@ -443,7 +463,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ScriptClosureFastFileSha256 = scriptClosureSha,
             ScriptClosureResidentMenusRemoved = scriptClosureMenusRemoved,
             ScriptClosureRawFilesPromoted = scriptClosureRawPromoted,
-            XboxAssets = rootPolicy.Roots.Count,
+            XboxAssets = emissionRoots.Count,
             ScriptStrings = canonicalStrings.Values.Count + (canonicalStrings.HasNullSentinel ? 1 : 0),
             PayloadsBuilt = rootPayloads.Count,
             FallbackPayloads = fallbackCount,
@@ -768,6 +788,21 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         NormalMapLinkerV2DestinationBlockPlanResult blockPlan,
         out uint headerZoneSize)
     {
+        if (roots.Count != payloads.Count)
+            throw new InvalidDataException(
+                $"XASSET/PAYLOAD ORDER GUARD: roots={roots.Count:N0}, payloads={payloads.Count:N0}.");
+
+        for (var i = 0; i < roots.Count; i++)
+        {
+            var payloadTypeId = T4XboxAssetTypeMap.GetXboxTypeId(payloads[i].TypeName);
+            if (payloadTypeId != roots[i].XboxTypeId)
+            {
+                throw new InvalidDataException(
+                    $"XASSET/PAYLOAD ORDER GUARD: index {i:N0} root={roots[i].XboxTypeName}(0x{roots[i].XboxTypeId:X}) " +
+                    $"payload={payloads[i].TypeName}(0x{payloadTypeId:X}).");
+            }
+        }
+
         using var ms = new MemoryStream();
         for (var i = 0; i < 9; i++) WriteU32(ms, 0);
 
@@ -786,7 +821,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ms.WriteByte(0);
         }
 
-        foreach (var root in roots.OrderBy(r => r.CanonicalSourceOrdinal))
+        foreach (var root in roots)
         {
             WriteU32(ms, checked((uint)root.XboxTypeId));
             WriteU32(ms, T4ZonePointer.Following);
@@ -1040,7 +1075,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 
         var ordered = keptRoots
             .Select((root, i) => (root, payload: keptPayloads[i]))
-            .OrderBy(x => x.root.CanonicalSourceOrdinal)
+            .OrderBy(x => x.root.XboxTypeId)
+            .ThenBy(x => x.root.CanonicalSourceOrdinal)
             .ToList();
 
         return new ScriptClosureVariant(
