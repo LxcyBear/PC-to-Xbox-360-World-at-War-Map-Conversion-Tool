@@ -421,7 +421,11 @@ static async Task<int> MainAsync(string[] args)
                     .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
                 if (map is null)
                     throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
-                var result = await NormalMapLinkerV2StructuralMainEmitter.RunAsync(map, output);
+                var nativeBlockOracle = args.Length >= 5 ? args[4] : null;
+                var result = await NormalMapLinkerV2StructuralMainEmitter.RunAsync(
+                    map,
+                    output,
+                    nativeBlockOracleFastFile: nativeBlockOracle);
                 Console.WriteLine($"Linker V2 structural main emitter: {result.MapName}");
                 Console.WriteLine($"payloads={result.PayloadsBuilt:N0}; fallback={result.FallbackPayloads:N0}; assets={result.XboxAssets:N0}");
                 Console.WriteLine($"zone={result.ZoneBytes:N0}B; ff={result.FastFileBytes:N0}B; readBackErrors={result.ReadBackErrors:N0}");
@@ -431,6 +435,8 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"tracked-shell package: {result.ConservativeHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"scriptClosureReady={result.ScriptClosureCandidateReady}; residentMenusRemoved={result.ScriptClosureResidentMenusRemoved:N0}; rawFilesPromoted={result.ScriptClosureRawFilesPromoted:N0}; readBackErrors={result.ScriptClosureReadBackErrors:N0}; wrapperRoundTrip={result.ScriptClosureWrapperRoundTripVerified}");
                 Console.WriteLine($"script-closure package: {result.ScriptClosureHardwarePackageDirectory ?? "<not emitted>"}");
+                Console.WriteLine($"nativeBlockReady={result.NativeBlockCandidateReady}; readBackErrors={result.NativeBlockReadBackErrors:N0}; wrapperRoundTrip={result.NativeBlockWrapperRoundTripVerified}");
+                Console.WriteLine($"native-block package: {result.NativeBlockHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
                 foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
                 return result.Verified ? 0 : 3;
@@ -613,7 +619,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
-    Console.WriteLine("  linker-v2-main-structural <root> <map> <output>  Emit current self-contained native main hardware diagnostic");
+    Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  native-oat-identity <native.ff> <output-dir> [Unlinker.exe]  Extract exact native Xbox (index,type,name) sequence through pinned OAT Xenon");
