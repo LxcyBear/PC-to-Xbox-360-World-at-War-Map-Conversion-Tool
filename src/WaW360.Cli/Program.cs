@@ -405,6 +405,8 @@ static async Task<int> MainAsync(string[] args)
                 foreach (var failure in result.NameContractFailures.Take(32))
                     Console.WriteLine("NAME-CONTRACT: " + failure);
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<not emitted>"}");
+                Console.WriteLine($"allNameShellReady={result.AllShellCandidateReady}; nameContractErrors={result.AllShellNameContractErrors:N0}; readBackErrors={result.AllShellReadBackErrors:N0}; wrapperRoundTrip={result.AllShellWrapperRoundTripVerified}");
+                Console.WriteLine($"all-name-shell package: {result.AllShellHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
                 return result.CandidateReady ? 0 : 3;
             }
