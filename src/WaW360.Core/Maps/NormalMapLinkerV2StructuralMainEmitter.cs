@@ -251,7 +251,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             if (s.RawPointer == 0) continue;
             if (string.IsNullOrWhiteSpace(s.Value) || s.Value.StartsWith("<alias ", StringComparison.Ordinal))
                 throw new InvalidDataException(
-                    $"Native ScriptString #{s.Index} could not be resolved to a concrete value.");
+                    $"Native ScriptString #{s.Index} could not be resolved to a concrete value: " +
+                    $"raw=0x{s.RawPointer:X8} ({T4ZonePointer.Describe(s.RawPointer)}).");
             nativeValues.Add(s.Value);
         }
         var nativeScriptTable = new CanonicalScriptTable(nullIndices.Count == 1, nativeValues);
