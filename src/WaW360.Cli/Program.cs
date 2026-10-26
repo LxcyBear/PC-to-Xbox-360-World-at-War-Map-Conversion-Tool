@@ -407,6 +407,8 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"allNameShellReady={result.AllShellCandidateReady}; nameContractErrors={result.AllShellNameContractErrors:N0}; readBackErrors={result.AllShellReadBackErrors:N0}; wrapperRoundTrip={result.AllShellWrapperRoundTripVerified}");
                 Console.WriteLine($"all-name-shell package: {result.AllShellHardwarePackageDirectory ?? "<not emitted>"}");
+                Console.WriteLine($"nativeFootprintReady={result.NativeFootprintCandidateReady}; nativeZone={result.NativeOracleZoneBytes:N0}B; candidateZone={result.NativeFootprintCandidateZoneBytes:N0}B; readBackErrors={result.NativeFootprintReadBackErrors:N0}; wrapperRoundTrip={result.NativeFootprintWrapperRoundTripVerified}");
+                Console.WriteLine($"native-footprint package: {result.NativeFootprintHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
                 return result.CandidateReady ? 0 : 3;
             }
