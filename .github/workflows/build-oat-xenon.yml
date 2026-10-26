@@ -1,4 +1,5 @@
 name: Build pinned OAT Xenon
+# Cloud-build trigger: native identity oracle
 
 on:
   workflow_dispatch:
