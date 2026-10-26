@@ -134,6 +134,8 @@ public static class T4XenonNativeIdentityOracle
         process.BeginErrorReadLine();
 
         await process.WaitForExitAsync(cancellationToken);
+        // Ensure asynchronous stdout/stderr event handlers have drained before parsing.
+        process.WaitForExit();
 
         var combined = new StringBuilder();
         combined.AppendLine("STDOUT");
