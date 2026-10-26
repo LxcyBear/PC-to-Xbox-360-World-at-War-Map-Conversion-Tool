@@ -20,8 +20,15 @@ $newCase = @'
                     // Capture the COM event fields BEFORE FreeEventInfo.
                     uint exceptionAddress = EventInfo.Info.Address;
                     uint exceptionThreadId = 0;
+                    IXboxThread exceptionThread = null;
                     string exceptionMessage = null;
-                    try { exceptionThreadId = EventInfo.Info.Thread.ThreadId; } catch { }
+                    try
+                    {
+                        exceptionThread = EventInfo.Info.Thread;
+                        if (exceptionThread != null)
+                            exceptionThreadId = exceptionThread.ThreadId;
+                    }
+                    catch { }
                     try { exceptionMessage = EventInfo.Info.Message; } catch { }
 
                     if (exceptionMessage != null)
@@ -29,7 +36,7 @@ $newCase = @'
                     else
                         Log.WriteLine("Exception @0x" + exceptionAddress.ToString("X8") + " TID=0x" + exceptionThreadId.ToString("X8"));
 
-                    CaptureFirstExceptionContext(exceptionAddress, exceptionThreadId);
+                    CaptureFirstExceptionContext(exceptionAddress, exceptionThreadId, exceptionThread);
 
                     try { jtag.DebugTarget.FreeEventInfo(EventInfo.Info); } catch { }
                     breakThreadId = exceptionThreadId;
@@ -67,7 +74,7 @@ $helpers = @'
         private static readonly object exceptionCaptureLock = new object();
         private static bool firstExceptionCaptured = false;
 
-        private static void CaptureFirstExceptionContext(uint exceptionAddress, uint threadId)
+        private static void CaptureFirstExceptionContext(uint exceptionAddress, uint threadId, IXboxThread exceptionThread)
         {
             lock (exceptionCaptureLock)
             {
@@ -88,15 +95,32 @@ $helpers = @'
 
             try
             {
-                int n = GetThreadIndexById(threadId);
-                if (n < 0)
+                IXboxThread thread = exceptionThread;
+
+                // Fall back to enumeration only if the event did not retain a thread object.
+                if (thread == null)
                 {
-                    sb.AppendLine("ERROR: faulting thread was not present in DebugTarget.Threads.");
+                    int n = GetThreadIndexById(threadId);
+                    if (n >= 0)
+                        thread = jtag.DebugTarget.Threads[n];
+                }
+
+                if (thread == null)
+                {
+                    sb.AppendLine("ERROR: no faulting IXboxThread object was available.");
                 }
                 else
                 {
-                    int[] r32 = GetThreadRegisters32(n);
-                    long[] r64 = GetThreadRegisters64(n);
+                    IXboxStackFrame frame = thread.TopOfStack;
+                    frame.FlushRegisterChanges();
+
+                    int[] r32 = new int[5];
+                    long[] r64 = new long[33];
+
+                    for (int i = 0; i < 5; i++)
+                        frame.GetRegister32((XboxRegisters32)i, out r32[i]);
+                    for (int i = 0; i < 33; i++)
+                        frame.GetRegister64((XboxRegisters64)i, out r64[i]);
 
                     sb.AppendLine();
                     sb.AppendLine("REGISTERS");
@@ -163,7 +187,6 @@ $helpers = @'
             }
             catch { }
 
-            // Also mirror the context into the persistent Watson log.
             Log.Write(text);
         }
 
@@ -191,15 +214,22 @@ $helpers = @'
         }
 
 '@
+$helperPattern = '(?ms)^[ \t]*private static readonly object exceptionCaptureLock\s*=.*?(?=^[ \t]*public static void Play\(\))'
+$helperMatches = [regex]::Matches($source, $helperPattern)
 
-if (-not $source.Contains("private static void CaptureFirstExceptionContext(")) {
+if ($helperMatches.Count -gt 1) {
+    throw "Expected at most one first-exception helper block, found $($helperMatches.Count)."
+}
+elseif ($helperMatches.Count -eq 1) {
+    $helperRegex = [regex]::new($helperPattern)
+    $source = $helperRegex.Replace($source, $helpers, 1)
+    Write-Host "[WV] Upgraded existing first-exception helper methods."
+}
+else {
     if (-not $source.Contains($playMarker)) {
         throw "Play() insertion marker not found."
     }
     $source = $source.Replace($playMarker, $helpers + $playMarker)
-}
-else {
-    Write-Host "[WV] First-exception helper methods already present."
 }
 
 $backup = $debugger + ".before-first-exception-capture.bak"
