@@ -1874,7 +1874,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             "techset" => BuildFixedNameShell(216, name),
             "image" => BuildImageShell(name),
             "sound" => BuildSoundListEmpty(name),
-            "loaded_sound" => BuildFixedNameShell(12, name),
+            "loaded_sound" => BuildFixedNameShell(160, name),
             "weapon" => BuildFixedNameShell(0x9AC, name),
             "fx" => BuildFixedNameShell(36, name),
             "rawfile" => BuildRawFileEmpty(name),
