@@ -424,7 +424,13 @@ public static class T4XboxXAnimAssetConverter
 
                 case XboxQuatType.Simple:
                     outStreams.WritePackedIndices(bone.QuatIndices);
-                    foreach (var value in bone.SimpleQuatFrames) outStreams.RandomShort.Add(value);
+                    for (var frame = 0; frame < bone.QuatIndices.Length; frame++)
+                    {
+                        var q = checked(frame * 2);
+                        outStreams.RandomShort.Add(unchecked((short)T4XboxXAnimQuaternionCodec.EncodeSimple(
+                            bone.SimpleQuatFrames[q + 0],
+                            bone.SimpleQuatFrames[q + 1])));
+                    }
                     break;
 
                 case XboxQuatType.Normal:
@@ -459,7 +465,9 @@ public static class T4XboxXAnimAssetConverter
                     break;
 
                 case XboxQuatType.SimpleConstant:
-                    foreach (var value in bone.SimpleQuatFrames) outStreams.DataShort.Add(value);
+                    outStreams.DataShort.Add(unchecked((short)T4XboxXAnimQuaternionCodec.EncodeSimple(
+                        bone.SimpleQuatFrames[0],
+                        bone.SimpleQuatFrames[1])));
                     break;
 
                 case XboxQuatType.NormalConstant:
@@ -589,8 +597,9 @@ public static class T4XboxXAnimAssetConverter
         string name = "<packed>";
         if (IsInline(namePtr))
         {
-            (name, var bytesRead) = ReadCString(data, cursor);
-            cursor += bytesRead;
+            var readName = ReadCString(data, cursor);
+            name = readName.Value;
+            cursor += readName.Bytes;
         }
 
         if (expectedName is not null && !name.Equals(expectedName, StringComparison.Ordinal))
