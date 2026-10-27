@@ -540,6 +540,27 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-graph-emit" when args.Length >= 6:
+            {
+                var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
+                var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
+                var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
+                var expectedPixelShaders = args.Length >= 10 && int.TryParse(args[9], out var ep) ? ep : 897;
+                var result = await T4XenonRendererGraphEmitter.EmitAsync(
+                    args[1], args[2], args[3], args[4], args[5],
+                    canonicalBaseName, unlinker, expectedTechsets, expectedPixelShaders);
+                Console.WriteLine("NUCLEAR STAGE 4E real Xenon renderer byte emission");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}");
+                Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
+                Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
+                Console.WriteLine($"oatZeroWarningsZeroErrors={result.OatZeroWarningsZeroErrors}; readyForHardware={result.ReadyForHardware}");
+                Console.WriteLine($"candidate: {result.OutputFastFile}");
+                Console.WriteLine($"report:    {result.TextReportFile}");
+                Console.WriteLine($"manifest:  {result.JsonReportFile}");
+                if (!string.IsNullOrWhiteSpace(result.OatGateError))
+                    Console.WriteLine("OAT GATE: " + result.OatGateError);
+                return result.ReadyForHardware ? 0 : 4;
+            }
             case "xenon-graph-layout" when args.Length >= 6:
             {
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
@@ -936,6 +957,7 @@ static void PrintHelp()
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
+    Console.WriteLine("  xenon-graph-emit <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [unlinker.exe] [expected-techsets] [expected-pixelshaders]  Emit real Xenon renderer graph and run OAT hard gate");
     Console.WriteLine("  xenon-graph-layout <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [expected-techsets] [expected-pixelshaders]  Dry-run OAT-style renderer block allocation");
     Console.WriteLine("  xenon-graph-bind <dump-root> <native.ff> <out-dir> [expected-techsets] [expected-pixelshaders]  Bind fixed-up Xenon graph identities to exact native XAsset root slots");
     Console.WriteLine("  xenon-graph-plan <dump-root> <out-dir> [expected-techsets] [expected-pixelshaders]  Build deterministic Xenon graph serialization/dedupe plan");
