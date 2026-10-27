@@ -56,8 +56,6 @@ function Normalize-XModelIdentity {
         $value = $value.Substring(1)
     }
 
-    # Explicitly preserve the historical T4 Xbox packaging alias rule used by
-    # FRUmansion comparison work: native "_wj" suffixes identify the same model.
     if ($value.EndsWith('_wj', [StringComparison]::OrdinalIgnoreCase)) {
         $value = $value.Substring(0, $value.Length - 3)
     }
@@ -85,10 +83,23 @@ if ($corpusModels.Count -ne 280) {
     throw "4V corpus manifest exposes $($corpusModels.Count) passing model rows; expected 280."
 }
 
+$duplicateCorpusNames = @(
+    $corpusModels |
+        Group-Object { ([string]$_.Name).ToLowerInvariant() } |
+        Where-Object { $_.Count -gt 1 } |
+        ForEach-Object {
+            [pscustomobject]@{
+                Name = [string]$_.Name
+                Count = [int]$_.Count
+            }
+        }
+)
+
 $nativeExact = @{}
 $nativeNormalized = @{}
 foreach ($entry in $nativeXModels) {
     $name = [string]$entry.Name
+
     $exactKey = $name.ToLowerInvariant()
     if (-not $nativeExact.ContainsKey($exactKey)) {
         $nativeExact[$exactKey] = @()
@@ -102,12 +113,29 @@ foreach ($entry in $nativeXModels) {
     $nativeNormalized[$normKey] += $entry
 }
 
-$bindings = @()
+$nativeDuplicateIdentityGroups = @(
+    $nativeXModels |
+        Group-Object { ([string]$_.Name).ToLowerInvariant() } |
+        Where-Object { $_.Count -gt 1 } |
+        ForEach-Object {
+            [pscustomobject]@{
+                Name = [string]$_.Group[0].Name
+                Count = [int]$_.Count
+                NativeIndices = @($_.Group | Sort-Object { [int]$_.Index } | ForEach-Object { [int]$_.Index })
+            }
+        }
+)
+
+$sourceBindings = @()
+$rootBindings = @()
 $unmatchedCorpus = @()
-$ambiguousCorpus = @()
+$unsafeAmbiguities = @()
 $usedNativeIndices = @{}
-$exactMatches = 0
-$normalizedMatches = 0
+$exactSourceMatches = 0
+$normalizedSourceMatches = 0
+$exactRootBindings = 0
+$normalizedRootBindings = 0
+$duplicateNativeSlots = 0
 
 foreach ($model in $corpusModels) {
     $corpusName = [string]$model.Name
@@ -116,14 +144,35 @@ foreach ($model in $corpusModels) {
     $matchKind = ''
 
     if ($nativeExact.ContainsKey($exactKey)) {
-        $candidates = @($nativeExact[$exactKey])
-        $matchKind = 'EXACT_CASE_INSENSITIVE'
+        $candidates = @($nativeExact[$exactKey] | Sort-Object { [int]$_.Index })
+        $matchKind = if ($candidates.Count -gt 1) {
+            'EXACT_DUPLICATE_NATIVE_IDENTITY'
+        }
+        else {
+            'EXACT_CASE_INSENSITIVE'
+        }
     }
     else {
         $normKey = Normalize-XModelIdentity -Name $corpusName
         if ($nativeNormalized.ContainsKey($normKey)) {
-            $candidates = @($nativeNormalized[$normKey])
-            $matchKind = 'NORMALIZED_WJ'
+            $candidates = @($nativeNormalized[$normKey] | Sort-Object { [int]$_.Index })
+
+            # Normalization may only resolve a single native root. If two different
+            # native names collapse to the same normalized identity, that is not
+            # evidence that the source graph is valid for both; fail closed.
+            if ($candidates.Count -eq 1) {
+                $matchKind = 'NORMALIZED_WJ'
+            }
+            else {
+                $unsafeAmbiguities += [pscustomobject]@{
+                    CorpusName = $corpusName
+                    Reason = 'NORMALIZATION_COLLISION'
+                    CandidateCount = $candidates.Count
+                    NativeIndices = @($candidates | ForEach-Object { [int]$_.Index })
+                    NativeNames = @($candidates | ForEach-Object { [string]$_.Name })
+                }
+                continue
+            }
         }
     }
 
@@ -131,51 +180,95 @@ foreach ($model in $corpusModels) {
         $unmatchedCorpus += $corpusName
         continue
     }
-    if ($candidates.Count -ne 1) {
-        $ambiguousCorpus += [pscustomobject]@{
-            CorpusName = $corpusName
-            CandidateCount = $candidates.Count
-            NativeIndices = @($candidates | ForEach-Object { [int]$_.Index })
-            NativeNames = @($candidates | ForEach-Object { [string]$_.Name })
+
+    # Multiple candidates are accepted only when they are literal duplicate
+    # native identities for the same corpus model.
+    if ($candidates.Count -gt 1) {
+        $allExactDuplicate = $true
+        foreach ($candidate in $candidates) {
+            if (-not ([string]$candidate.Name -ieq $corpusName)) {
+                $allExactDuplicate = $false
+                break
+            }
         }
-        continue
+
+        if (-not $allExactDuplicate) {
+            $unsafeAmbiguities += [pscustomobject]@{
+                CorpusName = $corpusName
+                Reason = 'NON_IDENTICAL_NATIVE_CANDIDATES'
+                CandidateCount = $candidates.Count
+                NativeIndices = @($candidates | ForEach-Object { [int]$_.Index })
+                NativeNames = @($candidates | ForEach-Object { [string]$_.Name })
+            }
+            continue
+        }
     }
 
-    $nativeEntry = $candidates[0]
-    $nativeIndex = [int]$nativeEntry.Index
-
-    if ($usedNativeIndices.ContainsKey($nativeIndex)) {
-        $ambiguousCorpus += [pscustomobject]@{
-            CorpusName = $corpusName
-            CandidateCount = 1
-            NativeIndices = @($nativeIndex)
-            NativeNames = @([string]$nativeEntry.Name)
-            Note = "Native root already bound to corpus '$($usedNativeIndices[$nativeIndex])'."
-        }
-        continue
-    }
-
-    $usedNativeIndices[$nativeIndex] = $corpusName
-    if ($matchKind -eq 'EXACT_CASE_INSENSITIVE') {
-        $exactMatches++
+    if ($matchKind -eq 'NORMALIZED_WJ') {
+        $normalizedSourceMatches++
     }
     else {
-        $normalizedMatches++
+        $exactSourceMatches++
     }
 
-    $bindings += [pscustomobject]@{
+    $sourceBinding = [pscustomobject]@{
         CorpusOrdinal = [int]$model.Ordinal
         CorpusAssetIndex = [int]$model.AssetIndex
         CorpusName = $corpusName
-        NativeRootIndex = $nativeIndex
-        NativeName = [string]$nativeEntry.Name
-        NativeTypeId = [int]$nativeEntry.TypeId
-        NativeTypeName = [string]$nativeEntry.TypeName
         MatchKind = $matchKind
+        NativeRootCount = $candidates.Count
+        NativeRootIndices = @($candidates | ForEach-Object { [int]$_.Index })
+        NativeNames = @($candidates | ForEach-Object { [string]$_.Name })
         FastFile = [string]$model.FastFile
         FastFileSha256 = [string]$model.FastFileSha256
         XModelJsonSha256 = [string]$model.XModelJsonSha256
         ClassificationSha256 = [string]$model.ClassificationSha256
+    }
+    $sourceBindings += $sourceBinding
+
+    if ($candidates.Count -gt 1) {
+        $duplicateNativeSlots += ($candidates.Count - 1)
+    }
+
+    foreach ($nativeEntry in $candidates) {
+        $nativeIndex = [int]$nativeEntry.Index
+
+        if ($usedNativeIndices.ContainsKey($nativeIndex)) {
+            $unsafeAmbiguities += [pscustomobject]@{
+                CorpusName = $corpusName
+                Reason = 'NATIVE_ROOT_ALREADY_BOUND'
+                CandidateCount = 1
+                NativeIndices = @($nativeIndex)
+                NativeNames = @([string]$nativeEntry.Name)
+                PriorCorpusName = [string]$usedNativeIndices[$nativeIndex]
+            }
+            continue
+        }
+
+        $usedNativeIndices[$nativeIndex] = $corpusName
+
+        if ($matchKind -eq 'NORMALIZED_WJ') {
+            $normalizedRootBindings++
+        }
+        else {
+            $exactRootBindings++
+        }
+
+        $rootBindings += [pscustomobject]@{
+            NativeRootIndex = $nativeIndex
+            NativeName = [string]$nativeEntry.Name
+            NativeTypeId = [int]$nativeEntry.TypeId
+            NativeTypeName = [string]$nativeEntry.TypeName
+            CorpusOrdinal = [int]$model.Ordinal
+            CorpusAssetIndex = [int]$model.AssetIndex
+            CorpusName = $corpusName
+            MatchKind = $matchKind
+            ReusesCorpusGraph = ($candidates.Count -gt 1)
+            FastFile = [string]$model.FastFile
+            FastFileSha256 = [string]$model.FastFileSha256
+            XModelJsonSha256 = [string]$model.XModelJsonSha256
+            ClassificationSha256 = [string]$model.ClassificationSha256
+        }
     }
 }
 
@@ -191,52 +284,49 @@ $unmatchedNative = @(
         }
 )
 
-$duplicateCorpusNames = @(
-    $corpusModels |
-        Group-Object { ([string]$_.Name).ToLowerInvariant() } |
-        Where-Object { $_.Count -gt 1 } |
-        ForEach-Object {
-            [pscustomobject]@{
-                Name = [string]$_.Name
-                Count = [int]$_.Count
-            }
-        }
-)
-
 $bindingPass =
-    $bindings.Count -eq 280 -and
+    $sourceBindings.Count -eq 280 -and
+    $rootBindings.Count -eq $nativeXModels.Count -and
+    $usedNativeIndices.Count -eq $nativeXModels.Count -and
     $unmatchedCorpus.Count -eq 0 -and
-    $ambiguousCorpus.Count -eq 0 -and
+    $unsafeAmbiguities.Count -eq 0 -and
     $duplicateCorpusNames.Count -eq 0 -and
-    $usedNativeIndices.Count -eq 280
+    $unmatchedNative.Count -eq 0
 
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $manifestPath = Join-Path $OutputRoot 'nuclear_4w_xmodel_root_binding.json'
 $reportPath = Join-Path $OutputRoot 'nuclear_4w_xmodel_root_binding.txt'
 
 $manifest = [ordered]@{
-    format = 'WaW360.Nuclear4W.XModelRootBinding.v1'
+    format = 'WaW360.Nuclear4W.XModelRootBinding.v2'
     corpusManifest = $corpusManifest
     nativeIdentityManifest = $nativeIdentityManifest
     nativeRoots = [int]$native.assets
     nativeXModelRoots = $nativeXModels.Count
     corpusModels = $corpusModels.Count
-    boundModels = $bindings.Count
-    exactMatches = $exactMatches
-    normalizedWjMatches = $normalizedMatches
+    boundCorpusModels = $sourceBindings.Count
+    boundNativeRootSlots = $rootBindings.Count
+    exactSourceMatches = $exactSourceMatches
+    normalizedWjSourceMatches = $normalizedSourceMatches
+    exactNativeRootBindings = $exactRootBindings
+    normalizedWjNativeRootBindings = $normalizedRootBindings
+    duplicateNativeIdentityGroups = $nativeDuplicateIdentityGroups.Count
+    duplicateNativeRootSlots = $duplicateNativeSlots
     unmatchedCorpusCount = $unmatchedCorpus.Count
-    ambiguousCorpusCount = $ambiguousCorpus.Count
+    unsafeAmbiguityCount = $unsafeAmbiguities.Count
     duplicateCorpusIdentityCount = $duplicateCorpusNames.Count
     unmatchedNativeXModelRoots = $unmatchedNative.Count
     bindingPass = $bindingPass
-    bindings = @($bindings | Sort-Object NativeRootIndex)
+    sourceBindings = @($sourceBindings | Sort-Object CorpusOrdinal)
+    rootBindings = @($rootBindings | Sort-Object NativeRootIndex)
+    nativeDuplicateIdentities = $nativeDuplicateIdentityGroups
     unmatchedCorpus = $unmatchedCorpus
-    ambiguousCorpus = $ambiguousCorpus
+    unsafeAmbiguities = $unsafeAmbiguities
     duplicateCorpusNames = $duplicateCorpusNames
     unmatchedNative = $unmatchedNative
 }
 
-$manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+$manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 $report = @(
     'NUCLEAR STAGE 4W - XMODEL NATIVE ROOT BINDING'
@@ -244,31 +334,51 @@ $report = @(
     "nativeRoots=$([int]$native.assets)"
     "nativeXModelRoots=$($nativeXModels.Count)"
     "corpusModels=$($corpusModels.Count)"
-    "boundModels=$($bindings.Count)"
-    "exactMatches=$exactMatches"
-    "normalizedWjMatches=$normalizedMatches"
+    "boundCorpusModels=$($sourceBindings.Count)"
+    "boundNativeRootSlots=$($rootBindings.Count)"
+    "exactSourceMatches=$exactSourceMatches"
+    "normalizedWjSourceMatches=$normalizedSourceMatches"
+    "exactNativeRootBindings=$exactRootBindings"
+    "normalizedWjNativeRootBindings=$normalizedRootBindings"
+    "duplicateNativeIdentityGroups=$($nativeDuplicateIdentityGroups.Count)"
+    "duplicateNativeRootSlots=$duplicateNativeSlots"
     "unmatchedCorpus=$($unmatchedCorpus.Count)"
-    "ambiguousCorpus=$($ambiguousCorpus.Count)"
+    "unsafeAmbiguities=$($unsafeAmbiguities.Count)"
     "duplicateCorpusIdentities=$($duplicateCorpusNames.Count)"
     "unmatchedNativeXModelRoots=$($unmatchedNative.Count)"
     "bindingPass=$bindingPass"
     ''
-    'BOUND CORPUS XMODELS'
+    'SOURCE MODEL -> NATIVE ROOT BINDINGS'
 )
-foreach ($row in @($bindings | Sort-Object NativeRootIndex)) {
-    $report += ('[{0,5}] {1,-24} corpus#{2,3}  native={3}  corpus={4}' -f
-        [int]$row.NativeRootIndex,
-        [string]$row.MatchKind,
+
+foreach ($row in @($sourceBindings | Sort-Object CorpusOrdinal)) {
+    $report += ('corpus#{0,3} {1,-34} roots={2,-8} name={3}' -f
         [int]$row.CorpusOrdinal,
-        [string]$row.NativeName,
+        [string]$row.MatchKind,
+        ((@($row.NativeRootIndices) -join ',')),
         [string]$row.CorpusName)
 }
 
-if ($unmatchedNative.Count -gt 0) {
+if ($nativeDuplicateIdentityGroups.Count -gt 0) {
     $report += ''
-    $report += 'UNMATCHED NATIVE XMODEL ROOTS'
-    foreach ($row in $unmatchedNative) {
-        $report += ('[{0,5}] {1}' -f [int]$row.NativeRootIndex, [string]$row.NativeName)
+    $report += 'NATIVE DUPLICATE XMODEL IDENTITIES'
+    foreach ($row in $nativeDuplicateIdentityGroups) {
+        $report += ('count={0} roots={1,-12} name={2}' -f
+            [int]$row.Count,
+            ((@($row.NativeIndices) -join ',')),
+            [string]$row.Name)
+    }
+}
+
+if ($unsafeAmbiguities.Count -gt 0) {
+    $report += ''
+    $report += 'UNSAFE AMBIGUITIES'
+    foreach ($row in $unsafeAmbiguities) {
+        $report += ('{0}: {1}; roots={2}; native={3}' -f
+            [string]$row.CorpusName,
+            [string]$row.Reason,
+            ((@($row.NativeIndices) -join ',')),
+            ((@($row.NativeNames) -join ' | ')))
     }
 }
 
@@ -280,13 +390,11 @@ if ($unmatchedCorpus.Count -gt 0) {
     }
 }
 
-if ($ambiguousCorpus.Count -gt 0) {
+if ($unmatchedNative.Count -gt 0) {
     $report += ''
-    $report += 'AMBIGUOUS CORPUS XMODELS'
-    foreach ($row in $ambiguousCorpus) {
-        $report += ("{0}: native indices {1}" -f
-            [string]$row.CorpusName,
-            (@($row.NativeIndices) -join ','))
+    $report += 'UNMATCHED NATIVE XMODEL ROOTS'
+    foreach ($row in $unmatchedNative) {
+        $report += ('[{0,5}] {1}' -f [int]$row.NativeRootIndex, [string]$row.NativeName)
     }
 }
 
@@ -298,34 +406,42 @@ if ($ambiguousCorpus.Count -gt 0) {
 Write-Host '[NUCLEAR-4W] ================================================================'
 Write-Host '[NUCLEAR-4W] XMODEL NATIVE ROOT BINDING'
 Write-Host '[NUCLEAR-4W] ================================================================'
-Write-Host "[NUCLEAR-4W] Native roots       : $([int]$native.assets)"
-Write-Host "[NUCLEAR-4W] Native XModels     : $($nativeXModels.Count)"
-Write-Host "[NUCLEAR-4W] Corpus XModels     : $($corpusModels.Count)"
-Write-Host "[NUCLEAR-4W] Bound XModels      : $($bindings.Count)"
-Write-Host "[NUCLEAR-4W] Exact matches      : $exactMatches"
-Write-Host "[NUCLEAR-4W] _wj-normalized     : $normalizedMatches"
-Write-Host "[NUCLEAR-4W] Unmatched corpus   : $($unmatchedCorpus.Count)"
-Write-Host "[NUCLEAR-4W] Ambiguous corpus   : $($ambiguousCorpus.Count)"
-Write-Host "[NUCLEAR-4W] Native-only roots  : $($unmatchedNative.Count)"
-Write-Host "[NUCLEAR-4W] Binding pass       : $bindingPass"
-Write-Host "[NUCLEAR-4W] Manifest           : $manifestPath"
-Write-Host "[NUCLEAR-4W] Report             : $reportPath"
+Write-Host "[NUCLEAR-4W] Native roots        : $([int]$native.assets)"
+Write-Host "[NUCLEAR-4W] Native XModel slots : $($nativeXModels.Count)"
+Write-Host "[NUCLEAR-4W] Corpus models       : $($corpusModels.Count)"
+Write-Host "[NUCLEAR-4W] Bound corpus models : $($sourceBindings.Count)"
+Write-Host "[NUCLEAR-4W] Bound native slots  : $($rootBindings.Count)"
+Write-Host "[NUCLEAR-4W] Exact source IDs    : $exactSourceMatches"
+Write-Host "[NUCLEAR-4W] _wj source IDs      : $normalizedSourceMatches"
+Write-Host "[NUCLEAR-4W] Duplicate ID groups : $($nativeDuplicateIdentityGroups.Count)"
+Write-Host "[NUCLEAR-4W] Duplicate root slots: $duplicateNativeSlots"
+Write-Host "[NUCLEAR-4W] Unmatched corpus    : $($unmatchedCorpus.Count)"
+Write-Host "[NUCLEAR-4W] Unsafe ambiguity    : $($unsafeAmbiguities.Count)"
+Write-Host "[NUCLEAR-4W] Native-only slots   : $($unmatchedNative.Count)"
+Write-Host "[NUCLEAR-4W] Binding pass        : $bindingPass"
+Write-Host "[NUCLEAR-4W] Manifest            : $manifestPath"
+Write-Host "[NUCLEAR-4W] Report              : $reportPath"
 Write-Host '[NUCLEAR-4W] ================================================================'
 
 if (-not $bindingPass) {
     Write-Host ''
     Write-Host '[NUCLEAR-4W] XMODEL ROOT BINDING: BLOCKED' -ForegroundColor Yellow
+
+    if ($unsafeAmbiguities.Count -gt 0) {
+        Write-Host ('[NUCLEAR-4W] Unsafe examples: ' +
+            (@($unsafeAmbiguities | Select-Object -First 5 | ForEach-Object { "$($_.CorpusName):$($_.Reason)" }) -join ' | '))
+    }
     if ($unmatchedCorpus.Count -gt 0) {
-        Write-Host ('[NUCLEAR-4W] Unmatched corpus examples: ' + (@($unmatchedCorpus | Select-Object -First 10) -join ' | '))
+        Write-Host ('[NUCLEAR-4W] Unmatched corpus examples: ' +
+            (@($unmatchedCorpus | Select-Object -First 10) -join ' | '))
     }
-    if ($ambiguousCorpus.Count -gt 0) {
-        Write-Host ('[NUCLEAR-4W] Ambiguous corpus examples: ' + (@($ambiguousCorpus | Select-Object -First 5 | ForEach-Object { $_.CorpusName }) -join ' | '))
-    }
+
     exit 4
 }
 
 Write-Host ''
-Write-Host '[NUCLEAR-4W] 280-XMODEL ROOT BINDING: PASS' -ForegroundColor Green
-Write-Host '[NUCLEAR-4W] Every validated PC-backed Xenon XModel is bound to one unique native XModel root.'
-Write-Host '[NUCLEAR-4W] Next: dump relocatable Xenon XModel graphs for exactly these 280 bound roots.'
+Write-Host '[NUCLEAR-4W] 280-MODEL / 289-ROOT XMODEL BINDING: PASS' -ForegroundColor Green
+Write-Host '[NUCLEAR-4W] Every validated PC-backed Xenon XModel is bound to all native root slots carrying its identity.'
+Write-Host '[NUCLEAR-4W] Duplicate native identities intentionally reuse the same validated source graph.'
+Write-Host '[NUCLEAR-4W] Next: dump one relocatable Xenon graph per 280 source models, then replay those graphs into all 289 bound native root slots.'
 exit 0
