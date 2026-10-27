@@ -2,7 +2,7 @@ param(
     [string]$PcMapsRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps',
     [string]$MapName = 'nazi_zombie_FRUmansion',
     [string]$PcFastFile = '',
-    [string]$WaWInstallRoot = 'D:\\SteamLibrary\\steamapps\\common\\Call of Duty World at War',
+    [string]$WaWInstallRoot = 'D:\SteamLibrary\steamapps\common\Call of Duty World at War',
     [string]$OutputRoot = ''
 )
 
