@@ -201,14 +201,56 @@ Write-Host "[NUCLEAR-4U] Selected proof model          : $($selected.Name)"
 Write-Host "[NUCLEAR-4U] Selected LODs                 : $($selected.LodCount)"
 Write-Host "[NUCLEAR-4U] Selected GLTF bytes           : $($selected.LodBytes)"
 
-# OAT's XModel loader always consults partclassification.csv. An empty file is a
-# valid table and maps every unmatched bone to HITLOC_NONE, which is appropriate
-# for this geometry/layout proof. Do not invent classifications.
+# Recover the authoritative PC bone-name -> hit-location mapping from the
+# original fastfile before any Xenon import. This replaces the old empty proof
+# CSV and makes 4U a production-fidelity XModel round trip.
 $partClassification = Join-Path $pcDump 'partclassification.csv'
-[IO.File]::WriteAllText(
+$partClassificationManifest = Join-Path $OutputRoot 'pc_partclassification.json'
+
+Write-Host ''
+Write-Host '[NUCLEAR-4U] Recovering original PC XModel partClassification[]...'
+
+$classArgs = @(
+    'run',
+    '--project', '.\src\WaW360.Cli\WaW360.Cli.csproj',
+    '-c', 'Release',
+    '--',
+    'xmodel-partclassification',
+    $PcFastFile,
     $partClassification,
-    '',
-    [Text.UTF8Encoding]::new($false))
+    $partClassificationManifest
+)
+
+Push-Location $repo
+try {
+    & dotnet @classArgs
+    $classCode = $LASTEXITCODE
+}
+finally {
+    Pop-Location
+}
+
+if (-not (Test-Path -LiteralPath $partClassificationManifest -PathType Leaf)) {
+    throw "PC partClassification recovery did not emit its manifest: $partClassificationManifest"
+}
+
+$classResult = Get-Content -LiteralPath $partClassificationManifest -Raw | ConvertFrom-Json
+if ($classCode -ne 0 -or -not [bool]$classResult.Complete) {
+    throw ("PC partClassification recovery is incomplete: aligned={0}/{1}, modelsWithBones={2}, observed={3}, unresolvedStrings={4}, conflicts={5}, packedBoneNames={6}, packedPartClassification={7}" -f
+        [int]$classResult.AlignedXModels,
+        [int]$classResult.DeclaredXModels,
+        [int]$classResult.ModelsWithBones,
+        [int]$classResult.ModelsObserved,
+        [int]$classResult.UnresolvedScriptStrings,
+        [int]$classResult.Conflicts,
+        [int]$classResult.ModelsSkippedPackedBoneNames,
+        [int]$classResult.ModelsSkippedPackedClassification)
+}
+
+Write-Host "[NUCLEAR-4U] partClassification models     : $([int]$classResult.ModelsObserved) / $([int]$classResult.ModelsWithBones)"
+Write-Host "[NUCLEAR-4U] partClassification bone rows  : $(@($classResult.Rows).Count)"
+Write-Host "[NUCLEAR-4U] partClassification conflicts  : $([int]$classResult.Conflicts)"
+Write-Host "[NUCLEAR-4U] partClassification fidelity   : PASS"
 
 # This proof isolates the PC->Xenon XModel/XSurface conversion. Renderer and
 # physics payloads are separate stages, so dependencies are represented as OAT
@@ -457,6 +499,9 @@ $manifest = [ordered]@{
     selectedLodCount = $selected.LodCount
     selectedLodBytes = $selected.LodBytes
     partClassificationFile = $partClassification
+    partClassificationManifest = $partClassificationManifest
+    partClassificationComplete = [bool]$classResult.Complete
+    partClassificationRows = @($classResult.Rows).Count
     referenceDependencies = @($referenceAssets | ForEach-Object { [ordered]@{ type = $_.Type; name = $_.Name } })
     linkedFastFile = $linkedFastFile
     xenonLinkExitCode = $linkCode
@@ -475,7 +520,7 @@ $manifest = [ordered]@{
     layoutProbeAdvisory = $true
     xenonRoundTripPass = $roundTripPass
     bridgePass = $bridgePass
-    productionFidelityNote = 'partclassification.csv is intentionally empty in 4U; this proves Xenon XModel/XSurface structural conversion only. Preserve/reconstruct PC partClassification before bulk production promotion.'
+    productionFidelityNote = 'partclassification.csv is recovered from the original PC fastfile and is required complete before Xenon import.'
     sourcePolicy = @(
         'XModel geometry and skeleton metadata originate from the PC fastfile through OAT canonical JSON+GLTF export.',
         'The T4 Xenon OAT asset loader reconstructs the console-native XModel and XSurface representation.',
@@ -498,6 +543,7 @@ Write-Host "[NUCLEAR-4U] Missing 0xD4        : $([int]$layout.MissingD4Matches)"
 Write-Host "[NUCLEAR-4U] Legacy 0xE4         : $([int]$layout.LegacyE4Matches)"
 Write-Host "[NUCLEAR-4U] 0xD4 scan advisory  : $layoutProbeExact"
 Write-Host "[NUCLEAR-4U] Xenon round-trip    : $roundTripPass"
+Write-Host "[NUCLEAR-4U] Classification      : $(if ([bool]$classResult.Complete) { 'PASS' } else { 'FAIL' })"
 Write-Host "[NUCLEAR-4U] Bridge pass         : $bridgePass"
 Write-Host "[NUCLEAR-4U] Candidate           : $linkedFastFile"
 Write-Host "[NUCLEAR-4U] Manifest            : $manifestPath"
@@ -516,6 +562,6 @@ Write-Host '[NUCLEAR-4U] A real PC XModel survived canonical export, Xenon recon
 if (-not $layoutProbeExact) {
     Write-Host '[NUCLEAR-4U] NOTE: the old 4T body/name adjacency scan did not match this valid round-trip model; it is advisory only and must not veto the bridge.' -ForegroundColor Yellow
 }
-Write-Host '[NUCLEAR-4U] Fidelity fence: the proof uses an empty partclassification.csv. Recover PC bone classifications before bulk production promotion.'
-Write-Host '[NUCLEAR-4U] Next: preserve PC partClassification and scale the bridge across the complete 280-model corpus.'
+Write-Host '[NUCLEAR-4U] PC partClassification fidelity is preserved from the original source FF.'
+Write-Host '[NUCLEAR-4U] Next: scale this exact production-fidelity bridge across the complete 280-model corpus.'
 exit 0
