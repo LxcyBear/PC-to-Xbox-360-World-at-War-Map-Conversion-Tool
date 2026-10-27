@@ -60,38 +60,82 @@ function Add-SourceRoot {
 }
 
 function Resolve-SteamWaWRoot {
+    $steamRoots = New-Object 'System.Collections.Generic.List[string]'
+    $seenSteamRoots = @{}
+
     foreach ($registryPath in @('HKCU:\Software\Valve\Steam','HKLM:\SOFTWARE\WOW6432Node\Valve\Steam','HKLM:\SOFTWARE\Valve\Steam')) {
         try {
             $item = Get-ItemProperty -Path $registryPath -ErrorAction Stop
             foreach ($property in @('SteamPath', 'InstallPath')) {
                 if (-not ($item.PSObject.Properties.Name -contains $property)) { continue }
                 $steam = [string]$item.$property
-                if ([string]::IsNullOrWhiteSpace($steam)) { continue }
-                $manifest = Join-Path $steam 'steamapps\appmanifest_10090.acf'
-                if (Test-Path -LiteralPath $manifest -PathType Leaf) {
-                    foreach ($line in Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue) {
-                        if ($line -match '"installdir"\s+"([^"]+)"') {
-                            $candidate = Join-Path (Join-Path $steam 'steamapps\common') $matches[1]
-                            if (Test-Path -LiteralPath $candidate -PathType Container) {
-                                return (Resolve-Path -LiteralPath $candidate).Path
-                            }
-                        }
-                    }
-                }
-                foreach ($name in @('Call of Duty World at War', 'Call of Duty - World at War')) {
-                    $candidate = Join-Path $steam "steamapps\common\$name"
-                    if (Test-Path -LiteralPath $candidate -PathType Container) {
-                        return (Resolve-Path -LiteralPath $candidate).Path
-                    }
+                if ([string]::IsNullOrWhiteSpace($steam) -or -not (Test-Path -LiteralPath $steam -PathType Container)) { continue }
+                $fullSteam = (Resolve-Path -LiteralPath $steam).Path
+                $key = $fullSteam.ToLowerInvariant()
+                if (-not $seenSteamRoots.ContainsKey($key)) {
+                    $seenSteamRoots[$key] = $true
+                    $steamRoots.Add($fullSteam)
                 }
             }
         }
         catch {}
     }
 
+    foreach ($steam in @('C:\Program Files (x86)\Steam', 'C:\Program Files\Steam')) {
+        if (-not (Test-Path -LiteralPath $steam -PathType Container)) { continue }
+        $fullSteam = (Resolve-Path -LiteralPath $steam).Path
+        $key = $fullSteam.ToLowerInvariant()
+        if (-not $seenSteamRoots.ContainsKey($key)) {
+            $seenSteamRoots[$key] = $true
+            $steamRoots.Add($fullSteam)
+        }
+    }
+
+    $seenLibraries = @{}
+    foreach ($steam in $steamRoots) {
+        $libraries = New-Object 'System.Collections.Generic.List[string]'
+        $libraries.Add($steam)
+
+        $libraryFile = Join-Path $steam 'steamapps\libraryfolders.vdf'
+        if (Test-Path -LiteralPath $libraryFile -PathType Leaf) {
+            foreach ($line in Get-Content -LiteralPath $libraryFile -ErrorAction SilentlyContinue) {
+                if ($line -match '"path"\s+"([^"]+)"') {
+                    $libraryPath = ([string]$matches[1]).Replace('\\', '\')
+                    if (Test-Path -LiteralPath $libraryPath -PathType Container) {
+                        $libraries.Add((Resolve-Path -LiteralPath $libraryPath).Path)
+                    }
+                }
+            }
+        }
+
+        foreach ($library in $libraries) {
+            $libraryKey = $library.ToLowerInvariant()
+            if ($seenLibraries.ContainsKey($libraryKey)) { continue }
+            $seenLibraries[$libraryKey] = $true
+
+            $steamApps = Join-Path $library 'steamapps'
+            $manifest = Join-Path $steamApps 'appmanifest_10090.acf'
+            if (Test-Path -LiteralPath $manifest -PathType Leaf) {
+                foreach ($line in Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue) {
+                    if ($line -match '"installdir"\s+"([^"]+)"') {
+                        $candidate = Join-Path (Join-Path $steamApps 'common') $matches[1]
+                        if (Test-Path -LiteralPath $candidate -PathType Container) {
+                            return (Resolve-Path -LiteralPath $candidate).Path
+                        }
+                    }
+                }
+            }
+
+            foreach ($name in @('Call of Duty World at War', 'Call of Duty - World at War')) {
+                $candidate = Join-Path $steamApps "common\$name"
+                if (Test-Path -LiteralPath $candidate -PathType Container) {
+                    return (Resolve-Path -LiteralPath $candidate).Path
+                }
+            }
+        }
+    }
+
     foreach ($candidate in @(
-        'C:\Program Files (x86)\Steam\steamapps\common\Call of Duty World at War',
-        'C:\Program Files (x86)\Steam\steamapps\common\Call of Duty - World at War',
         'C:\Program Files\Activision\Call of Duty - World at War',
         'C:\Program Files (x86)\Activision\Call of Duty - World at War'
     )) {
@@ -419,9 +463,12 @@ $graphDir = Join-Path $graphOut 'xenon_image_graphs'
 $pixelDir = Join-Path $graphOut 'xenon_image_pixels'
 $headerDir = Join-Path $graphOut 'xenon_image_headers'
 
-$graphFiles = if (Test-Path -LiteralPath $graphDir -PathType Container) { @(Get-ChildItem -LiteralPath $graphDir -Filter '*.json' -File -Recurse) } else { @() }
-$pixelFiles = if (Test-Path -LiteralPath $pixelDir -PathType Container) { @(Get-ChildItem -LiteralPath $pixelDir -Filter '*.pixels.bin' -File -Recurse) } else { @() }
-$headerFiles = if (Test-Path -LiteralPath $headerDir -PathType Container) { @(Get-ChildItem -LiteralPath $headerDir -Filter '*.d3dtexture.bin' -File -Recurse) } else { @() }
+$graphFiles = @()
+$pixelFiles = @()
+$headerFiles = @()
+if (Test-Path -LiteralPath $graphDir -PathType Container) { $graphFiles = @(Get-ChildItem -LiteralPath $graphDir -Filter '*.json' -File -Recurse) }
+if (Test-Path -LiteralPath $pixelDir -PathType Container) { $pixelFiles = @(Get-ChildItem -LiteralPath $pixelDir -Filter '*.pixels.bin' -File -Recurse) }
+if (Test-Path -LiteralPath $headerDir -PathType Container) { $headerFiles = @(Get-ChildItem -LiteralPath $headerDir -Filter '*.d3dtexture.bin' -File -Recurse) }
 
 $graphCount = $graphFiles.Count
 $pixelCount = $pixelFiles.Count
@@ -536,6 +583,7 @@ if (-not $bridgePass) {
         Write-Host '[NUCLEAR-4R] No legitimate PC IWI/DDS source matched the native image identities.'
         if ($null -eq $resolvedWaWRoot) {
             Write-Host '[NUCLEAR-4R] A PC WaW install was not resolved; stock/common images therefore cannot be sourced yet.'
+            Write-Host "[NUCLEAR-4R] Override discovery with: -WaWInstallRoot '<your PC Call of Duty World at War folder>'"
         }
     }
     exit 4
