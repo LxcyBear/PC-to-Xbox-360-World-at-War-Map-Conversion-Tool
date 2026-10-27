@@ -677,6 +677,27 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-xmodel-replay" when args.Length >= 5:
+            {
+                var result = await T4XenonXModelReplayEmitter.EmitAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4]);
+
+                Console.WriteLine("NUCLEAR STAGE 4X-C standalone Xenon XModel replay");
+                Console.WriteLine($"model={result.ModelName}; roots={result.Roots:N0}; scripts={result.ScriptStrings:N0}; zoneBytes={result.ZoneBytes:N0}");
+                Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}");
+                Console.WriteLine($"exactBlocks={result.ExactBlockReplay}; exactZoneSize={result.ExactZoneSizeReplay}; exactDecompressed={result.ExactDecompressedSizeReplay}");
+                Console.WriteLine($"exactIdentity={result.ExactIdentitySequence}; oatZero={result.OatZeroWarningsZeroErrors}; graphRedumpExact={result.GraphRedumpExact}; wrapper={result.WrapperRoundTripVerified}");
+                Console.WriteLine($"replayPass={result.ReplayPass}");
+                Console.WriteLine($"candidate: {result.OutputFastFile}");
+                Console.WriteLine($"report:    {result.TextReportFile}");
+                Console.WriteLine($"manifest:  {result.JsonReportFile}");
+                foreach (var blocker in result.Blockers.Take(32))
+                    Console.WriteLine("BLOCKER: " + blocker);
+                return result.ReplayPass ? 0 : 4;
+            }
             case "xenon-image-replay" when args.Length >= 4:
             {
                 var unlinker = args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]) ? args[4] : null;
