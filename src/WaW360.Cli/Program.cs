@@ -1064,7 +1064,7 @@ static void PrintHelp()
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
-    Console.WriteLine("  xenon-graph-emit <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [unlinker.exe] [expected-techsets] [expected-pixelshaders]  Emit real Xenon renderer graph and run OAT hard gate");
+    Console.WriteLine("  xenon-graph-emit <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [unlinker.exe] [expected-techsets] [expected-pixelshaders] [image-graph-root] [expected-images] [image-validation-only]  Emit real Xenon renderer/image graph and run OAT hard gate");
     Console.WriteLine("  xenon-graph-layout <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [expected-techsets] [expected-pixelshaders]  Dry-run OAT-style renderer block allocation");
     Console.WriteLine("  xenon-graph-bind <dump-root> <native.ff> <out-dir> [expected-techsets] [expected-pixelshaders]  Bind fixed-up Xenon graph identities to exact native XAsset root slots");
     Console.WriteLine("  xenon-graph-plan <dump-root> <out-dir> [expected-techsets] [expected-pixelshaders]  Build deterministic Xenon graph serialization/dedupe plan");
