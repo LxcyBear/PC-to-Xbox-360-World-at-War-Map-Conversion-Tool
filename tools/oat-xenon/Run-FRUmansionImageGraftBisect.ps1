@@ -130,8 +130,11 @@ function Invoke-Probe {
 
     Push-Location $repo
     try {
-        & dotnet @args
+        $dotnetOutput = @(& dotnet @args 2>&1)
         $exitCode = $LASTEXITCODE
+        foreach ($line in $dotnetOutput) {
+            Write-Host ([string]$line)
+        }
     }
     finally {
         Pop-Location
