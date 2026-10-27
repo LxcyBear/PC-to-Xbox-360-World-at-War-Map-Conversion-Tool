@@ -2,7 +2,7 @@ param(
     [string]$PcMapsRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps',
     [string]$MapName = 'nazi_zombie_FRUmansion',
     [string]$PcFastFile = '',
-    [string]$WaWInstallRoot = 'D:\SteamLibrary\steamapps\common\Call of Duty World at War',
+    [string]$WaWInstallRoot = '',
     [string]$OutputRoot = ''
 )
 
@@ -27,7 +27,26 @@ function Add-UniquePath {
     if (-not $List.Contains($full)) { [void]$List.Add($full) }
 }
 
-function Find-SteamRoots {
+function Parse-SteamAppManifestInstallDir {
+    param([string]$ManifestPath)
+
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { return $null }
+
+    $installDir = $null
+    foreach ($line in Get-Content -LiteralPath $ManifestPath -ErrorAction SilentlyContinue) {
+        if ($line -match '"installdir"\s+"([^"]+)"') {
+            $installDir = $matches[1]
+            break
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($installDir)) { return $null }
+
+    $steamApps = Split-Path -Parent $ManifestPath
+    return (Join-Path (Join-Path $steamApps 'common') $installDir)
+}
+
+function Find-SteamLibraryRoots {
     $roots = New-Object 'System.Collections.Generic.List[string]'
 
     foreach ($registryPath in @(
@@ -46,23 +65,27 @@ function Find-SteamRoots {
         catch {}
     }
 
-    foreach ($common in @(
-        'C:\Program Files (x86)\Steam',
-        'C:\Program Files\Steam',
-        'D:\Steam',
-        'D:\SteamLibrary',
-        'E:\SteamLibrary',
-        'F:\SteamLibrary'
-    )) {
-        Add-UniquePath -List $roots -Path $common
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        $root = $drive.Root
+        foreach ($relative in @(
+            'Steam',
+            'SteamLibrary',
+            'Games\Steam',
+            'Games\SteamLibrary',
+            'Program Files (x86)\Steam',
+            'Program Files\Steam'
+        )) {
+            Add-UniquePath -List $roots -Path (Join-Path $root $relative)
+        }
     }
 
-    $seed = @($roots)
-    foreach ($steam in $seed) {
+    # Expand libraryfolders.vdf from every discovered Steam client/library root.
+    $queue = @($roots)
+    foreach ($steam in $queue) {
         $vdf = Join-Path $steam 'steamapps\libraryfolders.vdf'
         if (-not (Test-Path -LiteralPath $vdf -PathType Leaf)) { continue }
 
-        foreach ($line in Get-Content -LiteralPath $vdf) {
+        foreach ($line in Get-Content -LiteralPath $vdf -ErrorAction SilentlyContinue) {
             if ($line -match '"path"\s+"([^"]+)"') {
                 $path = $matches[1] -replace '\\\\', '\'
                 Add-UniquePath -List $roots -Path $path
@@ -77,34 +100,80 @@ function Find-WaWInstall {
     param([string]$Explicit)
 
     $candidates = New-Object 'System.Collections.Generic.List[string]'
+
     if (-not [string]::IsNullOrWhiteSpace($Explicit)) {
         Add-UniquePath -List $candidates -Path $Explicit
     }
 
-    # Project-configured WaW PC install. Keep this explicit candidate ahead
-    # of Steam discovery because secondary-library registry/VDF discovery is
-    # not reliable on every Steam installation.
-    Add-UniquePath -List $candidates -Path 'D:\SteamLibrary\steamapps\common\Call of Duty World at War'
+    # Windows uninstall metadata can identify both Steam and older retail installs.
+    foreach ($uninstallRoot in @(
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )) {
+        if (-not (Test-Path $uninstallRoot)) { continue }
 
-    foreach ($steamRoot in Find-SteamRoots) {
+        foreach ($subkey in Get-ChildItem -Path $uninstallRoot -ErrorAction SilentlyContinue) {
+            try {
+                $item = Get-ItemProperty -Path $subkey.PSPath -ErrorAction Stop
+                $display = [string]$item.DisplayName
+                $location = [string]$item.InstallLocation
+                $keyName = [string]$subkey.PSChildName
+
+                if ($keyName -eq 'Steam App 10090' -or
+                    $display -match '(?i)Call of Duty.*World at War') {
+                    Add-UniquePath -List $candidates -Path $location
+                }
+            }
+            catch {}
+        }
+    }
+
+    # Steam's authoritative app manifest for World at War is appmanifest_10090.acf.
+    foreach ($library in Find-SteamLibraryRoots) {
+        $manifest = Join-Path $library 'steamapps\appmanifest_10090.acf'
+        $manifestInstall = Parse-SteamAppManifestInstallDir -ManifestPath $manifest
+        Add-UniquePath -List $candidates -Path $manifestInstall
+
+        # Keep conventional folder names as a secondary fallback.
         foreach ($name in @(
             'Call of Duty World at War',
             'Call of Duty - World at War'
         )) {
-            Add-UniquePath -List $candidates -Path (Join-Path $steamRoot "steamapps\common\$name")
+            Add-UniquePath -List $candidates -Path (Join-Path $library "steamapps\common\$name")
+        }
+    }
+
+    # Bounded drive-layout fallback for nonstandard/manual installs.
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        $root = $drive.Root
+        foreach ($relative in @(
+            'Games\Call of Duty World at War',
+            'Games\Call of Duty - World at War',
+            'Call of Duty World at War',
+            'Call of Duty - World at War',
+            'Program Files (x86)\Activision\Call of Duty - World at War',
+            'Program Files\Activision\Call of Duty - World at War'
+        )) {
+            Add-UniquePath -List $candidates -Path (Join-Path $root $relative)
         }
     }
 
     foreach ($candidate in $candidates) {
         $main = Join-Path $candidate 'main'
-        if (Test-Path -LiteralPath $main -PathType Container) {
-            $iwdCount = @(Get-ChildItem -LiteralPath $main -Filter '*.iwd' -File -ErrorAction SilentlyContinue).Count
-            if ($iwdCount -gt 0) {
-                return [pscustomobject]@{
-                    Root = $candidate
-                    Main = $main
-                    IwdCount = $iwdCount
-                }
+        if (-not (Test-Path -LiteralPath $main -PathType Container)) { continue }
+
+        $iwdCount = @(Get-ChildItem -LiteralPath $main -Filter '*.iwd' -File -ErrorAction SilentlyContinue).Count
+        $exeExists =
+            (Test-Path -LiteralPath (Join-Path $candidate 'CoDWaW.exe') -PathType Leaf) -or
+            (Test-Path -LiteralPath (Join-Path $candidate 'CoDWaWmp.exe') -PathType Leaf)
+
+        if ($iwdCount -gt 0) {
+            return [pscustomobject]@{
+                Root = $candidate
+                Main = $main
+                IwdCount = $iwdCount
+                ExeDetected = $exeExists
             }
         }
     }
@@ -146,24 +215,13 @@ if (-not (Test-Path -LiteralPath $unlinker -PathType Leaf)) {
 
 $install = Find-WaWInstall -Explicit $WaWInstallRoot
 if ($null -eq $install) {
-    $explicitMain = if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
-        Join-Path $WaWInstallRoot 'main'
-    } else {
-        '<not supplied>'
-    }
-
-    Write-Host '[NUCLEAR-4I] Install detection diagnostics:' -ForegroundColor Yellow
-    Write-Host "[NUCLEAR-4I] Requested root : $WaWInstallRoot"
-    Write-Host "[NUCLEAR-4I] Expected main  : $explicitMain"
-    if ($explicitMain -ne '<not supplied>') {
-        Write-Host "[NUCLEAR-4I] main exists    : $(Test-Path -LiteralPath $explicitMain -PathType Container)"
-        if (Test-Path -LiteralPath $explicitMain -PathType Container) {
-            $seenIwds = @(Get-ChildItem -LiteralPath $explicitMain -Filter '*.iwd' -File -ErrorAction SilentlyContinue)
-            Write-Host "[NUCLEAR-4I] IWDs seen      : $($seenIwds.Count)"
-            $seenIwds | Select-Object -First 12 | ForEach-Object { Write-Host "[NUCLEAR-4I]   $($_.Name)" }
-        }
-    }
-
+    Write-Host '[NUCLEAR-4I] Install discovery diagnostics:' -ForegroundColor Yellow
+    Write-Host "[NUCLEAR-4I] Explicit root : $WaWInstallRoot"
+    Write-Host '[NUCLEAR-4I] Steam App ID  : 10090'
+    Write-Host '[NUCLEAR-4I] Checked Steam appmanifest_10090.acf, uninstall registry entries, common Steam libraries, and bounded common install layouts.'
+    Write-Host ''
+    Write-Host '[NUCLEAR-4I] If WaW is installed in a custom/nonstandard folder, rerun with:'
+    Write-Host '  -WaWInstallRoot "X:\path\to\Call of Duty World at War"'
     throw "Could not resolve a PC World at War install containing main\*.iwd."
 }
 
