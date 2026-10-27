@@ -106,6 +106,60 @@ function Read-SteamInstallDir {
     return $null
 }
 
+function Resolve-ConfiguredWaWRoot {
+    $configFiles = New-Object 'System.Collections.Generic.List[string]'
+    $seen = @{}
+
+    foreach ($candidate in @(
+        (Join-Path $repo 'settings.ini'),
+        (Join-Path $repo 'config\settings.ini'),
+        (Join-Path $repo 'converter\settings.ini')
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $full = (Resolve-Path -LiteralPath $candidate).Path
+            $key = $full.ToLowerInvariant()
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $configFiles.Add($full)
+            }
+        }
+    }
+
+    try {
+        foreach ($file in @(Get-ChildItem -LiteralPath $repo -Filter 'settings.ini' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 20)) {
+            $key = $file.FullName.ToLowerInvariant()
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $configFiles.Add($file.FullName)
+            }
+        }
+    }
+    catch {}
+
+    foreach ($config in $configFiles) {
+        foreach ($line in Get-Content -LiteralPath $config -ErrorAction SilentlyContinue) {
+            if ($line -notmatch '^\s*PCGame\s*=\s*(.+?)\s*$') { continue }
+            $candidate = ([string]$matches[1]).Trim().Trim('"').Trim("'")
+            if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+
+            $main = Join-Path $candidate 'main'
+            $iwds = @()
+            if (Test-Path -LiteralPath $main -PathType Container) {
+                $iwds = @(Get-ChildItem -LiteralPath $main -Filter '*.iwd' -File -ErrorAction SilentlyContinue)
+            }
+
+            if ($iwds.Count -gt 0) {
+                Write-Host "[NUCLEAR-4R] PC WaW root from settings: $candidate"
+                Write-Host "[NUCLEAR-4R] Settings source         : $config"
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+
+    return $null
+}
+
 function Resolve-SteamWaWRoot {
     $steamRoots = New-Object 'System.Collections.Generic.List[string]'
     $candidates = New-Object 'System.Collections.Generic.List[string]'
@@ -319,6 +373,9 @@ Add-SourceRoot -Roots $roots -Path $localUsermap -Kind 'local-usermap' -Priority
 Add-SourceRoot -Roots $roots -Path $roamingMod -Kind 'roaming-mod' -Priority 25
 Add-SourceRoot -Roots $roots -Path $roamingUsermap -Kind 'roaming-usermap' -Priority 25
 
+if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
+    $WaWInstallRoot = Resolve-ConfiguredWaWRoot
+}
 if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
     $envRoot = [Environment]::GetEnvironmentVariable('WAW_PC_ROOT')
     if (-not [string]::IsNullOrWhiteSpace($envRoot)) { $WaWInstallRoot = $envRoot }
