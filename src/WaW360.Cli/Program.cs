@@ -253,6 +253,7 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("NUCLEAR per-model XModel partClassification recovery");
                 Console.WriteLine($"declared={result.DeclaredXModels:N0}; listed={result.ListedXModels:N0}; aligned={result.AlignedXModels:N0}");
                 Console.WriteLine($"completeModels={result.CompleteModels:N0}; failedModels={result.FailedModels:N0}; modelsWithBones={result.ModelsWithBones:N0}; totalBones={result.TotalBones:N0}; complete={result.Complete}");
+                Console.WriteLine($"resolvedSidecars={result.ResolvedSidecarModels:N0}; usedResolvedSidecars={result.UsedResolvedSidecars}");
                 Console.WriteLine($"output:   {result.OutputDirectory}");
                 Console.WriteLine($"manifest: {result.ManifestFile}");
                 foreach (var model in result.Models.Where(x => !x.Complete).Take(20))
