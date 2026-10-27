@@ -92,6 +92,16 @@ if ($code -ne 0) {
     Write-Host ''
     Write-Host '[NUCLEAR-4E] RENDERER EMISSION / OAT HARD GATE FAILED.' -ForegroundColor Yellow
     Write-Host '[NUCLEAR-4E] Do NOT copy this candidate to the Xbox yet.'
+
+    $gateLog = Join-Path $OutputRoot 'oat_hard_gate\nazi_zombie_FRUmansion_oat_xenon_list.log'
+    if (Test-Path -LiteralPath $gateLog -PathType Leaf) {
+        Write-Host ''
+        Write-Host '[NUCLEAR-4E] OAT HARD-GATE LOG TAIL'
+        Write-Host '[NUCLEAR-4E] ---------------------------------------------------------------'
+        Get-Content -LiteralPath $gateLog -Tail 120
+        Write-Host '[NUCLEAR-4E] ---------------------------------------------------------------'
+    }
+
     exit $code
 }
 
