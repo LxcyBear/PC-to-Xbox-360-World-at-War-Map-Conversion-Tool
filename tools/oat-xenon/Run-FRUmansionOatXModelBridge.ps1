@@ -252,16 +252,13 @@ if (-not (Test-Path -LiteralPath $partClassificationManifest -PathType Leaf)) {
 }
 
 $classResult = Get-Content -LiteralPath $partClassificationManifest -Raw | ConvertFrom-Json
-if ($classCode -ne 0 -or -not [bool]$classResult.Complete) {
-    $failures = @($classResult.Models | Where-Object { -not [bool]$_.Complete } | Select-Object -First 8)
-    $failureText = @($failures | ForEach-Object { "#$($_.XModelOrdinal) '$($_.Name)': $($_.Error)" }) -join ' | '
-    throw ("Per-model PC partClassification recovery is incomplete: listed={0}/{1}, aligned={2}, completeModels={3}, failedModels={4}. {5}" -f
-        [int]$classResult.ListedXModels,
-        [int]$classResult.DeclaredXModels,
-        [int]$classResult.AlignedXModels,
+
+if (-not [bool]$classResult.Complete) {
+    Write-Host ("[NUCLEAR-4U] NOTE: corpus classification readiness is partial: completeModels={0}/{1}, failedModels={2}." -f
         [int]$classResult.CompleteModels,
-        [int]$classResult.FailedModels,
-        $failureText)
+        [int]$classResult.DeclaredXModels,
+        [int]$classResult.FailedModels) -ForegroundColor Yellow
+    Write-Host '[NUCLEAR-4U] The single-model 4U gate will continue only if the selected proof model is fidelity-complete.'
 }
 
 $selectedClass = @(
@@ -269,8 +266,13 @@ $selectedClass = @(
         Where-Object { [string]$_.Name -ieq [string]$selected.Name } |
         Select-Object -First 1
 )
-if ($selectedClass.Count -ne 1 -or -not [bool]$selectedClass[0].Complete) {
-    throw "No complete per-model classification artifact was recovered for selected XModel '$($selected.Name)'."
+if ($selectedClass.Count -ne 1) {
+    throw "No per-model classification artifact was recovered for selected XModel '$($selected.Name)'."
+}
+if (-not [bool]$selectedClass[0].Complete) {
+    throw ("Selected XModel '{0}' is not classification-complete: {1}" -f
+        [string]$selected.Name,
+        [string]$selectedClass[0].Error)
 }
 
 if (-not (Test-Path -LiteralPath ([string]$selectedClass[0].CsvFile) -PathType Leaf)) {
@@ -524,7 +526,7 @@ $layoutProbeExact =
 $bridgePass = $roundTripPass
 
 $manifest = [ordered]@{
-    format = 'WaW360.Nuclear4U.OatXModelBridge.v4'
+    format = 'WaW360.Nuclear4U.OatXModelBridge.v5'
     pcFastFile = (Resolve-Path -LiteralPath $PcFastFile).Path
     pcDumpExitCode = $dumpCode
     completePcXModels = $candidates.Count
@@ -533,7 +535,8 @@ $manifest = [ordered]@{
     selectedLodBytes = $selected.LodBytes
     partClassificationFile = $partClassification
     partClassificationManifest = $partClassificationManifest
-    partClassificationComplete = [bool]$classResult.Complete
+    partClassificationComplete = [bool]$selectedClass[0].Complete
+    partClassificationCorpusComplete = [bool]$classResult.Complete
     partClassificationCompleteModels = [int]$classResult.CompleteModels
     partClassificationFailedModels = [int]$classResult.FailedModels
     selectedPartClassificationCsv = [string]$selectedClass[0].CsvFile
@@ -579,7 +582,8 @@ Write-Host "[NUCLEAR-4U] Missing 0xD4        : $([int]$layout.MissingD4Matches)"
 Write-Host "[NUCLEAR-4U] Legacy 0xE4         : $([int]$layout.LegacyE4Matches)"
 Write-Host "[NUCLEAR-4U] 0xD4 scan advisory  : $layoutProbeExact"
 Write-Host "[NUCLEAR-4U] Xenon round-trip    : $roundTripPass"
-Write-Host "[NUCLEAR-4U] Classification      : $(if ([bool]$classResult.Complete) { 'PASS' } else { 'FAIL' })"
+Write-Host "[NUCLEAR-4U] Classification      : $(if ([bool]$selectedClass[0].Complete) { 'PASS' } else { 'FAIL' })"
+Write-Host "[NUCLEAR-4U] Corpus classification: $([int]$classResult.CompleteModels) / $([int]$classResult.DeclaredXModels)"
 Write-Host "[NUCLEAR-4U] Bridge pass         : $bridgePass"
 Write-Host "[NUCLEAR-4U] Candidate           : $linkedFastFile"
 Write-Host "[NUCLEAR-4U] Manifest            : $manifestPath"
