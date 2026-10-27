@@ -540,6 +540,20 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-graph-import" when args.Length >= 2:
+            {
+                var expectedTechsets = args.Length >= 3 && int.TryParse(args[2], out var et) ? et : 87;
+                var expectedPixelShaders = args.Length >= 4 && int.TryParse(args[3], out var ep) ? ep : 897;
+                var result = T4XenonTechniqueGraphImporter.Load(args[1], expectedTechsets, expectedPixelShaders);
+                Console.WriteLine("NUCLEAR STAGE 4A typed Xenon graph import");
+                Console.WriteLine($"TechniqueSets={result.TechniqueSets:N0}/{expectedTechsets:N0}; verified={result.Verified}");
+                Console.WriteLine($"nonNullSlots={result.NonNullTechniqueSlots:N0}; passes={result.Passes:N0}");
+                Console.WriteLine($"vertexShaders={result.DistinctVertexShaders:N0}; pixelShaders={result.DistinctPixelShaders:N0}/{expectedPixelShaders:N0}");
+                Console.WriteLine($"shaderBlobs={result.ShaderBlobFilesReferenced:N0}; shaderBytes={result.ShaderBlobBytes:N0}");
+                foreach (var warning in result.Warnings)
+                    Console.WriteLine("WARNING: " + warning);
+                return result.Verified ? 0 : 4;
+            }
             case "xenon-techset-bodies" when args.Length >= 3:
             {
                 var explicitUnlinker = args.Length >= 4 ? args[3] : null;
@@ -856,6 +870,7 @@ static void PrintHelp()
     Console.WriteLine("  material-techset-bridge <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Derive PC->Xenon TechniqueSet mappings through shared material identity");
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
+    Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
     Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
