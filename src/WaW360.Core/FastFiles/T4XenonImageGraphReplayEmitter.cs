@@ -322,7 +322,7 @@ public static class T4XenonImageGraphReplayEmitter
     {
         var b = new byte[GfxImageSize];
         PutU32(b, 0, checked((uint)image.MapType));
-        PutU32(b, 4, T4ZonePointer.Following);
+        PutU32(b, 4, T4ZonePointer.Insert);
         b[8] = image.Semantic;
         PutU32(b, 12, checked((uint)image.CardMemoryBytes));
         PutU16(b, 16, image.Width);
