@@ -1,7 +1,8 @@
 param(
     [string]$NativeDirectory = 'C:\Users\jorda\OneDrive\Desktop\working frumansion',
     [string]$MapName = 'nazi_zombie_FRUmansion',
-    [string]$OutputRoot = ''
+    [string]$OutputRoot = '',
+    [switch]$ReuseExistingDump
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,27 @@ $unlinker = Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4j_native_image_mass'
+}
+
+
+function Get-RelativePathCompat {
+    param(
+        [string]$BasePath,
+        [string]$TargetPath
+    )
+
+    $baseFull = [IO.Path]::GetFullPath($BasePath)
+    $targetFull = [IO.Path]::GetFullPath($TargetPath)
+
+    if (-not $baseFull.EndsWith('\')) {
+        $baseFull += '\'
+    }
+
+    if ($targetFull.StartsWith($baseFull, [StringComparison]::OrdinalIgnoreCase)) {
+        return $targetFull.Substring($baseFull.Length)
+    }
+
+    return $targetFull
 }
 
 if (-not (Test-Path -LiteralPath $unlinker -PathType Leaf)) {
@@ -42,13 +64,20 @@ else {
     $nativeFastFile = $candidates[0].FullName
 }
 
-if (Test-Path -LiteralPath $OutputRoot) {
-    Remove-Item -LiteralPath $OutputRoot -Recurse -Force
-}
-New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
-
 $dumpRoot = Join-Path $OutputRoot 'dump'
 $log = Join-Path $OutputRoot 'oat_native_image_dump.log'
+
+$canReuse =
+    $ReuseExistingDump.IsPresent -and
+    (Test-Path -LiteralPath $dumpRoot -PathType Container) -and
+    (@(Get-ChildItem -LiteralPath $dumpRoot -Filter '*.iwi' -File -Recurse -ErrorAction SilentlyContinue).Count -gt 0)
+
+if (-not $canReuse) {
+    if (Test-Path -LiteralPath $OutputRoot) {
+        Remove-Item -LiteralPath $OutputRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
+}
 
 Write-Host '[NUCLEAR-4J] ================================================================'
 Write-Host '[NUCLEAR-4J] NATIVE XBOX IMAGE PAYLOAD MASS CENSUS'
@@ -62,22 +91,28 @@ Write-Host '[NUCLEAR-4J] Oracle-only diagnostic: native image payloads are dumpe
 Write-Host '[NUCLEAR-4J] Nothing from this dump is copied into a converter output candidate.'
 Write-Host ''
 
-Push-Location $NativeDirectory
-try {
-    $arguments = @(
-        '--verbose',
-        '--no-color',
-        '--include-assets', 'image',
-        '--image-format', 'IWI',
-        '--output-folder', $dumpRoot,
-        $nativeFastFile
-    )
-
-    & $unlinker @arguments 2>&1 | Tee-Object -FilePath $log
-    $code = $LASTEXITCODE
+if ($canReuse) {
+    Write-Host '[NUCLEAR-4J] Reusing existing OAT image dump; skipping native FF re-dump.'
+    $code = 0
 }
-finally {
-    Pop-Location
+else {
+    Push-Location $NativeDirectory
+    try {
+        $arguments = @(
+            '--verbose',
+            '--no-color',
+            '--include-assets', 'image',
+            '--image-format', 'IWI',
+            '--output-folder', $dumpRoot,
+            $nativeFastFile
+        )
+
+        & $unlinker @arguments 2>&1 | Tee-Object -FilePath $log
+        $code = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 $iwiFiles = @()
@@ -127,7 +162,7 @@ $manifest = [ordered]@{
     logFile = $log
     largest = @($iwiFiles | Sort-Object Length -Descending | Select-Object -First 100 | ForEach-Object {
         [ordered]@{
-            relativePath = [IO.Path]::GetRelativePath($dumpRoot, $_.FullName)
+            relativePath = Get-RelativePathCompat -BasePath $dumpRoot -TargetPath $_.FullName
             bytes = $_.Length
         }
     })
@@ -153,13 +188,13 @@ if ($iwiFiles.Count -gt 0) {
         Sort-Object Length -Descending |
         Select-Object -First 40 |
         ForEach-Object {
-            Write-Host ("  {0,12:N0} B  {1}" -f $_.Length, [IO.Path]::GetRelativePath($dumpRoot, $_.FullName))
+            Write-Host ("  {0,12:N0} B  {1}" -f $_.Length, Get-RelativePathCompat -BasePath $dumpRoot -TargetPath $_.FullName)
         }
 }
 
 Write-Host ''
 Write-Host '[NUCLEAR-4J] OAT log tail:'
-Get-Content -LiteralPath $log -Tail 100
+if (Test-Path -LiteralPath $log -PathType Leaf) { Get-Content -LiteralPath $log -Tail 100 } else { Write-Host '[NUCLEAR-4J] (no OAT log available in reused dump)' }
 Write-Host '[NUCLEAR-4J] ================================================================='
 
 if ($code -ne 0) {
