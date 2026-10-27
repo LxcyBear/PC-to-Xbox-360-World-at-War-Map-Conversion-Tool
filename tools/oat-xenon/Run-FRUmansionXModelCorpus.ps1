@@ -157,8 +157,15 @@ function Get-ListedXModels {
 
     $names = New-Object 'System.Collections.Generic.List[string]'
     foreach ($line in $Lines) {
-        $text = [string]$line
-        if ($text -match '(?i)(?:^|[\]\s])xmodel\s*,\s*(.+?)\s*
+        $text = ([string]$line).Trim()
+        if ($text -match '(?i)^xmodel\s*,\s*(.+?)\s*$') {
+            $names.Add((([string]$matches[1]).Trim()))
+        }
+    }
+
+    return @($names)
+}
+
 $models = @($class.Models | Sort-Object {[int]$_.XModelOrdinal})
 if ($models.Count -ne 280) {
     throw "Classification manifest contains $($models.Count) model rows; expected 280."
