@@ -71,6 +71,17 @@ try {
     Copy-Item -LiteralPath $xmodelInventoryHeaderSrc -Destination $xmodelInventoryHeaderDst -Force
     Copy-Item -LiteralPath $xmodelInventoryCppSrc -Destination $xmodelInventoryCppDst -Force
 
+    $xmodelRelocHeaderSrc = Join-Path $graphSrc 'XModelRelocatableGraphDumperT4Xenon.h'
+    $xmodelRelocCppSrc = Join-Path $graphSrc 'XModelRelocatableGraphDumperT4Xenon.cpp'
+    if (-not (Test-Path -LiteralPath $xmodelRelocHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $xmodelRelocCppSrc -PathType Leaf)) {
+        throw 'Xenon relocatable XModel graph dumper source is missing from converter repo.'
+    }
+    $xmodelRelocHeaderDst = Join-Path $xenonXModelSrcDir 'XModelRelocatableGraphDumperT4Xenon.h'
+    $xmodelRelocCppDst = Join-Path $xenonXModelSrcDir 'XModelRelocatableGraphDumperT4Xenon.cpp'
+    Copy-Item -LiteralPath $xmodelRelocHeaderSrc -Destination $xmodelRelocHeaderDst -Force
+    Copy-Item -LiteralPath $xmodelRelocCppSrc -Destination $xmodelRelocCppDst -Force
+
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
     # ObjWriterT4Xenon.cpp lives in Game/T4Xenon, so this pinned revision
@@ -96,6 +107,12 @@ try {
         $text = $text.Replace($xmodelIncludeNeedle, $xmodelIncludeNeedle + [Environment]::NewLine + $xmodelIncludeLine)
     }
 
+    $xmodelRelocIncludeLine = '#include "XModel/XModelRelocatableGraphDumperT4Xenon.h"'
+    if ($text -notmatch [regex]::Escape($xmodelRelocIncludeLine)) {
+        if ($text -notmatch [regex]::Escape($xmodelIncludeLine)) { throw 'Could not find T4Xenon graph inventory include anchor.' }
+        $text = $text.Replace($xmodelIncludeLine, $xmodelIncludeLine + [Environment]::NewLine + $xmodelRelocIncludeLine)
+    }
+
     $registerNeedle = 'RegisterAssetDumper(std::make_unique<techset::PixelShaderDumperT4Xenon>());'
     $registerLine = 'RegisterAssetDumper(std::make_unique<techset::TechniqueSetGraphDumperT4Xenon>());'
     if ($text -notmatch [regex]::Escape($registerLine)) {
@@ -115,6 +132,12 @@ try {
     if ($text -notmatch [regex]::Escape($xmodelRegisterLine)) {
         if ($text -notmatch [regex]::Escape($xmodelRegisterNeedle)) { throw 'Could not find T4Xenon XModel dumper registration anchor.' }
         $text = $text.Replace($xmodelRegisterNeedle, $xmodelRegisterNeedle + [Environment]::NewLine + '    ' + $xmodelRegisterLine)
+    }
+
+    $xmodelRelocRegisterLine = 'RegisterAssetDumper(std::make_unique<xmodel::RelocatableGraphDumperT4Xenon>());'
+    if ($text -notmatch [regex]::Escape($xmodelRelocRegisterLine)) {
+        if ($text -notmatch [regex]::Escape($xmodelRegisterLine)) { throw 'Could not find T4Xenon graph inventory registration anchor.' }
+        $text = $text.Replace($xmodelRegisterLine, $xmodelRegisterLine + [Environment]::NewLine + '    ' + $xmodelRelocRegisterLine)
     }
     # Set-Content appends a record terminator and can also change BOM semantics.
     # Preserve UTF-8 without BOM and force exactly one trailing LF.
@@ -195,7 +218,8 @@ try {
             't4xenon-techset-graph-v1',
             't4xenon-image-graph-v1',
             't4-xmodel-classification-v1',
-            't4xenon-xmodel-graph-inventory-v1'
+            't4xenon-xmodel-graph-inventory-v1',
+            't4xenon-xmodel-relocatable-graph-v1'
         )
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
@@ -218,6 +242,8 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelGraphInventoryDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelGraphInventoryDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelRelocatableGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelRelocatableGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
