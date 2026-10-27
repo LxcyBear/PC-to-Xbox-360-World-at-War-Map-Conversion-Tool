@@ -312,7 +312,8 @@ public static class T4XModelPerModelClassificationExtractor
             lods.GetArrayLength() == 0)
             throw new InvalidDataException($"Exported XModel '{assetName}' has no LOD files.");
 
-        var lodFile = lods[0].GetProperty("file").GetString();
+        var lodArray = lods.EnumerateArray().ToArray();
+        var lodFile = lodArray[0].GetProperty("file").GetString();
         if (string.IsNullOrWhiteSpace(lodFile))
             throw new InvalidDataException($"Exported XModel '{assetName}' has an empty first LOD path.");
 
@@ -334,7 +335,8 @@ public static class T4XModelPerModelClassificationExtractor
         if (!root.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException($"GLTF for '{assetName}' has a skin but no nodes array.");
 
-        var skin = skins[0];
+        var skinArray = skins.EnumerateArray().ToArray();
+        var skin = skinArray[0];
         if (!skin.TryGetProperty("joints", out var jointsElement) ||
             jointsElement.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException($"GLTF for '{assetName}' skin has no joints array.");
@@ -343,10 +345,11 @@ public static class T4XModelPerModelClassificationExtractor
         if (joints.Length == 0)
             return Array.Empty<string>();
 
+        var nodeArray = nodes.EnumerateArray().ToArray();
         var jointPositionByNode = new Dictionary<int, int>();
         for (var i = 0; i < joints.Length; i++)
         {
-            if (joints[i] < 0 || joints[i] >= nodes.GetArrayLength())
+            if (joints[i] < 0 || joints[i] >= nodeArray.Length)
                 throw new InvalidDataException($"GLTF for '{assetName}' joint[{i}] references invalid node {joints[i]}.");
             if (!jointPositionByNode.TryAdd(joints[i], i))
                 throw new InvalidDataException($"GLTF for '{assetName}' repeats node {joints[i]} in skin.joints.");
@@ -357,7 +360,7 @@ public static class T4XModelPerModelClassificationExtractor
 
         for (var i = 0; i < joints.Length; i++)
         {
-            var node = nodes[joints[i]];
+            var node = nodeArray[joints[i]];
             names[i] = node.TryGetProperty("name", out var nameElement)
                 ? nameElement.GetString() ?? string.Empty
                 : string.Empty;
