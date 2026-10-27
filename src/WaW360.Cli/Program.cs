@@ -236,6 +236,19 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("Stage-5 proof source updated: real 0x5C/12-bucket Xbox XAnim payloads.");
                 return result.Verified ? 0 : 3;
             }
+            case "xenon-native-xmodel-layout" when args.Length >= 4:
+            {
+                var result = await T4XenonNativeXModelLayoutProbe.RunAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("NUCLEAR STAGE 4T native Xbox XModel fixed-body boundary proof");
+                Console.WriteLine($"nativeXModels={result.NativeXModelRoots:N0}; uniqueD4={result.UniqueD4Matches:N0}; missingD4={result.MissingD4Matches:N0}; ambiguousD4={result.AmbiguousD4Matches:N0}");
+                Console.WriteLine($"legacyE4={result.LegacyE4Matches:N0}; d4Only={result.D4OnlyMatches:N0}; exactD4BoundaryProof={result.ExactD4BoundaryProof}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonReportFile}");
+                foreach (var note in result.Notes)
+                    Console.WriteLine("NOTE: " + note);
+                return result.ExactD4BoundaryProof ? 0 : 4;
+            }
             case "stage4-alpha5-xmodel" or "stage4-alpha9c-xmodel" or "stage4-alpha9d-xmodel" or "stage4-alpha9e-xmodel" or "stage4-alpha9g-xmodel" when args.Length >= 4:
             {
                 var root = args[1];
@@ -1058,6 +1071,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-iwi-image-corpus <root> <map> <output> <native-identity.json>  Match IWD .iwi corpus to native Xenon image identities and rank codec mass");
+    Console.WriteLine("  xenon-native-xmodel-layout <native.ff> <native-identity.json> <output>  Prove native Xbox XModel 0xD4 fixed-body/name boundary against 0xE4 control");
     Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio] [4s-manifest]  Gate full-content emission on real payload mass and zero critical shells, crediting exact 4S PC-backed images when supplied");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
