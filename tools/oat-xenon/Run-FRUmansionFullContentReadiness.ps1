@@ -19,6 +19,8 @@ $identityManifest = @(Get-ChildItem -LiteralPath $identityDir -Filter '*_native_
     Sort-Object FullName |
     Select-Object -First 1)
 
+$productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4s_pc_image_graft\nuclear_4s_pc_image_graft.json'
+
 function Find-MainFastFile {
     param([Parameter(Mandatory=$true)][string]$Directory)
 
@@ -57,6 +59,20 @@ if ($identityManifest.Count -ne 1) {
     throw "Could not identify Stage 4C native identity manifest under: $identityDir"
 }
 
+$productionImageCredit = $null
+if (Test-Path -LiteralPath $productionImageGraftManifest -PathType Leaf) {
+    try {
+        $stage4s = Get-Content -LiteralPath $productionImageGraftManifest -Raw | ConvertFrom-Json
+        if ([string]$stage4s.format -eq 'WaW360.Nuclear4S.PcImageProductionGraft.v1' -and
+            [bool]$stage4s.productionImageGraftPass) {
+            $productionImageCredit = $productionImageGraftManifest
+        }
+    }
+    catch {
+        throw "Stage 4S manifest exists but could not be validated: $($_.Exception.Message)"
+    }
+}
+
 Write-Host '[NUCLEAR-4F] ================================================================'
 Write-Host '[NUCLEAR-4F] FULL-CONTENT MASS / PRE-HARDWARE GATE'
 Write-Host '[NUCLEAR-4F] ================================================================'
@@ -66,6 +82,7 @@ Write-Host "[NUCLEAR-4F] Native oracle      : $nativeMain"
 Write-Host "[NUCLEAR-4F] Renderer graph     : $graphRoot"
 Write-Host "[NUCLEAR-4F] Native identities  : $($identityManifest[0].FullName)"
 Write-Host "[NUCLEAR-4F] Renderer bindings  : $bindingManifest"
+Write-Host "[NUCLEAR-4F] 4S image credit    : $(if ($null -eq $productionImageCredit) { '<none>' } else { $productionImageCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
 Write-Host ''
 Write-Host '[NUCLEAR-4F] POLICY: no Xbox test candidate until size + critical-content gates both pass.'
@@ -76,7 +93,27 @@ $maxInvariant = $MaximumSizeRatio.ToString([System.Globalization.CultureInfo]::I
 
 Push-Location $repo
 try {
-    dotnet run --project '.\src\WaW360.Cli\WaW360.Cli.csproj' -c Release -- linker-v2-full-content-readiness "$PcMapsRoot" "$MapName" "$outputRoot" "$nativeMain" "$graphRoot" "$($identityManifest[0].FullName)" "$bindingManifest" "$minInvariant" "$maxInvariant"
+    $args = @(
+        'run',
+        '--project', '.\src\WaW360.Cli\WaW360.Cli.csproj',
+        '-c', 'Release',
+        '--',
+        'linker-v2-full-content-readiness',
+        $PcMapsRoot,
+        $MapName,
+        $outputRoot,
+        $nativeMain,
+        $graphRoot,
+        $identityManifest[0].FullName,
+        $bindingManifest,
+        $minInvariant,
+        $maxInvariant
+    )
+    if ($null -ne $productionImageCredit) {
+        $args += $productionImageCredit
+    }
+
+    & dotnet @args
     $code = $LASTEXITCODE
 }
 finally {
