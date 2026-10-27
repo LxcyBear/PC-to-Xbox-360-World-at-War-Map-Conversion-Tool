@@ -27,6 +27,7 @@ public sealed class T4XenonXModelReplayResult
     public required bool WrapperRoundTripVerified { get; init; }
     public required bool ReplayPass { get; init; }
     public required IReadOnlyList<string> Blockers { get; init; }
+    public required IReadOnlyList<string> Diagnostics { get; init; }
     public required string TextReportFile { get; init; }
     public required string JsonReportFile { get; init; }
 }
@@ -173,6 +174,8 @@ public static class T4XenonXModelReplayEmitter
             cancellationToken);
 
         var blockers = new List<string>();
+        var diagnostics = new List<string>();
+        diagnostics.Add(DescribeByteDiff(reference.Bytes, zoneBytes));
 
         var referenceBlocks = reference.ZoneHeader.BlockSizes.ToArray();
         var outputBlocks = parsed.BlockSizes.ToArray();
