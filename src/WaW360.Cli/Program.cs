@@ -641,20 +641,30 @@ static async Task<int> MainAsync(string[] args)
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
                 var expectedPixelShaders = args.Length >= 10 && int.TryParse(args[9], out var ep) ? ep : 897;
+                var imageGraphRoot = args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
+                var expectedImages = args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
+                var imageValidationOnly = args.Length < 13 || !bool.TryParse(args[12], out var ivo) || ivo;
+
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
-                    canonicalBaseName, unlinker, expectedTechsets, expectedPixelShaders);
-                Console.WriteLine("NUCLEAR STAGE 4E real Xenon renderer byte emission");
-                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}");
-                Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
+                    canonicalBaseName, unlinker, expectedTechsets, expectedPixelShaders,
+                    CancellationToken.None,
+                    imageGraphRoot,
+                    expectedImages,
+                    imageValidationOnly);
+
+                Console.WriteLine("NUCLEAR STAGE 4E/4P real Xenon renderer + image byte emission");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}");
+                Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; mainZoneBytes={result.MainZoneBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}");
+                Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
                 Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
-                Console.WriteLine($"oatZeroWarningsZeroErrors={result.OatZeroWarningsZeroErrors}; readyForHardware={result.ReadyForHardware}");
+                Console.WriteLine($"oatZeroWarningsZeroErrors={result.OatZeroWarningsZeroErrors}; validationOnly={result.ValidationOnly}; validationPass={result.ValidationPass}; readyForHardware={result.ReadyForHardware}");
                 Console.WriteLine($"candidate: {result.OutputFastFile}");
                 Console.WriteLine($"report:    {result.TextReportFile}");
                 Console.WriteLine($"manifest:  {result.JsonReportFile}");
                 if (!string.IsNullOrWhiteSpace(result.OatGateError))
                     Console.WriteLine("OAT GATE: " + result.OatGateError);
-                return result.ReadyForHardware ? 0 : 4;
+                return result.ValidationPass ? 0 : 4;
             }
             case "xenon-graph-layout" when args.Length >= 6:
             {
