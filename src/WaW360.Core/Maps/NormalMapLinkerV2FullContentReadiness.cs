@@ -20,6 +20,7 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
 {
     public required string MapName { get; init; }
     public required string CanonicalBaseName { get; init; }
+    public required long NativeOracleFastFileBytes { get; init; }
     public required long NativeOracleZoneBytes { get; init; }
     public required long AllShellBaselineZoneBytes { get; init; }
     public required long ProvenRendererGainBytes { get; init; }
@@ -33,6 +34,7 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required int FallbackRoots { get; init; }
     public required int SyntheticDependencyRoots { get; init; }
     public required int CriticalFallbackRoots { get; init; }
+    public required int ExternalAudioPendingRoots { get; init; }
     public required long SourcePayloadBytes { get; init; }
     public required long RealPromotedBytes { get; init; }
     public required long FallbackBytes { get; init; }
@@ -74,8 +76,6 @@ public static class NormalMapLinkerV2FullContentReadiness
             "xmodel",
             "material",
             "image",
-            "sound",
-            "loaded_sound",
             "clipmap_pvs",
             "clipmap",
             "comworld",
@@ -199,6 +199,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         var fallbackRoots = 0;
         var syntheticRoots = 0;
         var criticalFallbackRoots = 0;
+        var externalAudioPendingRoots = 0;
         var criticalBlockers = new List<string>();
 
         for (var i = 0; i < native.Document.Assets.Count; i++)
@@ -241,7 +242,12 @@ public static class NormalMapLinkerV2FullContentReadiness
                     stat.FallbackRoots++;
                     stat.FallbackBytes += payload.Bytes.LongLength;
 
-                    if (CriticalTypes.Contains(type))
+                    if (type.Equals("sound", StringComparison.OrdinalIgnoreCase) ||
+                        type.Equals("loaded_sound", StringComparison.OrdinalIgnoreCase))
+                    {
+                        externalAudioPendingRoots++;
+                    }
+                    else if (CriticalTypes.Contains(type))
                     {
                         criticalFallbackRoots++;
                         criticalBlockers.Add(
@@ -261,7 +267,12 @@ public static class NormalMapLinkerV2FullContentReadiness
                 syntheticRoots++;
                 stat.SyntheticRoots++;
 
-                if (CriticalTypes.Contains(type))
+                if (type.Equals("sound", StringComparison.OrdinalIgnoreCase) ||
+                    type.Equals("loaded_sound", StringComparison.OrdinalIgnoreCase))
+                {
+                    externalAudioPendingRoots++;
+                }
+                else if (CriticalTypes.Contains(type))
                 {
                     criticalFallbackRoots++;
                     criticalBlockers.Add(
@@ -338,6 +349,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         var estimatedFullContent =
             checked(rendererLayout.ProjectedUncompressedZoneBytes + nonRendererDelta);
 
+        var nativeFastFileBytes = new FileInfo(nativeFastFile).Length;
         var nativeZoneBytes = native.Bytes.LongLength;
         var ratio = nativeZoneBytes == 0
             ? 0.0
@@ -354,7 +366,8 @@ public static class NormalMapLinkerV2FullContentReadiness
         {
             "4F does not emit a hardware candidate. It is a mandatory pre-hardware mass/fidelity gate.",
             "EstimatedFullContentZoneBytes starts from the exact 4E renderer-layout zone and replaces each mapped non-renderer name shell with the current source-owned structural payload.",
-            "Size is compared against the decompressed known-working FRUmansion Xbox oracle, not compressed .ff bytes.",
+            $"Known-working main FF on disk is {nativeFastFileBytes:N0} bytes; decompressed zone is {nativeZoneBytes:N0} bytes. Pre-emission mass estimates compare decompressed zone bytes because compression ratio is not known until a candidate is actually emitted.",
+            "External Xbox SDNS/XMA payloads belong in sounds\\ and are not expected to account for main-FF size. Sound/LoadedSound incompleteness is reported separately from the main-content size gate.",
             $"A proper-size candidate must be between {minimumSizeRatio:P0} and {maximumSizeRatio:P0} of the native oracle before hardware testing is allowed.",
             "Critical families must have zero fallback/synthetic roots before Stage 4F can declare full native emission ready.",
             ready
@@ -378,6 +391,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         {
             MapName = map.Name,
             CanonicalBaseName = source.CanonicalBaseName,
+            NativeOracleFastFileBytes = nativeFastFileBytes,
             NativeOracleZoneBytes = nativeZoneBytes,
             AllShellBaselineZoneBytes = allShellBaseline,
             ProvenRendererGainBytes = rendererGain,
@@ -391,6 +405,7 @@ public static class NormalMapLinkerV2FullContentReadiness
             FallbackRoots = fallbackRoots,
             SyntheticDependencyRoots = syntheticRoots,
             CriticalFallbackRoots = criticalFallbackRoots,
+            ExternalAudioPendingRoots = externalAudioPendingRoots,
             SourcePayloadBytes = sourcePayloadBytes,
             RealPromotedBytes = realPromotedBytes,
             FallbackBytes = fallbackBytes,
@@ -454,6 +469,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine(new string('=', 92));
         sb.AppendLine($"Map:                         {r.MapName}");
         sb.AppendLine($"Native roots:                {r.NativeRoots:N0}");
+        sb.AppendLine($"Native working .ff on disk:  {r.NativeOracleFastFileBytes:N0} B");
         sb.AppendLine($"Native oracle zone:          {r.NativeOracleZoneBytes:N0} B");
         sb.AppendLine($"All-shell baseline zone:     {r.AllShellBaselineZoneBytes:N0} B");
         sb.AppendLine($"Proven renderer gain:        {r.ProvenRendererGainBytes:N0} B");
@@ -466,6 +482,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Fallback roots:              {r.FallbackRoots:N0}");
         sb.AppendLine($"Synthetic dependency roots:  {r.SyntheticDependencyRoots:N0}");
         sb.AppendLine($"Critical fallback roots:     {r.CriticalFallbackRoots:N0}");
+        sb.AppendLine($"External-audio pending roots:{r.ExternalAudioPendingRoots,10:N0}");
         sb.AppendLine($"Source payload bytes:        {r.SourcePayloadBytes:N0}");
         sb.AppendLine($"Real promoted bytes:         {r.RealPromotedBytes:N0}");
         sb.AppendLine($"Fallback bytes:              {r.FallbackBytes:N0}");
