@@ -696,6 +696,8 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest:  {result.JsonReportFile}");
                 foreach (var blocker in result.Blockers.Take(32))
                     Console.WriteLine("BLOCKER: " + blocker);
+                foreach (var diagnostic in result.Diagnostics.Take(32))
+                    Console.WriteLine("DIAGNOSTIC: " + diagnostic);
                 return result.ReplayPass ? 0 : 4;
             }
             case "xenon-image-replay" when args.Length >= 4:
