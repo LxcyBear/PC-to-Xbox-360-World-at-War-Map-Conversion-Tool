@@ -447,6 +447,7 @@ public static class T4XenonXModelReplayEmitter
             WrapperRoundTripVerified = wrapped.RoundTripVerified,
             ReplayPass = pass,
             Blockers = blockers,
+            Diagnostics = diagnostics,
             TextReportFile = Path.Combine(outputDirectory, "nuclear_4xc_xmodel_replay.txt"),
             JsonReportFile = Path.Combine(outputDirectory, "nuclear_4xc_xmodel_replay.json")
         };
@@ -732,6 +733,68 @@ public static class T4XenonXModelReplayEmitter
         zone.WriteByte(0);
     }
 
+    private static string DescribeByteDiff(byte[] reference, byte[] output)
+    {
+        if (reference.Length != output.Length)
+            return $"decompressed byte diff: length reference={reference.Length:N0}, output={output.Length:N0}";
+
+        long differing = 0;
+        var ranges = new List<string>();
+        var inRange = false;
+        var rangeStart = 0;
+
+        for (var i = 0; i < reference.Length; i++)
+        {
+            if (reference[i] == output[i])
+            {
+                if (inRange)
+                {
+                    if (ranges.Count < 12)
+                        ranges.Add(rangeStart == i - 1
+                            ? $"0x{rangeStart:X}"
+                            : $"0x{rangeStart:X}-0x{i - 1:X}");
+                    inRange = false;
+                }
+                continue;
+            }
+
+            differing++;
+            if (!inRange)
+            {
+                rangeStart = i;
+                inRange = true;
+            }
+        }
+
+        if (inRange && ranges.Count < 12)
+        {
+            ranges.Add(rangeStart == reference.Length - 1
+                ? $"0x{rangeStart:X}"
+                : $"0x{rangeStart:X}-0x{reference.Length - 1:X}");
+        }
+
+        return differing == 0
+            ? "decompressed byte diff: EXACT"
+            : $"decompressed byte diff: {differing:N0} differing byte(s); first ranges=[{string.Join(", ", ranges)}]";
+    }
+
+    private static void PatchBlockSizes(byte[] zoneBytes, IReadOnlyList<long> blocks)
+    {
+        if (zoneBytes.Length < XFileHeaderSize)
+            throw new InvalidDataException("Zone is too small for an XFile header.");
+        if (blocks.Count != 7)
+            throw new InvalidDataException(
+                $"Expected seven T4 block sizes, got {blocks.Count}.");
+
+        for (var i = 0; i < 7; i++)
+        {
+            var value = checked((uint)blocks[i]);
+            BinaryPrimitives.WriteUInt32BigEndian(
+                zoneBytes.AsSpan(8 + i * 4, 4),
+                value);
+        }
+    }
+
     private static void PatchHeader(
         MemoryStream zone,
         uint zoneSize,
@@ -901,6 +964,8 @@ public static class T4XenonXModelReplayEmitter
         sb.AppendLine();
         foreach (var blocker in result.Blockers)
             sb.AppendLine("BLOCKER: " + blocker);
+        foreach (var diagnostic in result.Diagnostics)
+            sb.AppendLine("DIAGNOSTIC: " + diagnostic);
 
         await File.WriteAllTextAsync(
             result.TextReportFile,
