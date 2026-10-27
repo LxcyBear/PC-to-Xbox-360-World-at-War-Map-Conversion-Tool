@@ -162,7 +162,7 @@ $manifest = [ordered]@{
     logFile = $log
     largest = @($iwiFiles | Sort-Object Length -Descending | Select-Object -First 100 | ForEach-Object {
         [ordered]@{
-            relativePath = Get-RelativePathCompat -BasePath $dumpRoot -TargetPath $_.FullName
+            relativePath = $(Get-RelativePathCompat -BasePath $dumpRoot -TargetPath $_.FullName)
             bytes = $_.Length
         }
     })
@@ -188,7 +188,8 @@ if ($iwiFiles.Count -gt 0) {
         Sort-Object Length -Descending |
         Select-Object -First 40 |
         ForEach-Object {
-            Write-Host ("  {0,12:N0} B  {1}" -f $_.Length, Get-RelativePathCompat -BasePath $dumpRoot -TargetPath $_.FullName)
+            $relativePath = Get-RelativePathCompat -BasePath $dumpRoot -TargetPath $_.FullName
+            Write-Host ("  {0,12:N0} B  {1}" -f $_.Length, $relativePath)
         }
 }
 
