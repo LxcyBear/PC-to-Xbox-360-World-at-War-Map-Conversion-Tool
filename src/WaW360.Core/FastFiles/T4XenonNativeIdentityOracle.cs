@@ -146,8 +146,18 @@ public static class T4XenonNativeIdentityOracle
         await File.WriteAllTextAsync(rawLog, combined.ToString(), new UTF8Encoding(false), cancellationToken);
 
         if (process.ExitCode != 0)
+        {
+            var tail = string.Join(
+                " | ",
+                combined.ToString()
+                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .TakeLast(16)
+                    .Select(x => x.Trim()));
+
             throw new InvalidDataException(
-                $"Xenon OAT Unlinker exited with code {process.ExitCode}. See {rawLog}");
+                $"Xenon OAT Unlinker exited with code {process.ExitCode}. See {rawLog}" +
+                (string.IsNullOrWhiteSpace(tail) ? "" : " Tail: " + tail));
+        }
 
         var listed = ParseAssetList(stdout.ToString())
             .Concat(ParseAssetList(stderr.ToString()))
