@@ -253,6 +253,19 @@ $exactMatches = @($matches | Where-Object { $_.MatchMode -eq 'exact' }).Count
 $normalizedMatches = @($matches | Where-Object { $_.MatchMode -eq 'normalized' }).Count
 $unsafeMissing = @($missing | Where-Object { -not $_.WindowsLiteralFilenameSafe }).Count
 
+# Windows PowerShell 5.1 can bind inline property/cast arithmetic unexpectedly.
+# Collapse collection counts to ordinary scalar Int32 values first, then perform
+# the floating-point division as a separate statement.
+$nativeImageCount = [Convert]::ToInt32($nativeImages.Count)
+$dumpedIwiCount = [Convert]::ToInt32($dumpRecords.Count)
+$matchedRootCount = [Convert]::ToInt32($matches.Count)
+$missingRootCount = [Convert]::ToInt32($missing.Count)
+
+$identityCoverage = [double]0.0
+if ($nativeImageCount -gt 0) {
+    $identityCoverage = [Convert]::ToDouble($matchedRootCount) / [Convert]::ToDouble($nativeImageCount)
+}
+
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 
 $jsonPath = Join-Path $OutputRoot 'nuclear_4k_native_image_closure.json'
@@ -263,15 +276,15 @@ $result = [ordered]@{
     mapName = $MapName
     nativeIdentityManifest = $NativeIdentityManifest
     nativeDumpRoot = $NativeDumpRoot
-    nativeImageRoots = $nativeImages.Count
-    dumpedIwiFiles = $dumpRecords.Count
+    nativeImageRoots = $nativeImageCount
+    dumpedIwiFiles = $dumpedIwiCount
     dumpedIwiBytes = [int64]$uniqueDumpBytes
-    matchedNativeRoots = $matches.Count
+    matchedNativeRoots = $matchedRootCount
     matchedNativeBytes = [int64]$matchedBytes
-    identityCoverage = if ($nativeImages.Count -eq 0) { 0.0 } else { $matches.Count / [double]$nativeImages.Count }
+    identityCoverage = $identityCoverage
     exactMatches = $exactMatches
     normalizedMatches = $normalizedMatches
-    missingNativeRoots = $missing.Count
+    missingNativeRoots = $missingRootCount
     missingWindowsUnsafeNames = $unsafeMissing
     formatGroups = @($formatGroups)
     missingGroups = @($missingGroups)
@@ -285,14 +298,14 @@ $lines = New-Object 'System.Collections.Generic.List[string]'
 $lines.Add('NUCLEAR STAGE 4K - NATIVE IMAGE IDENTITY / FORMAT CLOSURE')
 $lines.Add(('=' * 94))
 $lines.Add(("Map:                       {0}" -f $MapName))
-$lines.Add(("Native image roots:        {0:N0}" -f $nativeImages.Count))
-$lines.Add(("Dumped native IWIs:        {0:N0}" -f $dumpRecords.Count))
+$lines.Add(("Native image roots:        {0:N0}" -f $nativeImageCount))
+$lines.Add(("Dumped native IWIs:        {0:N0}" -f $dumpedIwiCount))
 $lines.Add(("Dumped IWI bytes:          {0:N0}" -f [int64]$uniqueDumpBytes))
-$lines.Add(("Matched native roots:      {0:N0}" -f $matches.Count))
+$lines.Add(("Matched native roots:      {0:N0}" -f $matchedRootCount))
 $lines.Add(("Identity coverage:         {0:P2}" -f $result.identityCoverage))
 $lines.Add(("Exact-name matches:        {0:N0}" -f $exactMatches))
 $lines.Add(("_wj-normalized matches:    {0:N0}" -f $normalizedMatches))
-$lines.Add(("Missing native roots:      {0:N0}" -f $missing.Count))
+$lines.Add(("Missing native roots:      {0:N0}" -f $missingRootCount))
 $lines.Add(("Missing filename-unsafe:   {0:N0}" -f $unsafeMissing))
 $lines.Add('')
 $lines.Add('FORMAT MASS (matched native roots; largest first)')
@@ -327,14 +340,14 @@ $lines.Add('NOTE: Literal Windows filename safety is reported because generated 
 Write-Host '[NUCLEAR-4K] ================================================================'
 Write-Host '[NUCLEAR-4K] NATIVE IMAGE IDENTITY / FORMAT CLOSURE'
 Write-Host '[NUCLEAR-4K] ================================================================'
-Write-Host "[NUCLEAR-4K] Native roots          : $($nativeImages.Count)"
-Write-Host "[NUCLEAR-4K] Dumped IWIs           : $($dumpRecords.Count)"
+Write-Host "[NUCLEAR-4K] Native roots          : $nativeImageCount"
+Write-Host "[NUCLEAR-4K] Dumped IWIs           : $dumpedIwiCount"
 Write-Host "[NUCLEAR-4K] Dumped bytes          : $([int64]$uniqueDumpBytes)"
-Write-Host "[NUCLEAR-4K] Matched roots         : $($matches.Count)"
+Write-Host "[NUCLEAR-4K] Matched roots         : $matchedRootCount"
 Write-Host ("[NUCLEAR-4K] Identity coverage     : {0:P2}" -f $result.identityCoverage)
 Write-Host "[NUCLEAR-4K] Exact matches         : $exactMatches"
 Write-Host "[NUCLEAR-4K] _wj normalized        : $normalizedMatches"
-Write-Host "[NUCLEAR-4K] Missing roots         : $($missing.Count)"
+Write-Host "[NUCLEAR-4K] Missing roots         : $missingRootCount"
 Write-Host "[NUCLEAR-4K] Missing filename-unsafe: $unsafeMissing"
 Write-Host ''
 Write-Host '[NUCLEAR-4K] FORMAT MASS:'
