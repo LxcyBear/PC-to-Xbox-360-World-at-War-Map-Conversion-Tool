@@ -140,7 +140,9 @@ function Invoke-Stage4SProbe {
     param(
         [Parameter(Mandatory=$true)][string]$Name,
         [Parameter(Mandatory=$true)][string]$ProbeRoot,
-        [int]$ImageLimit = -1
+        [int]$ImageLimit = -1,
+        [string]$ImageGraphOverride = '',
+        [int]$ExpectedImagesOverride = 0
     )
 
     if (Test-Path -LiteralPath $ProbeRoot) { Remove-Item -LiteralPath $ProbeRoot -Recurse -Force }
@@ -162,12 +164,17 @@ function Invoke-Stage4SProbe {
         '897'
     )
 
-    if ($ImageLimit -ge 0) {
+    $probeImageRoot = if ([string]::IsNullOrWhiteSpace($ImageGraphOverride)) { $imageGraphRoot } else { $ImageGraphOverride }
+    $probeExpectedImages = if ($ExpectedImagesOverride -gt 0) { $ExpectedImagesOverride } else { $expectedImages }
+    $attachImages = $ImageLimit -ge 0 -or -not [string]::IsNullOrWhiteSpace($ImageGraphOverride)
+
+    if ($attachImages) {
+        $limit = if ($ImageLimit -ge 0) { $ImageLimit } else { 0 }
         $probeArgs += @(
-            $imageGraphRoot,
-            [string]$expectedImages,
+            $probeImageRoot,
+            [string]$probeExpectedImages,
             'true',
-            [string]$ImageLimit
+            [string]$limit
         )
     }
 
@@ -199,6 +206,49 @@ function Invoke-Stage4SProbe {
         OatRoots = [int]$probe.OatListedRoots
         OatError = [string]$probe.OatGateError
     }
+}
+
+function New-Stage4SSingleImageGraph {
+    param(
+        [Parameter(Mandatory=$true)][string]$SourceGraphRoot,
+        [Parameter(Mandatory=$true)][string]$ImageName,
+        [Parameter(Mandatory=$true)][string]$DestinationRoot
+    )
+
+    if (Test-Path -LiteralPath $DestinationRoot) { Remove-Item -LiteralPath $DestinationRoot -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path (Join-Path $DestinationRoot 'xenon_image_graphs') | Out-Null
+
+    $matches = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($graphFile in @(Get-ChildItem -LiteralPath (Join-Path $SourceGraphRoot 'xenon_image_graphs') -Filter '*.json' -File -Recurse -ErrorAction SilentlyContinue)) {
+        try {
+            $doc = Get-Content -LiteralPath $graphFile.FullName -Raw | ConvertFrom-Json
+            if ([string]$doc.name -ceq $ImageName) {
+                $matches.Add([pscustomobject]@{ File = $graphFile; Doc = $doc })
+            }
+        }
+        catch {}
+    }
+
+    if ($matches.Count -ne 1) {
+        throw "Expected one graph JSON for '$ImageName'; found $($matches.Count)."
+    }
+
+    $match = $matches[0]
+    Copy-Item -LiteralPath $match.File.FullName -Destination (Join-Path $DestinationRoot 'xenon_image_graphs\image.json') -Force
+
+    foreach ($relative in @([string]$match.Doc.pixelsFile, [string]$match.Doc.loadDef.textureHeaderFile)) {
+        if ([string]::IsNullOrWhiteSpace($relative)) { continue }
+        $normalized = $relative.Replace('/', '\').TrimStart('\')
+        $source = Join-Path $SourceGraphRoot $normalized
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Graph blob for '$ImageName' is missing: $source"
+        }
+        $dest = Join-Path $DestinationRoot $normalized
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+        Copy-Item -LiteralPath $source -Destination $dest -Force
+    }
+
+    return $DestinationRoot
 }
 
 $summary = [ordered]@{
@@ -306,13 +356,56 @@ if (-not $productionPass) {
         }
     }
 
+    $individual = New-Object 'System.Collections.Generic.List[object]'
+    if ($resolvedRoots.Count -le 8) {
+        Write-Host ''
+        Write-Host '[NUCLEAR-4S] Isolating each PC-backed image independently...' -ForegroundColor Cyan
+        for ($ii = 0; $ii -lt $resolvedRoots.Count; $ii++) {
+            $entry = $resolvedRoots[$ii]
+            $singleGraphRoot = Join-Path $probeBase ("single_graph_{0:D2}" -f ($ii + 1))
+            New-Stage4SSingleImageGraph -SourceGraphRoot $imageGraphRoot -ImageName ([string]$entry.Name) -DestinationRoot $singleGraphRoot | Out-Null
+
+            $singleProbe = Invoke-Stage4SProbe -Name ("single-{0:D2}" -f ($ii + 1)) -ProbeRoot (Join-Path $probeBase ("single_probe_{0:D2}" -f ($ii + 1))) -ImageGraphOverride $singleGraphRoot -ExpectedImagesOverride 1
+
+            $row = [pscustomobject]@{
+                Ordinal = $ii + 1
+                RootIndex = [int]$entry.Index
+                ImageName = [string]$entry.Name
+                ValidationPass = [bool]$singleProbe.ValidationPass
+                OatRoots = [int]$singleProbe.OatRoots
+                ExitCode = [int]$singleProbe.ExitCode
+                OatError = [string]$singleProbe.OatError
+            }
+            $individual.Add($row)
+
+            Write-Host ("[NUCLEAR-4S] Single image {0}: root #{1} '{2}' -> pass={3}, OAT roots={4}/6811" -f
+                $row.Ordinal, $row.RootIndex, $row.ImageName, $row.ValidationPass, $row.OatRoots)
+            if (-not [string]::IsNullOrWhiteSpace($row.OatError)) {
+                Write-Host "[NUCLEAR-4S]   OAT: $($row.OatError)"
+            }
+        }
+
+        $failedSingles = @($individual | Where-Object { -not $_.ValidationPass })
+        if ($failedSingles.Count -eq 1) {
+            Write-Host ("[NUCLEAR-4S] ISOLATED CULPRIT: root #{0} '{1}' fails by itself." -f
+                $failedSingles[0].RootIndex, $failedSingles[0].ImageName) -ForegroundColor Yellow
+        }
+        elseif ($failedSingles.Count -eq 0 -and -not $productionPass) {
+            Write-Host '[NUCLEAR-4S] INTERACTION FAILURE: each PC image passes alone, but the combined graft fails.' -ForegroundColor Yellow
+        }
+        elseif ($failedSingles.Count -gt 1) {
+            Write-Host "[NUCLEAR-4S] MULTIPLE INDIVIDUAL FAILURES: $($failedSingles.Count) PC image graphs fail independently." -ForegroundColor Yellow
+        }
+    }
+
     $forensicSummary = [ordered]@{
-        format = 'WaW360.Nuclear4S.PcImageGraftForensics.v1'
+        format = 'WaW360.Nuclear4S.PcImageGraftForensics.v2'
         originalGraftManifest = $emitterManifestPath
         originalOatError = [string]$emitter.OatGateError
         pcBackedRoots = $resolvedRoots
         rendererOnly = $control
         firstPcImage = $one
+        individualImages = [object[]]$individual.ToArray()
     }
     $forensicPath = Join-Path $probeBase 'nuclear_4s_pc_image_graft_forensics.json'
     $forensicSummary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $forensicPath -Encoding UTF8
