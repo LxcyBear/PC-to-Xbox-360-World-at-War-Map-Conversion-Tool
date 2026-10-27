@@ -30,6 +30,28 @@ if (-not (Test-Path -LiteralPath $linker -PathType Leaf)) { throw "Pinned Xenon 
 if (-not (Test-Path -LiteralPath $unlinker -PathType Leaf)) { throw "Specialized Xenon OAT Unlinker not found: $unlinker" }
 if (-not (Test-Path -LiteralPath $NativeIdentityManifest -PathType Leaf)) { throw "Verified native identity manifest not found: $NativeIdentityManifest" }
 
+
+function Invoke-NativeTee {
+    param(
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(Mandatory=$true)][object[]]$Arguments,
+        [Parameter(Mandatory=$true)][string]$LogPath
+    )
+
+    $previousPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell 5.x wraps native stderr as NativeCommandError records.
+        # Keep those visible/logged, but do not let ErrorActionPreference=Stop abort
+        # before we can collect $LASTEXITCODE and preserve partial OAT output.
+        $ErrorActionPreference = 'Continue'
+        & $FilePath @Arguments 2>&1 | Tee-Object -FilePath $LogPath
+        return [int]$LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+}
+
 function Get-RelativePathCompat {
     param([string]$BasePath, [string]$TargetPath)
     $baseFull = [IO.Path]::GetFullPath($BasePath)
@@ -368,8 +390,7 @@ if (-not [string]::IsNullOrWhiteSpace($pcFastFile) -and (Test-Path -LiteralPath 
     Write-Host "[NUCLEAR-4R] Extracting PC-owned image closure from fastfile: $pcFastFile"
     Push-Location (Split-Path -Parent $pcFastFile)
     try {
-        & $unlinker @pcDumpArgs 2>&1 | Tee-Object -FilePath $pcFastFileDumpLog
-        $pcFastFileDumpCode = $LASTEXITCODE
+        $pcFastFileDumpCode = Invoke-NativeTee -FilePath $unlinker -Arguments $pcDumpArgs -LogPath $pcFastFileDumpLog
     }
     finally { Pop-Location }
 
@@ -380,6 +401,9 @@ if (-not [string]::IsNullOrWhiteSpace($pcFastFile) -and (Test-Path -LiteralPath 
     }
 
     Write-Host "[NUCLEAR-4R] PC fastfile dump exit=$pcFastFileDumpCode, IWI files=$pcFastFileDumpCount"
+    if ($pcFastFileDumpCode -ne 0) {
+        Write-Host '[NUCLEAR-4R] NOTE: partial PC dump preserved; unresolved external/common image data will be reported below.' -ForegroundColor Yellow
+    }
 }
 else {
     Write-Host '[NUCLEAR-4R] WARN: no PC main fastfile was identified for direct image extraction.' -ForegroundColor Yellow
@@ -573,7 +597,7 @@ $graphErrors = New-Object 'System.Collections.Generic.List[string]'
 if ($resolvedArray.Count -gt 0) {
     $linkArgs = @('--verbose','--no-color','--base-folder',$work,'--source-search-path',$zoneSource,'--asset-search-path',(Join-Path $work 'raw'),'--output-folder',$linkOut,$project)
     Push-Location $work
-    try { & $linker @linkArgs 2>&1 | Tee-Object -FilePath $linkLog; $linkCode = $LASTEXITCODE }
+    try { $linkCode = Invoke-NativeTee -FilePath $linker -Arguments $linkArgs -LogPath $linkLog }
     finally { Pop-Location }
 
     if ($linkCode -eq 0) {
@@ -585,7 +609,7 @@ if ($resolvedArray.Count -gt 0) {
             $linkedFastFile = $linked[0].FullName
             $unlinkArgs = @('--verbose','--no-color','--include-assets','image','--image-format','IWI','--output-folder',$graphOut,$linkedFastFile)
             Push-Location (Split-Path -Parent $linkedFastFile)
-            try { & $unlinker @unlinkArgs 2>&1 | Tee-Object -FilePath $unlinkLog; $unlinkCode = $LASTEXITCODE }
+            try { $unlinkCode = Invoke-NativeTee -FilePath $unlinker -Arguments $unlinkArgs -LogPath $unlinkLog }
             finally { Pop-Location }
         }
     }
