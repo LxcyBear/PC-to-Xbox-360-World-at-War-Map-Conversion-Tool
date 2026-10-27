@@ -540,6 +540,28 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-graph-plan" when args.Length >= 3:
+            {
+                var expectedTechsets = args.Length >= 4 && int.TryParse(args[3], out var et) ? et : 87;
+                var expectedPixelShaders = args.Length >= 5 && int.TryParse(args[4], out var ep) ? ep : 897;
+                var result = T4XenonGraphSerializationPlanner.Build(
+                    args[1],
+                    args[2],
+                    expectedTechsets,
+                    expectedPixelShaders);
+                Console.WriteLine("NUCLEAR STAGE 4B Xenon graph serialization plan");
+                Console.WriteLine($"TechniqueSets={result.TechniqueSets:N0}; refs={result.TechniqueReferences:N0}; uniqueTechniques={result.UniqueTechniques:N0}");
+                Console.WriteLine($"passes={result.Passes:N0}; multiPass={result.MultiPassTechniques:N0}; vertexDecls={result.UniqueVertexDecls:N0}");
+                Console.WriteLine($"vertexShaders={result.UniqueVertexShaders:N0}; pixelShaders={result.UniquePixelShaders:N0}");
+                Console.WriteLine($"shaderArgs={result.ShaderArguments:N0}; literalConsts={result.LiteralConstants:N0}/{result.UniqueLiteralConstants:N0} unique");
+                Console.WriteLine($"shaderBlobBytes={result.ShaderBlobBytes:N0}; estimatedTempFixedBytes={result.EstimatedTempFixedBytes:N0}");
+                Console.WriteLine($"readyForSerialization={result.ReadyForSerialization}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonReportFile}");
+                foreach (var note in result.Notes)
+                    Console.WriteLine(note);
+                return result.ReadyForSerialization ? 0 : 4;
+            }
             case "xenon-graph-import" when args.Length >= 2:
             {
                 var expectedTechsets = args.Length >= 3 && int.TryParse(args[2], out var et) ? et : 87;
@@ -871,6 +893,7 @@ static void PrintHelp()
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
+    Console.WriteLine("  xenon-graph-plan <dump-root> <out-dir> [expected-techsets] [expected-pixelshaders]  Build deterministic Xenon graph serialization/dedupe plan");
     Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
     Console.WriteLine("  xanim-bone-compare <pc.ff> <xbox.ff> [name] [--verbose]  Compare PC/Xbox XAnim bone-count layouts; all-animation mode is summary-only");
