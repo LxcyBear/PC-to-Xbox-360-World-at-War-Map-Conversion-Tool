@@ -108,12 +108,30 @@ namespace
     }
 
     template <typename T>
+    void EncodeForZone(T& value)
+    {
+        EndianSwap(value, EndianOperation::Encode);
+    }
+
+    template <>
+    void EncodeForZone<float>(float& value)
+    {
+        EndianSwap(value);
+    }
+
+    template <>
+    void EncodeForZone<unsigned short>(unsigned short& value)
+    {
+        EndianSwap(value);
+    }
+
+    template <typename T>
     void DumpEncodedStruct(
         AssetDumpingContext& context,
         const std::string& relativePath,
         T value)
     {
-        EndianSwap(value, EndianOperation::Encode);
+        EncodeForZone(value);
         DumpBytes(context, relativePath, &value, sizeof(value));
     }
 
@@ -134,7 +152,7 @@ namespace
         for (size_t i = 0; i < count; ++i)
         {
             auto value = values[i];
-            EndianSwap(value, EndianOperation::Encode);
+            EncodeForZone(value);
             file->write(
                 reinterpret_cast<const char*>(&value),
                 static_cast<std::streamsize>(sizeof(value)));
