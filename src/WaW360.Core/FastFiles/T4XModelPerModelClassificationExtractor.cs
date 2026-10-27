@@ -150,10 +150,10 @@ public static class T4XModelPerModelClassificationExtractor
                     totalBones += numBones;
                 }
 
-                var boneNames = LoadCanonicalImportedBoneNames(pcDumpRoot, name);
+                var boneNames = LoadCanonicalImportedBoneNames(pcDumpRoot, name, numBones);
                 if (boneNames.Count != numBones)
                     throw new InvalidDataException(
-                        $"OAT canonical skeleton for '{name}' has {boneNames.Count:N0} bones; PC XModel body declares {numBones:N0}.");
+                        $"OAT canonical skeleton for '{name}' has {boneNames.Count:N0} effective bones; PC XModel body declares {numBones:N0}.");
 
                 if (classifications.Length != numBones)
                     throw new InvalidDataException(
@@ -163,8 +163,14 @@ public static class T4XModelPerModelClassificationExtractor
                 for (var i = 0; i < numBones; i++)
                 {
                     var boneName = boneNames[i];
-                    if (string.IsNullOrWhiteSpace(boneName))
-                        throw new InvalidDataException($"Canonical skeleton for '{name}' has an empty bone name at index {i}.");
+                    // OAT's canonical default armature intentionally uses an empty
+                    // root-bone name. Preserve it: PartClassificationState defaults
+                    // unknown/empty names to HITLOC_NONE, so a nonzero source class
+                    // for that unnamed root would be a real fidelity blocker.
+                    if (boneName.Length == 0 && cls != 0)
+                        throw new InvalidDataException(
+                            $"PC XModel '{name}' has unnamed canonical root bone with nonzero classification " +
+                            $"{cls}({HitLocations[cls]}), which cannot be represented safely by OAT's default-armature lookup.");
 
                     var cls = classifications[i];
                     if (cls >= HitLocations.Length)
@@ -180,7 +186,9 @@ public static class T4XModelPerModelClassificationExtractor
                 }
 
                 var sb = new StringBuilder();
-                foreach (var pair in local.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+                foreach (var pair in local
+                    .Where(x => x.Key.Length != 0)
+                    .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
                 {
                     sb.Append(CsvEscape(pair.Key.ToLowerInvariant()));
                     sb.Append(',');
@@ -291,7 +299,7 @@ public static class T4XModelPerModelClassificationExtractor
         return zone.AsSpan(cursor, numBones).ToArray();
     }
 
-    private static IReadOnlyList<string> LoadCanonicalImportedBoneNames(string pcDumpRoot, string assetName)
+    private static IReadOnlyList<string> LoadCanonicalImportedBoneNames(string pcDumpRoot, string assetName, int pcBoneCount)
     {
         var jsonPath = Path.Combine(
             pcDumpRoot,
@@ -330,7 +338,20 @@ public static class T4XModelPerModelClassificationExtractor
         if (!root.TryGetProperty("skins", out var skins) ||
             skins.ValueKind != JsonValueKind.Array ||
             skins.GetArrayLength() == 0)
+        {
+            // OAT intentionally omits a trivial one-bone/default armature from
+            // GLTF/GLB. LoaderXModel::AutoGenerateArmature restores it on import,
+            // using JsonXModel.rootBoneName or the default empty root name.
+            if (pcBoneCount == 1)
+            {
+                var rootBoneName = modelRoot.TryGetProperty("rootBoneName", out var rootBoneElement)
+                    ? rootBoneElement.GetString() ?? string.Empty
+                    : string.Empty;
+                return new[] { rootBoneName };
+            }
+
             return Array.Empty<string>();
+        }
 
         if (!root.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException($"GLTF for '{assetName}' has a skin but no nodes array.");
