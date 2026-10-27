@@ -136,6 +136,71 @@ $productionPass =
     [int]$emitter.RealImageRoots -eq $expectedImages -and
     [int64]$emitter.LargeRuntimeBytes -eq $productionCardMemory
 
+function Invoke-Stage4SProbe {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$true)][string]$ProbeRoot,
+        [int]$ImageLimit = -1
+    )
+
+    if (Test-Path -LiteralPath $ProbeRoot) { Remove-Item -LiteralPath $ProbeRoot -Recurse -Force }
+
+    $probeArgs = @(
+        'run',
+        '--project', '.\src\WaW360.Cli\WaW360.Cli.csproj',
+        '-c', 'Release',
+        '--',
+        'xenon-graph-emit',
+        $RendererGraphRoot,
+        $nativeMain,
+        $identityManifest[0].FullName,
+        $bindingManifest,
+        $ProbeRoot,
+        $CanonicalBaseName,
+        $graphUnlinker,
+        '87',
+        '897'
+    )
+
+    if ($ImageLimit -ge 0) {
+        $probeArgs += @(
+            $imageGraphRoot,
+            [string]$expectedImages,
+            'true',
+            [string]$ImageLimit
+        )
+    }
+
+    Push-Location $repo
+    try {
+        & dotnet @probeArgs
+        $probeCode = $LASTEXITCODE
+    }
+    finally { Pop-Location }
+
+    $probeManifest = Join-Path $ProbeRoot 'nuclear_xenon_renderer_emit.json'
+    if (-not (Test-Path -LiteralPath $probeManifest -PathType Leaf)) {
+        return [pscustomobject]@{
+            Name = $Name
+            ExitCode = $probeCode
+            ValidationPass = $false
+            RealImages = 0
+            OatRoots = 0
+            OatError = 'probe emitter manifest missing'
+        }
+    }
+
+    $probe = Get-Content -LiteralPath $probeManifest -Raw | ConvertFrom-Json
+    return [pscustomobject]@{
+        Name = $Name
+        ExitCode = $probeCode
+        ValidationPass = [bool]$probe.ValidationPass
+        RealImages = [int]$probe.RealImageRoots
+        OatRoots = [int]$probe.OatListedRoots
+        OatError = [string]$probe.OatGateError
+    }
+}
+
 $summary = [ordered]@{
     format = 'WaW360.Nuclear4S.PcImageProductionGraft.v1'
     pcImageBridgeManifest = $bridgeManifestPath
@@ -175,6 +240,84 @@ Write-Host '[NUCLEAR-4S] =======================================================
 if (-not $productionPass) {
     Write-Host '[NUCLEAR-4S] PC IMAGE PRODUCTION GRAFT: FAILED' -ForegroundColor Yellow
     Write-Host '[NUCLEAR-4S] Do NOT copy this FF to Xbox.'
+
+    Write-Host ''
+    Write-Host '[NUCLEAR-4S] ================= FAILURE FORENSICS ============================='
+    Write-Host "[NUCLEAR-4S] OAT gate error: $([string]$emitter.OatGateError)"
+
+    $resolvedRoots = @($bridge.resolved | Sort-Object { [int]$_.Index })
+    if ($resolvedRoots.Count -gt 0) {
+        Write-Host '[NUCLEAR-4S] PC-backed native roots in graft order:'
+        for ($ri = 0; $ri -lt $resolvedRoots.Count; $ri++) {
+            Write-Host ("  ordinal {0}: root #{1}  {2}" -f ($ri + 1), [int]$resolvedRoots[$ri].Index, [string]$resolvedRoots[$ri].Name)
+        }
+    }
+
+    $gateLog = Join-Path $OutputRoot 'oat_hard_gate\nazi_zombie_FRUmansion_oat_xenon_list.log'
+    if (-not (Test-Path -LiteralPath $gateLog -PathType Leaf)) {
+        $gateLogs = @(Get-ChildItem -LiteralPath (Join-Path $OutputRoot 'oat_hard_gate') -Filter '*.log' -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1)
+        if ($gateLogs.Count -eq 1) { $gateLog = $gateLogs[0].FullName }
+    }
+    if (Test-Path -LiteralPath $gateLog -PathType Leaf) {
+        Write-Host ''
+        Write-Host '[NUCLEAR-4S] OAT hard-gate tail:'
+        Get-Content -LiteralPath $gateLog -Tail 80
+    }
+
+    Write-Host ''
+    Write-Host '[NUCLEAR-4S] Running automatic isolation probes...' -ForegroundColor Cyan
+    $probeBase = Join-Path (Split-Path -Parent $OutputRoot) 'nuclear_4s_pc_image_graft_forensics'
+    if (Test-Path -LiteralPath $probeBase) { Remove-Item -LiteralPath $probeBase -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $probeBase | Out-Null
+
+    $control = Invoke-Stage4SProbe -Name 'renderer-only' -ProbeRoot (Join-Path $probeBase 'renderer_only')
+    $one = $null
+    if ($expectedImages -gt 0) {
+        $one = Invoke-Stage4SProbe -Name 'first-pc-image' -ProbeRoot (Join-Path $probeBase 'first_pc_image') -ImageLimit 1
+    }
+
+    Write-Host ''
+    Write-Host ("[NUCLEAR-4S] Probe renderer-only : pass={0} roots={1}/6811 exit={2}" -f
+        $control.ValidationPass, $control.OatRoots, $control.ExitCode)
+    if (-not [string]::IsNullOrWhiteSpace($control.OatError)) {
+        Write-Host "[NUCLEAR-4S]   OAT: $($control.OatError)"
+    }
+
+    if ($null -ne $one) {
+        $firstName = if ($resolvedRoots.Count -gt 0) { [string]$resolvedRoots[0].Name } else { '<unknown>' }
+        $firstIndex = if ($resolvedRoots.Count -gt 0) { [int]$resolvedRoots[0].Index } else { -1 }
+        Write-Host ("[NUCLEAR-4S] Probe first image   : pass={0} images={1} roots={2}/6811 exit={3}" -f
+            $one.ValidationPass, $one.RealImages, $one.OatRoots, $one.ExitCode)
+        Write-Host "[NUCLEAR-4S]   first native image = root #$firstIndex '$firstName'"
+        if (-not [string]::IsNullOrWhiteSpace($one.OatError)) {
+            Write-Host "[NUCLEAR-4S]   OAT: $($one.OatError)"
+        }
+
+        if ($control.ValidationPass -and -not $one.ValidationPass) {
+            Write-Host '[NUCLEAR-4S] DIAGNOSIS: renderer control passes; the FIRST PC image graft is sufficient to break OAT.' -ForegroundColor Yellow
+        }
+        elseif ($control.ValidationPass -and $one.ValidationPass -and -not $productionPass) {
+            Write-Host '[NUCLEAR-4S] DIAGNOSIS: renderer + first PC image passes; the SECOND image (or two-image interaction) triggers failure.' -ForegroundColor Yellow
+        }
+        elseif (-not $control.ValidationPass) {
+            Write-Host '[NUCLEAR-4S] DIAGNOSIS: renderer-only control also fails; this is not specific to the PC image graft.' -ForegroundColor Yellow
+        }
+    }
+
+    $forensicSummary = [ordered]@{
+        format = 'WaW360.Nuclear4S.PcImageGraftForensics.v1'
+        originalGraftManifest = $emitterManifestPath
+        originalOatError = [string]$emitter.OatGateError
+        pcBackedRoots = $resolvedRoots
+        rendererOnly = $control
+        firstPcImage = $one
+    }
+    $forensicPath = Join-Path $probeBase 'nuclear_4s_pc_image_graft_forensics.json'
+    $forensicSummary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $forensicPath -Encoding UTF8
+    Write-Host "[NUCLEAR-4S] Forensics summary: $forensicPath"
+    Write-Host '[NUCLEAR-4S] ================================================================='
     exit 4
 }
 
