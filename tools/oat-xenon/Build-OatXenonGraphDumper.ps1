@@ -26,7 +26,9 @@ try {
     if ($changes.Count -ne 0) { throw ('OAT checkout is not clean before graph patch:' + [Environment]::NewLine + ($changes -join [Environment]::NewLine)) }
 
     $srcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Techset'
+    $imageSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Image'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
 
     $graphSrc = Join-Path $PSScriptRoot 'graph-dumper'
     $headerSrc = Join-Path $graphSrc 'TechniqueSetGraphDumperT4Xenon.h'
@@ -37,6 +39,14 @@ try {
     $cppDst = Join-Path $srcDir 'TechniqueSetGraphDumperT4Xenon.cpp'
     Copy-Item -LiteralPath $headerSrc -Destination $headerDst -Force
     Copy-Item -LiteralPath $cppSrc -Destination $cppDst -Force
+
+    $imageHeaderSrc = Join-Path $graphSrc 'ImageGraphDumperT4Xenon.h'
+    $imageCppSrc = Join-Path $graphSrc 'ImageGraphDumperT4Xenon.cpp'
+    if (-not (Test-Path -LiteralPath $imageHeaderSrc -PathType Leaf) -or -not (Test-Path -LiteralPath $imageCppSrc -PathType Leaf)) { throw 'Image graph dumper source is missing from converter repo.' }
+    $imageHeaderDst = Join-Path $imageSrcDir 'ImageGraphDumperT4Xenon.h'
+    $imageCppDst = Join-Path $imageSrcDir 'ImageGraphDumperT4Xenon.cpp'
+    Copy-Item -LiteralPath $imageHeaderSrc -Destination $imageHeaderDst -Force
+    Copy-Item -LiteralPath $imageCppSrc -Destination $imageCppDst -Force
 
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
@@ -49,11 +59,25 @@ try {
         $text = $text.Replace($includeNeedle, $includeNeedle + [Environment]::NewLine + $includeLine)
     }
 
+    $imageIncludeNeedle = '#include "Game/T4Xenon/Image/ImageDumperT4Xenon.h"'
+    $imageIncludeLine = '#include "Image/ImageGraphDumperT4Xenon.h"'
+    if ($text -notmatch [regex]::Escape($imageIncludeLine)) {
+        if ($text -notmatch [regex]::Escape($imageIncludeNeedle)) { throw 'Could not find T4Xenon image dumper include anchor.' }
+        $text = $text.Replace($imageIncludeNeedle, $imageIncludeNeedle + [Environment]::NewLine + $imageIncludeLine)
+    }
+
     $registerNeedle = 'RegisterAssetDumper(std::make_unique<techset::PixelShaderDumperT4Xenon>());'
     $registerLine = 'RegisterAssetDumper(std::make_unique<techset::TechniqueSetGraphDumperT4Xenon>());'
     if ($text -notmatch [regex]::Escape($registerLine)) {
         if ($text -notmatch [regex]::Escape($registerNeedle)) { throw 'Could not find T4Xenon PixelShader dumper registration anchor.' }
         $text = $text.Replace($registerNeedle, $registerNeedle + [Environment]::NewLine + '    ' + $registerLine)
+    }
+
+    $imageRegisterNeedle = 'RegisterAssetDumper(std::make_unique<image::DumperT4Xenon>());'
+    $imageRegisterLine = 'RegisterAssetDumper(std::make_unique<image::ImageGraphDumperT4Xenon>());'
+    if ($text -notmatch [regex]::Escape($imageRegisterLine)) {
+        if ($text -notmatch [regex]::Escape($imageRegisterNeedle)) { throw 'Could not find T4Xenon image dumper registration anchor.' }
+        $text = $text.Replace($imageRegisterNeedle, $imageRegisterNeedle + [Environment]::NewLine + '    ' + $imageRegisterLine)
     }
     # Set-Content appends a record terminator and can also change BOM semantics.
     # Preserve UTF-8 without BOM and force exactly one trailing LF.
@@ -114,6 +138,8 @@ finally {
             & git checkout -- 'src/ObjWriting/Game/T4Xenon/ObjWriterT4Xenon.cpp' 2>$null
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
     }
     Pop-Location
