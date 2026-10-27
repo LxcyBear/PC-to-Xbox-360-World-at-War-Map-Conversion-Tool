@@ -146,7 +146,10 @@ New-Item -ItemType Directory -Force -Path $linkOut | Out-Null
 New-Item -ItemType Directory -Force -Path $roundtripRoot | Out-Null
 
 $zoneLines = New-Object 'System.Collections.Generic.List[string]'
-$zoneLines.Add('>game,T4Xenon')
+# OAT zone definitions use the public game id plus an explicit platform.
+# T4 + xbox360 resolves internally to the T4Xenon game implementation.
+$zoneLines.Add('>game,T4')
+$zoneLines.Add('>platform,xbox360')
 $zoneLines.Add(('>name,{0}' -f $project))
 $zoneLines.Add('')
 
