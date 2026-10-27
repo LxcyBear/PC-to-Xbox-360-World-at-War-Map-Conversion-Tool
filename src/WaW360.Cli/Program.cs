@@ -540,6 +540,26 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-graph-bind" when args.Length >= 4:
+            {
+                var expectedTechsets = args.Length >= 5 && int.TryParse(args[4], out var et) ? et : 87;
+                var expectedPixelShaders = args.Length >= 6 && int.TryParse(args[5], out var ep) ? ep : 897;
+                var result = await T4XenonGraphRootBindingPlanner.BuildAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    expectedTechsets,
+                    expectedPixelShaders);
+                Console.WriteLine("NUCLEAR STAGE 4C Xenon graph -> native root binding");
+                Console.WriteLine($"TechniqueSets={result.GraphTechniqueSets:N0}; matched={result.MatchedTechniqueSets:N0}; nativeTechniqueSets={result.NativeTechniqueSets:N0}; nativeUnbound={result.UnboundNativeTechniqueSets:N0}");
+                Console.WriteLine($"PixelShaders={result.GraphPixelShaders:N0}; matched={result.MatchedPixelShaders:N0}; nativePixelShaders={result.NativePixelShaders:N0}");
+                Console.WriteLine($"ambiguous={result.AmbiguousBindings:N0}; missing={result.MissingBindings:N0}; exactRootBindingReady={result.ExactRootBindingReady}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonManifestFile}");
+                foreach (var note in result.Notes)
+                    Console.WriteLine(note);
+                return result.ExactRootBindingReady ? 0 : 4;
+            }
             case "xenon-graph-plan" when args.Length >= 3:
             {
                 var expectedTechsets = args.Length >= 4 && int.TryParse(args[3], out var et) ? et : 87;
@@ -893,6 +913,7 @@ static void PrintHelp()
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
+    Console.WriteLine("  xenon-graph-bind <dump-root> <native.ff> <out-dir> [expected-techsets] [expected-pixelshaders]  Bind fixed-up Xenon graph identities to exact native XAsset root slots");
     Console.WriteLine("  xenon-graph-plan <dump-root> <out-dir> [expected-techsets] [expected-pixelshaders]  Build deterministic Xenon graph serialization/dedupe plan");
     Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
     Console.WriteLine("  xanim-console-proof <pc.ff> <out.bin>      Convert every inline PC XAnim to real 0x5C/12-bucket Xbox form and read it back");
