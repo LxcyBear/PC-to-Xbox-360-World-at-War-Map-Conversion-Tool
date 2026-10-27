@@ -118,27 +118,6 @@ function Get-ReferenceAssets {
     $refs = @()
     $seen = @{}
 
-    function Add-Ref {
-        param(
-            [Parameter(Mandatory=$true)][string]$Type,
-            [AllowEmptyString()][string]$Name
-        )
-
-        if ([string]::IsNullOrWhiteSpace($Name)) {
-            return
-        }
-
-        $key = ($Type.ToLowerInvariant() + [char]0 + $Name.ToLowerInvariant())
-        if (-not $seen.ContainsKey($key)) {
-            $seen[$key] = $true
-            $script:__unused = $null
-            $refs += [pscustomobject]@{
-                Type = $Type
-                Name = $Name
-            }
-        }
-    }
-
     foreach ($lod in @($json.lods)) {
         if ($null -eq $lod) {
             continue
@@ -160,15 +139,48 @@ function Get-ReferenceAssets {
                 continue
             }
 
-            Add-Ref -Type 'material' -Name ([string]$material.name)
+            $materialName = [string]$material.name
+            if ([string]::IsNullOrWhiteSpace($materialName)) {
+                continue
+            }
+
+            $key = 'material' + [char]0 + $materialName.ToLowerInvariant()
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $refs += [pscustomobject]@{
+                    Type = 'material'
+                    Name = $materialName
+                }
+            }
         }
     }
 
     if ($json.PSObject.Properties.Name -contains 'physPreset') {
-        Add-Ref -Type 'physpreset' -Name ([string]$json.physPreset)
+        $name = [string]$json.physPreset
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $key = 'physpreset' + [char]0 + $name.ToLowerInvariant()
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $refs += [pscustomobject]@{
+                    Type = 'physpreset'
+                    Name = $name
+                }
+            }
+        }
     }
+
     if ($json.PSObject.Properties.Name -contains 'physConstraints') {
-        Add-Ref -Type 'physconstraints' -Name ([string]$json.physConstraints)
+        $name = [string]$json.physConstraints
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $key = 'physconstraints' + [char]0 + $name.ToLowerInvariant()
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $refs += [pscustomobject]@{
+                    Type = 'physconstraints'
+                    Name = $name
+                }
+            }
+        }
     }
 
     return $refs
