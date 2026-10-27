@@ -223,15 +223,19 @@ elseif ($knownFail -gt $knownPass + 1) {
     }
 }
 
+$allPassed = $knownPass -eq 378
 $firstFail = $null
-if ($knownFail -le 378 -and $knownFail -gt 0) {
+$firstFailingLimit = $null
+if (-not $allPassed -and $knownFail -le 378 -and $knownFail -gt 0) {
+    $firstFailingLimit = $knownFail
     $firstFail = $graftOrder[$knownFail - 1]
 }
 
 $summary = [ordered]@{
-    format = 'WaW360.Nuclear4Q.ImageGraftBisect.v1'
+    format = 'WaW360.Nuclear4Q.ImageGraftBisect.v2'
+    allImagesPassed = $allPassed
     knownPassingLimit = $knownPass
-    firstFailingLimit = $knownFail
+    firstFailingLimit = $firstFailingLimit
     firstFailingImage = $firstFail
     probes = [object[]]$probeRows.ToArray()
 }
@@ -242,7 +246,14 @@ $summary | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $summaryPath -Enco
 Write-Host ''
 Write-Host '[NUCLEAR-4Q] ======================== BISECT RESULT =========================='
 Write-Host "[NUCLEAR-4Q] Highest passing graft count: $knownPass"
-Write-Host "[NUCLEAR-4Q] First failing graft count   : $knownFail"
+
+if ($allPassed) {
+    Write-Host '[NUCLEAR-4Q] First failing graft count   : none' -ForegroundColor Green
+    Write-Host '[NUCLEAR-4Q] RESULT: ALL 378 IMAGE GRAFTS PASS' -ForegroundColor Green
+}
+else {
+    Write-Host "[NUCLEAR-4Q] First failing graft count   : $firstFailingLimit"
+}
 
 if ($null -ne $firstFail) {
     Write-Host ("[NUCLEAR-4Q] First failing image candidate: ordinal={0}; root=#{1}; name={2}" -f
