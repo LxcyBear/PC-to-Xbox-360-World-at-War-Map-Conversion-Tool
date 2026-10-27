@@ -160,8 +160,23 @@ try {
     if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $out | Out-Null
     Copy-Item -Path (Join-Path $bin '*') -Destination $out -Recurse -Force
+
+    $capabilities = [ordered]@{
+        format = 'WaW360.OatGraphDumperCapabilities.v1'
+        oatRevision = $revision
+        capabilities = @(
+            't4xenon-techset-graph-v1',
+            't4xenon-image-graph-v1',
+            't4-xmodel-classification-v1'
+        )
+    }
+    $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
+    $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
+
     Write-Host '[OAT-GRAPH] Specialized Unlinker copied to:'
     Write-Host ('  ' + (Join-Path $out 'Unlinker.exe'))
+    Write-Host '[OAT-GRAPH] Capabilities:'
+    Write-Host ('  ' + $capabilityFile)
 }
 finally {
     if (Test-Path -LiteralPath $oat) {
