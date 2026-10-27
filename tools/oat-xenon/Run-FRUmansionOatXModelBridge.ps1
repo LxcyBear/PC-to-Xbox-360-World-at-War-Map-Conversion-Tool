@@ -215,7 +215,7 @@ $partClassification = Join-Path $pcDump 'partclassification.csv'
 # reference assets rather than fabricated material/physics bodies.
 $selectedJson = Get-Content -LiteralPath $selected.JsonPath -Raw | ConvertFrom-Json
 $referenceAssets = New-Object 'System.Collections.Generic.List[object]'
-$referenceKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$referenceKeys = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 function Add-ReferenceAsset {
     param(
@@ -237,7 +237,7 @@ foreach ($lod in @($selectedJson.lods)) {
     $relative = [string]$lod.file
     if ([string]::IsNullOrWhiteSpace($relative)) { continue }
 
-    $lodPath = Join-Path $pcDump $relative.Replace('/', '')
+    $lodPath = Join-Path $pcDump $relative.Replace('/', [IO.Path]::DirectorySeparatorChar)
     if (-not (Test-Path -LiteralPath $lodPath -PathType Leaf)) { continue }
 
     try {
