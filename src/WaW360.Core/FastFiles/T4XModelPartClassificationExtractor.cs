@@ -331,6 +331,6 @@ public static class T4XModelPartClassificationExtractor
     {
         if (!value.Contains(',') && !value.Contains('"') && !value.Contains('\n') && !value.Contains('\r'))
             return value;
-        return """ + value.Replace(""", """") + """;
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 }
