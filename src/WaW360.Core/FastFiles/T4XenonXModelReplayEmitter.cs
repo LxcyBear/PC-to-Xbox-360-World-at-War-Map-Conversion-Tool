@@ -778,7 +778,7 @@ public static class T4XenonXModelReplayEmitter
             : $"decompressed byte diff: {differing:N0} differing byte(s); first ranges=[{string.Join(", ", ranges)}]";
     }
 
-    private static void PatchBlockSizes(byte[] zoneBytes, IReadOnlyList<long> blocks)
+    private static void PatchBlockSizes(byte[] zoneBytes, IReadOnlyList<uint> blocks)
     {
         if (zoneBytes.Length < XFileHeaderSize)
             throw new InvalidDataException("Zone is too small for an XFile header.");
@@ -788,10 +788,9 @@ public static class T4XenonXModelReplayEmitter
 
         for (var i = 0; i < 7; i++)
         {
-            var value = checked((uint)blocks[i]);
             BinaryPrimitives.WriteUInt32BigEndian(
                 zoneBytes.AsSpan(8 + i * 4, 4),
-                value);
+                blocks[i]);
         }
     }
 
