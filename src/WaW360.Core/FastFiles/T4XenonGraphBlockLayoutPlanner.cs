@@ -27,6 +27,7 @@ public sealed class T4XenonGraphBlockLayoutResult
     public required int RendererPixelShaders { get; init; }
     public required int RealImageRoots { get; init; }
     public required long LargeRuntimeBytes { get; init; }
+    public required long LargeBytes { get; init; }
     public required int InsertSlots { get; init; }
     public required int ForwardPixelShaderReferences { get; init; }
     public required int ReusedTechniques { get; init; }
@@ -281,7 +282,15 @@ public static class T4XenonGraphBlockLayoutPlanner
                 // ZoneCode child order: name, pixels, texture.
                 state.VirtualAlloc(Utf8Z(image.Name), 1, true);
                 if (image.PixelsBytes != 0)
-                    state.LargeRuntimeAlloc(image.PixelsBytes, 4096, true);
+                {
+                    // T4 Xenon uses LARGE_RUNTIME for delayed map textures and
+                    // LARGE for immediate/generated images. The graph preserves
+                    // delayLoadPixels from OAT, so the block choice must follow it.
+                    if (image.DelayLoadPixels)
+                        state.LargeRuntimeAlloc(image.PixelsBytes, 4096, true);
+                    else
+                        state.LargeAlloc(image.PixelsBytes, 4096, true);
+                }
                 state.VirtualAlloc(52, 4, true);
                 continue;
             }
@@ -305,7 +314,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         if (imageGraph is not null && realImages != targetImageRoots)
             blockers.Add($"Upgraded image roots={realImages:N0}; target={targetImageRoots:N0}; graph contains {imageGraph.Images:N0}.");
         if (state.Virtual > 0x20000000L || state.Physical > 0x20000000L ||
-            state.LargeRuntime > 0x20000000L)
+            state.LargeRuntime > 0x20000000L || state.Large > 0x20000000L)
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
@@ -313,7 +322,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         notes.Add("Each first top-level root reserves one 4-byte VIRTUAL insert slot; insert slots and alignment holes consume block address space but no serialized bytes.");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
         if (imageGraph is not null)
-            notes.Add($"Image graph graft: {realImages:N0}/{imageGraph.Images:N0} real GfxImage roots; limit={(imageGraftLimit > 0 ? imageGraftLimit : imageGraph.Images):N0}; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; source graph is validation-only unless independently PC-sourced.");
+            notes.Add($"Image graph graft: {realImages:N0}/{imageGraph.Images:N0} real GfxImage roots; limit={(imageGraftLimit > 0 ? imageGraftLimit : imageGraph.Images):N0}; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; LARGE={state.Large:N0} bytes; source graph is validation-only unless independently PC-sourced.");
         notes.Add(ready
             ? "BLOCK LAYOUT CLOSURE: PASS. Stage 4E can write bytes against these exact cursors."
             : "BLOCK LAYOUT CLOSURE: BLOCKED. Stage 4E remains fenced.");
@@ -329,6 +338,7 @@ public static class T4XenonGraphBlockLayoutPlanner
             RendererPixelShaders = rendererPixels,
             RealImageRoots = realImages,
             LargeRuntimeBytes = state.LargeRuntime,
+            LargeBytes = state.Large,
             InsertSlots = state.InsertSlots,
             ForwardPixelShaderReferences = forwardPixelRefs,
             ReusedTechniques = reusedTechniques,
@@ -553,10 +563,12 @@ public static class T4XenonGraphBlockLayoutPlanner
         private long _virtual;
         private long _physical;
         private long _largeRuntime;
+        private long _large;
 
         public long Virtual => _virtual;
         public long Physical => _physical;
         public long LargeRuntime => _largeRuntime;
+        public long Large => _large;
         public long TempMax { get; private set; }
         public long Serialized { get; private set; }
         public int InsertSlots { get; set; }
@@ -569,6 +581,9 @@ public static class T4XenonGraphBlockLayoutPlanner
 
         public long LargeRuntimeAlloc(long size, int align, bool serialized) =>
             Allocate(ref _largeRuntime, size, align, serialized);
+
+        public long LargeAlloc(long size, int align, bool serialized) =>
+            Allocate(ref _large, size, align, serialized);
 
         public void TempRoot(int size)
         {
