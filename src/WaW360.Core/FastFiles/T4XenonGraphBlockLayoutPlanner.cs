@@ -187,6 +187,12 @@ public static class T4XenonGraphBlockLayoutPlanner
                     nodes.Add(Node("technique", tk, T4ZoneBlock.Virtual, to,
                         TechniqueHeaderSize + slot.Technique.Passes.Count * (long)PassSize, blockers));
 
+                    // OAT walks MaterialTechnique members in declaration order.
+                    // The name XString is therefore serialized immediately after
+                    // the technique/pass-array body, before pass child pointers.
+                    if (!string.IsNullOrEmpty(slot.Technique.Name))
+                        state.VirtualAlloc(Utf8Z(slot.Technique.Name), 1, true);
+
                     foreach (var pass in slot.Technique.Passes)
                     {
                         if (pass.VertexDecl is not null)
@@ -231,9 +237,6 @@ public static class T4XenonGraphBlockLayoutPlanner
                             }
                         }
                     }
-
-                    if (!string.IsNullOrEmpty(slot.Technique.Name))
-                        state.VirtualAlloc(Utf8Z(slot.Technique.Name), 1, true);
                 }
                 continue;
             }
