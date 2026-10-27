@@ -247,7 +247,17 @@ public static class T4XenonXModelReplayEmitter
         if (redump.ExitCode != 0)
             blockers.Add($"Specialized OAT XModel redump failed with exit {redump.ExitCode}.");
         if (!HasZeroWarningErrorSummary(redump.Output))
-            blockers.Add("Specialized OAT XModel redump did not prove 0 warnings / 0 errors.");
+        {
+            var tail = string.Join(
+                " | ",
+                redump.Output
+                    .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .TakeLast(12)
+                    .Select(x => x.Trim()));
+            blockers.Add(
+                "Specialized OAT XModel redump did not prove 0 warnings / 0 errors." +
+                (string.IsNullOrWhiteSpace(tail) ? "" : " Tail: " + tail));
+        }
 
         var graphRedumpExact = false;
         if (redump.ExitCode == 0)
@@ -652,8 +662,19 @@ public static class T4XenonXModelReplayEmitter
 
         if (!sourceFiles.SequenceEqual(redumpFiles, StringComparer.Ordinal))
         {
+            var missing = sourceFiles
+                .Except(redumpFiles, StringComparer.Ordinal)
+                .Take(12)
+                .ToArray();
+            var extra = redumpFiles
+                .Except(sourceFiles, StringComparer.Ordinal)
+                .Take(12)
+                .ToArray();
+
             error =
-                $"blob file set differs: source={sourceFiles.Length}, redump={redumpFiles.Length}";
+                $"blob file set differs: source={sourceFiles.Length}, redump={redumpFiles.Length}; " +
+                $"missing=[{string.Join(", ", missing)}]; " +
+                $"extra=[{string.Join(", ", extra)}]";
             return false;
         }
 
