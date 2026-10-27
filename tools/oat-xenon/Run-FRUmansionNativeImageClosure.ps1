@@ -219,7 +219,14 @@ foreach ($nativeName in $nativeImages) {
     }
 }
 
-$formatGroups = @($matches |
+# Freeze mutable generic lists into ordinary arrays before PowerShell 5.1
+# grouping/serialization. This avoids the legacy binder bug triggered by
+# @($genericList) inside ordered hashtable expressions.
+$matchesArray = [object[]]$matches.ToArray()
+$missingArray = [object[]]$missing.ToArray()
+$dumpRecordsArray = [object[]]$dumpRecords.ToArray()
+
+$formatGroups = @($matchesArray |
     Where-Object { $_.HeaderValid } |
     Group-Object Version,Format |
     ForEach-Object {
@@ -233,7 +240,7 @@ $formatGroups = @($matches |
     } |
     Sort-Object Bytes -Descending)
 
-$missingGroups = @($missing |
+$missingGroups = @($missingArray |
     Group-Object Classification |
     ForEach-Object {
         [pscustomobject]@{
@@ -243,28 +250,32 @@ $missingGroups = @($missing |
     } |
     Sort-Object Images -Descending)
 
-$matchedBytes = ($matches | Measure-Object -Property Bytes -Sum).Sum
+$matchedBytes = ($matchesArray | Measure-Object -Property Bytes -Sum).Sum
 if ($null -eq $matchedBytes) { $matchedBytes = 0 }
 
-$uniqueDumpBytes = ($dumpRecords | Measure-Object -Property Bytes -Sum).Sum
+$uniqueDumpBytes = ($dumpRecordsArray | Measure-Object -Property Bytes -Sum).Sum
 if ($null -eq $uniqueDumpBytes) { $uniqueDumpBytes = 0 }
 
-$exactMatches = @($matches | Where-Object { $_.MatchMode -eq 'exact' }).Count
-$normalizedMatches = @($matches | Where-Object { $_.MatchMode -eq 'normalized' }).Count
-$unsafeMissing = @($missing | Where-Object { -not $_.WindowsLiteralFilenameSafe }).Count
+$exactMatches = @($matchesArray | Where-Object { $_.MatchMode -eq 'exact' }).Count
+$normalizedMatches = @($matchesArray | Where-Object { $_.MatchMode -eq 'normalized' }).Count
+$unsafeMissing = @($missingArray | Where-Object { -not $_.WindowsLiteralFilenameSafe }).Count
 
 # Windows PowerShell 5.1 can bind inline property/cast arithmetic unexpectedly.
 # Collapse collection counts to ordinary scalar Int32 values first, then perform
 # the floating-point division as a separate statement.
 $nativeImageCount = [Convert]::ToInt32($nativeImages.Count)
-$dumpedIwiCount = [Convert]::ToInt32($dumpRecords.Count)
-$matchedRootCount = [Convert]::ToInt32($matches.Count)
-$missingRootCount = [Convert]::ToInt32($missing.Count)
+$dumpedIwiCount = [Convert]::ToInt32($dumpRecordsArray.Count)
+$matchedRootCount = [Convert]::ToInt32($matchesArray.Count)
+$missingRootCount = [Convert]::ToInt32($missingArray.Count)
 
 $identityCoverage = [double]0.0
 if ($nativeImageCount -gt 0) {
     $identityCoverage = [Convert]::ToDouble($matchedRootCount) / [Convert]::ToDouble($nativeImageCount)
 }
+
+$largestMatched = @($matchesArray |
+    Sort-Object Bytes -Descending |
+    Select-Object -First 100)
 
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 
@@ -286,10 +297,10 @@ $result = [ordered]@{
     normalizedMatches = $normalizedMatches
     missingNativeRoots = $missingRootCount
     missingWindowsUnsafeNames = $unsafeMissing
-    formatGroups = @($formatGroups)
-    missingGroups = @($missingGroups)
-    missing = @($missing)
-    largestMatched = @($matches | Sort-Object Bytes -Descending | Select-Object -First 100)
+    formatGroups = $formatGroups
+    missingGroups = $missingGroups
+    missing = $missingArray
+    largestMatched = $largestMatched
 }
 
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
@@ -302,7 +313,7 @@ $lines.Add(("Native image roots:        {0:N0}" -f $nativeImageCount))
 $lines.Add(("Dumped native IWIs:        {0:N0}" -f $dumpedIwiCount))
 $lines.Add(("Dumped IWI bytes:          {0:N0}" -f [int64]$uniqueDumpBytes))
 $lines.Add(("Matched native roots:      {0:N0}" -f $matchedRootCount))
-$lines.Add(("Identity coverage:         {0:P2}" -f $result.identityCoverage))
+$lines.Add(("Identity coverage:         {0:P2}" -f $identityCoverage))
 $lines.Add(("Exact-name matches:        {0:N0}" -f $exactMatches))
 $lines.Add(("_wj-normalized matches:    {0:N0}" -f $normalizedMatches))
 $lines.Add(("Missing native roots:      {0:N0}" -f $missingRootCount))
@@ -320,12 +331,13 @@ foreach ($group in $missingGroups) {
 }
 $lines.Add('')
 $lines.Add('MISSING NATIVE IMAGE ROOTS')
-foreach ($item in $missing) {
+foreach ($item in $missingArray) {
     $lines.Add(("  [{0}] safe={1}  {2}" -f $item.Classification, $item.WindowsLiteralFilenameSafe, $item.NativeName))
 }
 $lines.Add('')
 $lines.Add('LARGEST MATCHED IMAGES')
-foreach ($item in @($matches | Sort-Object Bytes -Descending | Select-Object -First 60)) {
+$largestForText = @($matchesArray | Sort-Object Bytes -Descending | Select-Object -First 60)
+foreach ($item in $largestForText) {
     $lines.Add(("  {0,11:N0} B  v{1} fmt=0x{2:X2} {3}x{4}x{5}  {6}" -f
         $item.Bytes, $item.Version, $item.Format, $item.Width, $item.Height, $item.Depth, $item.NativeName))
 }
@@ -344,7 +356,7 @@ Write-Host "[NUCLEAR-4K] Native roots          : $nativeImageCount"
 Write-Host "[NUCLEAR-4K] Dumped IWIs           : $dumpedIwiCount"
 Write-Host "[NUCLEAR-4K] Dumped bytes          : $([int64]$uniqueDumpBytes)"
 Write-Host "[NUCLEAR-4K] Matched roots         : $matchedRootCount"
-Write-Host ("[NUCLEAR-4K] Identity coverage     : {0:P2}" -f $result.identityCoverage)
+Write-Host ("[NUCLEAR-4K] Identity coverage     : {0:P2}" -f $identityCoverage)
 Write-Host "[NUCLEAR-4K] Exact matches         : $exactMatches"
 Write-Host "[NUCLEAR-4K] _wj normalized        : $normalizedMatches"
 Write-Host "[NUCLEAR-4K] Missing roots         : $missingRootCount"
