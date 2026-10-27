@@ -194,6 +194,109 @@ public static class T4XenonXModelReplayEmitter
             blockers.Add(
                 $"Decompressed size differs: reference={reference.Bytes.LongLength:N0}, output={zoneBytes.LongLength:N0}.");
 
+        // Validation-only forensic retry: if the payload length/zoneSize match
+        // and only the logical block table differs, retry with the reference
+        // block sizes. This can never make ReplayPass true; it only isolates
+        // block-accounting defects from serialized XModel payload defects.
+        if (!exactBlocks && exactZoneSize && exactDecompressed)
+        {
+            try
+            {
+                var forensicZone = (byte[])zoneBytes.Clone();
+                PatchBlockSizes(forensicZone, referenceBlocks);
+
+                var forensicFf = Path.Combine(
+                    outputDirectory,
+                    "nuclear_4xc_xmodel_replay_refblocks.ff");
+                var forensicWrapped = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                    forensicFf,
+                    forensicZone,
+                    preferNativeLevel6: true,
+                    cancellationToken);
+
+                var forensicKey = Convert.ToHexString(
+                    SHA256.HashData(Encoding.UTF8.GetBytes(
+                        Path.GetFullPath(forensicFf) + "|" + graph.Name + "|refblocks")))[..12].ToLowerInvariant();
+                var forensicRoot = Path.Combine(
+                    Path.GetTempPath(),
+                    "WaW360",
+                    "xmf",
+                    forensicKey);
+                if (Directory.Exists(forensicRoot))
+                    Directory.Delete(forensicRoot, recursive: true);
+                Directory.CreateDirectory(forensicRoot);
+
+                var forensicShortFf = Path.Combine(forensicRoot, "c.ff");
+                File.Copy(forensicFf, forensicShortFf, overwrite: true);
+                var forensicDump = Path.Combine(forensicRoot, "dump");
+                Directory.CreateDirectory(forensicDump);
+
+                var forensicLog = Path.Combine(outputDirectory, "forensic_refblocks.log");
+                var forensicRun = await RunProcessAsync(
+                    explicitUnlinkerExe,
+                    new[]
+                    {
+                        "--no-color",
+                        "--include-assets", "xmodel",
+                        "--model-format", "gltf",
+                        "--output-folder", forensicDump,
+                        forensicShortFf
+                    },
+                    forensicLog,
+                    cancellationToken);
+
+                var forensicZero =
+                    forensicRun.ExitCode == 0 &&
+                    HasZeroWarningErrorSummary(forensicRun.Output);
+                var forensicGraphExact = false;
+                var forensicDetail = "redump unavailable";
+
+                if (forensicZero)
+                {
+                    var forensicGraphs = Directory.Exists(
+                        Path.Combine(forensicDump, "xenon_xmodel_graphs"))
+                        ? Directory.GetFiles(
+                            Path.Combine(forensicDump, "xenon_xmodel_graphs"),
+                            "*.json",
+                            SearchOption.TopDirectoryOnly)
+                        : Array.Empty<string>();
+
+                    if (forensicGraphs.Length == 1)
+                    {
+                        forensicGraphExact = CompareRelocatableGraphTrees(
+                            graphRoot,
+                            graphFile,
+                            forensicDump,
+                            forensicGraphs[0],
+                            out forensicDetail);
+                    }
+                    else
+                    {
+                        forensicDetail =
+                            $"expected one graph, found {forensicGraphs.Length}";
+                    }
+                }
+                else
+                {
+                    forensicDetail = string.Join(
+                        " | ",
+                        forensicRun.Output
+                            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                            .TakeLast(12)
+                            .Select(x => x.Trim()));
+                }
+
+                diagnostics.Add(
+                    $"FORENSIC reference-block retry: wrapper={forensicWrapped.RoundTripVerified}; " +
+                    $"oatZero={forensicZero}; graphExact={forensicGraphExact}; detail={forensicDetail}");
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add(
+                    "FORENSIC reference-block retry threw: " + ex.Message);
+            }
+        }
+
         // All OAT verification runs use a deliberately short workspace. This
         // isolates serializer correctness from legacy Win32/CRT path handling;
         // some valid suite paths approach MAX_PATH before OAT derives any
