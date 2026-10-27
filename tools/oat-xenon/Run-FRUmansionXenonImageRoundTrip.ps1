@@ -78,7 +78,7 @@ function Get-IwiPayloadSha256 {
         throw "IWI too small: $Path"
     }
 
-    $sha = [Security.Cryptography.SHA256]::Create()
+    $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
         $hash = $sha.ComputeHash($bytes, 28, $bytes.Length - 28)
         return ([BitConverter]::ToString($hash)).Replace('-', '').ToLowerInvariant()
@@ -287,6 +287,11 @@ foreach ($item in $selectedArray) {
         elseif (-not $sameHeader) { 'header-mismatch' }
         else { 'payload-mismatch' }
 
+    $outputFlags = -1
+    if ($null -ne $outHeader) {
+        $outputFlags = [int]$outHeader.Flags
+    }
+
     $results.Add([pscustomobject]@{
         AssetName = $item.AssetName
         Status = $status
@@ -296,7 +301,7 @@ foreach ($item in $selectedArray) {
         OutputPayloadSha256 = $outPayloadSha
         PayloadExact = $samePayload
         InputFlags = $item.Flags
-        OutputFlags = if ($null -eq $outHeader) { -1 } else { [int]$outHeader.Flags }
+        OutputFlags = $outputFlags
         Width = $item.Width
         Height = $item.Height
         Depth = $item.Depth
