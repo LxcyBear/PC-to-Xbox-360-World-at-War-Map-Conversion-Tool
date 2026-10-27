@@ -25,6 +25,8 @@ public sealed class T4XenonGraphBlockLayoutResult
     public required int ScriptStrings { get; init; }
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
+    public required int RealImageRoots { get; init; }
+    public required long LargeRuntimeBytes { get; init; }
     public required int InsertSlots { get; init; }
     public required int ForwardPixelShaderReferences { get; init; }
     public required int ReusedTechniques { get; init; }
@@ -65,12 +67,26 @@ public static class T4XenonGraphBlockLayoutPlanner
         string canonicalBaseName,
         int expectedTechniqueSets = 87,
         int expectedPixelShaders = 897,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? imageGraphDumpRoot = null,
+        int expectedImages = 0)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
         if (!graph.Verified)
             throw new InvalidDataException("Stage 4D requires the verified Stage 4B graph.");
+
+        T4XenonImageGraphImportResult? imageGraph = null;
+        if (!string.IsNullOrWhiteSpace(imageGraphDumpRoot))
+        {
+            imageGraph = T4XenonImageGraphImporter.Load(
+                imageGraphDumpRoot,
+                expectedImages > 0 ? expectedImages : null);
+            if (!imageGraph.Verified)
+                throw new InvalidDataException(
+                    "Stage 4D image graph is not verified: " +
+                    string.Join(" | ", imageGraph.Errors.Take(20)));
+        }
 
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         if (native.Platform != WaWPlatform.Xbox360)
@@ -111,6 +127,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         var reusedLiterals = 0;
         var rendererTechsets = 0;
         var rendererPixels = 0;
+        var realImages = 0;
 
         // XAssetList lives outside the blocks. Script pointer array, strings and
         // XAsset[] are the first VIRTUAL allocations.
@@ -241,6 +258,27 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if (imageGraph is not null &&
+                Normalize(root.TypeName) == "image" &&
+                imageGraph.ImagesByName.TryGetValue(root.Name, out var image))
+            {
+                realImages++;
+
+                // GfxImage (40) and its GfxImageLoadDef (16) share one TEMP root scope.
+                state.TempRoot(56);
+
+                // GfxImageLoadDef is reusable in T4 Xenon ZoneCode, so its first
+                // body reserves a non-serialized VIRTUAL insert slot.
+                state.VirtualAlloc(4, 4, false);
+
+                // ZoneCode child order: name, pixels, texture.
+                state.VirtualAlloc(Utf8Z(image.Name), 1, true);
+                if (image.PixelsBytes != 0)
+                    state.LargeRuntimeAlloc(image.PixelsBytes, 4096, true);
+                state.VirtualAlloc(52, 4, true);
+                continue;
+            }
+
             var shellSize = ShellSize(root.TypeName);
             if (shellSize == 0)
             {
@@ -257,13 +295,18 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add($"Upgraded TechniqueSets={rendererTechsets:N0}; expected {expectedTechniqueSets:N0}.");
         if (rendererPixels != expectedPixelShaders)
             blockers.Add($"Upgraded PixelShaders={rendererPixels:N0}; expected {expectedPixelShaders:N0}.");
-        if (state.Virtual > 0x20000000L || state.Physical > 0x20000000L)
+        if (imageGraph is not null && realImages != imageGraph.Images)
+            blockers.Add($"Upgraded image roots={realImages:N0}; graph contains {imageGraph.Images:N0}.");
+        if (state.Virtual > 0x20000000L || state.Physical > 0x20000000L ||
+            state.LargeRuntime > 0x20000000L)
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
         notes.Add("TEMP is modeled as scratch: every top-level asset starts at TEMP+0; header TEMP size is the maximum root scope.");
         notes.Add("Each first top-level root reserves one 4-byte VIRTUAL insert slot; insert slots and alignment holes consume block address space but no serialized bytes.");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
+        if (imageGraph is not null)
+            notes.Add($"Image graph graft: {realImages:N0} real GfxImage roots; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; source graph is validation-only unless independently PC-sourced.");
         notes.Add(ready
             ? "BLOCK LAYOUT CLOSURE: PASS. Stage 4E can write bytes against these exact cursors."
             : "BLOCK LAYOUT CLOSURE: BLOCKED. Stage 4E remains fenced.");
@@ -277,6 +320,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             ScriptStrings = native.Document.ScriptStrings.Count,
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
+            RealImageRoots = realImages,
+            LargeRuntimeBytes = state.LargeRuntime,
             InsertSlots = state.InsertSlots,
             ForwardPixelShaderReferences = forwardPixelRefs,
             ReusedTechniques = reusedTechniques,
@@ -480,6 +525,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         sb.AppendLine($"ScriptStrings:           {r.ScriptStrings:N0}");
         sb.AppendLine($"Renderer TechniqueSets:  {r.RendererTechniqueSets:N0}");
         sb.AppendLine($"Renderer PixelShaders:   {r.RendererPixelShaders:N0}");
+        sb.AppendLine($"Real image roots:        {r.RealImageRoots:N0}");
+        sb.AppendLine($"LARGE_RUNTIME:           0x{r.LargeRuntimeBytes:X}");
         sb.AppendLine($"VIRTUAL insert slots:    {r.InsertSlots:N0}");
         sb.AppendLine($"Forward PixelShader refs:{r.ForwardPixelShaderReferences,10:N0}");
         sb.AppendLine($"TEMP max:                0x{r.TempBytes:X}");
@@ -498,9 +545,11 @@ public static class T4XenonGraphBlockLayoutPlanner
     {
         private long _virtual;
         private long _physical;
+        private long _largeRuntime;
 
         public long Virtual => _virtual;
         public long Physical => _physical;
+        public long LargeRuntime => _largeRuntime;
         public long TempMax { get; private set; }
         public long Serialized { get; private set; }
         public int InsertSlots { get; set; }
@@ -510,6 +559,9 @@ public static class T4XenonGraphBlockLayoutPlanner
 
         public long PhysicalAlloc(long size, int align, bool serialized) =>
             Allocate(ref _physical, size, align, serialized);
+
+        public long LargeRuntimeAlloc(long size, int align, bool serialized) =>
+            Allocate(ref _largeRuntime, size, align, serialized);
 
         public void TempRoot(int size)
         {
