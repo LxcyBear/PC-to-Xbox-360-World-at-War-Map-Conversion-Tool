@@ -491,7 +491,7 @@ $layoutProbeExact =
 $bridgePass = $roundTripPass
 
 $manifest = [ordered]@{
-    format = 'WaW360.Nuclear4U.OatXModelBridge.v2'
+    format = 'WaW360.Nuclear4U.OatXModelBridge.v3'
     pcFastFile = (Resolve-Path -LiteralPath $PcFastFile).Path
     pcDumpExitCode = $dumpCode
     completePcXModels = $candidates.Count
