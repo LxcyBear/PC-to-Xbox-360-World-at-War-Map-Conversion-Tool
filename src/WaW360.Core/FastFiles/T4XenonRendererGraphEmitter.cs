@@ -55,7 +55,8 @@ public static class T4XenonRendererGraphEmitter
         CancellationToken cancellationToken = default,
         string? imageGraphDumpRoot = null,
         int expectedImages = 0,
-        bool imageGraphValidationOnly = true)
+        bool imageGraphValidationOnly = true,
+        int imageGraftLimit = 0)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -94,7 +95,8 @@ public static class T4XenonRendererGraphEmitter
             expectedPixelShaders,
             cancellationToken,
             imageGraphDumpRoot,
-            expectedImages);
+            expectedImages,
+            imageGraftLimit);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -152,6 +154,11 @@ public static class T4XenonRendererGraphEmitter
         var rendererTechsets = 0;
         var rendererPixels = 0;
         var realImages = 0;
+        var targetImageRoots = imageGraph is null
+            ? 0
+            : imageGraftLimit > 0
+                ? Math.Min(imageGraftLimit, imageGraph.Images)
+                : imageGraph.Images;
 
         foreach (var root in roots.OrderBy(x => x.Index))
         {
@@ -218,6 +225,7 @@ public static class T4XenonRendererGraphEmitter
             }
 
             if (imageGraph is not null &&
+                realImages < targetImageRoots &&
                 Normalize(root.TypeName) == "image" &&
                 imageGraph.ImagesByName.TryGetValue(root.Name, out var image))
             {
@@ -243,9 +251,9 @@ public static class T4XenonRendererGraphEmitter
                 $"Renderer root upgrade mismatch: TechniqueSets={rendererTechsets:N0}/{expectedTechniqueSets:N0}, " +
                 $"PixelShaders={rendererPixels:N0}/{expectedPixelShaders:N0}.");
 
-        if (imageGraph is not null && realImages != imageGraph.Images)
+        if (imageGraph is not null && realImages != targetImageRoots)
             throw new InvalidDataException(
-                $"Image root upgrade mismatch: upgraded={realImages:N0}, graph={imageGraph.Images:N0}.");
+                $"Image root upgrade mismatch: upgraded={realImages:N0}, target={targetImageRoots:N0}, graph={imageGraph.Images:N0}.");
 
         var layoutReplayExact =
             state.TempMax == layout.TempBytes &&
