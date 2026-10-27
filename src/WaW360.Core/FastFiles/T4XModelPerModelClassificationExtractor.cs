@@ -28,6 +28,8 @@ public sealed class T4XModelPerModelClassificationResult
     public required int FailedModels { get; init; }
     public required int ModelsWithBones { get; init; }
     public required int TotalBones { get; init; }
+    public required int ResolvedSidecarModels { get; init; }
+    public required bool UsedResolvedSidecars { get; init; }
     public required bool Complete { get; init; }
     public required IReadOnlyList<T4XModelPerModelClassificationEntry> Models { get; init; }
     public required string OutputDirectory { get; init; }
@@ -46,6 +48,16 @@ public static class T4XModelPerModelClassificationExtractor
     private const uint Following = 0xFFFFFFFFu;
     private const uint Insert = 0xFFFFFFFEu;
     private const int XModelFixedSize = 0xE4;
+
+    private sealed record ResolvedClassificationBone(
+        int Index,
+        string Name,
+        byte Classification);
+
+    private sealed record ResolvedClassificationModel(
+        string Name,
+        int NumBones,
+        IReadOnlyList<ResolvedClassificationBone> Bones);
 
     private static readonly string[] HitLocations =
     {
@@ -126,6 +138,8 @@ public static class T4XModelPerModelClassificationExtractor
             throw new InvalidDataException(
                 $"PC OAT --list exposed {listedNames.Count:N0} XModels, but the source XAsset table declares {declared:N0}.");
 
+        var resolvedSidecars = LoadResolvedClassificationCorpus(pcDumpRoot);
+
         Directory.CreateDirectory(outputDirectory);
         var entries = new List<T4XModelPerModelClassificationEntry>(declared);
         var modelsWithBones = 0;
@@ -143,7 +157,33 @@ public static class T4XModelPerModelClassificationExtractor
 
             try
             {
-                var classifications = ReadClassificationVector(zone, mapping.Offset, out var numBones);
+                byte[] classifications;
+                IReadOnlyList<string>? resolvedBoneNames = null;
+                int numBones;
+
+                if (resolvedSidecars.TryGetValue(name, out var resolved))
+                {
+                    numBones = resolved.NumBones;
+                    if (resolved.Bones.Count != numBones)
+                        throw new InvalidDataException(
+                            $"Resolved OAT sidecar for '{name}' has {resolved.Bones.Count:N0} bone rows; expected {numBones:N0}.");
+
+                    var ordered = resolved.Bones.OrderBy(x => x.Index).ToArray();
+                    for (var i = 0; i < ordered.Length; i++)
+                    {
+                        if (ordered[i].Index != i)
+                            throw new InvalidDataException(
+                                $"Resolved OAT sidecar for '{name}' has non-contiguous bone index {ordered[i].Index} at row {i}.");
+                    }
+
+                    resolvedBoneNames = ordered.Select(x => x.Name).ToArray();
+                    classifications = ordered.Select(x => x.Classification).ToArray();
+                }
+                else
+                {
+                    classifications = ReadClassificationVector(zone, mapping.Offset, out numBones);
+                }
+
                 if (numBones > 0)
                 {
                     modelsWithBones++;
@@ -158,6 +198,21 @@ public static class T4XModelPerModelClassificationExtractor
                 if (classifications.Length != numBones)
                     throw new InvalidDataException(
                         $"PC classification vector for '{name}' has {classifications.Length:N0} entries; expected {numBones:N0}.");
+
+                if (resolvedBoneNames is not null)
+                {
+                    if (resolvedBoneNames.Count != boneNames.Count)
+                        throw new InvalidDataException(
+                            $"Resolved source/canonical bone-count mismatch for '{name}': {resolvedBoneNames.Count:N0} != {boneNames.Count:N0}.");
+
+                    for (var i = 0; i < boneNames.Count; i++)
+                    {
+                        if (!string.Equals(resolvedBoneNames[i], boneNames[i], StringComparison.Ordinal))
+                            throw new InvalidDataException(
+                                $"Resolved source/canonical bone-order mismatch for '{name}' at index {i}: " +
+                                $"source='{resolvedBoneNames[i]}', canonical='{boneNames[i]}'.");
+                    }
+                }
 
                 var local = new Dictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
                 for (var i = 0; i < numBones; i++)
@@ -238,6 +293,8 @@ public static class T4XModelPerModelClassificationExtractor
             FailedModels = failed,
             ModelsWithBones = modelsWithBones,
             TotalBones = totalBones,
+            ResolvedSidecarModels = resolvedSidecars.Count,
+            UsedResolvedSidecars = resolvedSidecars.Count != 0,
             Complete = failed == 0 && entries.Count == declared,
             Models = entries,
             OutputDirectory = outputDirectory,
@@ -252,6 +309,50 @@ public static class T4XModelPerModelClassificationExtractor
             cancellationToken);
 
         return result;
+    }
+
+    private static Dictionary<string, ResolvedClassificationModel> LoadResolvedClassificationCorpus(string pcDumpRoot)
+    {
+        var root = Path.Combine(pcDumpRoot, "xmodel_classification");
+        var output = new Dictionary<string, ResolvedClassificationModel>(StringComparer.OrdinalIgnoreCase);
+        if (!Directory.Exists(root))
+            return output;
+
+        foreach (var file in Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories))
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(file));
+            var json = doc.RootElement;
+
+            if (!json.TryGetProperty("format", out var format) ||
+                !string.Equals(format.GetString(), "WaW360.T4.XModelClassification.v1", StringComparison.Ordinal))
+                continue;
+
+            var name = json.GetProperty("name").GetString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(name))
+                throw new InvalidDataException($"Resolved XModel classification sidecar has an empty name: {file}");
+
+            var numBones = json.GetProperty("numBones").GetInt32();
+            var bones = new List<ResolvedClassificationBone>();
+            if (json.TryGetProperty("bones", out var boneArray) && boneArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var bone in boneArray.EnumerateArray())
+                {
+                    var index = bone.GetProperty("index").GetInt32();
+                    var boneName = bone.GetProperty("name").GetString() ?? string.Empty;
+                    var classificationValue = bone.GetProperty("classification").GetInt32();
+                    if (classificationValue < 0 || classificationValue >= HitLocations.Length)
+                        throw new InvalidDataException(
+                            $"Resolved XModel classification sidecar '{name}' has invalid classification {classificationValue} at bone {index}.");
+                    bones.Add(new ResolvedClassificationBone(index, boneName, (byte)classificationValue));
+                }
+            }
+
+            var model = new ResolvedClassificationModel(name, numBones, bones);
+            if (!output.TryAdd(name, model))
+                throw new InvalidDataException($"Duplicate resolved XModel classification sidecar for '{name}'.");
+        }
+
+        return output;
     }
 
     private static byte[] ReadClassificationVector(byte[] zone, int start, out int numBones)
