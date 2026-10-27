@@ -27,8 +27,10 @@ try {
 
     $srcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Techset'
     $imageSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Image'
+    $pcXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\XModel'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $pcXModelSrcDir | Out-Null
 
     $graphSrc = Join-Path $PSScriptRoot 'graph-dumper'
     $headerSrc = Join-Path $graphSrc 'TechniqueSetGraphDumperT4Xenon.h'
@@ -47,6 +49,14 @@ try {
     $imageCppDst = Join-Path $imageSrcDir 'ImageGraphDumperT4Xenon.cpp'
     Copy-Item -LiteralPath $imageHeaderSrc -Destination $imageHeaderDst -Force
     Copy-Item -LiteralPath $imageCppSrc -Destination $imageCppDst -Force
+
+    $pcClassHeaderSrc = Join-Path $graphSrc 'XModelClassificationDumperT4.h'
+    $pcClassCppSrc = Join-Path $graphSrc 'XModelClassificationDumperT4.cpp'
+    if (-not (Test-Path -LiteralPath $pcClassHeaderSrc -PathType Leaf) -or -not (Test-Path -LiteralPath $pcClassCppSrc -PathType Leaf)) { throw 'PC XModel classification dumper source is missing from converter repo.' }
+    $pcClassHeaderDst = Join-Path $pcXModelSrcDir 'XModelClassificationDumperT4.h'
+    $pcClassCppDst = Join-Path $pcXModelSrcDir 'XModelClassificationDumperT4.cpp'
+    Copy-Item -LiteralPath $pcClassHeaderSrc -Destination $pcClassHeaderDst -Force
+    Copy-Item -LiteralPath $pcClassCppSrc -Destination $pcClassCppDst -Force
 
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
@@ -85,6 +95,28 @@ try {
     [System.IO.File]::WriteAllText(
         $writer,
         $normalizedText,
+        [System.Text.UTF8Encoding]::new($false))
+
+    $pcWriter = Join-Path $oat 'src\ObjWriting\Game\T4\ObjWriterT4.cpp'
+    $pcText = Get-Content -LiteralPath $pcWriter -Raw
+    $pcIncludeNeedle = '#include "Game/T4/XModel/XModelDumperT4.h"'
+    $pcIncludeLine = '#include "Game/T4/XModel/XModelClassificationDumperT4.h"'
+    if ($pcText -notmatch [regex]::Escape($pcIncludeLine)) {
+        if ($pcText -notmatch [regex]::Escape($pcIncludeNeedle)) { throw 'Could not find T4 XModel dumper include anchor.' }
+        $pcText = $pcText.Replace($pcIncludeNeedle, $pcIncludeNeedle + [Environment]::NewLine + $pcIncludeLine)
+    }
+
+    $pcRegisterNeedle = 'RegisterAssetDumper(std::make_unique<xmodel::DumperT4>());'
+    $pcRegisterLine = 'RegisterAssetDumper(std::make_unique<xmodel::ClassificationDumperT4>());'
+    if ($pcText -notmatch [regex]::Escape($pcRegisterLine)) {
+        if ($pcText -notmatch [regex]::Escape($pcRegisterNeedle)) { throw 'Could not find T4 XModel dumper registration anchor.' }
+        $pcText = $pcText.Replace($pcRegisterNeedle, $pcRegisterNeedle + [Environment]::NewLine + '    ' + $pcRegisterLine)
+    }
+
+    $normalizedPcText = $pcText.TrimEnd([char]13, [char]10) + [char]10
+    [System.IO.File]::WriteAllText(
+        $pcWriter,
+        $normalizedPcText,
         [System.Text.UTF8Encoding]::new($false))
 
     & git diff --check
@@ -136,10 +168,13 @@ finally {
         Push-Location $oat
         try {
             & git checkout -- 'src/ObjWriting/Game/T4Xenon/ObjWriterT4Xenon.cpp' 2>$null
+            & git checkout -- 'src/ObjWriting/Game/T4/ObjWriterT4.cpp' 2>$null
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
     }
     Pop-Location
