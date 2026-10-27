@@ -236,6 +236,31 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("Stage-5 proof source updated: real 0x5C/12-bucket Xbox XAnim payloads.");
                 return result.Verified ? 0 : 3;
             }
+            case "xmodel-partclassification-per-model" when args.Length >= 6:
+            {
+                var xanimProof = args.Length >= 7 && !string.IsNullOrWhiteSpace(args[6]) ? args[6] : null;
+                var weaponProof = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
+
+                var result = await T4XModelPerModelClassificationExtractor.RunAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4],
+                    args[5],
+                    xanimProof,
+                    weaponProof);
+
+                Console.WriteLine("NUCLEAR per-model XModel partClassification recovery");
+                Console.WriteLine($"declared={result.DeclaredXModels:N0}; listed={result.ListedXModels:N0}; aligned={result.AlignedXModels:N0}");
+                Console.WriteLine($"completeModels={result.CompleteModels:N0}; failedModels={result.FailedModels:N0}; modelsWithBones={result.ModelsWithBones:N0}; totalBones={result.TotalBones:N0}; complete={result.Complete}");
+                Console.WriteLine($"output:   {result.OutputDirectory}");
+                Console.WriteLine($"manifest: {result.ManifestFile}");
+                foreach (var model in result.Models.Where(x => !x.Complete).Take(20))
+                    Console.WriteLine($"FAIL: #{model.XModelOrdinal:N0} asset#{model.AssetIndex:N0} '{model.Name}': {model.Error}");
+                if (result.FailedModels > 20)
+                    Console.WriteLine($"FAIL: ... {result.FailedModels - 20:N0} more model(s) in manifest.");
+                return result.Complete ? 0 : 4;
+            }
             case "xmodel-partclassification" when args.Length >= 4:
             {
                 var xanimProof = args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]) ? args[4] : null;
@@ -1095,6 +1120,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-iwi-image-corpus <root> <map> <output> <native-identity.json>  Match IWD .iwi corpus to native Xenon image identities and rank codec mass");
+    Console.WriteLine("  xmodel-partclassification-per-model <pc.ff> <pc-dump-root> <pc-oat-list.log> <output-dir> <manifest.json> [xanim-proof] [weapon-proof]  Recover model-specific PC hit-location CSVs using OAT canonical GLTF bone order");
     Console.WriteLine("  xmodel-partclassification <pc.ff> <partclassification.csv> <manifest.json> [xanim-proof] [weapon-proof]  Recover original PC XModel bone hit-location mapping for OAT Xenon import");
     Console.WriteLine("  xenon-native-xmodel-layout <native.ff> <native-identity.json> <output>  Prove native Xbox XModel 0xD4 fixed-body/name boundary against 0xE4 control");
     Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio] [4s-manifest]  Gate full-content emission on real payload mass and zero critical shells, crediting exact 4S PC-backed images when supplied");
