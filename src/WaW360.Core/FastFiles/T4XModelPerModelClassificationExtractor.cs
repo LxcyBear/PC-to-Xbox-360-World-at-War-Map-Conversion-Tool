@@ -163,6 +163,8 @@ public static class T4XModelPerModelClassificationExtractor
                 for (var i = 0; i < numBones; i++)
                 {
                     var boneName = boneNames[i];
+                    var cls = classifications[i];
+
                     // OAT's canonical default armature intentionally uses an empty
                     // root-bone name. Preserve it: PartClassificationState defaults
                     // unknown/empty names to HITLOC_NONE, so a nonzero source class
@@ -171,8 +173,6 @@ public static class T4XModelPerModelClassificationExtractor
                         throw new InvalidDataException(
                             $"PC XModel '{name}' has unnamed canonical root bone with nonzero classification " +
                             $"{cls}({HitLocations[cls]}), which cannot be represented safely by OAT's default-armature lookup.");
-
-                    var cls = classifications[i];
                     if (cls >= HitLocations.Length)
                         throw new InvalidDataException(
                             $"PC XModel '{name}' bone[{i}] '{boneName}' has invalid T4 hit-location classification {cls}.");
