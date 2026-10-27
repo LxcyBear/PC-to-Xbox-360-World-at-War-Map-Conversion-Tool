@@ -438,9 +438,6 @@ public static class T4XenonRendererGraphEmitter
             pixelStable);
         zone.Write(body);
 
-        if (!string.IsNullOrEmpty(technique.Name))
-            EmitString(zone, state, technique.Name);
-
         foreach (var pass in technique.Passes)
         {
             if (pass.VertexDecl is not null)
@@ -485,6 +482,10 @@ public static class T4XenonRendererGraphEmitter
                 }
             }
         }
+
+        // T4 Xenon ZoneCode: MaterialTechnique reorder = passArray, then name.
+        if (!string.IsNullOrEmpty(technique.Name))
+            EmitString(zone, state, technique.Name);
     }
 
     private static byte[] BuildTechniqueBody(
