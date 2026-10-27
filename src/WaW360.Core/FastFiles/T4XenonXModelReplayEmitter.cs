@@ -213,7 +213,19 @@ public static class T4XenonXModelReplayEmitter
             blockers.Add(
                 $"Decompressed size differs: reference={reference.Bytes.LongLength:N0}, output={zoneBytes.LongLength:N0}.");
 
-        var redumpDir = Path.Combine(outputDirectory, "redump");
+        // Keep verification redumps out of the already-deep map output tree.
+        // XModel collision graphs append asset names plus files such as
+        // s###.vl###.tree.nodes.bin; under the suite output this can cross the
+        // legacy Win32 MAX_PATH boundary and make a correct replay look like a
+        // graph mismatch because only the deepest dump files fail to open.
+        var redumpKey = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(
+                Path.GetFullPath(outputFf) + "|" + graph.Name)))[..12].ToLowerInvariant();
+        var redumpDir = Path.Combine(
+            Path.GetTempPath(),
+            "WaW360",
+            "xmr",
+            redumpKey);
         if (Directory.Exists(redumpDir))
             Directory.Delete(redumpDir, recursive: true);
         Directory.CreateDirectory(redumpDir);
@@ -250,7 +262,8 @@ public static class T4XenonXModelReplayEmitter
             if (redumpGraphs.Length != 1)
             {
                 blockers.Add(
-                    $"Expected exactly one relocatable XModel graph after replay; found {redumpGraphs.Length}.");
+                    $"Expected exactly one relocatable XModel graph after replay; found {redumpGraphs.Length}. " +
+                    $"Verification redump root: {redumpDir}");
             }
             else
             {
@@ -261,7 +274,9 @@ public static class T4XenonXModelReplayEmitter
                     redumpGraphs[0],
                     out var compareError);
                 if (!graphRedumpExact)
-                    blockers.Add("Relocatable graph redump differs: " + compareError);
+                    blockers.Add(
+                        "Relocatable graph redump differs: " + compareError +
+                        $" | verification redump root: {redumpDir}");
             }
         }
 
