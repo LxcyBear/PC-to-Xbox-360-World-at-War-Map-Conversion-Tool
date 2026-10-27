@@ -1,6 +1,6 @@
 #include "XModelRelocatableGraphDumperT4Xenon.h"
 
-#include "ZoneCommon/Game/T4Xenon/AssetEndianSwapT4Xenon.h"
+#include "Game/T4Xenon/AssetEndianSwapT4Xenon.h"
 
 #include <cstddef>
 #include <cstdint>
