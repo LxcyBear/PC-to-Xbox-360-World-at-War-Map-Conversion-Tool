@@ -540,6 +540,29 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-graph-layout" when args.Length >= 6:
+            {
+                var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
+                var expectedTechsets = args.Length >= 8 && int.TryParse(args[7], out var et) ? et : 87;
+                var expectedPixelShaders = args.Length >= 9 && int.TryParse(args[8], out var ep) ? ep : 897;
+                var result = await T4XenonGraphBlockLayoutPlanner.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5],
+                    canonicalBaseName, expectedTechsets, expectedPixelShaders);
+                Console.WriteLine("NUCLEAR STAGE 4D OAT-style Xenon block layout");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; scripts={result.ScriptStrings:N0}; insertSlots={result.InsertSlots:N0}");
+                Console.WriteLine($"rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; forwardPixelRefs={result.ForwardPixelShaderReferences:N0}");
+                Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
+                Console.WriteLine($"serializedBlockBytes={result.SerializedBlockBytes:N0}; projectedZoneBytes={result.ProjectedUncompressedZoneBytes:N0}");
+                Console.WriteLine($"reuse techniques={result.ReusedTechniques:N0}; vertexDecls={result.ReusedVertexDecls:N0}; vertexShaders={result.ReusedVertexShaders:N0}; literals={result.ReusedLiteralConstants:N0}");
+                Console.WriteLine($"layoutReady={result.LayoutReady}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonManifestFile}");
+                foreach (var blocker in result.Blockers.Take(32))
+                    Console.WriteLine("BLOCKER: " + blocker);
+                foreach (var note in result.Notes)
+                    Console.WriteLine(note);
+                return result.LayoutReady ? 0 : 4;
+            }
             case "xenon-graph-bind" when args.Length >= 4:
             {
                 var expectedTechsets = args.Length >= 5 && int.TryParse(args[4], out var et) ? et : 87;
@@ -913,6 +936,7 @@ static void PrintHelp()
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
+    Console.WriteLine("  xenon-graph-layout <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [expected-techsets] [expected-pixelshaders]  Dry-run OAT-style renderer block allocation");
     Console.WriteLine("  xenon-graph-bind <dump-root> <native.ff> <out-dir> [expected-techsets] [expected-pixelshaders]  Bind fixed-up Xenon graph identities to exact native XAsset root slots");
     Console.WriteLine("  xenon-graph-plan <dump-root> <out-dir> [expected-techsets] [expected-pixelshaders]  Build deterministic Xenon graph serialization/dedupe plan");
     Console.WriteLine("  xasset-root-oracle <candidate.ff> <native.ff>  Compare generated/native Xbox DB root graph, order, refs and simple names");
