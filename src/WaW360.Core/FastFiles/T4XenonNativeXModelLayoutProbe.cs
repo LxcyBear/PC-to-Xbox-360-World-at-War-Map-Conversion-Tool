@@ -100,6 +100,7 @@ public static class T4XenonNativeXModelLayoutProbe
         var byPrefix = patterns
             .GroupBy(x => BinaryPrimitives.ReadUInt32LittleEndian(x.Bytes.AsSpan(0, 4)))
             .ToDictionary(g => g.Key, g => g.ToList());
+        var firstBytes = patterns.Select(x => x.Bytes[0]).ToHashSet();
 
         var d4ByIndex = identities.ToDictionary(x => x.Index, _ => new List<int>());
         var e4ByIndex = identities.ToDictionary(x => x.Index, _ => new List<int>());
@@ -107,7 +108,10 @@ public static class T4XenonNativeXModelLayoutProbe
 
         for (var offset = 0; offset <= zone.Length - 5; offset++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if ((offset & 0xFFFFF) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+            if (!firstBytes.Contains(zone[offset]))
+                continue;
 
             var key = BinaryPrimitives.ReadUInt32LittleEndian(zone.AsSpan(offset, 4));
             if (!byPrefix.TryGetValue(key, out var candidates))
