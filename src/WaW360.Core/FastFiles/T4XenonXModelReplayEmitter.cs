@@ -174,28 +174,6 @@ public static class T4XenonXModelReplayEmitter
 
         var blockers = new List<string>();
 
-        var outputIdentity = await T4XenonNativeIdentityOracle.RunAsync(
-            outputFf,
-            Path.Combine(outputDirectory, "output_identity"),
-            explicitUnlinkerExe,
-            cancellationToken);
-
-        var exactIdentity =
-            outputIdentity.Entries.Count == referenceIdentity.Entries.Count &&
-            outputIdentity.Entries.Zip(referenceIdentity.Entries).All(pair =>
-                pair.First.TypeId == pair.Second.TypeId &&
-                pair.First.Name.Equals(pair.Second.Name, StringComparison.Ordinal));
-
-        var oatLog = await File.ReadAllTextAsync(
-            outputIdentity.RawUnlinkerLogFile,
-            cancellationToken);
-        var oatZero = HasZeroWarningErrorSummary(oatLog);
-
-        if (!exactIdentity)
-            blockers.Add("OAT output root identity sequence differs from the reference XModel FF.");
-        if (!oatZero)
-            blockers.Add("OAT identity reopen did not prove 0 warnings / 0 errors.");
-
         var referenceBlocks = reference.ZoneHeader.BlockSizes.ToArray();
         var outputBlocks = parsed.BlockSizes.ToArray();
         var exactBlocks = referenceBlocks.SequenceEqual(outputBlocks);
@@ -213,21 +191,60 @@ public static class T4XenonXModelReplayEmitter
             blockers.Add(
                 $"Decompressed size differs: reference={reference.Bytes.LongLength:N0}, output={zoneBytes.LongLength:N0}.");
 
-        // Keep verification redumps out of the already-deep map output tree.
-        // XModel collision graphs append asset names plus files such as
-        // s###.vl###.tree.nodes.bin; under the suite output this can cross the
-        // legacy Win32 MAX_PATH boundary and make a correct replay look like a
-        // graph mismatch because only the deepest dump files fail to open.
-        var redumpKey = Convert.ToHexString(
+        // All OAT verification runs use a deliberately short workspace. This
+        // isolates serializer correctness from legacy Win32/CRT path handling;
+        // some valid suite paths approach MAX_PATH before OAT derives any
+        // additional working/output paths.
+        var verificationKey = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(
                 Path.GetFullPath(outputFf) + "|" + graph.Name)))[..12].ToLowerInvariant();
-        var redumpDir = Path.Combine(
+        var verificationRoot = Path.Combine(
             Path.GetTempPath(),
             "WaW360",
-            "xmr",
-            redumpKey);
-        if (Directory.Exists(redumpDir))
-            Directory.Delete(redumpDir, recursive: true);
+            "xmv",
+            verificationKey);
+        if (Directory.Exists(verificationRoot))
+            Directory.Delete(verificationRoot, recursive: true);
+        Directory.CreateDirectory(verificationRoot);
+
+        var verificationFf = Path.Combine(verificationRoot, "c.ff");
+        File.Copy(outputFf, verificationFf, overwrite: true);
+
+        var exactIdentity = false;
+        var oatZero = false;
+        try
+        {
+            var outputIdentity = await T4XenonNativeIdentityOracle.RunAsync(
+                verificationFf,
+                Path.Combine(verificationRoot, "id"),
+                explicitUnlinkerExe,
+                cancellationToken);
+
+            exactIdentity =
+                outputIdentity.Entries.Count == referenceIdentity.Entries.Count &&
+                outputIdentity.Entries.Zip(referenceIdentity.Entries).All(pair =>
+                    pair.First.TypeId == pair.Second.TypeId &&
+                    pair.First.Name.Equals(pair.Second.Name, StringComparison.Ordinal));
+
+            var oatLog = await File.ReadAllTextAsync(
+                outputIdentity.RawUnlinkerLogFile,
+                cancellationToken);
+            oatZero = HasZeroWarningErrorSummary(oatLog);
+
+            var persistentIdentityLog = Path.Combine(outputDirectory, "identity_reopen.log");
+            File.Copy(outputIdentity.RawUnlinkerLogFile, persistentIdentityLog, overwrite: true);
+
+            if (!exactIdentity)
+                blockers.Add("OAT output root identity sequence differs from the reference XModel FF.");
+            if (!oatZero)
+                blockers.Add("OAT identity reopen did not prove 0 warnings / 0 errors.");
+        }
+        catch (Exception ex)
+        {
+            blockers.Add("OAT identity reopen failed: " + ex.Message);
+        }
+
+        var redumpDir = Path.Combine(verificationRoot, "dump");
         Directory.CreateDirectory(redumpDir);
 
         var redumpLog = Path.Combine(outputDirectory, "redump.log");
@@ -239,7 +256,7 @@ public static class T4XenonXModelReplayEmitter
                 "--include-assets", "xmodel",
                 "--model-format", "gltf",
                 "--output-folder", redumpDir,
-                outputFf
+                verificationFf
             },
             redumpLog,
             cancellationToken);
