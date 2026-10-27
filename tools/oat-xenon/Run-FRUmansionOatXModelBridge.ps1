@@ -201,15 +201,86 @@ Write-Host "[NUCLEAR-4U] Selected proof model          : $($selected.Name)"
 Write-Host "[NUCLEAR-4U] Selected LODs                 : $($selected.LodCount)"
 Write-Host "[NUCLEAR-4U] Selected GLTF bytes           : $($selected.LodBytes)"
 
+# OAT's XModel loader always consults partclassification.csv. An empty file is a
+# valid table and maps every unmatched bone to HITLOC_NONE, which is appropriate
+# for this geometry/layout proof. Do not invent classifications.
+$partClassification = Join-Path $pcDump 'partclassification.csv'
+[IO.File]::WriteAllText(
+    $partClassification,
+    '',
+    [Text.UTF8Encoding]::new($false))
+
+# This proof isolates the PC->Xenon XModel/XSurface conversion. Renderer and
+# physics payloads are separate stages, so dependencies are represented as OAT
+# reference assets rather than fabricated material/physics bodies.
+$selectedJson = Get-Content -LiteralPath $selected.JsonPath -Raw | ConvertFrom-Json
+$referenceAssets = New-Object 'System.Collections.Generic.List[object]'
+$referenceKeys = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+function Add-ReferenceAsset {
+    param(
+        [Parameter(Mandatory=$true)][string]$Type,
+        [AllowEmptyString()][string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) { return }
+    $key = $Type + [char]0 + $Name
+    if ($referenceKeys.Add($key)) {
+        $referenceAssets.Add([pscustomobject]@{
+            Type = $Type
+            Name = $Name
+        })
+    }
+}
+
+foreach ($lod in @($selectedJson.lods)) {
+    $relative = [string]$lod.file
+    if ([string]::IsNullOrWhiteSpace($relative)) { continue }
+
+    $lodPath = Join-Path $pcDump $relative.Replace('/', '')
+    if (-not (Test-Path -LiteralPath $lodPath -PathType Leaf)) { continue }
+
+    try {
+        $gltf = Get-Content -LiteralPath $lodPath -Raw | ConvertFrom-Json
+        foreach ($material in @($gltf.materials)) {
+            if ($null -eq $material) { continue }
+            Add-ReferenceAsset -Type 'material' -Name ([string]$material.name)
+        }
+    }
+    catch {
+        throw "Failed to inspect exported GLTF material dependencies: $lodPath :: $($_.Exception.Message)"
+    }
+}
+
+if ($selectedJson.PSObject.Properties.Name -contains 'physPreset') {
+    Add-ReferenceAsset -Type 'physpreset' -Name ([string]$selectedJson.physPreset)
+}
+if ($selectedJson.PSObject.Properties.Name -contains 'physConstraints') {
+    Add-ReferenceAsset -Type 'physconstraints' -Name ([string]$selectedJson.physConstraints)
+}
+
+Write-Host "[NUCLEAR-4U] Reference dependencies         : $($referenceAssets.Count)"
+foreach ($ref in $referenceAssets) {
+    Write-Host "[NUCLEAR-4U]   ref $($ref.Type),$($ref.Name)"
+}
+
 $project = 'nuclear_4u_oat_xmodel_bridge'
 $zoneFile = Join-Path $zoneSource ($project + '.zone')
-$zoneLines = @(
-    '>game,T4',
-    '>platform,xbox360',
-    ('>name,{0}' -f $project),
-    '',
-    ('xmodel,"{0}"' -f $selected.Name.Replace('"', ''))
-)
+$zoneLines = New-Object 'System.Collections.Generic.List[string]'
+$zoneLines.Add('>game,T4')
+$zoneLines.Add('>platform,xbox360')
+$zoneLines.Add(('>name,{0}' -f $project))
+$zoneLines.Add('')
+
+foreach ($ref in $referenceAssets) {
+    # Zone-definition reference syntax is type,,name. This causes dependency
+    # resolution to create a default reference asset instead of requiring a
+    # renderer/physics payload during the isolated XModel bridge proof.
+    $safeName = ([string]$ref.Name).Replace('"', '')
+    $zoneLines.Add(('{0},,"{1}"' -f $ref.Type, $safeName))
+}
+
+$zoneLines.Add(('xmodel,"{0}"' -f $selected.Name.Replace('"', '')))
 
 [IO.File]::WriteAllLines(
     $zoneFile,
@@ -375,6 +446,8 @@ $manifest = [ordered]@{
     selectedModel = $selected.Name
     selectedLodCount = $selected.LodCount
     selectedLodBytes = $selected.LodBytes
+    partClassificationFile = $partClassification
+    referenceDependencies = @($referenceAssets | ForEach-Object { [ordered]@{ type = $_.Type; name = $_.Name } })
     linkedFastFile = $linkedFastFile
     xenonLinkExitCode = $linkCode
     xenonReadbackExitCode = $listCode
