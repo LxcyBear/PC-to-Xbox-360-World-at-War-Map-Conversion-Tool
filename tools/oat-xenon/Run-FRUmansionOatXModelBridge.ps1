@@ -30,6 +30,29 @@ if (-not (Test-Path -LiteralPath $unlinker -PathType Leaf)) {
     throw "Pinned Xenon OAT Unlinker not found: $unlinker"
 }
 
+$graphCapabilityFile = Join-Path (Split-Path -Parent $unlinker) 'waw360-graph-dumper-capabilities.json'
+$hasResolvedXModelClassification = $false
+if (Test-Path -LiteralPath $graphCapabilityFile -PathType Leaf) {
+    try {
+        $graphCapabilities = Get-Content -LiteralPath $graphCapabilityFile -Raw | ConvertFrom-Json
+        $hasResolvedXModelClassification =
+            [string]$graphCapabilities.format -eq 'WaW360.OatGraphDumperCapabilities.v1' -and
+            @($graphCapabilities.capabilities) -contains 't4-xmodel-classification-v1'
+    }
+    catch {
+        $hasResolvedXModelClassification = $false
+    }
+}
+
+if (-not $hasResolvedXModelClassification) {
+    throw @"
+4U now requires the refreshed specialized OAT Unlinker with resolved PC XModel classification dumping.
+Run this once, then rerun 4U:
+
+powershell -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Build-OatXenonGraphDumper.ps1"
+"@
+}
+
 function Invoke-NativeTee {
     param(
         [Parameter(Mandatory=$true)][string]$FilePath,
