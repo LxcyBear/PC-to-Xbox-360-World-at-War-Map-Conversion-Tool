@@ -493,17 +493,20 @@ public static class T4XenonGraphBlockLayoutPlanner
 
     private sealed class CursorState
     {
-        public long Virtual { get; private set; }
-        public long Physical { get; private set; }
+        private long _virtual;
+        private long _physical;
+
+        public long Virtual => _virtual;
+        public long Physical => _physical;
         public long TempMax { get; private set; }
         public long Serialized { get; private set; }
         public int InsertSlots { get; set; }
 
         public long VirtualAlloc(long size, int align, bool serialized) =>
-            Allocate(ref Virtual, size, align, serialized);
+            Allocate(ref _virtual, size, align, serialized);
 
         public long PhysicalAlloc(long size, int align, bool serialized) =>
-            Allocate(ref Physical, size, align, serialized);
+            Allocate(ref _physical, size, align, serialized);
 
         public void TempRoot(int size)
         {
