@@ -609,6 +609,32 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.GraphExtractionReady ? 0 : 4;
             }
+            case "xenon-image-replay" when args.Length >= 4:
+            {
+                var unlinker = args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]) ? args[4] : null;
+                var expectedImages = args.Length >= 6 && int.TryParse(args[5], out var ei) ? ei : 378;
+                var result = await T4XenonImageGraphReplayEmitter.EmitAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    unlinker,
+                    expectedImages);
+
+                Console.WriteLine("NUCLEAR STAGE 4O C# Xenon image serializer replay");
+                Console.WriteLine($"images={result.Images:N0}; cardMemory={result.CardMemoryBytes:N0}; outputZoneBytes={result.ZoneBytes:N0}");
+                Console.WriteLine($"TEMP={result.TempBytes:N0}; VIRTUAL={result.VirtualBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}");
+                Console.WriteLine($"referenceBlocks=[{string.Join(", ", result.ReferenceBlockSizes)}]");
+                Console.WriteLine($"outputBlocks=[{string.Join(", ", result.OutputBlockSizes)}]");
+                Console.WriteLine($"exactBlockReplay={result.ExactBlockReplay}; exactZoneSizeReplay={result.ExactZoneSizeReplay}; exactDecompressedSizeReplay={result.ExactDecompressedSizeReplay}");
+                Console.WriteLine($"oatListedRoots={result.OatListedRoots:N0}; exactIdentitySequence={result.ExactIdentitySequence}; wrapperRoundTrip={result.WrapperRoundTripVerified}");
+                Console.WriteLine($"replayPass={result.ReplayPass}");
+                Console.WriteLine($"candidate: {result.OutputFastFile}");
+                Console.WriteLine($"report:    {result.TextReportFile}");
+                Console.WriteLine($"manifest:  {result.JsonReportFile}");
+                foreach (var blocker in result.Blockers.Take(32))
+                    Console.WriteLine("BLOCKER: " + blocker);
+                return result.ReplayPass ? 0 : 4;
+            }
             case "xenon-graph-emit" when args.Length >= 6:
             {
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
