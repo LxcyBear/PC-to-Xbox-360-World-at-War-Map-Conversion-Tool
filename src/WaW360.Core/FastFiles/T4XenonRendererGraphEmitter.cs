@@ -12,7 +12,10 @@ public sealed class T4XenonRendererEmitResult
     public required int NativeRoots { get; init; }
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
+    public required int RealImageRoots { get; init; }
     public required long ZoneBytes { get; init; }
+    public required long MainZoneBytes { get; init; }
+    public required long LargeRuntimeBytes { get; init; }
     public required long TempBytes { get; init; }
     public required long VirtualBytes { get; init; }
     public required long PhysicalBytes { get; init; }
@@ -20,6 +23,7 @@ public sealed class T4XenonRendererEmitResult
     public required bool OatZeroWarningsZeroErrors { get; init; }
     public required bool ExactIdentitySequence { get; init; }
     public required bool LayoutReplayExact { get; init; }
+    public required bool ValidationOnly { get; init; }
     public required bool ReadyForHardware { get; init; }
     public required string? OatGateError { get; init; }
     public required string TextReportFile { get; init; }
@@ -47,7 +51,10 @@ public static class T4XenonRendererGraphEmitter
         string? explicitUnlinkerExe = null,
         int expectedTechniqueSets = 87,
         int expectedPixelShaders = 897,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? imageGraphDumpRoot = null,
+        int expectedImages = 0,
+        bool imageGraphValidationOnly = true)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -61,6 +68,18 @@ public static class T4XenonRendererGraphEmitter
         if (!graph.Verified)
             throw new InvalidDataException("Stage 4E requires a verified fixed-up Xenon graph.");
 
+        T4XenonImageGraphImportResult? imageGraph = null;
+        if (!string.IsNullOrWhiteSpace(imageGraphDumpRoot))
+        {
+            imageGraph = T4XenonImageGraphImporter.Load(
+                imageGraphDumpRoot,
+                expectedImages > 0 ? expectedImages : null);
+            if (!imageGraph.Verified)
+                throw new InvalidDataException(
+                    "Stage 4E image graph is not verified: " +
+                    string.Join(" | ", imageGraph.Errors.Take(20)));
+        }
+
         // Re-run the corrected Stage 4D allocator inside 4E. This makes byte
         // emission fail closed if traversal order and allocation ever drift.
         var layout = await T4XenonGraphBlockLayoutPlanner.BuildAsync(
@@ -72,7 +91,9 @@ public static class T4XenonRendererGraphEmitter
             canonicalBaseName,
             expectedTechniqueSets,
             expectedPixelShaders,
-            cancellationToken);
+            cancellationToken,
+            imageGraphDumpRoot,
+            expectedImages);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -109,7 +130,8 @@ public static class T4XenonRendererGraphEmitter
         var emittedVertexShaders = new HashSet<string>(StringComparer.Ordinal);
         var emittedLiterals = new HashSet<string>(StringComparer.Ordinal);
 
-        using var zone = new MemoryStream(capacity: checked((int)Math.Min(int.MaxValue, layout.ProjectedUncompressedZoneBytes + 4096)));
+        using var zone = new MemoryStream(capacity: checked((int)Math.Min(int.MaxValue, Math.Max(4096, layout.ProjectedUncompressedZoneBytes - layout.LargeRuntimeBytes + 4096))));
+        using var largeRuntime = new MemoryStream(capacity: checked((int)Math.Min(int.MaxValue, Math.Max(0, layout.LargeRuntimeBytes))));
         zone.Write(new byte[36]);
 
         WriteU32(zone, checked((uint)native.Document.ScriptStrings.Count));
@@ -128,6 +150,7 @@ public static class T4XenonRendererGraphEmitter
 
         var rendererTechsets = 0;
         var rendererPixels = 0;
+        var realImages = 0;
 
         foreach (var root in roots.OrderBy(x => x.Index))
         {
@@ -193,6 +216,20 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            if (imageGraph is not null &&
+                Normalize(root.TypeName) == "image" &&
+                imageGraph.ImagesByName.TryGetValue(root.Name, out var image))
+            {
+                realImages++;
+                EmitImage(
+                    zone,
+                    largeRuntime,
+                    state,
+                    image,
+                    cancellationToken);
+                continue;
+            }
+
             var shell = BuildShell(root.TypeName, root.Name, canonicalBaseName);
             state.TempRoot(shell.Body.Length);
             zone.Write(shell.Body);
@@ -205,12 +242,17 @@ public static class T4XenonRendererGraphEmitter
                 $"Renderer root upgrade mismatch: TechniqueSets={rendererTechsets:N0}/{expectedTechniqueSets:N0}, " +
                 $"PixelShaders={rendererPixels:N0}/{expectedPixelShaders:N0}.");
 
+        if (imageGraph is not null && realImages != imageGraph.Images)
+            throw new InvalidDataException(
+                $"Image root upgrade mismatch: upgraded={realImages:N0}, graph={imageGraph.Images:N0}.");
+
         var layoutReplayExact =
             state.TempMax == layout.TempBytes &&
             state.Virtual == layout.VirtualBytes &&
             state.Physical == layout.PhysicalBytes &&
+            state.LargeRuntime == layout.LargeRuntimeBytes &&
             state.Serialized == layout.SerializedBlockBytes &&
-            zone.Length == layout.ProjectedUncompressedZoneBytes;
+            zone.Length + largeRuntime.Length == layout.ProjectedUncompressedZoneBytes;
 
         if (!layoutReplayExact)
             throw new InvalidDataException(
@@ -218,16 +260,22 @@ public static class T4XenonRendererGraphEmitter
                 $"TEMP 0x{state.TempMax:X}/0x{layout.TempBytes:X}, " +
                 $"VIRTUAL 0x{state.Virtual:X}/0x{layout.VirtualBytes:X}, " +
                 $"PHYSICAL 0x{state.Physical:X}/0x{layout.PhysicalBytes:X}, " +
+                $"LARGE_RUNTIME 0x{state.LargeRuntime:X}/0x{layout.LargeRuntimeBytes:X}, " +
                 $"serialized {state.Serialized:N0}/{layout.SerializedBlockBytes:N0}, " +
-                $"zone {zone.Length:N0}/{layout.ProjectedUncompressedZoneBytes:N0}.");
+                $"zone {zone.Length + largeRuntime.Length:N0}/{layout.ProjectedUncompressedZoneBytes:N0}.");
 
         PatchHeader(
             zone,
             state.TempMax,
+            state.LargeRuntime,
             state.Virtual,
             state.Physical);
 
-        var zoneBytes = zone.ToArray();
+        var mainBytes = zone.ToArray();
+        var runtimeBytes = largeRuntime.ToArray();
+        var zoneBytes = new byte[checked(mainBytes.Length + runtimeBytes.Length)];
+        Buffer.BlockCopy(mainBytes, 0, zoneBytes, 0, mainBytes.Length);
+        Buffer.BlockCopy(runtimeBytes, 0, zoneBytes, mainBytes.Length, runtimeBytes.Length);
         var zonePath = Path.Combine(outputDirectory, "nuclear_xenon_renderer.zone");
         await File.WriteAllBytesAsync(zonePath, zoneBytes, cancellationToken);
 
@@ -284,7 +332,9 @@ public static class T4XenonRendererGraphEmitter
             oatError = ex.Message;
         }
 
-        var ready = layoutReplayExact && wrapped.RoundTripVerified &&
+        var validationOnly = imageGraph is not null && imageGraphValidationOnly;
+        var ready = !validationOnly &&
+                    layoutReplayExact && wrapped.RoundTripVerified &&
                     exactIdentity && oatZero;
 
         var txt = Path.Combine(outputDirectory, "nuclear_xenon_renderer_emit.txt");
@@ -306,6 +356,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"OAT listed roots:           {oatListedRoots:N0}");
         report.AppendLine($"OAT exact identity sequence:{exactIdentity}");
         report.AppendLine($"OAT 0 warnings / 0 errors:  {oatZero}");
+        report.AppendLine($"VALIDATION ONLY:            {validationOnly}");
         report.AppendLine($"READY FOR HARDWARE:         {ready}");
         if (!string.IsNullOrWhiteSpace(oatError))
             report.AppendLine($"OAT GATE:                    {oatError}");
@@ -319,7 +370,10 @@ public static class T4XenonRendererGraphEmitter
             NativeRoots = roots.Count,
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
+            RealImageRoots = realImages,
             ZoneBytes = zoneBytes.LongLength,
+            MainZoneBytes = mainBytes.LongLength,
+            LargeRuntimeBytes = state.LargeRuntime,
             TempBytes = state.TempMax,
             VirtualBytes = state.Virtual,
             PhysicalBytes = state.Physical,
@@ -327,6 +381,7 @@ public static class T4XenonRendererGraphEmitter
             OatZeroWarningsZeroErrors = oatZero,
             ExactIdentitySequence = exactIdentity,
             LayoutReplayExact = layoutReplayExact,
+            ValidationOnly = validationOnly,
             ReadyForHardware = ready,
             OatGateError = oatError,
             TextReportFile = txt,
@@ -685,6 +740,86 @@ public static class T4XenonRendererGraphEmitter
                 $"{kind} allocation drift for '{key}': actual=0x{actual:X}, expected=0x{expected:X}.");
     }
 
+    private static void EmitImage(
+        Stream zone,
+        Stream largeRuntime,
+        EmitState state,
+        T4XenonImageGraph image,
+        CancellationToken cancellationToken)
+    {
+        const int gfxImageSize = 40;
+        const int loadDefSize = 16;
+        const int d3dTextureSize = 52;
+
+        state.TempRoot(gfxImageSize + loadDefSize);
+        zone.Write(BuildImageBody(image));
+
+        // T4 Xenon ZoneCode marks loadDef reusable: reserve its non-serialized
+        // VIRTUAL insert slot before walking reordered children.
+        state.VirtualAlloc(4, 4, serialized: false);
+
+        // GfxImage child traversal is name -> pixels -> texture.
+        EmitString(zone, state, image.Name);
+
+        if (image.PixelsBytes != 0)
+        {
+            state.LargeRuntimeAlloc(image.PixelsBytes, 4096, serialized: true);
+            var pixels = File.ReadAllBytes(image.PixelBlobFile);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (pixels.Length != image.PixelsBytes)
+                throw new InvalidDataException(
+                    $"{image.Name}: pixel blob length {pixels.Length:N0} != graph {image.PixelsBytes:N0}.");
+            largeRuntime.Write(pixels);
+        }
+
+        zone.Write(BuildImageLoadDefBody(image));
+
+        state.VirtualAlloc(d3dTextureSize, 4, serialized: true);
+        var texture = File.ReadAllBytes(image.TextureHeaderBlobFile);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (texture.Length != d3dTextureSize)
+            throw new InvalidDataException(
+                $"{image.Name}: D3D texture header length {texture.Length:N0} != {d3dTextureSize}.");
+        zone.Write(texture);
+    }
+
+    private static byte[] BuildImageBody(T4XenonImageGraph image)
+    {
+        var b = new byte[40];
+        PutU32(b, 0, checked((uint)image.MapType));
+        PutU32(b, 4, T4ZonePointer.Following);
+        b[8] = image.Semantic;
+        PutU32(b, 12, checked((uint)image.CardMemoryBytes));
+        PutU16(b, 16, image.Width);
+        PutU16(b, 18, image.Height);
+        PutU16(b, 20, image.Depth);
+        b[22] = image.Category;
+        b[23] = image.DelayLoadPixels ? (byte)1 : (byte)0;
+        PutU32(b, 24, image.PixelsBytes == 0 ? 0u : T4ZonePointer.Following);
+        PutU32(b, 28, image.BaseSize);
+        PutU16(b, 32, image.StreamSlot);
+        b[34] = image.Streaming ? (byte)1 : (byte)0;
+        PutU32(b, 36, string.IsNullOrEmpty(image.Name) ? 0u : T4ZonePointer.Following);
+        return b;
+    }
+
+    private static byte[] BuildImageLoadDefBody(T4XenonImageGraph image)
+    {
+        var d = image.LoadDef;
+        var b = new byte[16];
+        b[0] = d.LevelCount;
+        b[1] = d.Flags;
+        PutI16(b, 2, d.Dimensions[0]);
+        PutI16(b, 4, d.Dimensions[1]);
+        PutI16(b, 6, d.Dimensions[2]);
+        PutU32(b, 8, unchecked((uint)d.Format));
+        PutU32(b, 12, T4ZonePointer.Following);
+        return b;
+    }
+
+    private static void PutI16(byte[] b, int offset, short value) =>
+        BinaryPrimitives.WriteInt16BigEndian(b.AsSpan(offset, 2), value);
+
     private sealed record ShellPayload(byte[] Body, IReadOnlyList<string> Children);
 
     private static ShellPayload BuildShell(
@@ -757,11 +892,12 @@ public static class T4XenonRendererGraphEmitter
     private static void PatchHeader(
         MemoryStream zone,
         long temp,
+        long largeRuntime,
         long virtualSize,
         long physical)
     {
         if (zone.Length > uint.MaxValue)
-            throw new InvalidDataException("Stage 4E zone exceeds 32-bit T4 zoneSize.");
+            throw new InvalidDataException("Stage 4E main zone exceeds 32-bit T4 zoneSize.");
 
         var zoneSize = checked((uint)(zone.Length - 36));
         var pos = zone.Position;
@@ -770,7 +906,7 @@ public static class T4XenonRendererGraphEmitter
         WriteU32(zone, 0);
         WriteU32(zone, checked((uint)temp));
         WriteU32(zone, 0);
-        WriteU32(zone, 0);
+        WriteU32(zone, checked((uint)largeRuntime));
         WriteU32(zone, 0);
         WriteU32(zone, checked((uint)virtualSize));
         WriteU32(zone, 0);
@@ -931,9 +1067,11 @@ public static class T4XenonRendererGraphEmitter
     {
         private long _virtual;
         private long _physical;
+        private long _largeRuntime;
 
         public long Virtual => _virtual;
         public long Physical => _physical;
+        public long LargeRuntime => _largeRuntime;
         public long TempMax { get; private set; }
         public long Serialized { get; private set; }
 
@@ -942,6 +1080,9 @@ public static class T4XenonRendererGraphEmitter
 
         public long PhysicalAlloc(long size, int alignment, bool serialized) =>
             Allocate(ref _physical, size, alignment, serialized);
+
+        public long LargeRuntimeAlloc(long size, int alignment, bool serialized) =>
+            Allocate(ref _largeRuntime, size, alignment, serialized);
 
         public void TempRoot(int size)
         {
