@@ -2,6 +2,7 @@
 
 #include "ZoneCommon/Game/T4Xenon/AssetEndianSwapT4Xenon.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <iomanip>
