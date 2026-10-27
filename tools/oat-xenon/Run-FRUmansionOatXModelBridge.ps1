@@ -359,6 +359,7 @@ $layout = Get-Content -LiteralPath $layoutManifest -Raw | ConvertFrom-Json
 
 $bridgePass =
     $listCode -eq 0 -and
+    $errorCount -eq 0 -and
     $xmodelListed -and
     [int]$layout.NativeXModelRoots -ge 1 -and
     [int]$layout.UniqueD4Matches -eq [int]$layout.NativeXModelRoots -and
