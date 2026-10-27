@@ -156,18 +156,669 @@ function Get-SafeStem {
 }
 
 function Get-ListedXModels {
-    param([Parameter(Mandatory=$true)][string[]]$Lines)
+    param(
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyString()]
+        [string[]]$Lines
+    )
 
     $names = New-Object 'System.Collections.Generic.List[string]'
     foreach ($line in $Lines) {
+        if ($null -eq $line) { continue }
         $text = ([string]$line).Trim()
-        if ($text -match '(?i)^xmodel\s*,\s*(.+?)\s*$') {
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+
+        if ($text -match '(?i)^xmodel\s*,\s*(.+?)\s*
+$models = @($class.Models | Sort-Object {[int]$_.XModelOrdinal})
+if ($models.Count -ne 280) {
+    throw "Classification manifest contains $($models.Count) model rows; expected 280."
+}
+
+if ($StartIndex -lt 0 -or $StartIndex -ge $models.Count) {
+    throw "StartIndex must be between 0 and $($models.Count - 1)."
+}
+
+$endExclusive = $models.Count
+if ($MaxModels -gt 0) {
+    $endExclusive = [Math]::Min($models.Count, $StartIndex + $MaxModels)
+}
+$selectedModels = @($models[$StartIndex..($endExclusive - 1)])
+
+Write-Host '[NUCLEAR-4V] ================================================================'
+Write-Host '[NUCLEAR-4V] PRODUCTION-FIDELITY XMODEL CORPUS BUILD'
+Write-Host '[NUCLEAR-4V] ================================================================'
+Write-Host "[NUCLEAR-4V] Bridge root   : $BridgeRoot"
+Write-Host "[NUCLEAR-4V] PC dump       : $pcDump"
+Write-Host "[NUCLEAR-4V] Output        : $OutputRoot"
+Write-Host "[NUCLEAR-4V] Corpus        : $($models.Count) XModels"
+Write-Host "[NUCLEAR-4V] This run      : indices $StartIndex..$($endExclusive - 1) ($($selectedModels.Count) models)"
+Write-Host "[NUCLEAR-4V] Resume        : $(-not $NoResume.IsPresent)"
+Write-Host "[NUCLEAR-4V] Class overlay : $classificationOverlay"
+Write-Host ''
+Write-Host '[NUCLEAR-4V] Policy: every model uses its own PC-recovered partclassification.csv.'
+Write-Host '[NUCLEAR-4V] Pass gate: Xenon link succeeds + generated FF reopens + exact XModel identity is listed + zero OAT errors.'
+Write-Host ''
+
+$results = New-Object 'System.Collections.Generic.List[object]'
+$passed = 0
+$failed = 0
+$skipped = 0
+
+for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
+    $model = $models[$ordinal]
+    $name = [string]$model.Name
+    $safe = Get-SafeStem -Name $name
+    $project = ('nuclear_4v_xm_{0:D3}' -f $ordinal)
+
+    $resultFile = Join-Path $resultsRoot ('{0:D3}_{1}.json' -f $ordinal, $safe)
+    $modelOut = Join-Path $linkedRoot ('{0:D3}_{1}' -f $ordinal, $safe)
+    $modelWork = Join-Path $workspace ('{0:D3}' -f $ordinal)
+    $linkLog = Join-Path $logsRoot ('{0:D3}_{1}_link.log' -f $ordinal, $safe)
+    $readLog = Join-Path $logsRoot ('{0:D3}_{1}_readback.log' -f $ordinal, $safe)
+
+    if (-not $NoResume.IsPresent -and (Test-Path -LiteralPath $resultFile -PathType Leaf)) {
+        try {
+            $prior = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
+            if ([bool]$prior.Pass -and
+                [string]$prior.Name -ieq $name -and
+                (Test-Path -LiteralPath ([string]$prior.FastFile) -PathType Leaf)) {
+                $skipped++
+                $passed++
+                $results.Add($prior)
+                Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] RESUME PASS  {2}" -f ($ordinal + 1), $models.Count, $name)
+                continue
+            }
+        }
+        catch {
+            # Stale/corrupt result: rebuild this model.
+        }
+    }
+
+    Write-Host ''
+    Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] BUILD {2}" -f ($ordinal + 1), $models.Count, $name)
+
+    $pass = $false
+    $linkCode = -1
+    $readCode = -1
+    $warnCount = 0
+    $errorCount = 0
+    $listed = $false
+    $listedXModels = @()
+    $ffPath = $null
+    $classificationSha256 = $null
+    $xmodelJsonSha256 = $null
+    $fastFileSha256 = $null
+    $errorText = $null
+    $errorPosition = $null
+    $errorStack = $null
+
+    try {
+        if (-not [bool]$model.Complete) {
+            throw "Classification manifest marks this model incomplete: $([string]$model.Error)"
+        }
+
+        $classificationCsv = [string]$model.CsvFile
+        if (-not (Test-Path -LiteralPath $classificationCsv -PathType Leaf)) {
+            throw "Per-model classification CSV is missing: $classificationCsv"
+        }
+
+        $jsonPath = Get-XModelJsonPath -Name $name
+        if (-not (Test-Path -LiteralPath $jsonPath -PathType Leaf)) {
+            throw "Canonical XModel JSON is missing: $jsonPath"
+        }
+
+        $classificationSha256 = (Get-FileHash -LiteralPath $classificationCsv -Algorithm SHA256).Hash.ToLowerInvariant()
+        $xmodelJsonSha256 = (Get-FileHash -LiteralPath $jsonPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+        Copy-Item -LiteralPath $classificationCsv -Destination $activePartClassification -Force
+
+        $refs = @(Get-ReferenceAssets -JsonPath $jsonPath)
+
+        if (Test-Path -LiteralPath $modelOut) {
+            Remove-Item -LiteralPath $modelOut -Recurse -Force
+        }
+        if (Test-Path -LiteralPath $modelWork) {
+            Remove-Item -LiteralPath $modelWork -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $modelOut | Out-Null
+        New-Item -ItemType Directory -Force -Path $modelWork | Out-Null
+
+        $zoneFile = Join-Path $zoneSource ($project + '.zone')
+        $zoneLines = New-Object 'System.Collections.Generic.List[string]'
+        $zoneLines.Add('>game,T4')
+        $zoneLines.Add('>platform,xbox360')
+        $zoneLines.Add(('>name,{0}' -f $project))
+        $zoneLines.Add('')
+
+        foreach ($ref in $refs) {
+            $refName = ([string]$ref.Name).Replace('"','')
+            $zoneLines.Add(('{0},,"{1}"' -f [string]$ref.Type, $refName))
+        }
+        $zoneLines.Add(('xmodel,"{0}"' -f $name.Replace('"','')))
+
+        [IO.File]::WriteAllLines($zoneFile, $zoneLines, [Text.UTF8Encoding]::new($false))
+
+        $linkArgs = @(
+            '--no-color',
+            '--base-folder', $modelWork,
+            '--source-search-path', $zoneSource,
+            '--asset-search-path', $assetSearchPath,
+            '--output-folder', $modelOut,
+            $project
+        )
+
+        Push-Location $modelWork
+        try {
+            $linkCode = Invoke-NativeTee -FilePath $linker -Arguments $linkArgs -LogPath $linkLog
+        }
+        finally {
+            Pop-Location
+        }
+
+        if ($linkCode -ne 0) {
+            throw "Xenon Linker failed with exit $linkCode."
+        }
+
+        $ffs = @(Get-ChildItem -LiteralPath $modelOut -Filter '*.ff' -File -Recurse -ErrorAction SilentlyContinue)
+        if ($ffs.Count -ne 1) {
+            throw "Expected exactly one Xenon FF, found $($ffs.Count)."
+        }
+        $ffPath = $ffs[0].FullName
+
+        $readCode = Invoke-NativeTee -FilePath $unlinker -Arguments @('--list','--no-color',$ffPath) -LogPath $readLog
+        $readLines = @(Get-Content -LiteralPath $readLog -ErrorAction SilentlyContinue)
+        $diagnostics = Get-OatDiagnosticCounts -Lines $readLines
+        $warnCount = [int]$diagnostics.Warnings
+        $errorCount = [int]$diagnostics.Errors
+        $listedXModels = @(Get-ListedXModels -Lines $readLines)
+        $listed = $listedXModels.Count -eq 1 -and [string]$listedXModels[0] -ieq $name
+
+        if ($readCode -ne 0) {
+            throw "Xenon read-back failed with exit $readCode."
+        }
+        if (-not [bool]$diagnostics.SummaryFound) {
+            throw "Xenon read-back did not emit OAT's completion summary."
+        }
+        if ($warnCount -ne 0 -or $errorCount -ne 0) {
+            throw "Xenon read-back logged warnings/errors=$warnCount/$errorCount."
+        }
+        if ($listedXModels.Count -ne 1) {
+            throw "Xenon read-back listed $($listedXModels.Count) XModel roots; expected exactly 1."
+        }
+        if (-not $listed) {
+            throw "Xenon read-back did not list exact XModel identity '$name'."
+        }
+
+        $fastFileSha256 = (Get-FileHash -LiteralPath $ffPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $pass = $true
+    }
+    catch {
+        $errorText = $_.Exception.Message
+        $errorPosition = $_.InvocationInfo.PositionMessage
+        $errorStack = $_.ScriptStackTrace
+    }
+
+    $row = [ordered]@{
+        Format = 'WaW360.Nuclear4V.XModelCorpusRow.v1'
+        Ordinal = $ordinal
+        AssetIndex = [int]$model.AssetIndex
+        Name = $name
+        BoneCount = [int]$model.BoneCount
+        ClassificationCsv = [string]$model.CsvFile
+        ClassificationSha256 = $classificationSha256
+        XModelJsonSha256 = $xmodelJsonSha256
+        FastFileSha256 = $fastFileSha256
+        LinkExitCode = $linkCode
+        ReadbackExitCode = $readCode
+        ReadbackWarnings = $warnCount
+        ReadbackErrors = $errorCount
+        ExactIdentityListed = $listed
+        ListedXModelCount = @($listedXModels).Count
+        FastFile = $ffPath
+        LinkLog = $linkLog
+        ReadbackLog = $readLog
+        Pass = $pass
+        Error = $errorText
+        ErrorPosition = $errorPosition
+        ErrorStack = $errorStack
+    }
+
+    $row | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultFile -Encoding UTF8
+    $results.Add([pscustomobject]$row)
+
+    if ($pass) {
+        $passed++
+        Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] PASS  {2}" -f ($ordinal + 1), $models.Count, $name) -ForegroundColor Green
+    }
+    else {
+        $failed++
+        Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] FAIL  {2} :: {3}" -f ($ordinal + 1), $models.Count, $name, $errorText) -ForegroundColor Yellow
+        if (-not [string]::IsNullOrWhiteSpace([string]$errorPosition)) {
+            Write-Host ("[NUCLEAR-4V]   at " + ([string]$errorPosition).Trim()) -ForegroundColor DarkYellow
+        }
+    }
+}
+
+$summaryRows = @(
+    Get-ChildItem -LiteralPath $resultsRoot -Filter '*.json' -File -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { $null }
+    } |
+    Where-Object { $null -ne $_ } |
+    Sort-Object {[int]$_.Ordinal}
+)
+
+$totalPass = @($summaryRows | Where-Object { [bool]$_.Pass }).Count
+$totalFail = @($summaryRows | Where-Object { -not [bool]$_.Pass }).Count
+$corpusPass = $summaryRows.Count -eq 280 -and $totalPass -eq 280 -and $totalFail -eq 0
+
+$summary = [ordered]@{
+    Format = 'WaW360.Nuclear4V.XModelCorpus.v1'
+    BridgeManifest = $bridgeManifest
+    ClassificationManifest = $classManifest
+    ExpectedModels = 280
+    ResultRows = $summaryRows.Count
+    PassedModels = $totalPass
+    FailedModels = $totalFail
+    ResumeSkippedThisRun = $skipped
+    CorpusPass = $corpusPass
+    Models = $summaryRows
+}
+
+$summaryFile = Join-Path $OutputRoot 'nuclear_4v_xmodel_corpus.json'
+$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryFile -Encoding UTF8
+
+$reportFile = Join-Path $OutputRoot 'nuclear_4v_xmodel_corpus.txt'
+$report = @(
+    'NUCLEAR STAGE 4V XMODEL CORPUS'
+    "expected=280"
+    "results=$($summaryRows.Count)"
+    "passed=$totalPass"
+    "failed=$totalFail"
+    "corpusPass=$corpusPass"
+    ''
+)
+foreach ($row in $summaryRows) {
+    $status = if ([bool]$row.Pass) { 'PASS' } else { 'FAIL' }
+    $report += ('{0:D3} {1,-4} {2}' -f [int]$row.Ordinal, $status, [string]$row.Name)
+}
+[IO.File]::WriteAllLines($reportFile, $report, [Text.UTF8Encoding]::new($false))
+
+Write-Host ''
+Write-Host '[NUCLEAR-4V] ===================== XMODEL CORPUS RESULT ======================'
+Write-Host "[NUCLEAR-4V] Expected     : 280"
+Write-Host "[NUCLEAR-4V] Result rows  : $($summaryRows.Count)"
+Write-Host "[NUCLEAR-4V] Passed       : $totalPass"
+Write-Host "[NUCLEAR-4V] Failed       : $totalFail"
+Write-Host "[NUCLEAR-4V] Resume skips : $skipped"
+Write-Host "[NUCLEAR-4V] Corpus pass  : $corpusPass"
+Write-Host "[NUCLEAR-4V] Manifest     : $summaryFile"
+Write-Host "[NUCLEAR-4V] Report       : $reportFile"
+Write-Host '[NUCLEAR-4V] ================================================================='
+
+if ($corpusPass) {
+    Write-Host ''
+    Write-Host '[NUCLEAR-4V] 280-XMODEL XENON CORPUS: PASS' -ForegroundColor Green
+    Write-Host '[NUCLEAR-4V] All PC-backed XModels linked independently with their own recovered classifications and re-opened cleanly through the Xenon loader.'
+    Write-Host '[NUCLEAR-4V] Next: extract/graft the validated Xenon XModel graphs into the 6,811-root production sequence.'
+    exit 0
+}
+
+if ($failed -gt 0) {
+    Write-Host ''
+    Write-Host "[NUCLEAR-4V] This invocation had $failed failure(s). Rerun after fixes; passing rows will resume-skip automatically." -ForegroundColor Yellow
+    exit 4
+}
+
+Write-Host ''
+Write-Host '[NUCLEAR-4V] Partial range completed successfully. Run again without -MaxModels (or continue with -StartIndex) to close all 280.' -ForegroundColor Cyan
+exit 0
+) {
             $names.Add((([string]$matches[1]).Trim()))
         }
     }
 
     # Same PS5.1 generic-list binder caveat as Get-ReferenceAssets.
     return $names
+}
+
+function Get-OatDiagnosticCounts {
+    param(
+        [Parameter(Mandatory=$true)]
+        [AllowEmptyString()]
+        [string[]]$Lines
+    )
+
+    $warnings = 0
+    $errors = 0
+    $foundSummary = $false
+
+    foreach ($line in $Lines) {
+        if ($null -eq $line) { continue }
+        $text = ([string]$line).Trim()
+
+        if ($text -match '(?i)^Finished with\s+(\d+)\s+warnings?,\s+(\d+)\s+errors?\s*
+$models = @($class.Models | Sort-Object {[int]$_.XModelOrdinal})
+if ($models.Count -ne 280) {
+    throw "Classification manifest contains $($models.Count) model rows; expected 280."
+}
+
+if ($StartIndex -lt 0 -or $StartIndex -ge $models.Count) {
+    throw "StartIndex must be between 0 and $($models.Count - 1)."
+}
+
+$endExclusive = $models.Count
+if ($MaxModels -gt 0) {
+    $endExclusive = [Math]::Min($models.Count, $StartIndex + $MaxModels)
+}
+$selectedModels = @($models[$StartIndex..($endExclusive - 1)])
+
+Write-Host '[NUCLEAR-4V] ================================================================'
+Write-Host '[NUCLEAR-4V] PRODUCTION-FIDELITY XMODEL CORPUS BUILD'
+Write-Host '[NUCLEAR-4V] ================================================================'
+Write-Host "[NUCLEAR-4V] Bridge root   : $BridgeRoot"
+Write-Host "[NUCLEAR-4V] PC dump       : $pcDump"
+Write-Host "[NUCLEAR-4V] Output        : $OutputRoot"
+Write-Host "[NUCLEAR-4V] Corpus        : $($models.Count) XModels"
+Write-Host "[NUCLEAR-4V] This run      : indices $StartIndex..$($endExclusive - 1) ($($selectedModels.Count) models)"
+Write-Host "[NUCLEAR-4V] Resume        : $(-not $NoResume.IsPresent)"
+Write-Host "[NUCLEAR-4V] Class overlay : $classificationOverlay"
+Write-Host ''
+Write-Host '[NUCLEAR-4V] Policy: every model uses its own PC-recovered partclassification.csv.'
+Write-Host '[NUCLEAR-4V] Pass gate: Xenon link succeeds + generated FF reopens + exact XModel identity is listed + zero OAT errors.'
+Write-Host ''
+
+$results = New-Object 'System.Collections.Generic.List[object]'
+$passed = 0
+$failed = 0
+$skipped = 0
+
+for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
+    $model = $models[$ordinal]
+    $name = [string]$model.Name
+    $safe = Get-SafeStem -Name $name
+    $project = ('nuclear_4v_xm_{0:D3}' -f $ordinal)
+
+    $resultFile = Join-Path $resultsRoot ('{0:D3}_{1}.json' -f $ordinal, $safe)
+    $modelOut = Join-Path $linkedRoot ('{0:D3}_{1}' -f $ordinal, $safe)
+    $modelWork = Join-Path $workspace ('{0:D3}' -f $ordinal)
+    $linkLog = Join-Path $logsRoot ('{0:D3}_{1}_link.log' -f $ordinal, $safe)
+    $readLog = Join-Path $logsRoot ('{0:D3}_{1}_readback.log' -f $ordinal, $safe)
+
+    if (-not $NoResume.IsPresent -and (Test-Path -LiteralPath $resultFile -PathType Leaf)) {
+        try {
+            $prior = Get-Content -LiteralPath $resultFile -Raw | ConvertFrom-Json
+            if ([bool]$prior.Pass -and
+                [string]$prior.Name -ieq $name -and
+                (Test-Path -LiteralPath ([string]$prior.FastFile) -PathType Leaf)) {
+                $skipped++
+                $passed++
+                $results.Add($prior)
+                Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] RESUME PASS  {2}" -f ($ordinal + 1), $models.Count, $name)
+                continue
+            }
+        }
+        catch {
+            # Stale/corrupt result: rebuild this model.
+        }
+    }
+
+    Write-Host ''
+    Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] BUILD {2}" -f ($ordinal + 1), $models.Count, $name)
+
+    $pass = $false
+    $linkCode = -1
+    $readCode = -1
+    $warnCount = 0
+    $errorCount = 0
+    $listed = $false
+    $listedXModels = @()
+    $ffPath = $null
+    $classificationSha256 = $null
+    $xmodelJsonSha256 = $null
+    $fastFileSha256 = $null
+    $errorText = $null
+    $errorPosition = $null
+    $errorStack = $null
+
+    try {
+        if (-not [bool]$model.Complete) {
+            throw "Classification manifest marks this model incomplete: $([string]$model.Error)"
+        }
+
+        $classificationCsv = [string]$model.CsvFile
+        if (-not (Test-Path -LiteralPath $classificationCsv -PathType Leaf)) {
+            throw "Per-model classification CSV is missing: $classificationCsv"
+        }
+
+        $jsonPath = Get-XModelJsonPath -Name $name
+        if (-not (Test-Path -LiteralPath $jsonPath -PathType Leaf)) {
+            throw "Canonical XModel JSON is missing: $jsonPath"
+        }
+
+        $classificationSha256 = (Get-FileHash -LiteralPath $classificationCsv -Algorithm SHA256).Hash.ToLowerInvariant()
+        $xmodelJsonSha256 = (Get-FileHash -LiteralPath $jsonPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+        Copy-Item -LiteralPath $classificationCsv -Destination $activePartClassification -Force
+
+        $refs = @(Get-ReferenceAssets -JsonPath $jsonPath)
+
+        if (Test-Path -LiteralPath $modelOut) {
+            Remove-Item -LiteralPath $modelOut -Recurse -Force
+        }
+        if (Test-Path -LiteralPath $modelWork) {
+            Remove-Item -LiteralPath $modelWork -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $modelOut | Out-Null
+        New-Item -ItemType Directory -Force -Path $modelWork | Out-Null
+
+        $zoneFile = Join-Path $zoneSource ($project + '.zone')
+        $zoneLines = New-Object 'System.Collections.Generic.List[string]'
+        $zoneLines.Add('>game,T4')
+        $zoneLines.Add('>platform,xbox360')
+        $zoneLines.Add(('>name,{0}' -f $project))
+        $zoneLines.Add('')
+
+        foreach ($ref in $refs) {
+            $refName = ([string]$ref.Name).Replace('"','')
+            $zoneLines.Add(('{0},,"{1}"' -f [string]$ref.Type, $refName))
+        }
+        $zoneLines.Add(('xmodel,"{0}"' -f $name.Replace('"','')))
+
+        [IO.File]::WriteAllLines($zoneFile, $zoneLines, [Text.UTF8Encoding]::new($false))
+
+        $linkArgs = @(
+            '--no-color',
+            '--base-folder', $modelWork,
+            '--source-search-path', $zoneSource,
+            '--asset-search-path', $assetSearchPath,
+            '--output-folder', $modelOut,
+            $project
+        )
+
+        Push-Location $modelWork
+        try {
+            $linkCode = Invoke-NativeTee -FilePath $linker -Arguments $linkArgs -LogPath $linkLog
+        }
+        finally {
+            Pop-Location
+        }
+
+        if ($linkCode -ne 0) {
+            throw "Xenon Linker failed with exit $linkCode."
+        }
+
+        $ffs = @(Get-ChildItem -LiteralPath $modelOut -Filter '*.ff' -File -Recurse -ErrorAction SilentlyContinue)
+        if ($ffs.Count -ne 1) {
+            throw "Expected exactly one Xenon FF, found $($ffs.Count)."
+        }
+        $ffPath = $ffs[0].FullName
+
+        $readCode = Invoke-NativeTee -FilePath $unlinker -Arguments @('--list','--no-color',$ffPath) -LogPath $readLog
+        $readLines = @(Get-Content -LiteralPath $readLog -ErrorAction SilentlyContinue)
+        $warnCount = @($readLines | Where-Object { $_ -match '(?i)\bwarn(?:ing)?\b' }).Count
+        $errorCount = @($readLines | Where-Object { $_ -match '(?i)\berror\b' }).Count
+        $listedXModels = @(Get-ListedXModels -Lines $readLines)
+        $listed = $listedXModels.Count -eq 1 -and [string]$listedXModels[0] -ieq $name
+
+        if ($readCode -ne 0) {
+            throw "Xenon read-back failed with exit $readCode."
+        }
+        if ($warnCount -ne 0 -or $errorCount -ne 0) {
+            throw "Xenon read-back logged warnings/errors=$warnCount/$errorCount."
+        }
+        if ($listedXModels.Count -ne 1) {
+            throw "Xenon read-back listed $($listedXModels.Count) XModel roots; expected exactly 1."
+        }
+        if (-not $listed) {
+            throw "Xenon read-back did not list exact XModel identity '$name'."
+        }
+
+        $fastFileSha256 = (Get-FileHash -LiteralPath $ffPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $pass = $true
+    }
+    catch {
+        $errorText = $_.Exception.Message
+        $errorPosition = $_.InvocationInfo.PositionMessage
+        $errorStack = $_.ScriptStackTrace
+    }
+
+    $row = [ordered]@{
+        Format = 'WaW360.Nuclear4V.XModelCorpusRow.v1'
+        Ordinal = $ordinal
+        AssetIndex = [int]$model.AssetIndex
+        Name = $name
+        BoneCount = [int]$model.BoneCount
+        ClassificationCsv = [string]$model.CsvFile
+        ClassificationSha256 = $classificationSha256
+        XModelJsonSha256 = $xmodelJsonSha256
+        FastFileSha256 = $fastFileSha256
+        LinkExitCode = $linkCode
+        ReadbackExitCode = $readCode
+        ReadbackWarnings = $warnCount
+        ReadbackErrors = $errorCount
+        ExactIdentityListed = $listed
+        ListedXModelCount = @($listedXModels).Count
+        FastFile = $ffPath
+        LinkLog = $linkLog
+        ReadbackLog = $readLog
+        Pass = $pass
+        Error = $errorText
+        ErrorPosition = $errorPosition
+        ErrorStack = $errorStack
+    }
+
+    $row | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultFile -Encoding UTF8
+    $results.Add([pscustomobject]$row)
+
+    if ($pass) {
+        $passed++
+        Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] PASS  {2}" -f ($ordinal + 1), $models.Count, $name) -ForegroundColor Green
+    }
+    else {
+        $failed++
+        Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] FAIL  {2} :: {3}" -f ($ordinal + 1), $models.Count, $name, $errorText) -ForegroundColor Yellow
+        if (-not [string]::IsNullOrWhiteSpace([string]$errorPosition)) {
+            Write-Host ("[NUCLEAR-4V]   at " + ([string]$errorPosition).Trim()) -ForegroundColor DarkYellow
+        }
+    }
+}
+
+$summaryRows = @(
+    Get-ChildItem -LiteralPath $resultsRoot -Filter '*.json' -File -ErrorAction SilentlyContinue |
+    ForEach-Object {
+        try { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { $null }
+    } |
+    Where-Object { $null -ne $_ } |
+    Sort-Object {[int]$_.Ordinal}
+)
+
+$totalPass = @($summaryRows | Where-Object { [bool]$_.Pass }).Count
+$totalFail = @($summaryRows | Where-Object { -not [bool]$_.Pass }).Count
+$corpusPass = $summaryRows.Count -eq 280 -and $totalPass -eq 280 -and $totalFail -eq 0
+
+$summary = [ordered]@{
+    Format = 'WaW360.Nuclear4V.XModelCorpus.v1'
+    BridgeManifest = $bridgeManifest
+    ClassificationManifest = $classManifest
+    ExpectedModels = 280
+    ResultRows = $summaryRows.Count
+    PassedModels = $totalPass
+    FailedModels = $totalFail
+    ResumeSkippedThisRun = $skipped
+    CorpusPass = $corpusPass
+    Models = $summaryRows
+}
+
+$summaryFile = Join-Path $OutputRoot 'nuclear_4v_xmodel_corpus.json'
+$summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryFile -Encoding UTF8
+
+$reportFile = Join-Path $OutputRoot 'nuclear_4v_xmodel_corpus.txt'
+$report = @(
+    'NUCLEAR STAGE 4V XMODEL CORPUS'
+    "expected=280"
+    "results=$($summaryRows.Count)"
+    "passed=$totalPass"
+    "failed=$totalFail"
+    "corpusPass=$corpusPass"
+    ''
+)
+foreach ($row in $summaryRows) {
+    $status = if ([bool]$row.Pass) { 'PASS' } else { 'FAIL' }
+    $report += ('{0:D3} {1,-4} {2}' -f [int]$row.Ordinal, $status, [string]$row.Name)
+}
+[IO.File]::WriteAllLines($reportFile, $report, [Text.UTF8Encoding]::new($false))
+
+Write-Host ''
+Write-Host '[NUCLEAR-4V] ===================== XMODEL CORPUS RESULT ======================'
+Write-Host "[NUCLEAR-4V] Expected     : 280"
+Write-Host "[NUCLEAR-4V] Result rows  : $($summaryRows.Count)"
+Write-Host "[NUCLEAR-4V] Passed       : $totalPass"
+Write-Host "[NUCLEAR-4V] Failed       : $totalFail"
+Write-Host "[NUCLEAR-4V] Resume skips : $skipped"
+Write-Host "[NUCLEAR-4V] Corpus pass  : $corpusPass"
+Write-Host "[NUCLEAR-4V] Manifest     : $summaryFile"
+Write-Host "[NUCLEAR-4V] Report       : $reportFile"
+Write-Host '[NUCLEAR-4V] ================================================================='
+
+if ($corpusPass) {
+    Write-Host ''
+    Write-Host '[NUCLEAR-4V] 280-XMODEL XENON CORPUS: PASS' -ForegroundColor Green
+    Write-Host '[NUCLEAR-4V] All PC-backed XModels linked independently with their own recovered classifications and re-opened cleanly through the Xenon loader.'
+    Write-Host '[NUCLEAR-4V] Next: extract/graft the validated Xenon XModel graphs into the 6,811-root production sequence.'
+    exit 0
+}
+
+if ($failed -gt 0) {
+    Write-Host ''
+    Write-Host "[NUCLEAR-4V] This invocation had $failed failure(s). Rerun after fixes; passing rows will resume-skip automatically." -ForegroundColor Yellow
+    exit 4
+}
+
+Write-Host ''
+Write-Host '[NUCLEAR-4V] Partial range completed successfully. Run again without -MaxModels (or continue with -StartIndex) to close all 280.' -ForegroundColor Cyan
+exit 0
+) {
+            $warnings = [int]$matches[1]
+            $errors = [int]$matches[2]
+            $foundSummary = $true
+        }
+    }
+
+    if (-not $foundSummary) {
+        # Fail closed if OAT's normal completion summary is absent.
+        return [pscustomobject]@{
+            Warnings = -1
+            Errors = -1
+            SummaryFound = $false
+        }
+    }
+
+    return [pscustomobject]@{
+        Warnings = $warnings
+        Errors = $errors
+        SummaryFound = $true
+    }
 }
 
 $models = @($class.Models | Sort-Object {[int]$_.XModelOrdinal})
