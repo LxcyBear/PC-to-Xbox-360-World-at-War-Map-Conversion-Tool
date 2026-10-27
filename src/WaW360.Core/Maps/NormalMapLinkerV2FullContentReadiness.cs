@@ -572,7 +572,7 @@ public static class NormalMapLinkerV2FullContentReadiness
             throw new InvalidDataException(
                 $"Stage 4R resolved list contains {byIndex.Count:N0} roots; expected {expectedImages:N0}.");
 
-        var expectedPixels = GetLong(graft, "actualLargeRuntimeBytes");
+        var expectedPixels = GetLong(graft, "actualImagePixelBytes");
         if (totalPixels != expectedPixels || imageGraph.CardMemoryBytes != expectedPixels)
             throw new InvalidDataException(
                 $"Stage 4R/4S Xenon pixel mass disagrees: roots={totalPixels:N0}, graph={imageGraph.CardMemoryBytes:N0}, 4S={expectedPixels:N0}.");
