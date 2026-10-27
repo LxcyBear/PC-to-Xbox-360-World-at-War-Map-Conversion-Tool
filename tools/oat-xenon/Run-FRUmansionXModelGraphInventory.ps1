@@ -142,7 +142,11 @@ for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
     $name = [string]$row.CorpusName
     $safe = Get-SafeStem -Name $name
 
-    $dumpDir = Join-Path $dumpsRoot ('{0:D3}_{1}' -f $ordinal, $safe)
+    # Keep the Unlinker dump root deliberately short. The inventory and
+    # canonical XModel dumpers append the asset name again below this directory;
+    # using "<ordinal>_<name>" here pushed long FRUmansion identities over the
+    # Win32 MAX_PATH boundary (259 chars passed, 261 chars failed).
+    $dumpDir = Join-Path $dumpsRoot ('{0:D3}' -f $ordinal)
     $logFile = Join-Path $logsRoot ('{0:D3}_{1}.log' -f $ordinal, $safe)
     $resultFile = Join-Path $resultsRoot ('{0:D3}_{1}.json' -f $ordinal, $safe)
 
