@@ -430,6 +430,9 @@ static async Task<int> MainAsync(string[] args)
                                double.TryParse(args[9], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var max)
                     ? max
                     : 1.20;
+                var productionImageGraftManifest = args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10])
+                    ? args[10]
+                    : null;
 
                 var map = MapDiscovery.DiscoverSourceFolder(root)
                     .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
@@ -444,12 +447,14 @@ static async Task<int> MainAsync(string[] args)
                     nativeIdentityManifest,
                     bindingManifest,
                     minRatio,
-                    maxRatio);
+                    maxRatio,
+                    productionImageGraftManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4F full-content pre-hardware gate");
                 Console.WriteLine($"nativeFF={result.NativeOracleFastFileBytes:N0}; nativeZone={result.NativeOracleZoneBytes:N0}; shellBaseline={result.AllShellBaselineZoneBytes:N0}; rendererGain={result.ProvenRendererGainBytes:N0}");
                 Console.WriteLine($"estimatedFullContent={result.EstimatedFullContentZoneBytes:N0}; nativeSizeRatio={result.NativeSizeRatio:P2}");
                 Console.WriteLine($"sourceMapped={result.SourceMappedRoots:N0}; realPromoted={result.RealPromotedRoots:N0}; fallback={result.FallbackRoots:N0}; synthetic={result.SyntheticDependencyRoots:N0}; criticalFallback={result.CriticalFallbackRoots:N0}; externalAudioPending={result.ExternalAudioPendingRoots:N0}");
+                Console.WriteLine($"productionImages={result.ProductionImageRoots:N0}; productionImageSerializedBytes={result.ProductionImageSerializedBytes:N0}; productionImagePixelBytes={result.ProductionImagePixelBytes:N0}");
                 Console.WriteLine($"properSizeGate={result.ProperSizeGate}; criticalContentGate={result.CriticalContentGate}; readyForFullNativeEmission={result.ReadyForFullNativeEmission}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
@@ -1053,7 +1058,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-iwi-image-corpus <root> <map> <output> <native-identity.json>  Match IWD .iwi corpus to native Xenon image identities and rank codec mass");
-    Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio]  Gate full-content emission on real payload mass and zero critical shells");
+    Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio] [4s-manifest]  Gate full-content emission on real payload mass and zero critical shells, crediting exact 4S PC-backed images when supplied");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
     Console.WriteLine("  oat-root-bisect <candidate.ff> <Unlinker.exe> <output-dir>  Binary-search first top-level root that makes OAT fail");
