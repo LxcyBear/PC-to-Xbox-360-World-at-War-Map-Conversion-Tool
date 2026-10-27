@@ -59,90 +59,143 @@ function Add-SourceRoot {
     $Roots.Add([pscustomobject]@{ Path = $full; Kind = $Kind; Priority = $Priority })
 }
 
+function Add-UniqueDirectory {
+    param([System.Collections.Generic.List[string]]$List, [string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return }
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return }
+    $full = (Resolve-Path -LiteralPath $Path).Path
+    foreach ($existing in $List) {
+        if ($existing -ieq $full) { return }
+    }
+    $List.Add($full)
+}
+
+function Read-SteamInstallDir {
+    param([string]$ManifestPath)
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) { return $null }
+    foreach ($line in Get-Content -LiteralPath $ManifestPath -ErrorAction SilentlyContinue) {
+        if ($line -match '"installdir"\s+"([^"]+)"') {
+            $steamApps = Split-Path -Parent $ManifestPath
+            return (Join-Path (Join-Path $steamApps 'common') $matches[1])
+        }
+    }
+    return $null
+}
+
 function Resolve-SteamWaWRoot {
     $steamRoots = New-Object 'System.Collections.Generic.List[string]'
-    $seenSteamRoots = @{}
+    $candidates = New-Object 'System.Collections.Generic.List[string]'
 
-    foreach ($registryPath in @('HKCU:\Software\Valve\Steam','HKLM:\SOFTWARE\WOW6432Node\Valve\Steam','HKLM:\SOFTWARE\Valve\Steam')) {
+    foreach ($uninstallRoot in @(
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )) {
+        if (-not (Test-Path $uninstallRoot)) { continue }
+        foreach ($subkey in Get-ChildItem -Path $uninstallRoot -ErrorAction SilentlyContinue) {
+            try {
+                $item = Get-ItemProperty -Path $subkey.PSPath -ErrorAction Stop
+                $displayName = [string]$item.DisplayName
+                $installLocation = [string]$item.InstallLocation
+                $keyName = [string]$subkey.PSChildName
+                if ($keyName -eq 'Steam App 10090' -or $displayName -match '(?i)Call of Duty.*World at War') {
+                    Add-UniqueDirectory -List $candidates -Path $installLocation
+                }
+            }
+            catch {}
+        }
+    }
+
+    foreach ($registryPath in @(
+        'HKCU:\Software\Valve\Steam',
+        'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam',
+        'HKLM:\SOFTWARE\Valve\Steam'
+    )) {
         try {
             $item = Get-ItemProperty -Path $registryPath -ErrorAction Stop
             foreach ($property in @('SteamPath', 'InstallPath')) {
-                if (-not ($item.PSObject.Properties.Name -contains $property)) { continue }
-                $steam = [string]$item.$property
-                if ([string]::IsNullOrWhiteSpace($steam) -or -not (Test-Path -LiteralPath $steam -PathType Container)) { continue }
-                $fullSteam = (Resolve-Path -LiteralPath $steam).Path
-                $key = $fullSteam.ToLowerInvariant()
-                if (-not $seenSteamRoots.ContainsKey($key)) {
-                    $seenSteamRoots[$key] = $true
-                    $steamRoots.Add($fullSteam)
+                if ($item.PSObject.Properties.Name -contains $property) {
+                    Add-UniqueDirectory -List $steamRoots -Path ([string]$item.$property)
                 }
             }
         }
         catch {}
     }
 
-    foreach ($steam in @('C:\Program Files (x86)\Steam', 'C:\Program Files\Steam')) {
-        if (-not (Test-Path -LiteralPath $steam -PathType Container)) { continue }
-        $fullSteam = (Resolve-Path -LiteralPath $steam).Path
-        $key = $fullSteam.ToLowerInvariant()
-        if (-not $seenSteamRoots.ContainsKey($key)) {
-            $seenSteamRoots[$key] = $true
-            $steamRoots.Add($fullSteam)
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        foreach ($relative in @(
+            'Steam',
+            'SteamLibrary',
+            'Games\Steam',
+            'Games\SteamLibrary',
+            'Program Files (x86)\Steam',
+            'Program Files\Steam'
+        )) {
+            Add-UniqueDirectory -List $steamRoots -Path (Join-Path $drive.Root $relative)
         }
     }
 
-    $seenLibraries = @{}
-    foreach ($steam in $steamRoots) {
-        $libraries = New-Object 'System.Collections.Generic.List[string]'
-        $libraries.Add($steam)
-
+    $initialSteamRoots = @($steamRoots)
+    foreach ($steam in $initialSteamRoots) {
         $libraryFile = Join-Path $steam 'steamapps\libraryfolders.vdf'
-        if (Test-Path -LiteralPath $libraryFile -PathType Leaf) {
-            foreach ($line in Get-Content -LiteralPath $libraryFile -ErrorAction SilentlyContinue) {
-                if ($line -match '"path"\s+"([^"]+)"') {
-                    $libraryPath = ([string]$matches[1]).Replace('\\', '\')
-                    if (Test-Path -LiteralPath $libraryPath -PathType Container) {
-                        $libraries.Add((Resolve-Path -LiteralPath $libraryPath).Path)
-                    }
-                }
+        if (-not (Test-Path -LiteralPath $libraryFile -PathType Leaf)) { continue }
+        foreach ($line in Get-Content -LiteralPath $libraryFile -ErrorAction SilentlyContinue) {
+            $libraryPath = $null
+            if ($line -match '"path"\s+"([^"]+)"') {
+                $libraryPath = [string]$matches[1]
             }
-        }
-
-        foreach ($library in $libraries) {
-            $libraryKey = $library.ToLowerInvariant()
-            if ($seenLibraries.ContainsKey($libraryKey)) { continue }
-            $seenLibraries[$libraryKey] = $true
-
-            $steamApps = Join-Path $library 'steamapps'
-            $manifest = Join-Path $steamApps 'appmanifest_10090.acf'
-            if (Test-Path -LiteralPath $manifest -PathType Leaf) {
-                foreach ($line in Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue) {
-                    if ($line -match '"installdir"\s+"([^"]+)"') {
-                        $candidate = Join-Path (Join-Path $steamApps 'common') $matches[1]
-                        if (Test-Path -LiteralPath $candidate -PathType Container) {
-                            return (Resolve-Path -LiteralPath $candidate).Path
-                        }
-                    }
-                }
+            elseif ($line -match '^\s*"\d+"\s+"([A-Za-z]:\\[^"]+)"') {
+                $libraryPath = [string]$matches[1]
             }
-
-            foreach ($name in @('Call of Duty World at War', 'Call of Duty - World at War')) {
-                $candidate = Join-Path $steamApps "common\$name"
-                if (Test-Path -LiteralPath $candidate -PathType Container) {
-                    return (Resolve-Path -LiteralPath $candidate).Path
-                }
+            if (-not [string]::IsNullOrWhiteSpace($libraryPath)) {
+                $libraryPath = $libraryPath.Replace('\\', '\')
+                Add-UniqueDirectory -List $steamRoots -Path $libraryPath
             }
         }
     }
 
-    foreach ($candidate in @(
-        'C:\Program Files\Activision\Call of Duty - World at War',
-        'C:\Program Files (x86)\Activision\Call of Duty - World at War'
-    )) {
-        if (Test-Path -LiteralPath $candidate -PathType Container) {
+    foreach ($library in @($steamRoots)) {
+        $manifest = Join-Path $library 'steamapps\appmanifest_10090.acf'
+        Add-UniqueDirectory -List $candidates -Path (Read-SteamInstallDir -ManifestPath $manifest)
+
+        foreach ($name in @('Call of Duty World at War', 'Call of Duty - World at War')) {
+            Add-UniqueDirectory -List $candidates -Path (Join-Path $library "steamapps\common\$name")
+        }
+    }
+
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        foreach ($relative in @(
+            'Games\Call of Duty World at War',
+            'Games\Call of Duty - World at War',
+            'Call of Duty World at War',
+            'Call of Duty - World at War',
+            'Program Files (x86)\Activision\Call of Duty - World at War',
+            'Program Files\Activision\Call of Duty - World at War'
+        )) {
+            Add-UniqueDirectory -List $candidates -Path (Join-Path $drive.Root $relative)
+        }
+
+        try {
+            foreach ($level1 in Get-ChildItem -LiteralPath $drive.Root -Directory -ErrorAction SilentlyContinue) {
+                $manifest = Join-Path $level1.FullName 'steamapps\appmanifest_10090.acf'
+                Add-UniqueDirectory -List $candidates -Path (Read-SteamInstallDir -ManifestPath $manifest)
+                if ($level1.Name -match '(?i)^Call of Duty(?: -)? World at War$') {
+                    Add-UniqueDirectory -List $candidates -Path $level1.FullName
+                }
+            }
+        }
+        catch {}
+    }
+
+    foreach ($candidate in @($candidates)) {
+        $main = Join-Path $candidate 'main'
+        if (-not (Test-Path -LiteralPath $main -PathType Container)) { continue }
+        $iwds = @(Get-ChildItem -LiteralPath $main -Filter '*.iwd' -File -ErrorAction SilentlyContinue)
+        if ($iwds.Count -gt 0) {
             return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
+
     return $null
 }
 
@@ -254,6 +307,80 @@ if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot) -and (Test-Path -LiteralP
     Add-SourceRoot -Roots $roots -Path $resolvedWaWRoot -Kind 'retail-root' -Priority 50
     Add-SourceRoot -Roots $roots -Path (Join-Path $resolvedWaWRoot 'main') -Kind 'retail-main' -Priority 45
     Add-SourceRoot -Roots $roots -Path (Join-Path $resolvedWaWRoot 'raw') -Kind 'retail-raw' -Priority 40
+}
+
+$pcFastFile = $null
+$preferredPcFastFiles = @(
+    (Join-Path $mapDir 'nazi_zombie_frumansion.ff'),
+    (Join-Path $mapDir 'nazi_zombie_FRUmansion.ff'),
+    (Join-Path $mapDir ($MapName + '.ff'))
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+
+if ($preferredPcFastFiles.Count -gt 0) {
+    $pcFastFile = $preferredPcFastFiles[0]
+}
+else {
+    $fallbackPcFastFiles = @(Get-ChildItem -LiteralPath $mapDir -Filter '*.ff' -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -notmatch '(?i)_load[.]ff$' -and
+            $_.Name -notmatch '(?i)_patch[.]ff$'
+        } |
+        Sort-Object Name)
+    if ($fallbackPcFastFiles.Count -gt 0) { $pcFastFile = $fallbackPcFastFiles[0].FullName }
+}
+
+$pcFastFileDumpRoot = Join-Path $repo '.cache\nuclear_4r_pc_fastfile_images'
+$pcFastFileDumpLog = Join-Path $repo '.cache\nuclear_4r_pc_fastfile_images.log'
+$pcFastFileDumpCode = -1
+$pcFastFileDumpCount = 0
+
+if (-not [string]::IsNullOrWhiteSpace($pcFastFile) -and (Test-Path -LiteralPath $pcFastFile -PathType Leaf)) {
+    if (Test-Path -LiteralPath $pcFastFileDumpRoot) { Remove-Item -LiteralPath $pcFastFileDumpRoot -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $pcFastFileDumpRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $pcFastFileDumpLog) | Out-Null
+
+    $pcDumpSearchPaths = New-Object 'System.Collections.Generic.List[string]'
+    Add-UniqueDirectory -List $pcDumpSearchPaths -Path $mapDir
+    Add-UniqueDirectory -List $pcDumpSearchPaths -Path (Join-Path $mapDir 'images')
+    Add-UniqueDirectory -List $pcDumpSearchPaths -Path $localMod
+    Add-UniqueDirectory -List $pcDumpSearchPaths -Path $localUsermap
+    Add-UniqueDirectory -List $pcDumpSearchPaths -Path $roamingMod
+    Add-UniqueDirectory -List $pcDumpSearchPaths -Path $roamingUsermap
+    if ($null -ne $resolvedWaWRoot) {
+        Add-UniqueDirectory -List $pcDumpSearchPaths -Path (Join-Path $resolvedWaWRoot 'main')
+        Add-UniqueDirectory -List $pcDumpSearchPaths -Path (Join-Path $resolvedWaWRoot 'zone\English')
+    }
+
+    $pcDumpArgs = @(
+        '--verbose',
+        '--no-color',
+        '--include-assets', 'image',
+        '--image-format', 'IWI',
+        '--output-folder', $pcFastFileDumpRoot
+    )
+    if ($pcDumpSearchPaths.Count -gt 0) {
+        $pcDumpArgs += @('--search-path', (@($pcDumpSearchPaths) -join ';'))
+    }
+    $pcDumpArgs += $pcFastFile
+
+    Write-Host "[NUCLEAR-4R] Extracting PC-owned image closure from fastfile: $pcFastFile"
+    Push-Location (Split-Path -Parent $pcFastFile)
+    try {
+        & $unlinker @pcDumpArgs 2>&1 | Tee-Object -FilePath $pcFastFileDumpLog
+        $pcFastFileDumpCode = $LASTEXITCODE
+    }
+    finally { Pop-Location }
+
+    $pcDumpIwis = @(Get-ChildItem -LiteralPath $pcFastFileDumpRoot -Filter '*.iwi' -File -Recurse -ErrorAction SilentlyContinue)
+    $pcFastFileDumpCount = $pcDumpIwis.Count
+    if ($pcFastFileDumpCount -gt 0) {
+        Add-SourceRoot -Roots $roots -Path $pcFastFileDumpRoot -Kind 'pc-fastfile-dump' -Priority 5
+    }
+
+    Write-Host "[NUCLEAR-4R] PC fastfile dump exit=$pcFastFileDumpCode, IWI files=$pcFastFileDumpCount"
+}
+else {
+    Write-Host '[NUCLEAR-4R] WARN: no PC main fastfile was identified for direct image extraction.' -ForegroundColor Yellow
 }
 
 $candidates = New-Object 'System.Collections.Generic.List[object]'
@@ -425,9 +552,12 @@ Write-Host "[NUCLEAR-4R] Missing sources    : $($missingArray.Count)"
 Write-Host "[NUCLEAR-4R] Non-portable names : $($nonPortableArray.Count)"
 Write-Host ("[NUCLEAR-4R] Identity coverage  : {0:P2}" -f $coverage)
 Write-Host "[NUCLEAR-4R] PC WaW root        : $(if ($null -eq $resolvedWaWRoot) { '<not resolved>' } else { $resolvedWaWRoot })"
+Write-Host "[NUCLEAR-4R] PC fastfile        : $(if ([string]::IsNullOrWhiteSpace($pcFastFile)) { '<not resolved>' } else { $pcFastFile })"
+Write-Host "[NUCLEAR-4R] PC FF dump IWIs    : $pcFastFileDumpCount (exit $pcFastFileDumpCode)"
 Write-Host ''
 Write-Host '[NUCLEAR-4R] SOURCE POLICY:'
-Write-Host '  - input pixels come only from PC-side loose IWI/DDS or IWD entries'
+Write-Host '  - input pixels come only from PC-side loose IWI/DDS, IWD entries, or IWI dumped from the PC fastfile'
+Write-Host '  - PC fastfile extraction is provenance-safe: the Xbox oracle contributes no image payload bytes'
 Write-Host '  - native Xbox data is used only for root identity/order'
 Write-Host '  - no Stage 4J/4L/4M/4N native image payload is accepted as source'
 Write-Host ''
@@ -515,6 +645,10 @@ $manifest = [ordered]@{
     nativeImageRoots = $nativeImages.Count
     sourceRoots = [object[]]$roots.ToArray()
     pcWaWInstallRoot = $resolvedWaWRoot
+    pcFastFile = $pcFastFile
+    pcFastFileDumpRoot = $pcFastFileDumpRoot
+    pcFastFileDumpExitCode = $pcFastFileDumpCode
+    pcFastFileDumpIwis = $pcFastFileDumpCount
     sourceCandidates = $candidateArray.Count
     resolvedSources = $resolvedArray.Count
     missingSources = $missingArray.Count
@@ -531,7 +665,8 @@ $manifest = [ordered]@{
     bridgePass = $bridgePass
     fullOrdinaryClosure = $fullOrdinaryClosure
     productionSourcePolicy = @(
-        'Pixel payload provenance is PC-side loose IWI/DDS or IWD only.',
+        'Pixel payload provenance is PC-side loose IWI/DDS, IWD, or IWI extracted from the PC fastfile only.',
+        'PC fastfile extraction may use legitimate PC retail IWDs as dependency search paths.',
         'Native Xbox oracle contributes identity/order only.',
         'Stage 4J/4L/4M/4N native-derived payloads are prohibited as production inputs.'
     )
@@ -581,6 +716,12 @@ if (-not $bridgePass) {
     Write-Host '[NUCLEAR-4R] PC-OWNED IMAGE BRIDGE: BLOCKED' -ForegroundColor Yellow
     if ($resolvedArray.Count -eq 0) {
         Write-Host '[NUCLEAR-4R] No legitimate PC IWI/DDS source matched the native image identities.'
+        if ($pcFastFileDumpCount -eq 0) {
+            Write-Host '[NUCLEAR-4R] Direct PC fastfile extraction produced no usable IWI source images.'
+            if ($pcFastFileDumpCode -ne 0 -and (Test-Path -LiteralPath $pcFastFileDumpLog -PathType Leaf)) {
+                Write-Host "[NUCLEAR-4R] PC fastfile dump log: $pcFastFileDumpLog"
+            }
+        }
         if ($null -eq $resolvedWaWRoot) {
             Write-Host '[NUCLEAR-4R] A PC WaW install was not resolved; stock/common images therefore cannot be sourced yet.'
             Write-Host "[NUCLEAR-4R] Override discovery with: -WaWInstallRoot '<your PC Call of Duty World at War folder>'"
