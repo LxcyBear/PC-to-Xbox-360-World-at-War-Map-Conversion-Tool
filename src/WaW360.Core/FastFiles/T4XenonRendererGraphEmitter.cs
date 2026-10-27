@@ -24,6 +24,7 @@ public sealed class T4XenonRendererEmitResult
     public required bool ExactIdentitySequence { get; init; }
     public required bool LayoutReplayExact { get; init; }
     public required bool ValidationOnly { get; init; }
+    public required bool ValidationPass { get; init; }
     public required bool ReadyForHardware { get; init; }
     public required string? OatGateError { get; init; }
     public required string TextReportFile { get; init; }
@@ -333,9 +334,10 @@ public static class T4XenonRendererGraphEmitter
         }
 
         var validationOnly = imageGraph is not null && imageGraphValidationOnly;
-        var ready = !validationOnly &&
-                    layoutReplayExact && wrapped.RoundTripVerified &&
-                    exactIdentity && oatZero;
+        var validationPass =
+            layoutReplayExact && wrapped.RoundTripVerified &&
+            exactIdentity && oatZero;
+        var ready = !validationOnly && validationPass;
 
         var txt = Path.Combine(outputDirectory, "nuclear_xenon_renderer_emit.txt");
         var json = Path.Combine(outputDirectory, "nuclear_xenon_renderer_emit.json");
@@ -357,6 +359,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"OAT exact identity sequence:{exactIdentity}");
         report.AppendLine($"OAT 0 warnings / 0 errors:  {oatZero}");
         report.AppendLine($"VALIDATION ONLY:            {validationOnly}");
+        report.AppendLine($"VALIDATION PASS:            {validationPass}");
         report.AppendLine($"READY FOR HARDWARE:         {ready}");
         if (!string.IsNullOrWhiteSpace(oatError))
             report.AppendLine($"OAT GATE:                    {oatError}");
@@ -382,6 +385,7 @@ public static class T4XenonRendererGraphEmitter
             ExactIdentitySequence = exactIdentity,
             LayoutReplayExact = layoutReplayExact,
             ValidationOnly = validationOnly,
+            ValidationPass = validationPass,
             ReadyForHardware = ready,
             OatGateError = oatError,
             TextReportFile = txt,
