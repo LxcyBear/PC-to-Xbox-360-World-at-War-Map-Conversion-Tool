@@ -644,6 +644,7 @@ static async Task<int> MainAsync(string[] args)
                 var imageGraphRoot = args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
                 var expectedImages = args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
                 var imageValidationOnly = args.Length < 13 || !bool.TryParse(args[12], out var ivo) || ivo;
+                var imageGraftLimit = args.Length >= 14 && int.TryParse(args[13], out var igl) ? igl : 0;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
@@ -651,7 +652,8 @@ static async Task<int> MainAsync(string[] args)
                     CancellationToken.None,
                     imageGraphRoot,
                     expectedImages,
-                    imageValidationOnly);
+                    imageValidationOnly,
+                    imageGraftLimit);
 
                 Console.WriteLine("NUCLEAR STAGE 4E/4P real Xenon renderer + image byte emission");
                 Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}");
@@ -1064,7 +1066,7 @@ static void PrintHelp()
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
-    Console.WriteLine("  xenon-graph-emit <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [unlinker.exe] [expected-techsets] [expected-pixelshaders] [image-graph-root] [expected-images] [image-validation-only]  Emit real Xenon renderer/image graph and run OAT hard gate");
+    Console.WriteLine("  xenon-graph-emit <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [unlinker.exe] [expected-techsets] [expected-pixelshaders] [image-graph-root] [expected-images] [image-validation-only] [image-graft-limit]  Emit real Xenon renderer/image graph and run OAT hard gate");
     Console.WriteLine("  xenon-graph-layout <dump-root> <native.ff> <native-identity.json> <binding.json> <out-dir> [canonical-base-name] [expected-techsets] [expected-pixelshaders]  Dry-run OAT-style renderer block allocation");
     Console.WriteLine("  xenon-graph-bind <dump-root> <native.ff> <out-dir> [expected-techsets] [expected-pixelshaders]  Bind fixed-up Xenon graph identities to exact native XAsset root slots");
     Console.WriteLine("  xenon-graph-plan <dump-root> <out-dir> [expected-techsets] [expected-pixelshaders]  Build deterministic Xenon graph serialization/dedupe plan");
