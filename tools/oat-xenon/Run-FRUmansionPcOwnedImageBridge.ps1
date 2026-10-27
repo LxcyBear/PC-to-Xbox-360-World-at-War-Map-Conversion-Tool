@@ -107,6 +107,30 @@ function Read-SteamInstallDir {
 }
 
 function Resolve-ConfiguredWaWRoot {
+    $jsonSettings = Join-Path $env:LOCALAPPDATA 'WaW360Converter\settings.json'
+    if (Test-Path -LiteralPath $jsonSettings -PathType Leaf) {
+        try {
+            $settings = Get-Content -LiteralPath $jsonSettings -Raw -ErrorAction Stop | ConvertFrom-Json
+            $candidate = [string]$settings.PcGameFolder
+            if (-not [string]::IsNullOrWhiteSpace($candidate) -and
+                (Test-Path -LiteralPath $candidate -PathType Container)) {
+                $main = Join-Path $candidate 'main'
+                $iwds = @()
+                if (Test-Path -LiteralPath $main -PathType Container) {
+                    $iwds = @(Get-ChildItem -LiteralPath $main -Filter '*.iwd' -File -ErrorAction SilentlyContinue)
+                }
+                if ($iwds.Count -gt 0) {
+                    Write-Host "[NUCLEAR-4R] PC WaW root from live converter settings: $candidate"
+                    Write-Host "[NUCLEAR-4R] Settings source                  : $jsonSettings"
+                    return (Resolve-Path -LiteralPath $candidate).Path
+                }
+            }
+        }
+        catch {
+            Write-Host "[NUCLEAR-4R] WARN: could not read live converter settings '$jsonSettings': $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
     $configFiles = New-Object 'System.Collections.Generic.List[string]'
     $seen = @{}
 
@@ -150,8 +174,8 @@ function Resolve-ConfiguredWaWRoot {
             }
 
             if ($iwds.Count -gt 0) {
-                Write-Host "[NUCLEAR-4R] PC WaW root from settings: $candidate"
-                Write-Host "[NUCLEAR-4R] Settings source         : $config"
+                Write-Host "[NUCLEAR-4R] PC WaW root from legacy settings: $candidate"
+                Write-Host "[NUCLEAR-4R] Settings source                 : $config"
                 return (Resolve-Path -LiteralPath $candidate).Path
             }
         }
@@ -372,6 +396,14 @@ Add-SourceRoot -Roots $roots -Path $localMod -Kind 'local-mod' -Priority 20
 Add-SourceRoot -Roots $roots -Path $localUsermap -Kind 'local-usermap' -Priority 20
 Add-SourceRoot -Roots $roots -Path $roamingMod -Kind 'roaming-mod' -Priority 25
 Add-SourceRoot -Roots $roots -Path $roamingUsermap -Kind 'roaming-usermap' -Priority 25
+
+$requestedWaWInstallRoot = $WaWInstallRoot
+if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot) -and
+    -not (Test-Path -LiteralPath $WaWInstallRoot -PathType Container)) {
+    Write-Host "[NUCLEAR-4R] WARN: requested PC WaW root does not exist: $WaWInstallRoot" -ForegroundColor Yellow
+    Write-Host '[NUCLEAR-4R] Falling back to live converter settings / Steam discovery.' -ForegroundColor Yellow
+    $WaWInstallRoot = ''
+}
 
 if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
     $WaWInstallRoot = Resolve-ConfiguredWaWRoot
@@ -772,6 +804,7 @@ $manifest = [ordered]@{
     nativeIdentityManifest = $NativeIdentityManifest
     nativeImageRoots = $nativeImages.Count
     sourceRoots = [object[]]$roots.ToArray()
+    requestedPcWaWInstallRoot = $requestedWaWInstallRoot
     pcWaWInstallRoot = $resolvedWaWRoot
     retailMain = $retailMain
     retailIwdCount = $retailIwdCount
