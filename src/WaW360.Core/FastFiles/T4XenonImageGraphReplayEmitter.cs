@@ -68,9 +68,6 @@ public static class T4XenonImageGraphReplayEmitter
             throw new InvalidDataException("Image graph replay requires an Xbox360 reference FF.");
         if (reference.ZoneHeader.BlockSizes.Count != 7)
             throw new InvalidDataException("Reference XFile header does not expose seven T4 block sizes.");
-        if (reference.Document.ScriptStringCount != 0)
-            throw new InvalidDataException(
-                $"Image-only replay expects zero ScriptStrings; reference has {reference.Document.ScriptStringCount:N0}.");
 
         var identity = await T4XenonNativeIdentityOracle.RunAsync(
             referenceFastFile,
@@ -112,11 +109,16 @@ public static class T4XenonImageGraphReplayEmitter
         // XFile header placeholder.
         main.Write(new byte[FastFileConstants.T4XFileHeaderSize]);
 
-        // XAssetList: no ScriptStrings, N image roots, inline XAsset[] follows.
-        WriteU32(main, 0);
-        WriteU32(main, 0);
+        // Replay the reference XAssetList header exactly. OAT emits one ScriptString
+        // in the 4L image-only zone, so assuming an empty table shifts both the main
+        // serialized stream and the VIRTUAL cursor. Preserve the parsed reference
+        // ScriptStrings before the XAsset table, matching normal T4 traversal.
+        WriteU32(main, checked((uint)reference.Document.ScriptStrings.Count));
+        WriteU32(main, reference.Document.ScriptStrings.Count == 0 ? 0u : T4ZonePointer.Following);
         WriteU32(main, checked((uint)identity.Entries.Count));
         WriteU32(main, T4ZonePointer.Following);
+
+        EmitScriptStrings(main, state, reference.Document.ScriptStrings);
 
         state.VirtualAlloc(identity.Entries.Count * 8L, 4, serialized: true);
         foreach (var root in identity.Entries)
@@ -343,6 +345,29 @@ public static class T4XenonImageGraphReplayEmitter
         PutU32(b, 8, unchecked((uint)d.Format));
         PutU32(b, 12, T4ZonePointer.Following);
         return b;
+    }
+
+    private static void EmitScriptStrings(
+        Stream main,
+        ReplayState state,
+        IReadOnlyList<T4ScriptStringEntry> strings)
+    {
+        if (strings.Count == 0)
+            return;
+
+        state.VirtualAlloc(checked(strings.Count * 4L), 4, serialized: true);
+        foreach (var item in strings)
+            WriteU32(main, item.RawPointer == 0 ? 0u : T4ZonePointer.Following);
+
+        foreach (var item in strings)
+        {
+            if (item.RawPointer == 0)
+                continue;
+            if (item.Value is null || item.Value.StartsWith("<alias ", StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Unresolved reference ScriptString #{item.Index} cannot be replayed exactly.");
+            EmitString(main, state, item.Value);
+        }
     }
 
     private static void EmitString(Stream main, ReplayState state, string value)
