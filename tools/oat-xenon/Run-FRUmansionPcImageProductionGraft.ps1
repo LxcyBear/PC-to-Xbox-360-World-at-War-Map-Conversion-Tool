@@ -134,7 +134,7 @@ $productionPass =
     [bool]$emitter.ExactIdentitySequence -and
     [bool]$emitter.OatZeroWarningsZeroErrors -and
     [int]$emitter.RealImageRoots -eq $expectedImages -and
-    [int64]$emitter.LargeRuntimeBytes -eq $productionCardMemory
+    ([int64]$emitter.LargeRuntimeBytes + [int64]$emitter.LargeBytes) -eq $productionCardMemory
 
 function Invoke-Stage4SProbe {
     param(
@@ -180,7 +180,7 @@ function Invoke-Stage4SProbe {
 
     Push-Location $repo
     try {
-        & dotnet @probeArgs
+        & dotnet @probeArgs 2>&1 | ForEach-Object { Write-Host ([string]$_) }
         $probeCode = $LASTEXITCODE
     }
     finally { Pop-Location }
@@ -260,6 +260,8 @@ $summary = [ordered]@{
     generatedNativeImages = $nonPortable
     expectedLargeRuntimeBytes = $productionCardMemory
     actualLargeRuntimeBytes = [int64]$emitter.LargeRuntimeBytes
+    actualLargeBytes = [int64]$emitter.LargeBytes
+    actualImagePixelBytes = ([int64]$emitter.LargeRuntimeBytes + [int64]$emitter.LargeBytes)
     nativeRoots = [int]$emitter.NativeRoots
     oatListedRoots = [int]$emitter.OatListedRoots
     exactIdentitySequence = [bool]$emitter.ExactIdentitySequence
@@ -277,8 +279,10 @@ $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Enco
 Write-Host ''
 Write-Host '[NUCLEAR-4S] ================= PC IMAGE GRAFT RESULT ========================='
 Write-Host "[NUCLEAR-4S] PC-backed image roots : $expectedImages"
-Write-Host "[NUCLEAR-4S] LARGE_RUNTIME expected : $productionCardMemory"
+Write-Host "[NUCLEAR-4S] Image pixels expected  : $productionCardMemory"
 Write-Host "[NUCLEAR-4S] LARGE_RUNTIME actual   : $([int64]$emitter.LargeRuntimeBytes)"
+Write-Host "[NUCLEAR-4S] LARGE actual           : $([int64]$emitter.LargeBytes)"
+Write-Host "[NUCLEAR-4S] Image pixels actual    : $([int64]$emitter.LargeRuntimeBytes + [int64]$emitter.LargeBytes)"
 Write-Host "[NUCLEAR-4S] OAT roots              : $([int]$emitter.OatListedRoots) / 6811"
 Write-Host "[NUCLEAR-4S] Exact identity sequence: $([bool]$emitter.ExactIdentitySequence)"
 Write-Host "[NUCLEAR-4S] OAT 0 warn / 0 error   : $([bool]$emitter.OatZeroWarningsZeroErrors)"
