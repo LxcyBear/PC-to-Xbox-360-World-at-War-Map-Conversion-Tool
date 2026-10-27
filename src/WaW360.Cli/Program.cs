@@ -388,6 +388,34 @@ static async Task<int> MainAsync(string[] args)
                 foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
                 return result.Verified ? 0 : 3;
             }
+            case "linker-v2-iwi-image-corpus" when args.Length >= 5:
+            {
+                var root = args[1];
+                var mapName = args[2];
+                var output = args[3];
+                var nativeIdentityManifest = args[4];
+
+                var map = MapDiscovery.DiscoverSourceFolder(root)
+                    .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
+
+                var result = await NormalMapIwiImageCorpus.RunAsync(
+                    map,
+                    output,
+                    nativeIdentityManifest);
+
+                Console.WriteLine("NUCLEAR STAGE 4G IWI image corpus census");
+                Console.WriteLine($"nativeImages={result.NativeImages:N0}; sourceIwi={result.SourceIwiEntries:N0}; uniqueSourceImages={result.UniqueSourceImages:N0}");
+                Console.WriteLine($"matchedNative={result.MatchedNativeImages:N0}; unmatchedNative={result.UnmatchedNativeImages:N0}; duplicateSourceIds={result.DuplicateSourceIdentities:N0}");
+                Console.WriteLine($"nativeIdentityCoverage={result.NativeIdentityCoverage:P2}; sourceIwiBytes={result.SourceIwiBytes:N0}; matchedIwiBytes={result.MatchedIwiBytes:N0}; matchedByteCoverage={result.MatchedByteCoverage:P2}");
+                Console.WriteLine($"readyForCodecPlanning={result.ReadyForCodecPlanning}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonReportFile}");
+                foreach (var format in result.Formats.Take(16))
+                    Console.WriteLine($"FORMAT v{format.Version} 0x{format.Format:X2}: images={format.Images:N0}; nativeMatches={format.NativeMatches:N0}; bytes={format.Bytes:N0}");
+                return result.ReadyForCodecPlanning ? 0 : 4;
+            }
             case "linker-v2-full-content-readiness" when args.Length >= 9:
             {
                 var root = args[1];
@@ -986,6 +1014,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load <pc_load.ff> [out.json]        Deterministic XAsset-stream graph + dependency-first Xbox plan");
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
+    Console.WriteLine("  linker-v2-iwi-image-corpus <root> <map> <output> <native-identity.json>  Match IWD .iwi corpus to native Xenon image identities and rank codec mass");
     Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio]  Gate full-content emission on real payload mass and zero critical shells");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
