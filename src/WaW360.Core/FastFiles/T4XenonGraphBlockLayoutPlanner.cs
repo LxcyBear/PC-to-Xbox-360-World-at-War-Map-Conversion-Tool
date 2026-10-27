@@ -69,7 +69,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         int expectedPixelShaders = 897,
         CancellationToken cancellationToken = default,
         string? imageGraphDumpRoot = null,
-        int expectedImages = 0)
+        int expectedImages = 0,
+        int imageGraftLimit = 0)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -128,6 +129,11 @@ public static class T4XenonGraphBlockLayoutPlanner
         var rendererTechsets = 0;
         var rendererPixels = 0;
         var realImages = 0;
+        var targetImageRoots = imageGraph is null
+            ? 0
+            : imageGraftLimit > 0
+                ? Math.Min(imageGraftLimit, imageGraph.Images)
+                : imageGraph.Images;
 
         // XAssetList lives outside the blocks. Script pointer array, strings and
         // XAsset[] are the first VIRTUAL allocations.
@@ -259,6 +265,7 @@ public static class T4XenonGraphBlockLayoutPlanner
             }
 
             if (imageGraph is not null &&
+                realImages < targetImageRoots &&
                 Normalize(root.TypeName) == "image" &&
                 imageGraph.ImagesByName.TryGetValue(root.Name, out var image))
             {
@@ -295,8 +302,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add($"Upgraded TechniqueSets={rendererTechsets:N0}; expected {expectedTechniqueSets:N0}.");
         if (rendererPixels != expectedPixelShaders)
             blockers.Add($"Upgraded PixelShaders={rendererPixels:N0}; expected {expectedPixelShaders:N0}.");
-        if (imageGraph is not null && realImages != imageGraph.Images)
-            blockers.Add($"Upgraded image roots={realImages:N0}; graph contains {imageGraph.Images:N0}.");
+        if (imageGraph is not null && realImages != targetImageRoots)
+            blockers.Add($"Upgraded image roots={realImages:N0}; target={targetImageRoots:N0}; graph contains {imageGraph.Images:N0}.");
         if (state.Virtual > 0x20000000L || state.Physical > 0x20000000L ||
             state.LargeRuntime > 0x20000000L)
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
@@ -306,7 +313,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         notes.Add("Each first top-level root reserves one 4-byte VIRTUAL insert slot; insert slots and alignment holes consume block address space but no serialized bytes.");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
         if (imageGraph is not null)
-            notes.Add($"Image graph graft: {realImages:N0} real GfxImage roots; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; source graph is validation-only unless independently PC-sourced.");
+            notes.Add($"Image graph graft: {realImages:N0}/{imageGraph.Images:N0} real GfxImage roots; limit={(imageGraftLimit > 0 ? imageGraftLimit : imageGraph.Images):N0}; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; source graph is validation-only unless independently PC-sourced.");
         notes.Add(ready
             ? "BLOCK LAYOUT CLOSURE: PASS. Stage 4E can write bytes against these exact cursors."
             : "BLOCK LAYOUT CLOSURE: BLOCKED. Stage 4E remains fenced.");
