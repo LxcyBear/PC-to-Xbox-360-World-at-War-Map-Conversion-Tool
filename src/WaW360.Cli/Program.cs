@@ -388,6 +388,47 @@ static async Task<int> MainAsync(string[] args)
                 foreach (var blocker in result.Blockers) Console.WriteLine("BLOCKER: " + blocker);
                 return result.Verified ? 0 : 3;
             }
+            case "linker-v2-full-content-readiness" when args.Length >= 9:
+            {
+                var root = args[1];
+                var mapName = args[2];
+                var output = args[3];
+                var nativeOracle = args[4];
+                var graphRoot = args[5];
+                var nativeIdentityManifest = args[6];
+                var bindingManifest = args[7];
+                var minRatio = double.TryParse(args[8], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var min) ? min : 0.80;
+                var maxRatio = args.Length >= 10 &&
+                               double.TryParse(args[9], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var max)
+                    ? max
+                    : 1.20;
+
+                var map = MapDiscovery.DiscoverSourceFolder(root)
+                    .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException($"Map '{mapName}' was not found under '{root}'.");
+
+                var result = await NormalMapLinkerV2FullContentReadiness.RunAsync(
+                    map,
+                    output,
+                    nativeOracle,
+                    graphRoot,
+                    nativeIdentityManifest,
+                    bindingManifest,
+                    minRatio,
+                    maxRatio);
+
+                Console.WriteLine("NUCLEAR STAGE 4F full-content pre-hardware gate");
+                Console.WriteLine($"nativeZone={result.NativeOracleZoneBytes:N0}; shellBaseline={result.AllShellBaselineZoneBytes:N0}; rendererGain={result.ProvenRendererGainBytes:N0}");
+                Console.WriteLine($"estimatedFullContent={result.EstimatedFullContentZoneBytes:N0}; nativeSizeRatio={result.NativeSizeRatio:P2}");
+                Console.WriteLine($"sourceMapped={result.SourceMappedRoots:N0}; realPromoted={result.RealPromotedRoots:N0}; fallback={result.FallbackRoots:N0}; synthetic={result.SyntheticDependencyRoots:N0}; criticalFallback={result.CriticalFallbackRoots:N0}");
+                Console.WriteLine($"properSizeGate={result.ProperSizeGate}; criticalContentGate={result.CriticalContentGate}; readyForFullNativeEmission={result.ReadyForFullNativeEmission}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonReportFile}");
+                foreach (var blocker in result.CriticalBlockers.Take(40))
+                    Console.WriteLine("BLOCKER: " + blocker);
+                return result.ReadyForFullNativeEmission ? 0 : 4;
+            }
             case "linker-v2-native-sequence" when args.Length >= 5:
             {
                 var root = args[1];
@@ -945,6 +986,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load <pc_load.ff> [out.json]        Deterministic XAsset-stream graph + dependency-first Xbox plan");
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
+    Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio]  Gate full-content emission on real payload mass and zero critical shells");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
     Console.WriteLine("  oat-root-bisect <candidate.ff> <Unlinker.exe> <output-dir>  Binary-search first top-level root that makes OAT fail");
