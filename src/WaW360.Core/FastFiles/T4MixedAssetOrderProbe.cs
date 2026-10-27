@@ -22,6 +22,13 @@ public sealed record T4AssetGapWindow(
     int? NextEnd,
     string TableContext);
 
+public sealed record T4AlignedXModelMapping(
+    int AssetIndex,
+    int Offset,
+    int End,
+    string ObservedName,
+    string Source);
+
 public sealed record T4AlignedXModelSelection(
     IReadOnlyList<int> Offsets,
     int ExpectedXModel,
@@ -35,7 +42,11 @@ public sealed record T4AlignedXModelSelection(
     int MatchedRadiusTolerant,
     bool UsedXAnimProof,
     bool UsedWeaponProof,
-    IReadOnlyList<T4AssetGapWindow> MissingWindows);
+    IReadOnlyList<T4AssetGapWindow> MissingWindows)
+{
+    public IReadOnlyList<T4AlignedXModelMapping> Mappings { get; init; } =
+        Array.Empty<T4AlignedXModelMapping>();
+}
 
 public sealed record T4AlignedXAnimSelection(
     IReadOnlyList<int> Offsets,
@@ -381,6 +392,16 @@ public static class T4MixedAssetOrderProbe
         var matchedRadiusTolerant = xmodelPairs.Count(pair => observed[pair.ObservedIndex].Source.Equals("typed-xmodel-finite-radius-exception", StringComparison.OrdinalIgnoreCase));
         var missingWindows = DetailedMissingWindows(expected, observed, alignment, "xmodel", payloadStart, zone.Length);
 
+        var mappings = xmodelPairs
+            .Select(pair => new T4AlignedXModelMapping(
+                expected[pair.ExpectedIndex].Asset.Index,
+                observed[pair.ObservedIndex].Start,
+                observed[pair.ObservedIndex].End,
+                observed[pair.ObservedIndex].Name,
+                observed[pair.ObservedIndex].Source))
+            .OrderBy(x => x.AssetIndex)
+            .ToList();
+
         return new T4AlignedXModelSelection(
             xmodelOffsets,
             expectedXModel,
@@ -394,7 +415,10 @@ public static class T4MixedAssetOrderProbe
             matchedRadiusTolerant,
             usedXAnimProof,
             usedWeaponProof,
-            missingWindows);
+            missingWindows)
+        {
+            Mappings = mappings
+        };
     }
 
     /// <summary>
