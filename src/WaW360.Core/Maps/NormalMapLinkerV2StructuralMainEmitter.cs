@@ -116,7 +116,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
 {
     private static readonly string[] TrackedTypes = { "xanim", "xmodel", "weapon", "fx" };
 
-    private sealed record StructuralPayload(string TypeName, string Name, byte[] Bytes, bool Fallback, string Note);
+    internal sealed record StructuralPayload(string TypeName, string Name, byte[] Bytes, bool Fallback, string Note);
     private sealed record SourceContext(
         string Role,
         string Path,
@@ -1263,7 +1263,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return result;
     }
 
-    private static async Task<IReadOnlyDictionary<int, StructuralPayload>> BuildSourcePayloadsAsync(
+    internal static async Task<IReadOnlyDictionary<int, StructuralPayload>> BuildSourcePayloadsAsync(
         string outputRoot,
         string mapName,
         string canonicalBaseName,
@@ -1972,7 +1972,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return failures;
     }
 
-    private static StructuralPayload BuildNativeSequenceSyntheticPayload(
+    internal static StructuralPayload BuildNativeSequenceSyntheticPayload(
         string typeName,
         string name,
         string canonicalBaseName)
