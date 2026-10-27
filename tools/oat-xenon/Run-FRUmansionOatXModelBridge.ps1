@@ -201,23 +201,40 @@ Write-Host "[NUCLEAR-4U] Selected proof model          : $($selected.Name)"
 Write-Host "[NUCLEAR-4U] Selected LODs                 : $($selected.LodCount)"
 Write-Host "[NUCLEAR-4U] Selected GLTF bytes           : $($selected.LodBytes)"
 
-# Recover the authoritative PC bone-name -> hit-location mapping from the
-# original fastfile before any Xenon import. This replaces the old empty proof
-# CSV and makes 4U a production-fidelity XModel round trip.
+# Recover per-model partClassification[] from the PC XModel bodies and pair
+# those bytes with OAT's canonical GLTF bone order. A single global CSV is not
+# fidelity-safe because the same bone name can legitimately classify differently
+# in different models; 4U therefore installs only the selected model's CSV.
+$pcListLog = Join-Path $OutputRoot 'pc_xmodel_list.log'
+$perModelClassificationRoot = Join-Path $OutputRoot 'pc_partclassification_models'
+$partClassificationManifest = Join-Path $OutputRoot 'pc_partclassification_per_model.json'
 $partClassification = Join-Path $pcDump 'partclassification.csv'
-$partClassificationManifest = Join-Path $OutputRoot 'pc_partclassification.json'
 
 Write-Host ''
-Write-Host '[NUCLEAR-4U] Recovering original PC XModel partClassification[]...'
+Write-Host '[NUCLEAR-4U] Listing PC XModel identities in authoritative XAsset order...'
+
+$pcListArgs = @(
+    '--list',
+    '--no-color',
+    $PcFastFile
+)
+$pcListCode = Invoke-NativeTee -FilePath $unlinker -Arguments $pcListArgs -LogPath $pcListLog
+if ($pcListCode -ne 0) {
+    throw "PC OAT --list failed with exit $pcListCode. See: $pcListLog"
+}
+
+Write-Host '[NUCLEAR-4U] Recovering model-specific PC partClassification[]...'
 
 $classArgs = @(
     'run',
     '--project', '.\src\WaW360.Cli\WaW360.Cli.csproj',
     '-c', 'Release',
     '--',
-    'xmodel-partclassification',
+    'xmodel-partclassification-per-model',
     $PcFastFile,
-    $partClassification,
+    $pcDump,
+    $pcListLog,
+    $perModelClassificationRoot,
     $partClassificationManifest
 )
 
@@ -231,25 +248,41 @@ finally {
 }
 
 if (-not (Test-Path -LiteralPath $partClassificationManifest -PathType Leaf)) {
-    throw "PC partClassification recovery did not emit its manifest: $partClassificationManifest"
+    throw "Per-model PC partClassification recovery did not emit its manifest: $partClassificationManifest"
 }
 
 $classResult = Get-Content -LiteralPath $partClassificationManifest -Raw | ConvertFrom-Json
 if ($classCode -ne 0 -or -not [bool]$classResult.Complete) {
-    throw ("PC partClassification recovery is incomplete: aligned={0}/{1}, modelsWithBones={2}, observed={3}, unresolvedStrings={4}, conflicts={5}, packedBoneNames={6}, packedPartClassification={7}" -f
-        [int]$classResult.AlignedXModels,
+    $failures = @($classResult.Models | Where-Object { -not [bool]$_.Complete } | Select-Object -First 8)
+    $failureText = @($failures | ForEach-Object { "#$($_.XModelOrdinal) '$($_.Name)': $($_.Error)" }) -join ' | '
+    throw ("Per-model PC partClassification recovery is incomplete: listed={0}/{1}, aligned={2}, completeModels={3}, failedModels={4}. {5}" -f
+        [int]$classResult.ListedXModels,
         [int]$classResult.DeclaredXModels,
-        [int]$classResult.ModelsWithBones,
-        [int]$classResult.ModelsObserved,
-        [int]$classResult.UnresolvedScriptStrings,
-        [int]$classResult.Conflicts,
-        [int]$classResult.ModelsSkippedPackedBoneNames,
-        [int]$classResult.ModelsSkippedPackedClassification)
+        [int]$classResult.AlignedXModels,
+        [int]$classResult.CompleteModels,
+        [int]$classResult.FailedModels,
+        $failureText)
 }
 
-Write-Host "[NUCLEAR-4U] partClassification models     : $([int]$classResult.ModelsObserved) / $([int]$classResult.ModelsWithBones)"
-Write-Host "[NUCLEAR-4U] partClassification bone rows  : $(@($classResult.Rows).Count)"
-Write-Host "[NUCLEAR-4U] partClassification conflicts  : $([int]$classResult.Conflicts)"
+$selectedClass = @(
+    $classResult.Models |
+        Where-Object { [string]$_.Name -ieq [string]$selected.Name } |
+        Select-Object -First 1
+)
+if ($selectedClass.Count -ne 1 -or -not [bool]$selectedClass[0].Complete) {
+    throw "No complete per-model classification artifact was recovered for selected XModel '$($selected.Name)'."
+}
+
+if (-not (Test-Path -LiteralPath ([string]$selectedClass[0].CsvFile) -PathType Leaf)) {
+    throw "Selected model classification CSV is missing: $([string]$selectedClass[0].CsvFile)"
+}
+
+Copy-Item -LiteralPath ([string]$selectedClass[0].CsvFile) -Destination $partClassification -Force
+
+Write-Host "[NUCLEAR-4U] partClassification models     : $([int]$classResult.CompleteModels) / $([int]$classResult.DeclaredXModels)"
+Write-Host "[NUCLEAR-4U] partClassification total bones: $([int]$classResult.TotalBones)"
+Write-Host "[NUCLEAR-4U] Selected classification bones : $([int]$selectedClass[0].BoneCount)"
+Write-Host "[NUCLEAR-4U] Selected classification CSV   : $([string]$selectedClass[0].CsvFile)"
 Write-Host "[NUCLEAR-4U] partClassification fidelity   : PASS"
 
 # This proof isolates the PC->Xenon XModel/XSurface conversion. Renderer and
@@ -491,7 +524,7 @@ $layoutProbeExact =
 $bridgePass = $roundTripPass
 
 $manifest = [ordered]@{
-    format = 'WaW360.Nuclear4U.OatXModelBridge.v3'
+    format = 'WaW360.Nuclear4U.OatXModelBridge.v4'
     pcFastFile = (Resolve-Path -LiteralPath $PcFastFile).Path
     pcDumpExitCode = $dumpCode
     completePcXModels = $candidates.Count
@@ -501,7 +534,10 @@ $manifest = [ordered]@{
     partClassificationFile = $partClassification
     partClassificationManifest = $partClassificationManifest
     partClassificationComplete = [bool]$classResult.Complete
-    partClassificationRows = @($classResult.Rows).Count
+    partClassificationCompleteModels = [int]$classResult.CompleteModels
+    partClassificationFailedModels = [int]$classResult.FailedModels
+    selectedPartClassificationCsv = [string]$selectedClass[0].CsvFile
+    selectedPartClassificationBones = [int]$selectedClass[0].BoneCount
     referenceDependencies = @($referenceAssets | ForEach-Object { [ordered]@{ type = $_.Type; name = $_.Name } })
     linkedFastFile = $linkedFastFile
     xenonLinkExitCode = $linkCode
