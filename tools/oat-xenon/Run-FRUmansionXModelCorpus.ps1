@@ -327,10 +327,15 @@ for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
 
         $readCode = Invoke-NativeTee -FilePath $unlinker -Arguments @('--list','--no-color',$ffPath) -LogPath $readLog
         $readLines = @(Get-Content -LiteralPath $readLog -ErrorAction SilentlyContinue)
-        $diagnostics = Get-OatDiagnosticCounts -Lines $readLines
+        $validationLines = [string[]]@(
+            $readLines |
+                ForEach-Object { [string]$_ } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+        $diagnostics = Get-OatDiagnosticCounts -Lines $validationLines
         $warnCount = [int]$diagnostics.Warnings
         $errorCount = [int]$diagnostics.Errors
-        $listedXModels = @(Get-ListedXModels -Lines $readLines)
+        $listedXModels = @(Get-ListedXModels -Lines $validationLines)
         $listed = $listedXModels.Count -eq 1 -and [string]$listedXModels[0] -ieq $name
 
         if ($readCode -ne 0) {
