@@ -19,8 +19,8 @@ public sealed record T4XenonVertexDeclGraph(
 public sealed record T4XenonCodeConst(byte Index, byte FirstRow, byte RowCount);
 
 public sealed record T4XenonShaderArgGraph(
-    byte Type,
-    byte Dest,
+    ushort Type,
+    ushort Dest,
     uint URaw,
     IReadOnlyList<float>? LiteralConst,
     T4XenonCodeConst? CodeConst);
@@ -294,8 +294,8 @@ public static class T4XenonTechniqueGraphImporter
                 }
 
                 args.Add(new T4XenonShaderArgGraph(
-                    checked((byte)ReadInt(argEl, "type")),
-                    checked((byte)ReadInt(argEl, "dest")),
+                    checked((ushort)ReadInt(argEl, "type")),
+                    checked((ushort)ReadInt(argEl, "dest")),
                     ReadUInt(argEl, "uRaw"),
                     literal,
                     codeConst));
