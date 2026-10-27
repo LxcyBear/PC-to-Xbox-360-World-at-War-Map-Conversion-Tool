@@ -44,7 +44,9 @@ function Invoke-NativeTee {
         # Keep those visible/logged, but do not let ErrorActionPreference=Stop abort
         # before we can collect $LASTEXITCODE and preserve partial OAT output.
         $ErrorActionPreference = 'Continue'
-        & $FilePath @Arguments 2>&1 | Tee-Object -FilePath $LogPath
+        & $FilePath @Arguments 2>&1 |
+            Tee-Object -FilePath $LogPath |
+            ForEach-Object { Write-Host ([string]$_) }
         return [int]$LASTEXITCODE
     }
     finally {
@@ -357,6 +359,7 @@ $pcFastFileDumpRoot = Join-Path $repo '.cache\nuclear_4r_pc_fastfile_images'
 $pcFastFileDumpLog = Join-Path $repo '.cache\nuclear_4r_pc_fastfile_images.log'
 $pcFastFileDumpCode = -1
 $pcFastFileDumpCount = 0
+$pcFastFileFirstError = $null
 
 if (-not [string]::IsNullOrWhiteSpace($pcFastFile) -and (Test-Path -LiteralPath $pcFastFile -PathType Leaf)) {
     if (Test-Path -LiteralPath $pcFastFileDumpRoot) { Remove-Item -LiteralPath $pcFastFileDumpRoot -Recurse -Force }
@@ -396,6 +399,12 @@ if (-not [string]::IsNullOrWhiteSpace($pcFastFile) -and (Test-Path -LiteralPath 
 
     $pcDumpIwis = @(Get-ChildItem -LiteralPath $pcFastFileDumpRoot -Filter '*.iwi' -File -Recurse -ErrorAction SilentlyContinue)
     $pcFastFileDumpCount = $pcDumpIwis.Count
+    if (Test-Path -LiteralPath $pcFastFileDumpLog -PathType Leaf) {
+        $errorLines = @(Get-Content -LiteralPath $pcFastFileDumpLog -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '(?i)ERROR:|Could not find data for image' } |
+            Select-Object -First 1)
+        if ($errorLines.Count -gt 0) { $pcFastFileFirstError = [string]$errorLines[0] }
+    }
     if ($pcFastFileDumpCount -gt 0) {
         Add-SourceRoot -Roots $roots -Path $pcFastFileDumpRoot -Kind 'pc-fastfile-dump' -Priority 5
     }
@@ -580,6 +589,9 @@ Write-Host ("[NUCLEAR-4R] Identity coverage  : {0:P2}" -f $coverage)
 Write-Host "[NUCLEAR-4R] PC WaW root        : $(if ($null -eq $resolvedWaWRoot) { '<not resolved>' } else { $resolvedWaWRoot })"
 Write-Host "[NUCLEAR-4R] PC fastfile        : $(if ([string]::IsNullOrWhiteSpace($pcFastFile)) { '<not resolved>' } else { $pcFastFile })"
 Write-Host "[NUCLEAR-4R] PC FF dump IWIs    : $pcFastFileDumpCount (exit $pcFastFileDumpCode)"
+if (-not [string]::IsNullOrWhiteSpace($pcFastFileFirstError)) {
+    Write-Host "[NUCLEAR-4R] PC FF first error   : $pcFastFileFirstError"
+}
 Write-Host ''
 Write-Host '[NUCLEAR-4R] SOURCE POLICY:'
 Write-Host '  - input pixels come only from PC-side loose IWI/DDS, IWD entries, or IWI dumped from the PC fastfile'
@@ -675,6 +687,7 @@ $manifest = [ordered]@{
     pcFastFileDumpRoot = $pcFastFileDumpRoot
     pcFastFileDumpExitCode = $pcFastFileDumpCode
     pcFastFileDumpIwis = $pcFastFileDumpCount
+    pcFastFileFirstError = $pcFastFileFirstError
     sourceCandidates = $candidateArray.Count
     resolvedSources = $resolvedArray.Count
     missingSources = $missingArray.Count
