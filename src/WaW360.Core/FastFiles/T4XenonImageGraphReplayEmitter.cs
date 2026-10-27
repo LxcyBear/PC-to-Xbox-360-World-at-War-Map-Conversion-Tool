@@ -142,6 +142,11 @@ public static class T4XenonImageGraphReplayEmitter
 
             main.Write(BuildImageBody(image));
 
+            // GfxImage ZoneCode declares loadDef reusable. OAT therefore reserves a
+            // second 4-byte VIRTUAL INSERT slot for the first reusable loadDef body.
+            // The slot consumes VIRTUAL address space but is not serialized.
+            state.VirtualAlloc(4, 4, serialized: false);
+
             // ZoneCode reorder: name, pixels, texture.
             EmitString(main, state, image.Name);
 
