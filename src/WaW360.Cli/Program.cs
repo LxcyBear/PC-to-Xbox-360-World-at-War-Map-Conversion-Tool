@@ -236,6 +236,30 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("Stage-5 proof source updated: real 0x5C/12-bucket Xbox XAnim payloads.");
                 return result.Verified ? 0 : 3;
             }
+            case "xmodel-partclassification" when args.Length >= 4:
+            {
+                var xanimProof = args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]) ? args[4] : null;
+                var weaponProof = args.Length >= 6 && !string.IsNullOrWhiteSpace(args[5]) ? args[5] : null;
+
+                var result = await T4XModelPartClassificationExtractor.RunAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    xanimProof,
+                    weaponProof);
+
+                Console.WriteLine("NUCLEAR XModel PC partClassification recovery");
+                Console.WriteLine($"declared={result.DeclaredXModels:N0}; aligned={result.AlignedXModels:N0}; modelsWithBones={result.ModelsWithBones:N0}; observed={result.ModelsObserved:N0}");
+                Console.WriteLine($"boneObservations={result.BoneObservations:N0}; resolved={result.ResolvedBoneObservations:N0}; unresolvedStrings={result.UnresolvedScriptStrings:N0}; conflicts={result.Conflicts:N0}");
+                Console.WriteLine($"packedBoneNames={result.ModelsSkippedPackedBoneNames:N0}; packedPartClassification={result.ModelsSkippedPackedClassification:N0}; rows={result.Rows.Count:N0}; complete={result.Complete}");
+                Console.WriteLine($"csv:      {result.CsvFile}");
+                Console.WriteLine($"manifest: {result.ManifestFile}");
+                foreach (var note in result.Diagnostics.Take(20))
+                    Console.WriteLine("NOTE: " + note);
+                if (result.Diagnostics.Count > 20)
+                    Console.WriteLine($"NOTE: ... {result.Diagnostics.Count - 20:N0} more diagnostic row(s) in manifest.");
+                return result.Complete ? 0 : 4;
+            }
             case "xenon-native-xmodel-layout" when args.Length >= 4:
             {
                 var result = await T4XenonNativeXModelLayoutProbe.RunAsync(
@@ -1071,6 +1095,7 @@ static void PrintHelp()
     Console.WriteLine("  link-load-emit <root> <map> <output>     Emit/reopen Linker V1 alpha-2 Xbox load.ff smoke candidate");
     Console.WriteLine("  linker-v2-typed-closure <root> <map> <output>     Recompute IWD/script/menu typed closure from current sources");
     Console.WriteLine("  linker-v2-iwi-image-corpus <root> <map> <output> <native-identity.json>  Match IWD .iwi corpus to native Xenon image identities and rank codec mass");
+    Console.WriteLine("  xmodel-partclassification <pc.ff> <partclassification.csv> <manifest.json> [xanim-proof] [weapon-proof]  Recover original PC XModel bone hit-location mapping for OAT Xenon import");
     Console.WriteLine("  xenon-native-xmodel-layout <native.ff> <native-identity.json> <output>  Prove native Xbox XModel 0xD4 fixed-body/name boundary against 0xE4 control");
     Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio] [4s-manifest]  Gate full-content emission on real payload mass and zero critical shells, crediting exact 4S PC-backed images when supplied");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
