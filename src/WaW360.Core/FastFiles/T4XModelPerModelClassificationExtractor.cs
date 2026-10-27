@@ -205,12 +205,35 @@ public static class T4XModelPerModelClassificationExtractor
                         throw new InvalidDataException(
                             $"Resolved source/canonical bone-count mismatch for '{name}': {resolvedBoneNames.Count:N0} != {boneNames.Count:N0}.");
 
-                    for (var i = 0; i < boneNames.Count; i++)
+                    // OAT applies partclassification.csv by bone name after GLTF import,
+                    // not by source index. GLTF loading may legitimately reorder bones
+                    // into XModel parent-before-child order, so require name-multiset
+                    // equivalence rather than index-for-index equality.
+                    var sourceNameCounts = resolvedBoneNames
+                        .GroupBy(x => x, StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+                    var canonicalNameCounts = boneNames
+                        .GroupBy(x => x, StringComparer.Ordinal)
+                        .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+                    if (sourceNameCounts.Count != canonicalNameCounts.Count ||
+                        sourceNameCounts.Any(pair =>
+                            !canonicalNameCounts.TryGetValue(pair.Key, out var count) ||
+                            count != pair.Value))
                     {
-                        if (!string.Equals(resolvedBoneNames[i], boneNames[i], StringComparison.Ordinal))
-                            throw new InvalidDataException(
-                                $"Resolved source/canonical bone-order mismatch for '{name}' at index {i}: " +
-                                $"source='{resolvedBoneNames[i]}', canonical='{boneNames[i]}'.");
+                        var sourceOnly = sourceNameCounts
+                            .Where(pair => !canonicalNameCounts.TryGetValue(pair.Key, out var count) || count != pair.Value)
+                            .Select(pair => $"{pair.Key}x{pair.Value}")
+                            .Take(8);
+                        var canonicalOnly = canonicalNameCounts
+                            .Where(pair => !sourceNameCounts.TryGetValue(pair.Key, out var count) || count != pair.Value)
+                            .Select(pair => $"{pair.Key}x{pair.Value}")
+                            .Take(8);
+
+                        throw new InvalidDataException(
+                            $"Resolved source/canonical bone-name multiset mismatch for '{name}'. " +
+                            $"source-only/different=[{string.Join(", ", sourceOnly)}] " +
+                            $"canonical-only/different=[{string.Join(", ", canonicalOnly)}].");
                     }
                 }
 
