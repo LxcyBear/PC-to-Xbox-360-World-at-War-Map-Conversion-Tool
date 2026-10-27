@@ -16,6 +16,7 @@ public sealed class T4XenonRendererEmitResult
     public required long ZoneBytes { get; init; }
     public required long MainZoneBytes { get; init; }
     public required long LargeRuntimeBytes { get; init; }
+    public required long LargeBytes { get; init; }
     public required long TempBytes { get; init; }
     public required long VirtualBytes { get; init; }
     public required long PhysicalBytes { get; init; }
@@ -260,6 +261,7 @@ public static class T4XenonRendererGraphEmitter
             state.Virtual == layout.VirtualBytes &&
             state.Physical == layout.PhysicalBytes &&
             state.LargeRuntime == layout.LargeRuntimeBytes &&
+            state.Large == layout.LargeBytes &&
             state.Serialized == layout.SerializedBlockBytes &&
             zone.Length + largeRuntime.Length == layout.ProjectedUncompressedZoneBytes;
 
@@ -270,6 +272,7 @@ public static class T4XenonRendererGraphEmitter
                 $"VIRTUAL 0x{state.Virtual:X}/0x{layout.VirtualBytes:X}, " +
                 $"PHYSICAL 0x{state.Physical:X}/0x{layout.PhysicalBytes:X}, " +
                 $"LARGE_RUNTIME 0x{state.LargeRuntime:X}/0x{layout.LargeRuntimeBytes:X}, " +
+                $"LARGE 0x{state.Large:X}/0x{layout.LargeBytes:X}, " +
                 $"serialized {state.Serialized:N0}/{layout.SerializedBlockBytes:N0}, " +
                 $"zone {zone.Length + largeRuntime.Length:N0}/{layout.ProjectedUncompressedZoneBytes:N0}.");
 
@@ -278,6 +281,7 @@ public static class T4XenonRendererGraphEmitter
             state.TempMax,
             state.LargeRuntime,
             state.Virtual,
+            state.Large,
             state.Physical);
 
         var mainBytes = zone.ToArray();
@@ -361,6 +365,8 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
         report.AppendLine($"VIRTUAL:                    0x{state.Virtual:X}");
         report.AppendLine($"PHYSICAL:                   0x{state.Physical:X}");
+        report.AppendLine($"LARGE_RUNTIME:              0x{state.LargeRuntime:X}");
+        report.AppendLine($"LARGE:                      0x{state.Large:X}");
         report.AppendLine($"4D layout replay exact:     {layoutReplayExact}");
         report.AppendLine($"Wrapper round-trip:         {wrapped.RoundTripVerified}");
         report.AppendLine($"OAT listed roots:           {oatListedRoots:N0}");
@@ -385,6 +391,7 @@ public static class T4XenonRendererGraphEmitter
             ZoneBytes = zoneBytes.LongLength,
             MainZoneBytes = mainBytes.LongLength,
             LargeRuntimeBytes = state.LargeRuntime,
+            LargeBytes = state.Large,
             TempBytes = state.TempMax,
             VirtualBytes = state.Virtual,
             PhysicalBytes = state.Physical,
@@ -775,13 +782,26 @@ public static class T4XenonRendererGraphEmitter
 
         if (image.PixelsBytes != 0)
         {
-            state.LargeRuntimeAlloc(image.PixelsBytes, 4096, serialized: true);
             var pixels = File.ReadAllBytes(image.PixelBlobFile);
             cancellationToken.ThrowIfCancellationRequested();
             if (pixels.Length != image.PixelsBytes)
                 throw new InvalidDataException(
                     $"{image.Name}: pixel blob length {pixels.Length:N0} != graph {image.PixelsBytes:N0}.");
-            largeRuntime.Write(pixels);
+
+            // T4 Xenon block choice is controlled by delayLoadPixels.
+            // Delayed map textures live in LARGE_RUNTIME (block 2) and are appended
+            // after zoneSize. Immediate/generated images live in LARGE (block 5)
+            // and therefore remain in the serialized main-zone stream.
+            if (image.DelayLoadPixels)
+            {
+                state.LargeRuntimeAlloc(image.PixelsBytes, 4096, serialized: true);
+                largeRuntime.Write(pixels);
+            }
+            else
+            {
+                state.LargeAlloc(image.PixelsBytes, 4096, serialized: true);
+                zone.Write(pixels);
+            }
         }
 
         zone.Write(BuildImageLoadDefBody(image));
@@ -906,6 +926,7 @@ public static class T4XenonRendererGraphEmitter
         long temp,
         long largeRuntime,
         long virtualSize,
+        long large,
         long physical)
     {
         if (zone.Length > uint.MaxValue)
@@ -921,7 +942,7 @@ public static class T4XenonRendererGraphEmitter
         WriteU32(zone, checked((uint)largeRuntime));
         WriteU32(zone, 0);
         WriteU32(zone, checked((uint)virtualSize));
-        WriteU32(zone, 0);
+        WriteU32(zone, checked((uint)large));
         WriteU32(zone, checked((uint)physical));
         zone.Position = pos;
     }
@@ -1080,10 +1101,12 @@ public static class T4XenonRendererGraphEmitter
         private long _virtual;
         private long _physical;
         private long _largeRuntime;
+        private long _large;
 
         public long Virtual => _virtual;
         public long Physical => _physical;
         public long LargeRuntime => _largeRuntime;
+        public long Large => _large;
         public long TempMax { get; private set; }
         public long Serialized { get; private set; }
 
@@ -1095,6 +1118,9 @@ public static class T4XenonRendererGraphEmitter
 
         public long LargeRuntimeAlloc(long size, int alignment, bool serialized) =>
             Allocate(ref _largeRuntime, size, alignment, serialized);
+
+        public long LargeAlloc(long size, int alignment, bool serialized) =>
+            Allocate(ref _large, size, alignment, serialized);
 
         public void TempRoot(int size)
         {
