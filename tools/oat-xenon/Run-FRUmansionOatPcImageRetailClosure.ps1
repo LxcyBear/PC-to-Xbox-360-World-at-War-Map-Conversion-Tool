@@ -2,7 +2,7 @@ param(
     [string]$PcMapsRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps',
     [string]$MapName = 'nazi_zombie_FRUmansion',
     [string]$PcFastFile = '',
-    [string]$WaWInstallRoot = '',
+    [string]$WaWInstallRoot = 'D:\\SteamLibrary\\steamapps\\common\\Call of Duty World at War',
     [string]$OutputRoot = ''
 )
 
@@ -81,6 +81,11 @@ function Find-WaWInstall {
         Add-UniquePath -List $candidates -Path $Explicit
     }
 
+    # Project-configured WaW PC install. Keep this explicit candidate ahead
+    # of Steam discovery because secondary-library registry/VDF discovery is
+    # not reliable on every Steam installation.
+    Add-UniquePath -List $candidates -Path 'D:\SteamLibrary\steamapps\common\Call of Duty World at War'
+
     foreach ($steamRoot in Find-SteamRoots) {
         foreach ($name in @(
             'Call of Duty World at War',
@@ -141,12 +146,25 @@ if (-not (Test-Path -LiteralPath $unlinker -PathType Leaf)) {
 
 $install = Find-WaWInstall -Explicit $WaWInstallRoot
 if ($null -eq $install) {
-    throw @"
-Could not auto-detect a PC World at War install containing main\*.iwd.
+    $explicitMain = if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
+        Join-Path $WaWInstallRoot 'main'
+    } else {
+        '<not supplied>'
+    }
 
-Re-run with the install root explicitly, for example:
-  powershell -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-FRUmansionOatPcImageRetailClosure.ps1" -WaWInstallRoot "D:\SteamLibrary\steamapps\common\Call of Duty World at War"
-"@
+    Write-Host '[NUCLEAR-4I] Install detection diagnostics:' -ForegroundColor Yellow
+    Write-Host "[NUCLEAR-4I] Requested root : $WaWInstallRoot"
+    Write-Host "[NUCLEAR-4I] Expected main  : $explicitMain"
+    if ($explicitMain -ne '<not supplied>') {
+        Write-Host "[NUCLEAR-4I] main exists    : $(Test-Path -LiteralPath $explicitMain -PathType Container)"
+        if (Test-Path -LiteralPath $explicitMain -PathType Container) {
+            $seenIwds = @(Get-ChildItem -LiteralPath $explicitMain -Filter '*.iwd' -File -ErrorAction SilentlyContinue)
+            Write-Host "[NUCLEAR-4I] IWDs seen      : $($seenIwds.Count)"
+            $seenIwds | Select-Object -First 12 | ForEach-Object { Write-Host "[NUCLEAR-4I]   $($_.Name)" }
+        }
+    }
+
+    throw "Could not resolve a PC World at War install containing main\*.iwd."
 }
 
 $searchPaths = New-Object 'System.Collections.Generic.List[string]'
