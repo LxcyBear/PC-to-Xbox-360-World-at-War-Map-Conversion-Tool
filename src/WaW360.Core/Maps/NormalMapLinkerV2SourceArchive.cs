@@ -234,13 +234,21 @@ public static class NormalMapLinkerV2SourceArchive
 
         var packagePlan = new List<string>
         {
-            canonicalBase + ".ff  <- canonical merged primary graph (NOT a byte-for-byte mirror of any one PC FF)"
+            canonicalBase + "\\  <- shared usermap package root",
+            canonicalBase + "\\" + canonicalBase + ".ff <- canonical merged primary graph (NOT a byte-for-byte mirror of any one PC FF)"
         };
         if (selectedLoad is not null)
-            packagePlan.Add(canonicalBase + "_load.ff <- selected canonical load graph: " + selectedLoad.FileName);
+            packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- selected canonical load graph: " + selectedLoad.FileName);
+
+        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_patch.ff <- optional override/fix layer when emitted; loaded after the main FF");
+        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.bik <- optional solo loading video using stock T4 naming");
+        packagePlan.Add(canonicalBase + "\\" + canonicalBase + ".pak <- optional packed streamed audio; PackIndex remains a fastfile asset");
+        packagePlan.Add(canonicalBase + "\\map.json <- optional shared menu metadata; plugin-specific fields must be tolerated");
+        packagePlan.Add(canonicalBase + "\\preview.dds <- optional on-demand menu preview");
+        packagePlan.Add(canonicalBase + "\\highmip\\ <- loose streamed high-resolution texture mip files (.hi)");
+        packagePlan.Add(canonicalBase + "\\sounds\\ <- loose external streamed Xbox audio (.xma), preserving subdirectories");
         if (externalSoundsExpected)
-            packagePlan.Add("sounds\\ <- external Xbox SDNS/XMA sound payloads referenced by canonical Sound assets");
-        packagePlan.Add("preview/description metadata <- packaging layer (not part of XAsset graph correctness)");
+            notes.Add("PACKAGE CONTRACT: streamed XMA payloads stay external under sounds\\; they are never embedded into the main FF merely to increase fastfile size.");
 
         var blockers = new List<string>();
         if (primaryPath is null)
