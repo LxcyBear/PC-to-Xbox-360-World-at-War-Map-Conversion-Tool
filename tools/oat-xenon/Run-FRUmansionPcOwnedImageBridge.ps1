@@ -311,10 +311,12 @@ if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot) -and (Test-Path -LiteralP
 
 $pcFastFile = $null
 $preferredPcFastFiles = @(
-    (Join-Path $mapDir 'nazi_zombie_frumansion.ff'),
-    (Join-Path $mapDir 'nazi_zombie_FRUmansion.ff'),
-    (Join-Path $mapDir ($MapName + '.ff'))
-) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    @(
+        (Join-Path $mapDir 'nazi_zombie_frumansion.ff'),
+        (Join-Path $mapDir 'nazi_zombie_FRUmansion.ff'),
+        (Join-Path $mapDir ($MapName + '.ff'))
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+)
 
 if ($preferredPcFastFiles.Count -gt 0) {
     $pcFastFile = $preferredPcFastFiles[0]
