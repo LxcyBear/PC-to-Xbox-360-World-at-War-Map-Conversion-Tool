@@ -412,6 +412,10 @@ namespace xmodel
         out << ",\"highMipBounds\":" << sizeof(XModelHighMipBounds);
         out << "}";
 
+        out << ",\"offsets\":{";
+        out << "\"physPreset\":" << offsetof(XModel, physPreset);
+        out << "}";
+
         out << ",\"counts\":{";
         out << "\"numBones\":" << static_cast<unsigned>(model.numBones);
         out << ",\"numRootBones\":" << static_cast<unsigned>(model.numRootBones);
