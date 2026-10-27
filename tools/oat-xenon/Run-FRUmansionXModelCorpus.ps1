@@ -137,7 +137,10 @@ function Get-ReferenceAssets {
         Add-Ref -Type 'physconstraints' -Name ([string]$json.physConstraints)
     }
 
-    return @($refs)
+    # Do not wrap a generic List[object] in @(...). Windows PowerShell 5.1's
+    # array-subexpression binder can throw "Argument types do not match" here.
+    # Let the pipeline enumerate the list naturally.
+    return $refs
 }
 
 function Get-SafeStem {
@@ -163,7 +166,8 @@ function Get-ListedXModels {
         }
     }
 
-    return @($names)
+    # Same PS5.1 generic-list binder caveat as Get-ReferenceAssets.
+    return $names
 }
 
 $models = @($class.Models | Sort-Object {[int]$_.XModelOrdinal})
@@ -246,6 +250,8 @@ for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
     $xmodelJsonSha256 = $null
     $fastFileSha256 = $null
     $errorText = $null
+    $errorPosition = $null
+    $errorStack = $null
 
     try {
         if (-not [bool]$model.Complete) {
@@ -345,6 +351,8 @@ for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
     }
     catch {
         $errorText = $_.Exception.Message
+        $errorPosition = $_.InvocationInfo.PositionMessage
+        $errorStack = $_.ScriptStackTrace
     }
 
     $row = [ordered]@{
@@ -368,6 +376,8 @@ for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
         ReadbackLog = $readLog
         Pass = $pass
         Error = $errorText
+        ErrorPosition = $errorPosition
+        ErrorStack = $errorStack
     }
 
     $row | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $resultFile -Encoding UTF8
@@ -380,6 +390,9 @@ for ($ordinal = $StartIndex; $ordinal -lt $endExclusive; $ordinal++) {
     else {
         $failed++
         Write-Host ("[NUCLEAR-4V] [{0,3}/{1}] FAIL  {2} :: {3}" -f ($ordinal + 1), $models.Count, $name, $errorText) -ForegroundColor Yellow
+        if (-not [string]::IsNullOrWhiteSpace([string]$errorPosition)) {
+            Write-Host ("[NUCLEAR-4V]   at " + ([string]$errorPosition).Trim()) -ForegroundColor DarkYellow
+        }
     }
 }
 
