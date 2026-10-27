@@ -28,9 +28,11 @@ try {
     $srcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Techset'
     $imageSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Image'
     $pcXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\XModel'
+    $xenonXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\XModel'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $pcXModelSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $xenonXModelSrcDir | Out-Null
 
     $graphSrc = Join-Path $PSScriptRoot 'graph-dumper'
     $headerSrc = Join-Path $graphSrc 'TechniqueSetGraphDumperT4Xenon.h'
@@ -58,6 +60,17 @@ try {
     Copy-Item -LiteralPath $pcClassHeaderSrc -Destination $pcClassHeaderDst -Force
     Copy-Item -LiteralPath $pcClassCppSrc -Destination $pcClassCppDst -Force
 
+    $xmodelInventoryHeaderSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.h'
+    $xmodelInventoryCppSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.cpp'
+    if (-not (Test-Path -LiteralPath $xmodelInventoryHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $xmodelInventoryCppSrc -PathType Leaf)) {
+        throw 'Xenon XModel graph inventory dumper source is missing from converter repo.'
+    }
+    $xmodelInventoryHeaderDst = Join-Path $xenonXModelSrcDir 'XModelGraphInventoryDumperT4Xenon.h'
+    $xmodelInventoryCppDst = Join-Path $xenonXModelSrcDir 'XModelGraphInventoryDumperT4Xenon.cpp'
+    Copy-Item -LiteralPath $xmodelInventoryHeaderSrc -Destination $xmodelInventoryHeaderDst -Force
+    Copy-Item -LiteralPath $xmodelInventoryCppSrc -Destination $xmodelInventoryCppDst -Force
+
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
     # ObjWriterT4Xenon.cpp lives in Game/T4Xenon, so this pinned revision
@@ -76,6 +89,13 @@ try {
         $text = $text.Replace($imageIncludeNeedle, $imageIncludeNeedle + [Environment]::NewLine + $imageIncludeLine)
     }
 
+    $xmodelIncludeNeedle = '#include "Game/T4Xenon/XModel/XModelDumperT4Xenon.h"'
+    $xmodelIncludeLine = '#include "XModel/XModelGraphInventoryDumperT4Xenon.h"'
+    if ($text -notmatch [regex]::Escape($xmodelIncludeLine)) {
+        if ($text -notmatch [regex]::Escape($xmodelIncludeNeedle)) { throw 'Could not find T4Xenon XModel dumper include anchor.' }
+        $text = $text.Replace($xmodelIncludeNeedle, $xmodelIncludeNeedle + [Environment]::NewLine + $xmodelIncludeLine)
+    }
+
     $registerNeedle = 'RegisterAssetDumper(std::make_unique<techset::PixelShaderDumperT4Xenon>());'
     $registerLine = 'RegisterAssetDumper(std::make_unique<techset::TechniqueSetGraphDumperT4Xenon>());'
     if ($text -notmatch [regex]::Escape($registerLine)) {
@@ -88,6 +108,13 @@ try {
     if ($text -notmatch [regex]::Escape($imageRegisterLine)) {
         if ($text -notmatch [regex]::Escape($imageRegisterNeedle)) { throw 'Could not find T4Xenon image dumper registration anchor.' }
         $text = $text.Replace($imageRegisterNeedle, $imageRegisterNeedle + [Environment]::NewLine + '    ' + $imageRegisterLine)
+    }
+
+    $xmodelRegisterNeedle = 'RegisterAssetDumper(std::make_unique<xmodel::DumperT4Xenon>());'
+    $xmodelRegisterLine = 'RegisterAssetDumper(std::make_unique<xmodel::GraphInventoryDumperT4Xenon>());'
+    if ($text -notmatch [regex]::Escape($xmodelRegisterLine)) {
+        if ($text -notmatch [regex]::Escape($xmodelRegisterNeedle)) { throw 'Could not find T4Xenon XModel dumper registration anchor.' }
+        $text = $text.Replace($xmodelRegisterNeedle, $xmodelRegisterNeedle + [Environment]::NewLine + '    ' + $xmodelRegisterLine)
     }
     # Set-Content appends a record terminator and can also change BOM semantics.
     # Preserve UTF-8 without BOM and force exactly one trailing LF.
@@ -167,7 +194,8 @@ try {
         capabilities = @(
             't4xenon-techset-graph-v1',
             't4xenon-image-graph-v1',
-            't4-xmodel-classification-v1'
+            't4-xmodel-classification-v1',
+            't4xenon-xmodel-graph-inventory-v1'
         )
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
@@ -188,6 +216,8 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelGraphInventoryDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelGraphInventoryDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
