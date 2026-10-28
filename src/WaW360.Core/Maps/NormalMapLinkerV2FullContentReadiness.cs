@@ -49,6 +49,7 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required long ProductionMaterialSerializedBytes { get; init; }
     public required int ProductionCriticalReferenceRoots { get; init; }
     public required int ProductionImageReferenceRoots { get; init; }
+    public required int ProductionStockWeaponRoots { get; init; }
     public required long ProductionIntegratedBaselineZoneBytes { get; init; }
     public required bool RendererLayoutReady { get; init; }
     public required bool ProperSizeGate { get; init; }
@@ -112,6 +113,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         string? productionMaterialGraftManifest = null,
         string? productionCriticalReferenceProofManifest = null,
         string? productionImageReferenceProofManifest = null,
+        string? productionStockWeaponRoundTripManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -157,6 +159,11 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         var productionImageReferences = LoadProductionImageReferenceCredit(
             productionImageReferenceProofManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
+        var productionStockWeapons = LoadProductionStockWeaponCredit(
+            productionStockWeaponRoundTripManifest,
             nativeIdentity,
             native.Document.AssetCount);
 
@@ -396,6 +403,16 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (productionStockWeapons.WeaponNativeIndices.Contains(i))
+            {
+                if (pools.TryGetValue(type, out var weaponQueue) && weaponQueue.Count != 0)
+                    weaponQueue.Dequeue();
+
+                realPromotedRoots++;
+                stat.RealPromotedRoots++;
+                continue;
+            }
+
             if (pools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var pair = queue.Dequeue();
@@ -574,6 +591,19 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (productionStockWeapons.WeaponNativeIndices.Contains(i))
+            {
+                if (deltaPools.TryGetValue(type, out var weaponQueue) && weaponQueue.Count != 0)
+                    weaponQueue.Dequeue();
+
+                // The round-trip proves OAT can reconstruct these exact retail
+                // WeaponDefs from disk with their dependency closure and reproduce
+                // the same info strings on readback. Keep the conservative existing
+                // shell mass here; final emission will replace the shell with the
+                // proven Weapon serializer path.
+                continue;
+            }
+
             if (deltaPools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var payload = queue.Dequeue().Payload;
@@ -631,6 +661,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionImageReferences.ReferenceNativeIndices.Count == 0
                 ? "No passing Stage 4X retail image-reference proof was supplied; unresolved stock image identities remain critical blockers."
                 : $"Stage 4X credits {productionImageReferences.ReferenceNativeIndices.Count:N0} exact retail-Xbox image runtime references from common/base-Zombies pools.",
+            productionStockWeapons.WeaponNativeIndices.Count == 0
+                ? "No passing stock Weapon round-trip proof was supplied; nonresident retail Weapon roots remain critical blockers."
+                : $"Stock Weapon batch credits {productionStockWeapons.WeaponNativeIndices.Count:N0} exact retail WeaponDefs reconstructed from disk and read back 3/3 with exact info-string hashes.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -681,6 +714,7 @@ public static class NormalMapLinkerV2FullContentReadiness
             ProductionMaterialSerializedBytes = productionMaterials.TotalSerializedBytes,
             ProductionCriticalReferenceRoots = productionCriticalReferences.ReferenceNativeIndices.Count,
             ProductionImageReferenceRoots = productionImageReferences.ReferenceNativeIndices.Count,
+            ProductionStockWeaponRoots = productionStockWeapons.WeaponNativeIndices.Count,
             ProductionIntegratedBaselineZoneBytes = provenIntegratedBaseZoneBytes,
             RendererLayoutReady = rendererLayout.LayoutReady,
             ProperSizeGate = properSizeGate,
@@ -701,6 +735,73 @@ public static class NormalMapLinkerV2FullContentReadiness
             cancellationToken);
 
         return result;
+    }
+
+    private sealed record ProductionStockWeaponCredit(
+        IReadOnlySet<int> WeaponNativeIndices);
+
+    private static ProductionStockWeaponCredit LoadProductionStockWeaponCredit(
+        string? proofManifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(proofManifestPath))
+            return new ProductionStockWeaponCredit(new HashSet<int>());
+
+        proofManifestPath = Path.GetFullPath(proofManifestPath);
+        if (!File.Exists(proofManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4F stock Weapon round-trip manifest was not found.",
+                proofManifestPath);
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(proofManifestPath));
+        var root = doc.RootElement;
+
+        if (GetString(root, "format") != "WaW360.Nuclear4Y.StockWeaponRoundTrip.v1" ||
+            !GetBool(root, "roundTripPass") ||
+            GetInt(root, "targetWeapons") != 3 ||
+            GetInt(root, "linkerExitCode") != 0 ||
+            GetInt(root, "readbackExitCode") != 0 ||
+            GetInt(root, "readbackWeapons") != 3 ||
+            GetInt(root, "exactInfoStringRoundTrips") != 3)
+            throw new InvalidDataException(
+                "Stock Weapon manifest does not prove a clean 3/3 exact retail Weapon round-trip.");
+
+        var indices = new HashSet<int>();
+        foreach (var item in GetProperty(root, "weapons").EnumerateArray())
+        {
+            var index = GetInt(item, "Index");
+            var name = GetString(item, "Name");
+            var exact = GetBool(item, "ExactInfoStringRoundTrip");
+
+            if (!exact)
+                throw new InvalidDataException(
+                    $"Stock Weapon root #{index} '{name}' did not preserve its exact info string.");
+
+            if ((uint)index >= (uint)nativeRootCount)
+                throw new InvalidDataException(
+                    $"Stock Weapon root #{index} is outside the native sequence.");
+
+            var nativeRoot = nativeIdentity[index];
+            var nativeType = nativeRoot.OatTypeName.Trim().ToLowerInvariant();
+            if (nativeType.Length == 0)
+                nativeType = nativeRoot.TypeName.Trim().ToLowerInvariant();
+
+            if (!nativeType.Equals("weapon", StringComparison.OrdinalIgnoreCase) ||
+                !nativeRoot.Name.Equals(name, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Stock Weapon root #{index} no longer matches native Weapon identity.");
+
+            if (!indices.Add(index))
+                throw new InvalidDataException(
+                    $"Stock Weapon proof repeats native root #{index}.");
+        }
+
+        if (indices.Count != 3)
+            throw new InvalidDataException(
+                $"Stock Weapon proof count changed: {indices.Count:N0}; expected 3.");
+
+        return new ProductionStockWeaponCredit(indices);
     }
 
     private sealed record ProductionImageReferenceCredit(
@@ -1526,6 +1627,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Production Material bytes:   {r.ProductionMaterialSerializedBytes:N0} serialized");
         sb.AppendLine($"Critical retail references:  {r.ProductionCriticalReferenceRoots:N0}");
         sb.AppendLine($"Retail image references:     {r.ProductionImageReferenceRoots:N0}");
+        sb.AppendLine($"Stock Weapon round-trips:    {r.ProductionStockWeaponRoots:N0}");
         sb.AppendLine($"Integrated production zone:  {r.ProductionIntegratedBaselineZoneBytes:N0} B");
         sb.AppendLine();
         sb.AppendLine($"Renderer layout ready:       {r.RendererLayoutReady}");
