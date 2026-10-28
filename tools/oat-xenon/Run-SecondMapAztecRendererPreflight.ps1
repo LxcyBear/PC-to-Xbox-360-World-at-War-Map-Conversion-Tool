@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$MapName='nazi_zombie_aztec_V2.2',
-    [string]$OutputRoot=''
+    [string]$OutputRoot='',
+    [switch]$SkipCliBuild
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -83,6 +84,26 @@ Write-Host '[AZTEC-RENDER] NATIVE GRAPH -> EXACT ROOT BINDING -> XBOX BLOCK LAYO
 Write-Host '[AZTEC-RENDER] 70 TechniqueSets + 436 PixelShaders; no candidate FF emitted.'
 Write-Host '[AZTEC-RENDER] Reusing successful graph corpus. No OAT graph redump/build.'
 Write-Host '[AZTEC-RENDER] =========================================================='
+if (-not $SkipCliBuild) {
+    # The preceding StringTable ABI repair changed C# source. The 4B/4C/4D
+    # commands use --no-build; compile the CLI incrementally ONCE first.
+    # This does NOT rebuild OAT or generate fastfiles.
+    $buildLog=Join-Path $work 'cli_incremental_build.log'
+    $saved=$ErrorActionPreference
+    try {
+        $ErrorActionPreference='Continue'
+        $buildOutput=@(& dotnet 'build' $cli '-c' 'Release' '--nologo' '-v:q' 2>&1 | ForEach-Object { [string]$_ })
+        $buildCode=[int]$LASTEXITCODE
+    } finally { $ErrorActionPreference=$saved }
+    [IO.File]::WriteAllLines($buildLog,[string[]]$buildOutput,[Text.UTF8Encoding]::new($false))
+    Write-Host "[AZTEC-RENDER] Incremental CLI build exit=$buildCode; log=$buildLog"
+    if ($buildCode -ne 0) {
+        foreach ($line in @($buildOutput | Select-Object -Last 25)) { Write-Host $line }
+        throw 'CLI incremental compile failed. Do not run the preflight with stale binaries.'
+    }
+} else {
+    Write-Host '[AZTEC-RENDER] -SkipCliBuild selected; caller must guarantee current Release binaries.'
+}
 $plan=Invoke-Gate '4B typed serialization plan' @('xenon-graph-plan',$dumpRoot,$planRoot,'70','436') $planJson (Join-Path $work 'serialization_plan.console.log')
 $bind=$null
 $layout=$null
@@ -144,6 +165,7 @@ $summary=[ordered]@{
     pcMaterialRootsWithoutBoundGraphTarget=[object[]]$pending.ToArray()
     stages=[object[]]$stages.ToArray()
     pcSourceOwnedShaderGraphReady=$false
+    pcSourceOwnedStringTablePayloadReady=$false
     pcSourceOwnedRendererSerializationReady=$false
     actualConvertedXboxFFProduced=$false
     readyForHardware=$false
@@ -167,7 +189,8 @@ $lines.Add("PC roots with existing bound native graph targets: $covered / $($map
 foreach($p in $pending) { $lines.Add("  NO TARGET $($p.Role): $($p.PcTechniqueSet) [$($p.Classification)]") }
 $lines.Add("Block bytes: TEMP=$($summary.layoutTempBytes) VIRTUAL=$($summary.layoutVirtualBytes) PHYSICAL=$($summary.layoutPhysicalBytes)")
 foreach($st in $stages) { $lines.Add("  $($st.Stage): exit=$($st.ExitCode); report=$($st.Manifest); log=$($st.Log)") }
-$lines.Add('NEXT: source-derived shader graph and dependency ownership, two unresolved identities, validator/hardware candidate.')
+$lines.Add('StringTable note: 4D supports verified 16-byte shell ABI, but its real PC rows/values are NOT yet serialized.')
+$lines.Add('NEXT: source-derived shader graph and dependency ownership, two unresolved identities, StringTable contents, validator/hardware candidate.')
 $lines.Add('NO FF EMITTED. Converted Maps directory untouched.')
 [IO.File]::WriteAllLines($reportTxt,[string[]]$lines.ToArray(),[Text.UTF8Encoding]::new($false))
 Write-Host '[AZTEC-RENDER] ================= RESULT =================================='
