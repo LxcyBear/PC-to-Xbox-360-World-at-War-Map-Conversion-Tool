@@ -31,7 +31,8 @@ if ([string]$corpus.format -ne 'WaW360.Nuclear4ZA.MaterialCorpus.v1' -or
     -not [bool]$corpus.corpusPass -or
     -not [bool]$corpus.oatListZeroWarningsZeroErrors -or
     -not [bool]$corpus.oatRedumpZeroWarningsZeroErrors -or
-    -not [bool]$corpus.exactMaterialIdentitySet) {
+    -not [bool]$corpus.exactMaterialIdentitySet -or
+    -not [bool]$corpus.trueMaterialIdentityRecovered) {
     throw '4Z-B requires a passing 4Z-A material corpus manifest.'
 }
 
@@ -235,6 +236,8 @@ $manifest = [ordered]@{
     distinctTechniqueSetReferences = $techniqueRefs.Count
     distinctImageReferences = $imageRefs.Count
     graphPass = $true
+    trueMaterialIdentityRecovered = [bool]$corpus.trueMaterialIdentityRecovered
+    trueGeneratedMaterialIdentities = [int]$corpus.trueGeneratedMaterialIdentities
     rows = $rows.ToArray()
     log = $log
 }
