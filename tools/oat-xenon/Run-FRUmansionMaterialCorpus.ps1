@@ -67,7 +67,27 @@ function Get-OatListedMaterials {
     }
 
     $zero = @($lines | Where-Object {
-        ([string]$_).Trim() -match '(?i)^Finished with\s+0\s+warnings?,\s+0\s+errors?\s*
+        ([string]$_).Trim() -match '(?i)^Finished with\s+0\s+warnings?,\s+0\s+errors?\s*$'
+    }).Count -gt 0
+
+    if (-not $zero) {
+        throw "OAT identity list for '$FastFile' did not prove 0 warnings / 0 errors."
+    }
+
+    $materials = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $lines) {
+        $text = ([string]$line).Trim()
+        if ($text -match '(?i)^material\s*,\s*(.+?)\s*$') {
+            $materials.Add(([string]$matches[1]).Trim())
+        }
+    }
+
+    return [pscustomobject]@{
+        Lines = [string[]]$lines
+        Materials = $materials.ToArray()
+    }
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $linker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Linker.exe'
 $unlinker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Unlinker.exe'
