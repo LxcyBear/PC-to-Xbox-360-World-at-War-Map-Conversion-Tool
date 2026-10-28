@@ -317,45 +317,17 @@ internal static class T4XenonMaterialGraphCodec
         Action<int> tempRoot)
     {
         var g = entry.Graph;
-
-        var tempScope = g.Abi.Material;
-        var externalTechnique = false;
-        if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
-        {
-            var resolution = ResolveDependency(
-                roots,
-                new[] { "techset", "techniqueset" },
-                entry.ProductionTechniqueSet!);
-            externalTechnique = resolution.IsExternal;
-            if (externalTechnique)
-                tempScope = checked(tempScope + 216);
-        }
-
-        var externalImages = new bool[g.Textures.Count];
-        for (var i = 0; i < g.Textures.Count; i++)
-        {
-            var image = g.Textures[i].Image;
-            if (string.IsNullOrWhiteSpace(image))
-                continue;
-
-            var resolution = ResolveDependency(
-                roots,
-                new[] { "image" },
-                image!);
-            externalImages[i] = resolution.IsExternal;
-            if (resolution.IsExternal)
-                tempScope = checked(tempScope + 40);
-        }
+        var dependencyPlan = BuildDependencyPlan(entry, roots);
 
         // TEMP is one scratch scope per top-level Material. Referenced child
         // assets are serialized into that same scope after the Material body.
-        tempRoot(tempScope);
+        tempRoot(dependencyPlan.TempScope);
 
         // Material::info.name
         virtualAlloc(Utf8Z(entry.NativeName), 1, true);
 
         // Material::techniqueSet is traversed before textureTable.
-        if (externalTechnique)
+        if (dependencyPlan.Technique.IsExternal)
             virtualAlloc(
                 Utf8Z(T4XenonMaterialCorpus.ReferenceAssetName(entry.ProductionTechniqueSet!)),
                 1,
@@ -372,7 +344,7 @@ internal static class T4XenonMaterialGraphCodec
             // MaterialTextureDef asset pointer is traversed in index order.
             for (var i = 0; i < g.Textures.Count; i++)
             {
-                if (!externalImages[i])
+                if (!dependencyPlan.Images[i].IsExternal)
                     continue;
 
                 virtualAlloc(
@@ -408,7 +380,8 @@ internal static class T4XenonMaterialGraphCodec
         IReadOnlyDictionary<int, uint> stableByRoot)
     {
         var g = entry.Graph;
-        tempRoot(g.Abi.Material);
+        var dependencyPlan = BuildDependencyPlan(entry, roots);
+        tempRoot(dependencyPlan.TempScope);
 
         var rootBody = ReadBlob(
             entry.DumpRoot,
@@ -416,14 +389,9 @@ internal static class T4XenonMaterialGraphCodec
             g.Abi.Material,
             $"{entry.CorpusName} root");
 
-        var techniqueResolution = DependencyResolution.None;
+        var techniqueResolution = dependencyPlan.Technique;
         if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
         {
-            techniqueResolution = ResolveDependency(
-                roots,
-                new[] { "techset", "techniqueset" },
-                entry.ProductionTechniqueSet!);
-
             PutU32(
                 rootBody,
                 g.Offsets.TechniqueSet,
@@ -445,7 +413,7 @@ internal static class T4XenonMaterialGraphCodec
                 virtualAlloc,
                 shellSize: 216,
                 nameOffset: 0,
-                T4XenonMaterialCorpus.ReferenceAssetName(entry.ProductionTechniqueSet!));
+                referenceName: T4XenonMaterialCorpus.ReferenceAssetName(entry.ProductionTechniqueSet!));
 
         if (g.Presence.TextureTable)
         {
@@ -460,7 +428,7 @@ internal static class T4XenonMaterialGraphCodec
                 expected,
                 $"{entry.CorpusName} textures");
 
-            var imageResolutions = new DependencyResolution[g.Textures.Count];
+            var imageResolutions = dependencyPlan.Images;
             for (var i = 0; i < g.Textures.Count; i++)
             {
                 var texture = g.Textures[i];
@@ -471,11 +439,7 @@ internal static class T4XenonMaterialGraphCodec
                 if (string.IsNullOrWhiteSpace(texture.Image))
                     continue;
 
-                var resolution = ResolveDependency(
-                    roots,
-                    new[] { "image" },
-                    texture.Image!);
-                imageResolutions[i] = resolution;
+                var resolution = imageResolutions[i];
 
                 PutU32(
                     textureBytes,
@@ -507,7 +471,7 @@ internal static class T4XenonMaterialGraphCodec
                     virtualAlloc,
                     shellSize: 40,
                     nameOffset: 36,
-                    T4XenonMaterialCorpus.ReferenceAssetName(g.Textures[i].Image!));
+                    referenceName: T4XenonMaterialCorpus.ReferenceAssetName(g.Textures[i].Image!));
             }
         }
         else if (g.Counts.Textures != 0)
@@ -535,6 +499,50 @@ internal static class T4XenonMaterialGraphCodec
             checked((long)g.Counts.StateBits * g.Abi.StateBits),
             g.Alignments.StateBits,
             $"{entry.CorpusName} stateBits");
+    }
+
+    private sealed record MaterialDependencyPlan(
+        int TempScope,
+        DependencyResolution Technique,
+        DependencyResolution[] Images);
+
+    private static MaterialDependencyPlan BuildDependencyPlan(
+        T4XenonMaterialCorpusEntry entry,
+        IReadOnlyList<T4XenonNativeIdentityEntry> roots)
+    {
+        var g = entry.Graph;
+        var tempScope = g.Abi.Material;
+        var technique = DependencyResolution.None;
+
+        if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
+        {
+            technique = ResolveDependency(
+                roots,
+                new[] { "techset", "techniqueset" },
+                entry.ProductionTechniqueSet!);
+            if (technique.IsExternal)
+                tempScope = checked(tempScope + 216);
+        }
+
+        var images = new DependencyResolution[g.Textures.Count];
+        for (var i = 0; i < g.Textures.Count; i++)
+        {
+            var image = g.Textures[i].Image;
+            if (string.IsNullOrWhiteSpace(image))
+                continue;
+
+            images[i] = ResolveDependency(
+                roots,
+                new[] { "image" },
+                image!);
+            if (images[i].IsExternal)
+                tempScope = checked(tempScope + 40);
+        }
+
+        return new MaterialDependencyPlan(
+            tempScope,
+            technique,
+            images);
     }
 
     private readonly record struct DependencyResolution(
