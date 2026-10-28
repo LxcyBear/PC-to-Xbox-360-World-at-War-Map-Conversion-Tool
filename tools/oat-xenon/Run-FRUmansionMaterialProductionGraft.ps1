@@ -9,6 +9,7 @@ param(
     [string]$XModelReplaySuiteRoot = '',
     [string]$MaterialGraphRoot = '',
     [string]$MaterialReplayRoot = '',
+    [string]$MaterialBindingRoot = '',
     [string]$OutputRoot = '',
     [string]$CanonicalBaseName = 'nazi_zombie_FRUmansion'
 )
@@ -42,6 +43,9 @@ if ([string]::IsNullOrWhiteSpace($MaterialGraphRoot)) {
 }
 if ([string]::IsNullOrWhiteSpace($MaterialReplayRoot)) {
     $MaterialReplayRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zc_material_replay'
+}
+if ([string]::IsNullOrWhiteSpace($MaterialBindingRoot)) {
+    $MaterialBindingRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_root_binding'
 }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_production_graft'
@@ -87,6 +91,16 @@ $xmodelBindingManifest = Join-Path $XModelBindingRoot 'nuclear_4w_xmodel_root_bi
 $xmodelSuiteManifest = Join-Path $XModelReplaySuiteRoot 'nuclear_4xc_replay_suite.json'
 $materialGraphManifest = Join-Path $MaterialGraphRoot 'nuclear_4zb_material_relocatable_graph.json'
 $materialReplayManifest = Join-Path $MaterialReplayRoot 'nuclear_4zc_material_replay.json'
+$materialBindingManifest = Join-Path $MaterialBindingRoot 'nuclear_4zd_material_root_binding.json'
+$materialBindingRunner = Join-Path $PSScriptRoot 'Run-FRUmansionMaterialRootBinding.ps1'
+
+if (-not (Test-Path -LiteralPath $materialBindingManifest -PathType Leaf)) {
+    Write-Host '[NUCLEAR-4Z-D] Material root binding is missing; running calibrated 4Z-D0 binding first...'
+    & powershell -ExecutionPolicy Bypass -File $materialBindingRunner -GraphRoot $MaterialGraphRoot -BindingRoot $BindingRoot -OutputRoot $MaterialBindingRoot
+    if ($LASTEXITCODE -ne 0 -or -not $?) {
+        throw "4Z-D0 Material root binding failed with exit code $LASTEXITCODE."
+    }
+}
 
 foreach ($required in @(
     $rendererBinding,
@@ -97,6 +111,7 @@ foreach ($required in @(
     $xmodelSuiteManifest,
     $materialGraphManifest,
     $materialReplayManifest,
+    $materialBindingManifest,
     $graphUnlinker
 )) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -113,6 +128,7 @@ $xmodelBinding = Get-Content -LiteralPath $xmodelBindingManifest -Raw | ConvertF
 $xmodelSuite = Get-Content -LiteralPath $xmodelSuiteManifest -Raw | ConvertFrom-Json
 $materialGraph = Get-Content -LiteralPath $materialGraphManifest -Raw | ConvertFrom-Json
 $materialReplay = Get-Content -LiteralPath $materialReplayManifest -Raw | ConvertFrom-Json
+$materialBinding = Get-Content -LiteralPath $materialBindingManifest -Raw | ConvertFrom-Json
 
 if ([string]$imageBridge.format -ne 'WaW360.Nuclear4R.PcOwnedImageBridge.v1' -or
     -not [bool]$imageBridge.bridgePass) {
@@ -157,6 +173,14 @@ if (-not [bool]$materialReplay.ReplayPass -or
     throw 'Stage 4Z-D requires the passing 502-Material 4Z-C exact replay proof.'
 }
 
+if (-not [bool]$materialBinding.BindingPass -or
+    [int]$materialBinding.CorpusMaterials -ne 502 -or
+    @($materialBinding.OwnedBindings).Count -ne 502 -or
+    [int]$materialBinding.UnmatchedMaterials -ne 0 -or
+    [int]$materialBinding.AmbiguousMaterials -ne 0) {
+    throw 'Stage 4Z-D requires the passing 502/502 calibrated Material root binding.'
+}
+
 $imageGraphRoot = [string]$imageBridge.graphRoot
 $expectedImages = [int]$imageBridge.resolvedSources
 if ($expectedImages -le 0 -or -not (Test-Path -LiteralPath $imageGraphRoot -PathType Container)) {
@@ -181,6 +205,7 @@ Write-Host '[NUCLEAR-4Z-D] XModel references   : 9 (reference shells preserved)'
 Write-Host "[NUCLEAR-4Z-D] Material graph corpus: $MaterialGraphRoot"
 Write-Host '[NUCLEAR-4Z-D] PC-backed Materials : 502'
 Write-Host '[NUCLEAR-4Z-D] Material replay     : exact 502/502 PASS'
+Write-Host "[NUCLEAR-4Z-D] Material binding    : 502/502 PASS (direct=$([int]$materialBinding.DirectIdentityMatches), semantic=$([int]$materialBinding.SemanticMatches))"
 Write-Host ''
 Write-Host '[NUCLEAR-4Z-D] Safety: full root sequence + layout replay + OAT 0/0 are mandatory.'
 Write-Host '[NUCLEAR-4Z-D] Hardware remains fenced until Stage 4F critical-content readiness passes.'
@@ -209,7 +234,8 @@ try {
         '0',
         $XModelGraphRoot,
         $xmodelBindingManifest,
-        $MaterialGraphRoot
+        $MaterialGraphRoot,
+        $materialBindingManifest
     )
 
     & dotnet @args
@@ -249,6 +275,7 @@ $summary = [ordered]@{
     xmodelReplaySuiteManifest = $xmodelSuiteManifest
     materialGraphManifest = $materialGraphManifest
     materialReplayManifest = $materialReplayManifest
+    materialBindingManifest = $materialBindingManifest
     nativeRoots = [int]$emitter.NativeRoots
     oatListedRoots = [int]$emitter.OatListedRoots
     pcBackedImages = [int]$emitter.RealImageRoots
