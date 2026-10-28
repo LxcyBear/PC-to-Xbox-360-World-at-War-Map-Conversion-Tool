@@ -16,6 +16,28 @@ public sealed record T4XenonOatExternalReference(
     string OatTypeName,
     string Name);
 
+public sealed class T4XenonIdentityGateException : InvalidDataException
+{
+    public T4XenonIdentityGateException(
+        string message,
+        int loadedAssets,
+        int reconciledRoots,
+        int seenExternalReferences,
+        int expectedExternalReferences)
+        : base(message)
+    {
+        LoadedAssets = loadedAssets;
+        ReconciledRoots = reconciledRoots;
+        SeenExternalReferences = seenExternalReferences;
+        ExpectedExternalReferences = expectedExternalReferences;
+    }
+
+    public int LoadedAssets { get; }
+    public int ReconciledRoots { get; }
+    public int SeenExternalReferences { get; }
+    public int ExpectedExternalReferences { get; }
+}
+
 public sealed record T4XenonNativeIdentityTypeSummary(
     int TypeId,
     string TypeName,
@@ -193,11 +215,18 @@ public static class T4XenonNativeIdentityOracle
                     allowed,
                     out rootRows,
                     out externalRows,
+                    out var reconciledRootCount,
+                    out var seenExternalCount,
                     out var reconciliationError))
             {
-                throw new InvalidDataException(
+                throw new T4XenonIdentityGateException(
                     $"OAT Xenon root/reference reconciliation failed: {reconciliationError}. " +
-                    $"OAT listed {listed.Count:N0} loaded assets for {native.Document.AssetCount:N0} top-level XAsset roots. See {rawLog}");
+                    $"loaded={listed.Count:N0}, roots={reconciledRootCount:N0}/{native.Document.AssetCount:N0}, " +
+                    $"external={seenExternalCount:N0}/{allowed.Count:N0}. See {rawLog}",
+                    listed.Count,
+                    reconciledRootCount,
+                    seenExternalCount,
+                    allowed.Count);
             }
         }
         else
@@ -358,10 +387,14 @@ public static class T4XenonNativeIdentityOracle
         IReadOnlyList<(string Type, string Name)> allowedExternalReferences,
         out List<(string Type, string Name)> rootRows,
         out List<(string Type, string Name)> externalRows,
+        out int reconciledRootCount,
+        out int seenExternalCount,
         out string error)
     {
         rootRows = new List<(string Type, string Name)>(expectedRoots.Count);
         externalRows = new List<(string Type, string Name)>();
+        reconciledRootCount = 0;
+        seenExternalCount = 0;
 
         var allowed = allowedExternalReferences
             .GroupBy(
@@ -384,6 +417,7 @@ public static class T4XenonNativeIdentityOracle
                 {
                     rootRows.Add(row);
                     expectedIndex++;
+                    reconciledRootCount = expectedIndex;
                     continue;
                 }
             }
@@ -398,6 +432,7 @@ public static class T4XenonNativeIdentityOracle
                 }
 
                 externalRows.Add(row);
+                seenExternalCount = seenExternal.Count;
                 continue;
             }
 
