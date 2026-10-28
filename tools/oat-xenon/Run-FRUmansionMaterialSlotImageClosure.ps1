@@ -152,9 +152,14 @@ foreach ($row in @($binding.OwnedBindings)) {
         if ([string]::IsNullOrWhiteSpace($nativeImage)) { continue }
         $targetKey=Normalize-AssetName -Value $nativeImage
         if (-not $targetsByName.ContainsKey($targetKey)) { continue }
-        $nativeSemantic=$(if ($nx.PSObject.Properties.Name -contains 'semantic') { [int]$nx.semantic } else { -1 })
-        $pcSemantic=$(if ($px.PSObject.Properties.Name -contains 'semantic') { [int]$px.semantic } else { -1 })
-        if ($nativeSemantic -ne -1 -and $pcSemantic -ne -1 -and $nativeSemantic -ne $pcSemantic) { $semanticMismatches++; continue }
+        $nativeSemantic=$(if ($nx.PSObject.Properties.Name -contains 'semantic' -and $null -ne $nx.semantic) { ([string]$nx.semantic).Trim().ToLowerInvariant() } else { '' })
+        $pcSemantic=$(if ($px.PSObject.Properties.Name -contains 'semantic' -and $null -ne $px.semantic) { ([string]$px.semantic).Trim().ToLowerInvariant() } else { '' })
+        if (-not [string]::IsNullOrWhiteSpace($nativeSemantic) -and
+            -not [string]::IsNullOrWhiteSpace($pcSemantic) -and
+            -not $nativeSemantic.Equals($pcSemantic,[StringComparison]::OrdinalIgnoreCase)) {
+            $semanticMismatches++
+            continue
+        }
         $pcImage=[string]$px.image
         if ([string]::IsNullOrWhiteSpace($pcImage)) { continue }
         $occurrences[$targetKey].Add([pscustomobject]@{ NativeMaterial=$nativeName; PcMaterial=$pcName; Slot=$i; Semantic=$nativeSemantic; NativeImage=$nativeImage; PcImage=$pcImage; MatchKind=[string]$row.MatchKind })
