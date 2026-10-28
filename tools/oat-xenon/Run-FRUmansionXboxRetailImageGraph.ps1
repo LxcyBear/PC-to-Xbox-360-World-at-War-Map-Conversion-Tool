@@ -197,12 +197,12 @@ foreach ($match in @($matches | Sort-Object { [int]$_.Index })) {
             }
         }
         if (-not (Test-Path -LiteralPath $zonePath -PathType Leaf)) {
-            $attempted.Add("$zoneName:not-found")
+            $attempted.Add("${zoneName}:not-found")
             continue
         }
 
         $zoneGraph = Get-ZoneGraphIndex -ZonePath $zonePath -ZoneName $zoneName
-        $attempted.Add("$zoneName:exit=$($zoneGraph.ExitCode),graphs=$($zoneGraph.Graphs)")
+        $attempted.Add("${zoneName}:exit=$($zoneGraph.ExitCode),graphs=$($zoneGraph.Graphs)")
 
         if (-not $zoneGraph.Index.ContainsKey($targetKey)) { continue }
 
