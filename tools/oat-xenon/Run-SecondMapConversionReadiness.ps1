@@ -38,6 +38,10 @@ foreach ($ff in @($baseline.fastfiles)) {
     if (-not (Test-Path -LiteralPath ([string]$ff.Path) -PathType Leaf)) {
         throw "Missing original fastfile: $($ff.Path)"
     }
+    $currentBytes=[long](Get-Item -LiteralPath ([string]$ff.Path)).Length
+    if ($currentBytes -ne [long]$ff.Bytes) {
+        throw "Source fastfile size changed since baseline: $($ff.Path); rerun the baseline."
+    }
 }
 if (-not (Test-Path -LiteralPath $cli -PathType Leaf)) { throw "CLI project missing: $cli" }
 New-Item -ItemType Directory -Force -Path $workspace | Out-Null
@@ -84,20 +88,23 @@ if ($buildExit -ne 0) {
 }
 
 $stages=New-Object 'System.Collections.Generic.List[object]'
-$stages.Add((Invoke-Stage 'Linker V2 canonical source' 'linker-v2-source' (Join-Path $workspace 'readiness_source.log')))
 $sourceFile=Join-Path $workspace ('linker_v2_source_archive\'+$MapName+'_linker_v2_source_archive.json')
+if (Test-Path -LiteralPath $sourceFile) { Remove-Item -LiteralPath $sourceFile -Force }
+$stages.Add((Invoke-Stage 'Linker V2 canonical source' 'linker-v2-source' (Join-Path $workspace 'readiness_source.log')))
 $source=Read-StageJson $sourceFile
 if ($null -eq $source) { throw "Canonical source report was not created; see $($stages[0].Log)" }
 if ([string]$source.CanonicalBaseName -ine $canonical) {
     throw "Canonical source graph reports $($source.CanonicalBaseName), expected $canonical"
 }
-$stages.Add((Invoke-Stage 'Linker V2 typed closure' 'linker-v2-typed-closure' (Join-Path $workspace 'readiness_typed_closure.log')))
 $typedFile=Join-Path $workspace ('linker_v2_typed_closure\'+$MapName+'_linker_v2_typed_closure.json')
+if (Test-Path -LiteralPath $typedFile) { Remove-Item -LiteralPath $typedFile -Force }
+$stages.Add((Invoke-Stage 'Linker V2 typed closure' 'linker-v2-typed-closure' (Join-Path $workspace 'readiness_typed_closure.log')))
 $typed=Read-StageJson $typedFile
 $coverage=$null
 if (-not $SkipSerializerCoverage) {
-    $stages.Add((Invoke-Stage 'Serializer coverage' 'stage4-alpha2-build' (Join-Path $workspace 'readiness_serializer_coverage.log')))
     $coverageFile=Join-Path $workspace ('stage4_alpha2_xbox_build\'+$MapName+'_stage4_alpha2_xbox_build.json')
+    if (Test-Path -LiteralPath $coverageFile) { Remove-Item -LiteralPath $coverageFile -Force }
+    $stages.Add((Invoke-Stage 'Serializer coverage' 'stage4-alpha2-build' (Join-Path $workspace 'readiness_serializer_coverage.log')))
     $coverage=Read-StageJson $coverageFile
 }
 
