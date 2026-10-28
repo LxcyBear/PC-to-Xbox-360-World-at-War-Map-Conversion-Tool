@@ -431,8 +431,14 @@ public static class T4XenonNativeIdentityOracle
         return true;
     }
 
-    private static string NormalizeIdentityKey(string type, string name) =>
-        type.Trim().ToLowerInvariant() + "\n" + name.Trim();
+    private static string NormalizeIdentityKey(string type, string name)
+    {
+        var normalizedName = name.Trim();
+        while (normalizedName.StartsWith(",", StringComparison.Ordinal))
+            normalizedName = normalizedName[1..];
+
+        return type.Trim().ToLowerInvariant() + "\n" + normalizedName;
+    }
 
     private static IEnumerable<(string Type, string Name)> ParseAssetList(string text)
     {
