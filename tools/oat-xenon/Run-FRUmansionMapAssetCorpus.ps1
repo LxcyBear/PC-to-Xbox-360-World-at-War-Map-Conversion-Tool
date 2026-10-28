@@ -259,7 +259,7 @@ foreach ($package in $packages) {
         }
     }
 
-    $searchPaths = Get-PackageSearchPaths -Root $packageRoot
+    $searchPaths = @(Get-PackageSearchPaths -Root $packageRoot)
     $ffs = @(Get-ChildItem -LiteralPath $packageRoot -Filter '*.ff' -File -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName)
     $ffOrdinal = 0
     foreach ($ff in $ffs) {
