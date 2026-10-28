@@ -288,23 +288,6 @@ public static class NormalMapLinkerV2FullContentReadiness
             // pixels passed through OAT's real T4 Xenon image encoder. Credit only roots
             // whose 4R identity and graph both validate; unresolved image roots continue
             // through the ordinary fallback/synthetic accounting below.
-            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
-                productionXModels.ReferenceNativeIndices.Contains(i))
-            {
-                // Stage 4Y baseline already contains this validated reference root.
-                continue;
-            }
-
-            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
-                productionXModels.SerializedBytesByNativeIndex.ContainsKey(i))
-            {
-                if (deltaPools.TryGetValue(type, out var xmodelQueue) && xmodelQueue.Count != 0)
-                    xmodelQueue.Dequeue();
-
-                // Stage 4Y baseline already contains this exact production XModel.
-                continue;
-            }
-
             if (type.Equals("image", StringComparison.OrdinalIgnoreCase) &&
                 productionImages.SerializedBytesByNativeIndex.TryGetValue(i, out var productionImageBytes))
             {
@@ -435,6 +418,22 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
+                productionXModels.ReferenceNativeIndices.Contains(i))
+            {
+                // Stage 4Y baseline already contains this validated reference root.
+                continue;
+            }
+
+            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
+                productionXModels.SerializedBytesByNativeIndex.ContainsKey(i))
+            {
+                if (deltaPools.TryGetValue(type, out var xmodelQueue) && xmodelQueue.Count != 0)
+                    xmodelQueue.Dequeue();
+
+                // Stage 4Y baseline already contains this exact production XModel.
+                continue;
+            }
             if (type.Equals("image", StringComparison.OrdinalIgnoreCase) &&
                 productionImages.SerializedBytesByNativeIndex.TryGetValue(i, out var productionImageBytes))
             {
