@@ -174,23 +174,31 @@ Write-Host "[NUCLEAR-4W-REF] Retail base zones    : $($baseZones.Count)"
 foreach ($zone in $baseZones.ToArray()) {
     Write-Host "[NUCLEAR-4W-REF]   load: $zone"
 }
+Write-Host '[NUCLEAR-4W-REF] Retail base zones are preloaded into BOTH Linker and Unlinker.'
 Write-Host '[NUCLEAR-4W-REF] This is an OAT/Xenon loader proof only; hardware remains fenced by Stage 4F.'
 Write-Host ''
 
 $linkLog = Join-Path $logRoot 'linker.log'
-$linkArgs = @(
+$linkArgs = New-Object 'System.Collections.Generic.List[object]'
+foreach ($arg in @(
     '--verbose',
     '--no-color',
     '--base-folder', $workspace,
     '--source-search-path', $sourceRoot,
     '--asset-search-path', $assetRoot,
-    '--output-folder', $linkOut,
-    $project
-)
+    '--output-folder', $linkOut
+)) {
+    $linkArgs.Add($arg)
+}
+foreach ($zone in $baseZones.ToArray()) {
+    $linkArgs.Add('--load')
+    $linkArgs.Add($zone)
+}
+$linkArgs.Add($project)
 
 Push-Location $workspace
 try {
-    $linkCode = Invoke-NativeTee -FilePath $linker -Arguments $linkArgs -LogPath $linkLog
+    $linkCode = Invoke-NativeTee -FilePath $linker -Arguments ([object[]]$linkArgs.ToArray()) -LogPath $linkLog
 }
 finally {
     Pop-Location
@@ -315,7 +323,7 @@ $manifest = [ordered]@{
     hardwareApproved = $false
     policy = @(
         'This proof serializes each candidate as an explicit T4 reference asset (type,,name).',
-        'Pinned Xenon OAT then preloads the user-owned retail common/base-zombie zones before loading/listing the proof zone.',
+        'Pinned Xenon OAT preloads the user-owned retail common/base-zombie zones during both linking and unlink/list validation.',
         'A PASS proves exact type+identity resolution in OAT Xenon global asset pools; it is not by itself Xbox hardware approval.',
         'Stage 4F and the final integrated 6,811-root emitter must still consume and validate these references.'
     )
