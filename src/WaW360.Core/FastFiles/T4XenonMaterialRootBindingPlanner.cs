@@ -49,7 +49,11 @@ public static class T4XenonMaterialRootBindingPlanner
     private enum FingerprintMode
     {
         Strong,
-        ImageAgnostic
+        ImageAgnostic,
+        RenderStructure,
+        RenderStructureImageAgnostic,
+        DependencyGraph,
+        DependencyShape
     }
 
     public static async Task<T4XenonMaterialRootBindingResult> BuildAsync(
@@ -338,26 +342,69 @@ public static class T4XenonMaterialRootBindingPlanner
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var candidates = new List<(FingerprintMode Mode, int Matches, double Agreement)>();
-        foreach (var mode in new[] { FingerprintMode.Strong, FingerprintMode.ImageAgnostic })
+        var modes = new[]
         {
+            FingerprintMode.Strong,
+            FingerprintMode.ImageAgnostic,
+            FingerprintMode.RenderStructure,
+            FingerprintMode.RenderStructureImageAgnostic,
+            FingerprintMode.DependencyGraph,
+            FingerprintMode.DependencyShape
+        };
+
+        var candidates = new List<(FingerprintMode Mode, int Matches, double Agreement)>();
+        foreach (var mode in modes)
+        {
+            var xboxIndex = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var pair in xboxMaterials)
+            {
+                var hash = Fingerprint(
+                    pair.Value,
+                    isPc: false,
+                    new Dictionary<string, string>(),
+                    mode);
+                if (!xboxIndex.TryGetValue(hash, out var bucket))
+                {
+                    bucket = new List<string>();
+                    xboxIndex.Add(hash, bucket);
+                }
+                bucket.Add(pair.Key);
+            }
+
+            // Calibration is intentionally stronger than pairwise equality:
+            // a PC shared material only counts when its fingerprint resolves
+            // uniquely across the entire native material dump and the one
+            // resolved identity is the known same-name Xbox material.
             var matches = 0;
             foreach (var name in shared)
             {
-                var left = Fingerprint(pcMaterials[name], true, techniqueMap, mode);
-                var right = Fingerprint(xboxMaterials[name], false, techniqueMap, mode);
-                if (left.Equals(right, StringComparison.Ordinal))
+                var hash = Fingerprint(
+                    pcMaterials[name],
+                    isPc: true,
+                    techniqueMap,
+                    mode);
+                if (!xboxIndex.TryGetValue(hash, out var bucket))
+                    continue;
+
+                if (bucket.Count == 1 &&
+                    bucket[0].Equals(name, StringComparison.OrdinalIgnoreCase))
                     matches++;
             }
+
             var agreement = shared.Length == 0
                 ? 0d
                 : (double)matches / shared.Length;
             candidates.Add((mode, matches, agreement));
         }
 
+        // Prefer the strongest projection when agreement ties.
+        var strength = modes
+            .Select((mode, index) => new { mode, index })
+            .ToDictionary(x => x.mode, x => x.index);
+
         var best = candidates
             .OrderByDescending(x => x.Agreement)
-            .ThenBy(x => x.Mode == FingerprintMode.Strong ? 0 : 1)
+            .ThenBy(x => strength[x.Mode])
             .First();
 
         var enabled = shared.Length >= 25 && best.Agreement >= 0.95d;
@@ -429,7 +476,8 @@ public static class T4XenonMaterialRootBindingPlanner
         string? propertyName,
         bool isPc,
         IReadOnlyDictionary<string, string> techniqueMap,
-        FingerprintMode mode)
+        FingerprintMode mode,
+        int depth = 0)
     {
         switch (value.ValueKind)
         {
@@ -439,6 +487,9 @@ public static class T4XenonMaterialRootBindingPlanner
                 foreach (var property in value.EnumerateObject()
                              .OrderBy(x => x.Name, StringComparer.Ordinal))
                 {
+                    if (ShouldSkipProperty(mode, depth, property.Name))
+                        continue;
+
                     if (!firstProperty)
                         output.Append(',');
                     firstProperty = false;
@@ -450,7 +501,8 @@ public static class T4XenonMaterialRootBindingPlanner
                         property.Name,
                         isPc,
                         techniqueMap,
-                        mode);
+                        mode,
+                        depth + 1);
                 }
                 output.Append('}');
                 break;
@@ -469,7 +521,8 @@ public static class T4XenonMaterialRootBindingPlanner
                         propertyName,
                         isPc,
                         techniqueMap,
-                        mode);
+                        mode,
+                        depth + 1);
                 }
                 output.Append(']');
                 break;
@@ -485,7 +538,7 @@ public static class T4XenonMaterialRootBindingPlanner
                 }
                 else if (propertyName?.Equals("image", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    text = mode == FingerprintMode.ImageAgnostic
+                    text = IsImageAgnostic(mode)
                         ? "<image>"
                         : NormalizeAssetName(text);
                 }
@@ -510,6 +563,48 @@ public static class T4XenonMaterialRootBindingPlanner
                 output.Append(value.GetRawText());
                 break;
         }
+    }
+
+    private static bool IsImageAgnostic(FingerprintMode mode) =>
+        mode is FingerprintMode.ImageAgnostic
+            or FingerprintMode.RenderStructureImageAgnostic
+            or FingerprintMode.DependencyShape;
+
+    private static bool ShouldSkipProperty(
+        FingerprintMode mode,
+        int depth,
+        string propertyName)
+    {
+        // stateBitsEntry indexes the platform TechniqueSet slot layout and the
+        // stateBits array is the platform render-state payload itself. They are
+        // valid serializer output, but not stable PC<->Xenon identity keys.
+        if (mode is FingerprintMode.RenderStructure
+                or FingerprintMode.RenderStructureImageAgnostic
+                or FingerprintMode.DependencyGraph
+                or FingerprintMode.DependencyShape)
+        {
+            if (depth == 0 &&
+                (propertyName.Equals("stateBitsEntry", StringComparison.OrdinalIgnoreCase) ||
+                 propertyName.Equals("stateBits", StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        // Dependency projections deliberately retain only the semantic graph
+        // that should survive platform compilation: TechniqueSet mapping,
+        // texture declarations and constants. Root metadata/render routing is
+        // omitted and uniqueness is proven by calibration before use.
+        if (mode is FingerprintMode.DependencyGraph
+                or FingerprintMode.DependencyShape)
+        {
+            if (depth == 0)
+            {
+                return propertyName is not "techniqueSet"
+                    and not "textures"
+                    and not "constants";
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeAssetName(string value)
