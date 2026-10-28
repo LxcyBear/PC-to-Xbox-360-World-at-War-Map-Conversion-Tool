@@ -207,7 +207,7 @@ Write-Host ''
 
 $sourceZones = @(
     $targets |
-    ForEach-Object { Find-RetailZone -PreferredPath ([string]$_.PreferredZonePath) -Root $XboxGameRoot } |
+    ForEach-Object { Find-RetailZone -PreferredPath ([string]$_.PreferredZone) -Root $XboxGameRoot } |
     Select-Object -Unique
 )
 
@@ -264,7 +264,7 @@ foreach ($zone in $sourceZones) {
     }
 
     foreach ($t in @($targets | Where-Object {
-        $p = Find-RetailZone -PreferredPath ([string]$_.PreferredZonePath) -Root $XboxGameRoot
+        $p = Find-RetailZone -PreferredPath ([string]$_.PreferredZone) -Root $XboxGameRoot
         $p.Equals($zone, [StringComparison]::OrdinalIgnoreCase)
     })) {
         $file = Find-DumpedWeaponFile -DumpRoot $zoneDump -AssetName ([string]$t.Name)
