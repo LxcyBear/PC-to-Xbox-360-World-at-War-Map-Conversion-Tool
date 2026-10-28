@@ -37,14 +37,16 @@ if ([string]$corpus.format -ne 'WaW360.Nuclear4ZA.MaterialCorpus.v1' -or
     -not [bool]$corpus.corpusPass -or
     -not [bool]$corpus.exactMaterialIdentitySet -or
     -not [bool]$corpus.oatListZeroWarningsZeroErrors -or
-    -not [bool]$corpus.oatRedumpZeroWarningsZeroErrors) {
+    -not [bool]$corpus.oatRedumpZeroWarningsZeroErrors -or
+    -not [bool]$corpus.trueMaterialIdentityRecovered) {
     throw '4Z-C requires the passing 4Z-A Material corpus.'
 }
 
 if ([string]$graph.format -ne 'WaW360.Nuclear4ZB.MaterialRelocatableGraph.v1' -or
     -not [bool]$graph.graphPass -or
     -not [bool]$graph.exactIdentitySet -or
-    -not [bool]$graph.oatZeroWarningsZeroErrors) {
+    -not [bool]$graph.oatZeroWarningsZeroErrors -or
+    -not [bool]$graph.trueMaterialIdentityRecovered) {
     throw '4Z-C requires the passing 4Z-B Material relocatable graph corpus.'
 }
 
