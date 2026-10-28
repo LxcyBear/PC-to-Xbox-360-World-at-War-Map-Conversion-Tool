@@ -156,6 +156,7 @@ if ([string]$xmodelSuite.format -ne 'WaW360.Nuclear4XC.XModelReplaySuite.v1' -or
 
 if ([string]$materialGraph.format -ne 'WaW360.Nuclear4ZB.MaterialRelocatableGraph.v1' -or
     -not [bool]$materialGraph.graphPass -or
+    -not [bool]$materialGraph.trueMaterialIdentityRecovered -or
     [int]$materialGraph.materials -ne 502 -or
     [int]$materialGraph.reusableAliasCount -ne 0 -or
     [int]$materialGraph.waterTextures -ne 0) {
