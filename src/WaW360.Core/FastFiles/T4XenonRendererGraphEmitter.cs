@@ -64,7 +64,8 @@ public static class T4XenonRendererGraphEmitter
         int imageGraftLimit = 0,
         string? xmodelGraphRoot = null,
         string? xmodelBindingManifest = null,
-        string? materialGraphRoot = null)
+        string? materialGraphRoot = null,
+        string? materialBindingManifest = null)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -121,7 +122,8 @@ public static class T4XenonRendererGraphEmitter
             imageGraftLimit,
             xmodelGraphRoot,
             xmodelBindingManifest,
-            materialGraphRoot);
+            materialGraphRoot,
+            materialBindingManifest);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -131,10 +133,17 @@ public static class T4XenonRendererGraphEmitter
         var bindings = LoadBindings(bindingManifest);
 
         T4XenonMaterialCorpus? materialCorpus = null;
-        if (!string.IsNullOrWhiteSpace(materialGraphRoot))
+        if (!string.IsNullOrWhiteSpace(materialGraphRoot) ||
+            !string.IsNullOrWhiteSpace(materialBindingManifest))
         {
+            if (string.IsNullOrWhiteSpace(materialGraphRoot) ||
+                string.IsNullOrWhiteSpace(materialBindingManifest))
+                throw new InvalidDataException(
+                    "Stage 4E requires both Material graph root and Material binding manifest.");
+
             materialCorpus = T4XenonMaterialCorpus.Load(
                 materialGraphRoot!,
+                materialBindingManifest!,
                 roots);
             var materialDependencyErrors = materialCorpus.ValidateDependencies(roots);
             if (materialDependencyErrors.Count != 0)
