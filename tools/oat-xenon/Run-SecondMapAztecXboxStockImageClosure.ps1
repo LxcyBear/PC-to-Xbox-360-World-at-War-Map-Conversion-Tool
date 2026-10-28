@@ -68,6 +68,11 @@ foreach($role in $roles){
     }
 }
 if($errors.Count -eq 0){throw 'No missing-external-image errors parsed from the previous OAT output.'}
+$totalErrorOccurrences=0
+foreach($entry in $errors.Values){$totalErrorOccurrences += [int]$entry.Occurrences}
+if($totalErrorOccurrences -ne 775){
+    throw "Expected 775 source OAT missing-external-image failures; parsed $totalErrorOccurrences. Recheck the source logs before scanning stock Xbox files."
+}
 $available=@(
     Get-ChildItem -LiteralPath $xboxRoot -Filter '*.ff' -File -Recurse -ErrorAction Stop |
         Sort-Object -Property FullName
@@ -80,7 +85,7 @@ if($zones.Count -eq 0){throw 'No core/zombie retail fastfiles found; use -AllRet
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
 Write-Host '[AZTEC-STOCK-IMG] ==========================================================='
 Write-Host '[AZTEC-STOCK-IMG] LOCATE EXTERNAL IMAGE ROOTS IN OWNED RETAIL XBOX ZONES'
-Write-Host "[AZTEC-STOCK-IMG] Prior image errors: $($errors.Count) distinct names"
+Write-Host "[AZTEC-STOCK-IMG] Prior image errors: $totalErrorOccurrences occurrences, $($errors.Count) distinct names"
 Write-Host "[AZTEC-STOCK-IMG] Retail identity scan: $($zones.Count) zones"
 Write-Host '[AZTEC-STOCK-IMG] Names and zone identities only. NO RETAIL PIXEL COPIES.'
 Write-Host '[AZTEC-STOCK-IMG] ==========================================================='
@@ -167,7 +172,7 @@ $summary=[ordered]@{
     status=$status
     scope=if($AllRetailZones){'all-retail-zones'}else{'core-zombie-zones-only'}
     distinctFailedPcImageNames=$errors.Count
-    missingPcImageOatErrorsAcrossRoles=775
+    missingPcImageOatErrorsAcrossRoles=$totalErrorOccurrences
     failedNamesFoundInScannedXboxRetail=$matchingFailures
     failedNamesNotFoundInScannedXboxRetail=$uniqueFailures
     generatedLookingNames=$generatedNames
