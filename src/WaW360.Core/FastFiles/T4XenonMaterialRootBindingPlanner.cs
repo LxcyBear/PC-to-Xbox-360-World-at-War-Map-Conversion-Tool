@@ -18,7 +18,10 @@ public sealed class T4XenonMaterialRootBindingResult
     public required int DuplicateRootClaims { get; init; }
     public required int SharedCalibrationPairs { get; init; }
     public required int SharedCalibrationMatches { get; init; }
+    public required int SharedCalibrationWrong { get; init; }
+    public required int SharedCalibrationAmbiguousOrMissing { get; init; }
     public required double SharedCalibrationAgreement { get; init; }
+    public required double SharedCalibrationCoverage { get; init; }
     public required string SemanticFingerprintMode { get; init; }
     public required bool SemanticFallbackEnabled { get; init; }
     public required bool BindingPass { get; init; }
@@ -264,8 +267,11 @@ public static class T4XenonMaterialRootBindingPlanner
         report.AppendLine($"Ambiguous materials:         {ambiguities.Count:N0}");
         report.AppendLine($"Duplicate root claims:       {duplicateClaims:N0}");
         report.AppendLine($"Calibration shared pairs:    {calibration.Pairs:N0}");
-        report.AppendLine($"Calibration matches:         {calibration.Matches:N0}");
-        report.AppendLine($"Calibration agreement:       {calibration.Agreement:P2}");
+        report.AppendLine($"Calibration correct unique:  {calibration.Matches:N0}");
+        report.AppendLine($"Calibration wrong unique:    {calibration.Wrong:N0}");
+        report.AppendLine($"Calibration ambiguous/miss:  {calibration.AmbiguousOrMissing:N0}");
+        report.AppendLine($"Calibration precision:       {calibration.Agreement:P2}");
+        report.AppendLine($"Calibration coverage:        {calibration.Coverage:P2}");
         report.AppendLine($"Fingerprint mode:            {calibration.Mode}");
         report.AppendLine($"Semantic fallback enabled:   {calibration.Enabled}");
         report.AppendLine($"BINDING PASS:                {pass}");
@@ -304,7 +310,10 @@ public static class T4XenonMaterialRootBindingPlanner
             DuplicateRootClaims = duplicateClaims,
             SharedCalibrationPairs = calibration.Pairs,
             SharedCalibrationMatches = calibration.Matches,
+            SharedCalibrationWrong = calibration.Wrong,
+            SharedCalibrationAmbiguousOrMissing = calibration.AmbiguousOrMissing,
             SharedCalibrationAgreement = calibration.Agreement,
+            SharedCalibrationCoverage = calibration.Coverage,
             SemanticFingerprintMode = calibration.Mode.ToString(),
             SemanticFallbackEnabled = calibration.Enabled,
             BindingPass = pass,
@@ -331,7 +340,15 @@ public static class T4XenonMaterialRootBindingPlanner
         return result;
     }
 
-    private static (FingerprintMode Mode, int Pairs, int Matches, double Agreement, bool Enabled)
+    private static (
+        FingerprintMode Mode,
+        int Pairs,
+        int Matches,
+        int Wrong,
+        int AmbiguousOrMissing,
+        double Agreement,
+        double Coverage,
+        bool Enabled)
         ChooseFingerprintMode(
             IReadOnlyDictionary<string, string> pcMaterials,
             IReadOnlyDictionary<string, string> xboxMaterials,
@@ -352,7 +369,14 @@ public static class T4XenonMaterialRootBindingPlanner
             FingerprintMode.DependencyShape
         };
 
-        var candidates = new List<(FingerprintMode Mode, int Matches, double Agreement)>();
+        var candidates = new List<(
+            FingerprintMode Mode,
+            int Matches,
+            int Wrong,
+            int AmbiguousOrMissing,
+            double Precision,
+            double Coverage)>();
+
         foreach (var mode in modes)
         {
             var xboxIndex = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -371,11 +395,10 @@ public static class T4XenonMaterialRootBindingPlanner
                 bucket.Add(pair.Key);
             }
 
-            // Calibration is intentionally stronger than pairwise equality:
-            // a PC shared material only counts when its fingerprint resolves
-            // uniquely across the entire native material dump and the one
-            // resolved identity is the known same-name Xbox material.
             var matches = 0;
+            var wrong = 0;
+            var ambiguousOrMissing = 0;
+
             foreach (var name in shared)
             {
                 var hash = Fingerprint(
@@ -383,32 +406,67 @@ public static class T4XenonMaterialRootBindingPlanner
                     isPc: true,
                     techniqueMap,
                     mode);
-                if (!xboxIndex.TryGetValue(hash, out var bucket))
-                    continue;
 
-                if (bucket.Count == 1 &&
-                    bucket[0].Equals(name, StringComparison.OrdinalIgnoreCase))
+                if (!xboxIndex.TryGetValue(hash, out var bucket) ||
+                    bucket.Count != 1)
+                {
+                    ambiguousOrMissing++;
+                    continue;
+                }
+
+                if (bucket[0].Equals(name, StringComparison.OrdinalIgnoreCase))
                     matches++;
+                else
+                    wrong++;
             }
 
-            var agreement = shared.Length == 0
+            var resolved = matches + wrong;
+            var precision = resolved == 0
+                ? 0d
+                : (double)matches / resolved;
+            var coverage = shared.Length == 0
                 ? 0d
                 : (double)matches / shared.Length;
-            candidates.Add((mode, matches, agreement));
+
+            candidates.Add((
+                mode,
+                matches,
+                wrong,
+                ambiguousOrMissing,
+                precision,
+                coverage));
         }
 
-        // Prefer the strongest projection when agreement ties.
+        // Safety priority:
+        //  1. zero known wrong unique resolutions,
+        //  2. maximum number of correctly proven unique resolutions,
+        //  3. strongest projection on ties.
         var strength = modes
             .Select((mode, index) => new { mode, index })
             .ToDictionary(x => x.mode, x => x.index);
 
         var best = candidates
-            .OrderByDescending(x => x.Agreement)
+            .OrderBy(x => x.Wrong)
+            .ThenByDescending(x => x.Matches)
             .ThenBy(x => strength[x.Mode])
             .First();
 
-        var enabled = shared.Length >= 25 && best.Agreement >= 0.95d;
-        return (best.Mode, shared.Length, best.Matches, best.Agreement, enabled);
+        var enabled =
+            shared.Length >= 25 &&
+            best.Wrong == 0 &&
+            best.Precision >= 0.999999d &&
+            best.Matches >= 50 &&
+            best.Coverage >= 0.10d;
+
+        return (
+            best.Mode,
+            shared.Length,
+            best.Matches,
+            best.Wrong,
+            best.AmbiguousOrMissing,
+            best.Precision,
+            best.Coverage,
+            enabled);
     }
 
     private static Dictionary<string, List<NativeFingerprintCandidate>>
