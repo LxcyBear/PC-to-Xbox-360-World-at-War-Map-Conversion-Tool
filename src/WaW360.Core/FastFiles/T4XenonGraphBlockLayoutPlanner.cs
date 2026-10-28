@@ -433,6 +433,11 @@ public static class T4XenonGraphBlockLayoutPlanner
             notes.Add(
                 $"Material graph graft: {realMaterials:N0}/{materialCorpus.OwnedByRoot.Count:N0} PC-backed roots; " +
                 $"{materialCorpus.ReferenceRoots:N0} remaining native Material roots stay reference/name shells.");
+        // StringTable shell is only a fixed 16-byte structural placeholder.
+        // Keep the pre-emission layout diagnostic valid, but do not treat it as
+        // proof that native table rows were reconstructed from PC assets.
+        if (roots.Any(r => Normalize(r.TypeName) == "stringtable"))
+            notes.Add("StringTable layout: 16-byte Xenon ABI is supported; name-only empty table shell is validation-only. PC table row/value graph is not reconstructed.");
         if (xmodelCorpus is not null)
             notes.Add(
                 $"XModel graph graft: {realXModels:N0}/{xmodelCorpus.OwnedByRoot.Count:N0} owned roots; " +
@@ -587,6 +592,10 @@ public static class T4XenonGraphBlockLayoutPlanner
         "gfxworld" => 900,
         "localize" => 8,
         "mapents" => 12,
+        // Pinned T4Xenon_Assets.h: StringTable { name*, columnCount,
+        // rowCount, values* } = four 32-bit fields. Layout-only shell below
+        // has 0x0 rows and 0x0 columns; real CSV contents must be PC-owned.
+        "stringtable" => 16,
         _ => 0
     };
 
