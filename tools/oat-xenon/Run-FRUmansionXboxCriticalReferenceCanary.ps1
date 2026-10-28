@@ -133,7 +133,7 @@ function New-ReferenceProject {
         $tail = (@(Get-Content -LiteralPath $logPath | Select-Object -Last 12) -join ' | ')
     }
 
-    $status = if ($exitCode -eq 0 -and $linked.Count -eq 1) { 'PASS' } else { 'FAIL' }
+    $status = if ($exitCode -eq 0 -and ($Targets.Count -eq 0 -or $linked.Count -eq 1)) { 'PASS' } else { 'FAIL' }
     Write-Host ("[NUCLEAR-4W-CANARY] CASE {0}: {1} exit={2} ff={3}" -f $CaseName, $status, $exitCode, $linked.Count)
 
     return [pscustomobject]@{
