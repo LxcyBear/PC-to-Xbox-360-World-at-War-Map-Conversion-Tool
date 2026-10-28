@@ -114,9 +114,16 @@ $oatLogRoot=Join-Path $workspace 'oat_asset_lists'
 New-Item -ItemType Directory -Force -Path $oatLogRoot | Out-Null
 $ffOrdinal=0
 $ffItems=@($analysis.FastFiles)
+$primaryFf=@($ffItems | Where-Object { $_.Role -eq 'map.ff' })
+if ($primaryFf.Count -ne 1) {
+    throw "Expected exactly one map.ff for '$selected', got $($primaryFf.Count). See $analysisJson"
+}
+$canonicalBase=[IO.Path]::GetFileNameWithoutExtension([string]$primaryFf[0].Path)
+if (-not $canonicalBase) { throw 'Canonical map FF basename is empty.' }
 if ($ffItems.Count -eq 0) {
     throw "Selected map '$selected' has no analyzable fastfiles. See $analysisJson"
 }
+Write-Host "[SECOND-MAP] Folder identity: $selected; runtime map identity: $canonicalBase"
 Write-Host "[SECOND-MAP] FFs in analysis: $($ffItems.Count); IWDs: $(@($analysis.Iwds).Count)"
 foreach ($item in $ffItems) {
     $ffOrdinal++
@@ -226,7 +233,8 @@ if ($XboxSoundsRoot) {
 }
 $stat=[ordered]@{
     mapName=$selected
-    expectedXboxDeployment=("usermaps/{0}/sounds" -f $selected)
+    canonicalMapName=$canonicalBase
+    expectedXboxDeployment=("usermaps/{0}/sounds" -f $canonicalBase)
     sourceLooseAudioFiles=$sourceLoose.Count
     sourceIwdAudioEntries=$sourceArchive.Count
     knownXboxXmaFiles=@($xboxFiles.ToArray() | Where-Object Extension -eq '.xma').Count
@@ -243,6 +251,7 @@ $manifest=[ordered]@{
     format='WaW360.SecondMapBaseline.v1'
     sourceRoot=$pcRoot
     mapName=$selected
+    canonicalMapName=$canonicalBase
     profile=[string]$analysis.Profile
     analysisJson=$analysisJson
     analysisInputFiles=[object[]]$analysis.InputFiles
@@ -262,7 +271,7 @@ $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $json -Encoding 
 $report=New-Object 'System.Collections.Generic.List[string]'
 $report.Add('SECOND MAP BASELINE / AZTEC DEFAULT')
 $report.Add('============================================================')
-$report.Add("Map: $selected; Profile: $($analysis.Profile)")
+$report.Add("Map source folder: $selected; canonical runtime name: $canonicalBase; Profile: $($analysis.Profile)")
 $report.Add("Source root: $pcRoot")
 $report.Add("FF files: $($ffRecords.Count); IWD archives: $(@($analysis.Iwds).Count)")
 $report.Add("Loose PC audio: $($sourceLoose.Count); PC IWD audio entries: $($sourceArchive.Count)")
@@ -285,7 +294,7 @@ $report.Add('Baseline is diagnostic only. Do not copy any FF from this folder to
 [IO.File]::WriteAllLines($txt,[string[]]$report.ToArray(),[Text.UTF8Encoding]::new($false))
 
 Write-Host '[SECOND-MAP] ================= BASELINE RESULT ============================='
-Write-Host "[SECOND-MAP] Map: $selected | profile=$($analysis.Profile)"
+Write-Host "[SECOND-MAP] Map folder: $selected | runtime: $canonicalBase | profile=$($analysis.Profile)"
 Write-Host "[SECOND-MAP] Fastfiles=$($ffRecords.Count) OAT-success=$(@($ffRecords.ToArray() | Where-Object Success).Count)"
 Write-Host "[SECOND-MAP] IWDs=$(@($analysis.Iwds).Count) PC-loose-audio=$($sourceLoose.Count) PC-IWD-audio=$($sourceArchive.Count)"
 Write-Host "[SECOND-MAP] XMA=$($stat.knownXboxXmaFiles) SDNS=$($stat.knownXboxSdnsFiles) (optional source check)"
