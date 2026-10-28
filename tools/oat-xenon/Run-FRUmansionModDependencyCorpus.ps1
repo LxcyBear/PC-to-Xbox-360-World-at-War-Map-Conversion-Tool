@@ -287,7 +287,7 @@ foreach ($corpus in $corpora) {
     }
 
     $searchPaths = Get-CorpusSearchPaths -Root $root
-    $ffRows = Invoke-CorpusFastFileDump -Corpus $name -Root $root -Candidates $candidates -TargetByKey $targetByKey -DumpBase $dumpBase -SearchPaths $searchPaths
+    $ffRows = @(Invoke-CorpusFastFileDump -Corpus $name -Root $root -Candidates $candidates -TargetByKey $targetByKey -DumpBase $dumpBase -SearchPaths $searchPaths)
     foreach ($row in $ffRows) { $inventory.Add($row) }
 
     Write-Host ("[NUCLEAR-4R-MOD] {0}: loose images={1}, IWDs={2}, IWD image entries={3}, FFs={4}" -f
