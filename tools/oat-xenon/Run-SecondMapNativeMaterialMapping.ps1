@@ -145,9 +145,12 @@ if ($XboxAztecFastFile) {
         $fullRoot = (Resolve-Path -LiteralPath $root).Path
         if (-not $seen.Add($fullRoot)) { continue }
         $lookedIn.Add($fullRoot)
-        Write-Host "[NATIVE-AZTEC] Searching for local Xbox Aztec FF: $fullRoot"
-        foreach ($f in @(Get-ChildItem -LiteralPath $fullRoot -Filter '*aztec*.ff' -File -Recurse -ErrorAction SilentlyContinue)) {
-            if (Try-GoldenFF $f.FullName 'loose-ff') { break }
+        Write-Host "[NATIVE-AZTEC] Searching for matching-size native FF: $fullRoot"
+        # Source names can be changed by ZIP extraction; use exact byte-size as a
+        # cheap prefilter across all FF files, then verify the pinned SHA-256.
+        foreach ($f in @(Get-ChildItem -LiteralPath $fullRoot -Filter '*.ff' -File -Recurse -ErrorAction SilentlyContinue)) {
+            if ([long]$f.Length -ne $goldenBytes) { continue }
+            if (Try-GoldenFF $f.FullName 'loose-ff-size-match') { break }
         }
     }
     if (-not $native -and -not $SkipArchiveSearch) {
@@ -161,8 +164,10 @@ if ($XboxAztecFastFile) {
             $archivesToCheck.Add((Resolve-Path -LiteralPath $NativeArchivePath).Path)
         }
         foreach ($root in @($lookedIn.ToArray())) {
-            Write-Host "[NATIVE-AZTEC] Looking for Aztec-named ZIP archives in: $root"
-            foreach ($zipFile in @(Get-ChildItem -LiteralPath $root -Filter '*aztec*.zip' -File -Recurse -ErrorAction SilentlyContinue)) {
+            Write-Host "[NATIVE-AZTEC] Looking for native Aztec FF entries in ZIP archives: $root"
+            # Read ZIP central directories, not full archive payloads. The archived
+            # file name must be canonical, and the uncompressed length must match.
+            foreach ($zipFile in @(Get-ChildItem -LiteralPath $root -Filter '*.zip' -File -Recurse -ErrorAction SilentlyContinue)) {
                 $archivesToCheck.Add($zipFile.FullName)
             }
         }
@@ -335,6 +340,7 @@ foreach ($candidate in $discovered) {
 }
 if (-not $native) {
     $report.Add('Native FF not found in configured CodxeFolder/XboxGameFolder, default World at War trees, Downloads or optional search root.')
+    $report.Add('Search included all .ff files by exact byte-size and ZIP central directories regardless of archive filename; full hashes computed only for candidates.')
     $report.Add('Try -XboxAztecFastFile "<full-path-to-known-working-nazi_zombie_aztec.ff>"')
     $report.Add('Or -NativeSearchRoot "<folder-containing-native-Xbox-Aztec>"')
     $report.Add('If inside an unrelated-named ZIP, use -NativeArchivePath "<full-path-to-archive.zip>".')
