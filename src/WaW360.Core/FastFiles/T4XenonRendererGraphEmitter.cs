@@ -424,7 +424,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Renderer TechniqueSets:     {rendererTechsets:N0}");
         report.AppendLine($"Renderer PixelShaders:      {rendererPixels:N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
-        report.AppendLine($"XModel reference roots:     {xmodelCorpus?.ReferenceRoots ?? 0:N0}");
+        report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
         report.AppendLine($"VIRTUAL:                    0x{state.Virtual:X}");
