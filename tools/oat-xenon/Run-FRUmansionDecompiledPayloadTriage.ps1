@@ -149,7 +149,7 @@ if (-not $SkipFastFileList) {
             Path=$ff.FullName; ExitCode=$code; Log=$log; AssetRows=[int](($counts.Values | Measure-Object -Sum).Sum)
             AssetCounts=$counts
         })
-        Write-Host "[NUCLEAR-5V-PAYLOAD] OAT FF $ordinal: $($ff.Name) exit=$code types=$($counts.Count) log=$log"
+        Write-Host "[NUCLEAR-5V-PAYLOAD] OAT FF ${ordinal}: $($ff.Name) exit=$code types=$($counts.Count) log=$log"
     }
 }
 $audioFolders=@($wavFiles | Group-Object DirectoryName | Sort-Object Count -Descending | Select-Object -First 15 | ForEach-Object {
