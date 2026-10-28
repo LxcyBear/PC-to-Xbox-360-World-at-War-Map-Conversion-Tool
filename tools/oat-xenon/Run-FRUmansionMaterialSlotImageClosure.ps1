@@ -31,6 +31,33 @@ function Normalize-AssetName {
     return $v.ToLowerInvariant()
 }
 
+function Normalize-SourceImageIdentity {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+
+    $v=$Value.Trim().Trim('"').Replace('\','/').TrimStart('/')
+
+    $marker=$v.ToLowerInvariant().LastIndexOf('/images/')
+    if ($marker -ge 0) {
+        $v=$v.Substring($marker + 8)
+    }
+    elseif ($v.StartsWith('images/',[StringComparison]::OrdinalIgnoreCase)) {
+        $v=$v.Substring(7)
+    }
+
+    foreach ($ext in @('.iwi','.dds')) {
+        if ($v.EndsWith($ext,[StringComparison]::OrdinalIgnoreCase)) {
+            $v=$v.Substring(0,$v.Length-$ext.Length)
+            break
+        }
+    }
+
+    # OAT's image dumper sanitizes only '*' in filenames.
+    # Reconstruct that exact filename transform when comparing a source path
+    # back to an asset identity.
+    return $v.ToLowerInvariant()
+}
+
 function Get-OatMaterialDumpStem {
     param([string]$AssetName)
     $value=$AssetName
@@ -83,9 +110,15 @@ function Find-ExactImageSources {
         if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path -PathType Container)) { continue }
         foreach ($ext in @('*.iwi','*.dds')) {
             foreach ($file in @(Get-ChildItem -LiteralPath $path -Filter $ext -File -Recurse -ErrorAction SilentlyContinue)) {
-                $name=[IO.Path]::GetFileNameWithoutExtension($file.Name)
-                if ((Normalize-AssetName -Value $name) -eq $target) {
-                    $rows.Add([pscustomobject]@{ SourceArea=$area; SourceKind='loose'; SourcePath=$file.FullName; ArchiveEntry=''; Bytes=[int64]$file.Length })
+                $rootFull=[IO.Path]::GetFullPath($path)
+                if (-not $rootFull.EndsWith('\')) { $rootFull += '\' }
+                $fileFull=[IO.Path]::GetFullPath($file.FullName)
+                $relative=$(if ($fileFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)) { $fileFull.Substring($rootFull.Length) } else { $file.FullName })
+                $identity=Normalize-SourceImageIdentity -Value $relative
+
+                if ($identity -eq $target -or
+                    $identity -eq $target.Replace('*','_')) {
+                    $rows.Add([pscustomobject]@{ SourceArea=$area; SourceKind='loose'; SourcePath=$file.FullName; ArchiveEntry=''; Bytes=[int64]$file.Length; SourceIdentity=$identity })
                 }
             }
         }
@@ -96,9 +129,10 @@ function Find-ExactImageSources {
                 foreach ($entry in $zip.Entries) {
                     $ext=[IO.Path]::GetExtension($entry.FullName)
                     if (-not ($ext.Equals('.iwi',[StringComparison]::OrdinalIgnoreCase) -or $ext.Equals('.dds',[StringComparison]::OrdinalIgnoreCase))) { continue }
-                    $name=[IO.Path]::GetFileNameWithoutExtension($entry.FullName)
-                    if ((Normalize-AssetName -Value $name) -eq $target) {
-                        $rows.Add([pscustomobject]@{ SourceArea=$area; SourceKind='iwd'; SourcePath=$iwd.FullName; ArchiveEntry=$entry.FullName; Bytes=[int64]$entry.Length })
+                    $identity=Normalize-SourceImageIdentity -Value $entry.FullName
+                    if ($identity -eq $target -or
+                        $identity -eq $target.Replace('*','_')) {
+                        $rows.Add([pscustomobject]@{ SourceArea=$area; SourceKind='iwd'; SourcePath=$iwd.FullName; ArchiveEntry=$entry.FullName; Bytes=[int64]$entry.Length; SourceIdentity=$identity })
                     }
                 }
             } finally { if ($null -ne $zip) { $zip.Dispose() } }
