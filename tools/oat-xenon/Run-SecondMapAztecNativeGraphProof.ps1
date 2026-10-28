@@ -187,12 +187,18 @@ if (Test-Path -LiteralPath $GraphUnlinkerExe -PathType Leaf) {
                         $status='GRAPH_STAGING_ROBOCOPY_FAILED'
                         Write-Host "[AZTEC-GRAPH] Robocopy long-path transfer failed: code=$copyCode ($copyLog)" -ForegroundColor Yellow
                     } else {
-                        $dstFiles=@(Get-ChildItem -LiteralPath $graphsRoot -File -Recurse -ErrorAction Stop)
+                        # PowerShell 5.1 Get-ChildItem may fail to enumerate paths
+                        # >260 chars after copying them back under OneDrive.
+                        # Robocopy's long-path-aware DRY RUN is the safer proof:
+                        # zero changes means all source files match destination.
+                        $checkOutput=@(& robocopy.exe $stageRoot $graphsRoot '/E' '/L' '/R:1' '/W:1' '/NP' '/NFL' '/NDL' '/NJH' '/NJS' 2>&1 |
+                            ForEach-Object { [string]$_ })
+                        $verifyCode=[int]$LASTEXITCODE
                         $srcSize=[long](($srcFiles | Measure-Object -Property Length -Sum).Sum)
-                        $dstSize=[long](($dstFiles | Measure-Object -Property Length -Sum).Sum)
-                        if ($dstFiles.Count -ne $srcFiles.Count -or $dstSize -ne $srcSize) {
-                            $status='GRAPH_STAGING_COPY_COUNT_OR_SIZE_MISMATCH'
-                            Write-Host "[AZTEC-GRAPH] Copy mismatch files=$($srcFiles.Count)/$($dstFiles.Count) bytes=$srcSize/$dstSize" -ForegroundColor Yellow
+                        if ($verifyCode -ne 0) {
+                            $status='GRAPH_STAGING_LONG_PATH_VERIFICATION_FAILED'
+                            [IO.File]::WriteAllLines($copyLog,[string[]]($transferOutput + $checkOutput),[Text.UTF8Encoding]::new($false))
+                            Write-Host "[AZTEC-GRAPH] Long-path copy verification failed: robocopy dry-run exit=$verifyCode" -ForegroundColor Yellow
                         } else {
                             $src=[ordered]@{
                                 schema='WaW360.AztecNativeGraphSource.v3'
@@ -204,12 +210,13 @@ if (Test-Path -LiteralPath $GraphUnlinkerExe -PathType Leaf) {
                                 longPathMitigation=$stagingMode
                                 dumperReportedErrors=0
                                 dumperExitCode=0
-                                copiedFiles=$dstFiles.Count
-                                copiedBytes=$dstSize
+                                copiedFiles=$srcFiles.Count
+                                copiedBytes=$srcSize
+                                copyDryRunExit=$verifyCode
                             }
                             $src | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $sourceManifest -Encoding UTF8
                             $status='DUMP_COMPLETED_VALIDATION_PENDING'
-                            Write-Host "[AZTEC-GRAPH] Clean physical dump copied back: files=$($dstFiles.Count) bytes=$dstSize"
+                            Write-Host "[AZTEC-GRAPH] Clean physical dump transferred and copy-verified: files=$($srcFiles.Count) bytes=$srcSize"
                         }
                     }
                 }
