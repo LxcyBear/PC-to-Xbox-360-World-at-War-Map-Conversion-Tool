@@ -691,6 +691,43 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
                 return result.Verified ? 0 : 4;
             }
+            case "pc-oat-techset-identities" when args.Length >= 3:
+            {
+                var explicitUnlinker = args.Length >= 4 ? args[3] : null;
+                var result = await T4PcOatTechniqueSetIdentityCatalog.BuildAsync(
+                    args[1], explicitUnlinker);
+                var outputDir = Path.GetFullPath(args[2]);
+                Directory.CreateDirectory(outputDir);
+                var json = Path.Combine(outputDir, "pc_oat_techset_identities.json");
+                var report = Path.Combine(outputDir, "pc_oat_techset_identities.txt");
+                var ordered = result.ByAssetIndex.Values.OrderBy(x => x.AssetIndex).ToList();
+                await File.WriteAllTextAsync(json, JsonSerializer.Serialize(new
+                {
+                    Schema = "WaW360.PcOatTechniqueSetIdentities.v1",
+                    result.PcFastFile,
+                    result.DeclaredPhysicalTechniqueSets,
+                    result.OatTechniqueSets,
+                    result.Verified,
+                    result.Notes,
+                    Entries = ordered
+                }, new JsonSerializerOptions { WriteIndented = true }));
+                await File.WriteAllLinesAsync(report,
+                    new[]
+                    {
+                        "PC OAT SEMANTIC TECHNIQUESET IDENTITY REPORT",
+                        $"PC: {result.PcFastFile}",
+                        $"DeclaredPhysicalTechniqueSets={result.DeclaredPhysicalTechniqueSets}",
+                        $"OatTechniqueSets={result.OatTechniqueSets}",
+                        $"Verified={result.Verified}",
+                        "Identity evidence only. No shader graph or Xbox payload was emitted."
+                    }.Concat(result.Notes.Select(x => "NOTE: " + x))
+                     .Concat(ordered.Select(x => $"#{x.AssetIndex} OAT#{x.OatPoolIndex} {x.Name}")));
+                Console.WriteLine("PC full-zone OAT TechniqueSet identity census");
+                Console.WriteLine($"mapped={ordered.Count:N0}/{result.DeclaredPhysicalTechniqueSets:N0} verified={result.Verified}");
+                Console.WriteLine($"json: {json}");
+                Console.WriteLine($"report: {report}");
+                return result.Verified ? 0 : 4;
+            }
             case "nuclear-techset-closure-plan" when args.Length >= 4:
             {
                 var explicitUnlinker = args.Length >= 5 ? args[4] : null;
@@ -1237,6 +1274,7 @@ static void PrintHelp()
     Console.WriteLine("  pc-native-root-oracle <pc.ff> <native.ff>       Compare original PC root/type order and ScriptStrings to native Xbox");
     Console.WriteLine("  pc-native-semantic-oracle <pc.ff> <native.ff> <output-dir> [Unlinker.exe]  Compare OAT-loaded PC semantic identities to native Xbox and emit ScriptString remap");
     Console.WriteLine("  material-techset-bridge <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Derive PC->Xenon TechniqueSet mappings through shared material identity");
+    Console.WriteLine("  pc-oat-techset-identities <pc.ff> <out-dir> [Unlinker.exe]  Recover full-PC-map TechniqueSet names with OAT (identity only)");
     Console.WriteLine("  nuclear-techset-closure-plan <pc.ff> <xbox.ff> <out-dir> [Unlinker.exe]  Bind all PC TechniqueSet roots to concrete Xenon donors");
     Console.WriteLine("  xenon-techset-bodies <xbox.ff> <out-dir> [Unlinker.exe]  Recover all native TechniqueSet fixed bodies + 51-slot pointers");
     Console.WriteLine("  xenon-graph-import <dump-root> [expected-techsets] [expected-pixelshaders]  Import + validate OAT fixed-up Xenon graph JSON/blobs");
