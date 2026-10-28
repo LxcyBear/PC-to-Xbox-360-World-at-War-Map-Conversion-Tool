@@ -445,27 +445,19 @@ Add-SourceRoot -Roots $roots -Path $roamingMod -Kind 'roaming-mod' -Priority 25
 Add-SourceRoot -Roots $roots -Path $roamingUsermap -Kind 'roaming-usermap' -Priority 25
 
 $requestedWaWInstallRoot = $WaWInstallRoot
-if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot) -and
-    -not (Test-Path -LiteralPath $WaWInstallRoot -PathType Container)) {
-    Write-Host "[NUCLEAR-4R] WARN: requested PC WaW root does not exist: $WaWInstallRoot" -ForegroundColor Yellow
-    Write-Host '[NUCLEAR-4R] Falling back to live converter settings / Steam discovery.' -ForegroundColor Yellow
-    $WaWInstallRoot = ''
+
+# Production architecture invariant:
+#   * map-owned/custom source bytes may come from the PC map package because they
+#     must be converted to Xenon;
+#   * stock/base WaW dependencies are resolved from the RETAIL XBOX 360 game;
+#   * PC retail WaW is never a production dependency source.
+if (-not [string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
+    throw 'Production Stage 4R does not accept a PC WaW retail install. Resolve stock/base assets from the retail Xbox game instead.'
 }
 
-if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
-    $WaWInstallRoot = Resolve-ConfiguredWaWRoot
-}
-if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
-    $envRoot = [Environment]::GetEnvironmentVariable('WAW_PC_ROOT')
-    if (-not [string]::IsNullOrWhiteSpace($envRoot)) { $WaWInstallRoot = $envRoot }
-}
-if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) { $WaWInstallRoot = Resolve-SteamWaWRoot }
-
-if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
-    Write-Host '[NUCLEAR-4R] WARN: PC World at War install root could not be resolved.' -ForegroundColor Yellow
-    Write-Host '[NUCLEAR-4R] Stock/external image pixels will remain unavailable without retail main\\*.iwd search paths.' -ForegroundColor Yellow
-    Write-Host '[NUCLEAR-4R] Re-run with -WaWInstallRoot "<folder containing CoDWaW.exe and main>" to bypass discovery.' -ForegroundColor Yellow
-}
+$WaWInstallRoot = ''
+Write-Host '[NUCLEAR-4R] Production policy: PC retail WaW lookup is DISABLED.' -ForegroundColor Cyan
+Write-Host '[NUCLEAR-4R] Custom/map-owned pixels come from the map package; stock/base images are classified against retail Xbox assets.' -ForegroundColor Cyan
 
 $resolvedWaWRoot = $null
 $retailMain = $null
@@ -884,8 +876,8 @@ $manifest = [ordered]@{
     fullOrdinaryClosure = $fullOrdinaryClosure
     productionSourcePolicy = @(
         'Pixel payload provenance is PC-side loose IWI/DDS, IWD, or IWI extracted from the PC fastfile only.',
-        'PC fastfile extraction may use legitimate PC retail IWDs as dependency search paths.',
-        'Native Xbox oracle contributes identity/order only.',
+        'PC retail WaW assets are prohibited as production dependency inputs.',
+        'Retail Xbox assets provide stock/base identity and runtime-reference evidence only; their payload bytes are not copied.',
         'Stage 4J/4L/4M/4N native-derived payloads are prohibited as production inputs.'
     )
     resolved = $resolvedArray
@@ -941,8 +933,7 @@ if (-not $bridgePass) {
             }
         }
         if ($null -eq $resolvedWaWRoot) {
-            Write-Host '[NUCLEAR-4R] A PC WaW install was not resolved; stock/common images therefore cannot be sourced yet.'
-            Write-Host "[NUCLEAR-4R] Override discovery with: -WaWInstallRoot '<your PC Call of Duty World at War folder>'"
+            Write-Host '[NUCLEAR-4R] Stock/common images are intentionally left unresolved here for Xbox retail reference classification.'
         }
     }
     exit 4
