@@ -1,5 +1,5 @@
 param(
-    [string]$ModCorpusManifest = '',
+    [string]$SourceManifest = '',
     [string]$NativeImageDumpRoot = '',
     [string]$NativeImageGraphRoot = '',
     [string]$OutputRoot = ''
@@ -10,8 +10,15 @@ Set-StrictMode -Version Latest
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
-if ([string]::IsNullOrWhiteSpace($ModCorpusManifest)) {
-    $ModCorpusManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_mod_dependency_corpus\nuclear_4r_mod_dependency_corpus.json'
+if ([string]::IsNullOrWhiteSpace($SourceManifest)) {
+    $mapCorpus = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_map_asset_corpus\nuclear_4r_map_asset_corpus.json'
+    $modCorpus = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_mod_dependency_corpus\nuclear_4r_mod_dependency_corpus.json'
+    if (Test-Path -LiteralPath $mapCorpus -PathType Leaf) {
+        $SourceManifest = $mapCorpus
+    }
+    else {
+        $SourceManifest = $modCorpus
+    }
 }
 if ([string]::IsNullOrWhiteSpace($NativeImageDumpRoot)) {
     $NativeImageDumpRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4j_native_image_mass\dump'
@@ -23,8 +30,8 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_residual_image_forensics'
 }
 
-if (-not (Test-Path -LiteralPath $ModCorpusManifest -PathType Leaf)) {
-    throw "Mod dependency manifest not found: $ModCorpusManifest"
+if (-not (Test-Path -LiteralPath $SourceManifest -PathType Leaf)) {
+    throw "Residual source manifest not found: $SourceManifest"
 }
 
 function Normalize-Identity {
@@ -73,12 +80,14 @@ function Get-GeneratedKind {
     return $null
 }
 
-$mod = Get-Content -LiteralPath $ModCorpusManifest -Raw | ConvertFrom-Json
-if ([string]$mod.format -ne 'WaW360.Nuclear4R.ModDependencyCorpus.v1') {
-    throw "Unexpected mod corpus format: $($mod.format)"
+$source = Get-Content -LiteralPath $SourceManifest -Raw | ConvertFrom-Json
+$sourceFormat = [string]$source.format
+if ($sourceFormat -ne 'WaW360.Nuclear4R.ModDependencyCorpus.v1' -and
+    $sourceFormat -ne 'WaW360.Nuclear4R.MapAssetCorpus.v1') {
+    throw "Unexpected residual source format: $sourceFormat"
 }
 
-$remaining = @($mod.remaining)
+$remaining = @($source.remaining)
 if ($remaining.Count -eq 0) {
     Write-Host '[NUCLEAR-4R-RESIDUAL] No residual images remain after the dependency corpus.'
     exit 0
@@ -141,7 +150,7 @@ foreach ($item in ($remaining | Sort-Object { [int]$_.Index })) {
 
     $classification = 'unresolved-ordinary'
     $confidence = 'low'
-    $reason = 'Not found in retail Xbox, UGX, ZCT, or existing native-image evidence.'
+    $reason = 'Not found in retail Xbox, UGX, ZCT, packaged-map corpora, or existing native-image evidence.'
 
     if ($null -ne $generatedKind) {
         $classification = $generatedKind
@@ -205,7 +214,7 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 
 $manifest = [ordered]@{
     format = 'WaW360.Nuclear4R.ResidualImageForensics.v1'
-    sourceManifest = (Resolve-Path -LiteralPath $ModCorpusManifest).Path
+    sourceManifest = (Resolve-Path -LiteralPath $SourceManifest).Path
     residualImages = $rowArray.Count
     generatedOrSpecial = $generated.Count
     nativeInlineEvidence = $nativeInline.Count
