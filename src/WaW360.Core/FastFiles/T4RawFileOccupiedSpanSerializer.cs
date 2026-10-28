@@ -59,7 +59,8 @@ public static class T4RawFileOccupiedSpanSerializer
         T4ZoneDocument document,
         byte[] zone,
         IReadOnlyList<(long Start, long End, string Owner)> occupiedSpans,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<(int AssetIndex, long Start, long End, string Owner)>? orderedAssetAnchors = null)
     {
         var warnings = new List<string>();
         var physical = document.Assets
@@ -180,6 +181,47 @@ public static class T4RawFileOccupiedSpanSerializer
 
         if (unique.Count != expectedInline)
         {
+            // Alpha 10q: first try an authoritative mixed-XAsset order proof.
+            // The Stage-4/Sound anchors carry exact source spans for known top-level
+            // assets. A RawFile body must serialize after the nearest proven earlier
+            // XAsset and finish before the nearest proven later XAsset. Because the
+            // candidate list and RawFile slots are both in serialized/XAsset order,
+            // an overcount of one can be resolved without names or hard-coded offsets
+            // only when exactly one possible candidate omission yields a complete
+            // ordered slot/window assignment.
+            if (orderedAssetAnchors is not null && unique.Count == expectedInline + 1)
+            {
+                var windowProof = TrySelectByAssetOrderWindows(
+                    physical.Take(expectedInline).ToList(),
+                    unique,
+                    orderedAssetAnchors,
+                    payloadStart,
+                    zone.LongLength);
+
+                if (windowProof.Selected is not null)
+                {
+                    selected = windowProof.Selected;
+                    warnings.Add(
+                        $"INFO: RawFile XAsset-order window proof reduced {unique.Count:N0} candidate(s) to " +
+                        $"{selected.Count:N0}/{expectedInline:N0}; uniquely rejected " +
+                        $"0x{windowProof.Rejected!.Start:X8}..0x{windowProof.Rejected.End:X8} " +
+                        $"len={windowProof.Rejected.Length:N0} name='{windowProof.Rejected.Name}'.");
+                }
+                else
+                {
+                    warnings.Add(
+                        $"INFO: RawFile XAsset-order window proof could not isolate one candidate: " +
+                        $"valid one-drop assignments={windowProof.ValidAssignments:N0}; anchors={windowProof.AnchorCount:N0}.");
+                }
+            }
+
+            if (selected.Count == expectedInline)
+            {
+                // Window proof closed the count exactly; continue to independent
+                // Xbox payload read-back below.
+            }
+            else
+            {
             // Alpha 10p: the older conservative RawFile scanner can recover an exact
             // serialized continuation chain even when the global signature scan has
             // extra strong-looking candidates. Apply the same proof only after the
@@ -235,6 +277,7 @@ public static class T4RawFileOccupiedSpanSerializer
                     rejectedWeak,
                     warnings,
                     structural: unique.Count + (packedTail is null ? 0 : 1));
+            }
             }
         }
 
@@ -357,6 +400,95 @@ public static class T4RawFileOccupiedSpanSerializer
         value = Encoding.ASCII.GetString(data, offset, end - offset);
         next = end + 1;
         return true;
+    }
+
+    private sealed record AssetWindowSelection(
+        List<Candidate>? Selected,
+        Candidate? Rejected,
+        int ValidAssignments,
+        int AnchorCount);
+
+    private static AssetWindowSelection TrySelectByAssetOrderWindows(
+        IReadOnlyList<T4AssetEntry> rawSlots,
+        IReadOnlyList<Candidate> candidates,
+        IReadOnlyList<(int AssetIndex, long Start, long End, string Owner)> anchors,
+        long payloadStart,
+        long zoneLength)
+    {
+        var orderedAnchors = anchors
+            .Where(a => a.AssetIndex >= 0 &&
+                        a.Start >= payloadStart &&
+                        a.End > a.Start &&
+                        a.End <= zoneLength)
+            .OrderBy(a => a.AssetIndex)
+            .ThenBy(a => a.Start)
+            .ToList();
+
+        if (rawSlots.Count == 0 ||
+            candidates.Count != rawSlots.Count + 1 ||
+            orderedAnchors.Count < 2)
+            return new AssetWindowSelection(null, null, 0, orderedAnchors.Count);
+
+        // Trust the anchor/index relation only if source offsets preserve XAsset order.
+        long previousStart = -1;
+        long previousEnd = -1;
+        var previousAssetIndex = -1;
+        foreach (var a in orderedAnchors)
+        {
+            if (a.AssetIndex <= previousAssetIndex ||
+                a.Start < previousStart ||
+                a.Start < previousEnd)
+                return new AssetWindowSelection(null, null, 0, orderedAnchors.Count);
+
+            previousAssetIndex = a.AssetIndex;
+            previousStart = a.Start;
+            previousEnd = a.End;
+        }
+
+        var windows = new List<(long Low, long High)>(rawSlots.Count);
+        foreach (var slot in rawSlots.OrderBy(x => x.Index))
+        {
+            var prev = orderedAnchors.LastOrDefault(a => a.AssetIndex < slot.Index);
+            var next = orderedAnchors.FirstOrDefault(a => a.AssetIndex > slot.Index);
+
+            var low = prev == default ? payloadStart : prev.End;
+            var high = next == default ? zoneLength : next.Start;
+            if (low < payloadStart) low = payloadStart;
+            if (high > zoneLength) high = zoneLength;
+            if (high <= low)
+                return new AssetWindowSelection(null, null, 0, orderedAnchors.Count);
+
+            windows.Add((low, high));
+        }
+
+        var orderedCandidates = candidates.OrderBy(x => x.Start).ToList();
+        var valid = new List<(List<Candidate> Selected, Candidate Rejected)>();
+
+        for (var drop = 0; drop < orderedCandidates.Count; drop++)
+        {
+            var chosen = new List<Candidate>(rawSlots.Count);
+            for (var i = 0; i < orderedCandidates.Count; i++)
+                if (i != drop) chosen.Add(orderedCandidates[i]);
+
+            var fits = true;
+            for (var i = 0; i < chosen.Count; i++)
+            {
+                var c = chosen[i];
+                var w = windows[i];
+                if (c.Start < w.Low || c.End > w.High)
+                {
+                    fits = false;
+                    break;
+                }
+            }
+
+            if (fits)
+                valid.Add((chosen, orderedCandidates[drop]));
+        }
+
+        return valid.Count == 1
+            ? new AssetWindowSelection(valid[0].Selected, valid[0].Rejected, 1, orderedAnchors.Count)
+            : new AssetWindowSelection(null, null, valid.Count, orderedAnchors.Count);
     }
 
     private static List<List<Candidate>> BuildContinuationChains(
