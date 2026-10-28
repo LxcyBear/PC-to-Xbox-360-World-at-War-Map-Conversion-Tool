@@ -251,6 +251,17 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            // The 9 native XModel reference roots are intentional reference assets,
+            // not missing payloads. Stage 4Y preserved and OAT validated them. Mark
+            // them resolved without consuming one of the 280 PC-owned model payloads.
+            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
+                productionXModels.ReferenceNativeIndices.Contains(i))
+            {
+                realPromotedRoots++;
+                stat.RealPromotedRoots++;
+                continue;
+            }
+
             // Stage 4Y production XModels are exact native-root credits backed by
             // PC XModels reconstructed by the T4 Xenon loader and replayed through
             // our serializer. Credit only the 280 owned roots proven by the clean
@@ -277,6 +288,13 @@ public static class NormalMapLinkerV2FullContentReadiness
             // pixels passed through OAT's real T4 Xenon image encoder. Credit only roots
             // whose 4R identity and graph both validate; unresolved image roots continue
             // through the ordinary fallback/synthetic accounting below.
+            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
+                productionXModels.ReferenceNativeIndices.Contains(i))
+            {
+                // Stage 4Y baseline already contains this validated reference root.
+                continue;
+            }
+
             if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
                 productionXModels.SerializedBytesByNativeIndex.ContainsKey(i))
             {
@@ -471,7 +489,7 @@ public static class NormalMapLinkerV2FullContentReadiness
                 : $"Stage 4S credits {productionImages.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon image roots ({productionImages.TotalPixelBytes:N0} pixel bytes; {productionImages.TotalSerializedBytes:N0} serialized bytes). Unresolved images remain critical blockers.",
             productionXModels.SerializedBytesByNativeIndex.Count == 0
                 ? "No passing Stage 4Y XModel production graft was supplied; XModel readiness is still evaluated from the legacy structural source path."
-                : $"Stage 4Y credits {productionXModels.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon XModel roots, preserves {productionXModels.ReferenceRoots:N0} XModel reference roots, and supplies an OAT-clean {productionXModels.IntegratedZoneBytes:N0}-byte integrated baseline.",
+                : $"Stage 4Y resolves all {productionXModels.SerializedBytesByNativeIndex.Count + productionXModels.ReferenceRoots:N0} native XModel roots: {productionXModels.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon payloads + {productionXModels.ReferenceRoots:N0} OAT-validated reference roots, and supplies an OAT-clean {productionXModels.IntegratedZoneBytes:N0}-byte integrated baseline.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -546,6 +564,7 @@ public static class NormalMapLinkerV2FullContentReadiness
 
     private sealed record ProductionXModelCredit(
         IReadOnlyDictionary<int, long> SerializedBytesByNativeIndex,
+        IReadOnlySet<int> ReferenceNativeIndices,
         long TotalSerializedBytes,
         int ReferenceRoots,
         int IntegratedImageRoots,
@@ -559,6 +578,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         if (string.IsNullOrWhiteSpace(graftManifestPath))
             return new ProductionXModelCredit(
                 new Dictionary<int, long>(),
+                new HashSet<int>(),
                 0,
                 0,
                 0,
@@ -658,6 +678,36 @@ public static class NormalMapLinkerV2FullContentReadiness
                 "Stage 4Y XModel dependency provenance no longer resolves against the native sequence: " +
                 string.Join(" | ", dependencyErrors.Take(20)));
 
+        using var bindingDoc = JsonDocument.Parse(File.ReadAllText(bindingManifestPath));
+        var binding = bindingDoc.RootElement;
+        if (GetString(binding, "format") != "WaW360.Nuclear4W.XModelRootBinding.v3" ||
+            !GetBool(binding, "bindingPass") ||
+            GetInt(binding, "boundOwnedModels") != 280 ||
+            GetInt(binding, "boundReferenceRoots") != 9)
+            throw new InvalidDataException(
+                "Stage 4Y references a non-passing 4W XModel binding manifest.");
+
+        var referenceIndices = new HashSet<int>();
+        foreach (var row in GetProperty(binding, "referenceBindings").EnumerateArray())
+        {
+            var index = GetInt(row, "NativeRootIndex");
+            var name = GetString(row, "NativeReferenceName");
+
+            if ((uint)index >= (uint)nativeIdentity.Count)
+                throw new InvalidDataException(
+                    $"Stage 4W reference XModel root #{index} is outside the native sequence.");
+            if (!nativeIdentity[index].Name.Equals(name, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Stage 4W reference XModel root #{index} identity '{name}' != native '{nativeIdentity[index].Name}'.");
+            if (!referenceIndices.Add(index))
+                throw new InvalidDataException(
+                    $"Stage 4W repeats reference XModel native root #{index}.");
+        }
+
+        if (referenceIndices.Count != 9)
+            throw new InvalidDataException(
+                $"Stage 4W resolved {referenceIndices.Count:N0} reference XModel roots; expected 9.");
+
         var byIndex = new Dictionary<int, long>();
         long totalSerialized = 0;
 
@@ -702,6 +752,7 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         return new ProductionXModelCredit(
             byIndex,
+            referenceIndices,
             totalSerialized,
             corpus.ReferenceRoots,
             integratedImageRoots,
