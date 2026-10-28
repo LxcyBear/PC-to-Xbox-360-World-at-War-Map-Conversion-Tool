@@ -57,7 +57,7 @@ foreach ($folder in @($planRoot,$bindRoot,$layoutRoot)) {
 }
 $planJson=Join-Path $planRoot 'xenon_graph_serialization_plan.json'
 $bindJson=Join-Path $bindRoot 'nuclear_xenon_root_binding.json'
-$layoutJson=Join-Path $layoutRoot 'nuclear_xenon_graph_block_layout.json'
+$layoutJson=Join-Path $layoutRoot 'nuclear_xenon_block_layout.json'
 $reportJson=Join-Path $work 'renderer_preflight_result.json'
 $reportTxt=Join-Path $work 'renderer_preflight_result.txt'
 $stages=New-Object 'System.Collections.Generic.List[object]'
