@@ -176,19 +176,66 @@ public static class T4RawFileOccupiedSpanSerializer
         }
 
         var expectedInline = physical.Count - (packedTail is null ? 0 : 1);
+        var selected = unique;
+
         if (unique.Count != expectedInline)
         {
-            var delta = unique.Count - expectedInline;
-            warnings.Add($"RawFile occupied-span exact-count gate: XAssetList declares {physical.Count:N0}; surviving strong inline bodies={unique.Count:N0}; packed-tail bodies={(packedTail is null ? 0 : 1):N0}. Expected {expectedInline:N0} inline body(ies). Type remains blocked.");
-            warnings.Add(delta > 0
-                ? $"DIAGNOSTIC: RawFile candidate OVERCOUNT by {delta:N0}; likely one or more strong-looking signatures belong to another owned asset stream. Candidates are listed below for exact exclusion work."
-                : $"DIAGNOSTIC: RawFile candidate UNDERCOUNT by {-delta:N0}; at least one declared RawFile body is not represented by the current strong inline-name signature rule. Candidates are listed below to locate the missing run boundary.");
-            var cidx = 0;
-            foreach (var c in unique.Take(96))
-                warnings.Add($"CANDIDATE[{cidx++:D2}] 0x{c.Start:X8}..0x{c.End:X8} len={c.Length:N0} name='{c.Name}' namePtr=0x{c.NamePointer:X8}");
-            if (unique.Count > 96) warnings.Add($"CANDIDATE LIST TRUNCATED: {unique.Count - 96:N0} additional candidate(s).");
-            return Failure(physical.Count, rejectedOccupied, rejectedWeak, warnings,
-                structural: unique.Count + (packedTail is null ? 0 : 1));
+            // Alpha 10p: the older conservative RawFile scanner can recover an exact
+            // serialized continuation chain even when the global signature scan has
+            // extra strong-looking candidates. Apply the same proof only after the
+            // occupied-span subtraction above, and only when exactly one chain has the
+            // XAsset-declared length. This removes stray signatures without any
+            // map-specific names/offsets or guessed index mapping.
+            var exactChains = BuildContinuationChains(unique, zone)
+                .Where(chain => chain.Count == expectedInline)
+                .ToList();
+
+            if (exactChains.Count == 1)
+            {
+                selected = exactChains[0]
+                    .OrderBy(x => x.Start)
+                    .ToList();
+
+                var selectedKeys = selected
+                    .Select(x => (x.Start, x.End, x.Name))
+                    .ToHashSet();
+                var dropped = unique
+                    .Where(x => !selectedKeys.Contains((x.Start, x.End, x.Name)))
+                    .OrderBy(x => x.Start)
+                    .ToList();
+
+                warnings.Add(
+                    $"INFO: RawFile occupied-span continuation proof reduced {unique.Count:N0} surviving strong candidate(s) " +
+                    $"to one authoritative {expectedInline:N0}-entry serialized chain matching the XAsset declaration.");
+                foreach (var d in dropped.Take(16))
+                    warnings.Add(
+                        $"INFO: RawFile continuation proof rejected stray candidate " +
+                        $"0x{d.Start:X8}..0x{d.End:X8} len={d.Length:N0} name='{d.Name}' namePtr=0x{d.NamePointer:X8}.");
+                if (dropped.Count > 16)
+                    warnings.Add($"INFO: RawFile continuation proof rejected {dropped.Count - 16:N0} additional stray candidate(s).");
+            }
+            else
+            {
+                var delta = unique.Count - expectedInline;
+                warnings.Add(
+                    $"RawFile occupied-span exact-count gate: XAssetList declares {physical.Count:N0}; " +
+                    $"surviving strong inline bodies={unique.Count:N0}; packed-tail bodies={(packedTail is null ? 0 : 1):N0}. " +
+                    $"Expected {expectedInline:N0} inline body(ies); exact continuation chains={exactChains.Count:N0}. Type remains blocked.");
+                warnings.Add(delta > 0
+                    ? $"DIAGNOSTIC: RawFile candidate OVERCOUNT by {delta:N0}; continuation proof could not isolate one unique declared-length chain."
+                    : $"DIAGNOSTIC: RawFile candidate UNDERCOUNT by {-delta:N0}; at least one declared RawFile body is not represented by the current strong inline-name signature rule.");
+                var cidx = 0;
+                foreach (var candidate in unique.Take(96))
+                    warnings.Add($"CANDIDATE[{cidx++:D2}] 0x{candidate.Start:X8}..0x{candidate.End:X8} len={candidate.Length:N0} name='{candidate.Name}' namePtr=0x{candidate.NamePointer:X8}");
+                if (unique.Count > 96)
+                    warnings.Add($"CANDIDATE LIST TRUNCATED: {unique.Count - 96:N0} additional candidate(s).");
+                return Failure(
+                    physical.Count,
+                    rejectedOccupied,
+                    rejectedWeak,
+                    warnings,
+                    structural: unique.Count + (packedTail is null ? 0 : 1));
+            }
         }
 
         var result = new Dictionary<int, T4RawFileOccupiedAsset>();
@@ -196,10 +243,10 @@ public static class T4RawFileOccupiedSpanSerializer
         long sourceBytes = 0;
         long xboxBytes = 0;
 
-        for (var i = 0; i < unique.Count; i++)
+        for (var i = 0; i < selected.Count; i++)
         {
             var asset = physical[i];
-            var c = unique[i];
+            var c = selected[i];
             var payload = BuildXboxPayload(c);
             if (!VerifyXboxPayload(payload, c)) readBackErrors++;
             result[asset.Index] = new T4RawFileOccupiedAsset(
@@ -310,6 +357,77 @@ public static class T4RawFileOccupiedSpanSerializer
         value = Encoding.ASCII.GetString(data, offset, end - offset);
         next = end + 1;
         return true;
+    }
+
+    private static List<List<Candidate>> BuildContinuationChains(
+        IReadOnlyList<Candidate> candidates,
+        byte[] zone)
+    {
+        var ordered = candidates.OrderBy(x => x.Start).ToList();
+        var byStart = ordered
+            .GroupBy(x => x.Start)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var chains = new List<List<Candidate>>();
+
+        foreach (var first in ordered)
+        {
+            var chain = new List<Candidate> { first };
+            var current = first;
+            var seenStarts = new HashSet<long> { first.Start };
+
+            while (true)
+            {
+                var next = CandidateContinuationOffsets(zone, current.End)
+                    .Where(byStart.ContainsKey)
+                    .SelectMany(offset => byStart[offset])
+                    .Where(x => x.Start > current.Start)
+                    .OrderBy(x => x.Start)
+                    .ToList();
+
+                if (next.Count != 1)
+                    break;
+
+                var chosen = next[0];
+                if (!seenStarts.Add(chosen.Start))
+                    break;
+
+                chain.Add(chosen);
+                current = chosen;
+            }
+
+            chains.Add(chain);
+        }
+
+        return chains;
+    }
+
+    private static IReadOnlyList<long> CandidateContinuationOffsets(byte[] zone, long endOffset)
+    {
+        var output = new List<long>();
+        if (endOffset < 0 || endOffset > zone.LongLength)
+            return output;
+
+        output.Add(endOffset);
+        foreach (var alignment in new[] { 4L, 8L, 16L })
+        {
+            var aligned = checked((endOffset + alignment - 1) & ~(alignment - 1));
+            if (aligned == endOffset || aligned > zone.LongLength)
+                continue;
+
+            var zeroPad = true;
+            for (var p = endOffset; p < aligned; p++)
+            {
+                if (zone[checked((int)p)] == 0)
+                    continue;
+                zeroPad = false;
+                break;
+            }
+
+            if (zeroPad)
+                output.Add(aligned);
+        }
+
+        return output.Distinct().OrderBy(x => x).ToList();
     }
 
     private static bool OverlapsAny(long start, long end, IReadOnlyList<(long Start, long End, string Owner)> spans)
