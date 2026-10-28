@@ -7,6 +7,16 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Get-OatReferenceSourceName {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+    $v = $Value.Trim()
+    while ($v.StartsWith(',', [StringComparison]::Ordinal)) {
+        $v = $v.Substring(1)
+    }
+    return $v
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $linker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Linker.exe'
 $unlinker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Unlinker.exe'
@@ -126,7 +136,7 @@ $zoneLines.Add('')
 
 foreach ($target in ($targets | Sort-Object Index)) {
     $type = [string]$target.Type
-    $name = [string]$target.Name
+    $name = Get-OatReferenceSourceName -Value ([string]$target.Name)
     if ([string]::IsNullOrWhiteSpace($type) -or [string]::IsNullOrWhiteSpace($name)) {
         throw "Reference target has blank type/name at root #$([int]$target.Index)."
     }
