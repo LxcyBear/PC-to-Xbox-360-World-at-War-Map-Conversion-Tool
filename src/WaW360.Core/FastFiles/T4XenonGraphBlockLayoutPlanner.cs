@@ -212,9 +212,17 @@ public static class T4XenonGraphBlockLayoutPlanner
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var insert = state.VirtualAlloc(4, 4, false);
+            // Pinned T4 Xenon ZoneCode StringTable.txt has NO TEMP-block
+            // declaration. Its top-level pointer is FOLLOWING, so OAT
+            // deserializes the 16-byte struct directly in VIRTUAL and does
+            // not reserve a VIRTUAL INSERT alias slot. Treating it like a
+            // TEMP asset (root header = INSERT) triggers invalid block 7.
+            var directVirtualRoot = Normalize(root.TypeName) == "stringtable";
+            var insert = directVirtualRoot
+                ? state.VirtualAlloc(16, 4, true)
+                : state.VirtualAlloc(4, 4, false);
             var stable = SafePointer(T4ZoneBlock.Virtual, insert, blockers);
-            state.InsertSlots++;
+            if (!directVirtualRoot) state.InsertSlots++;
             rootInsertLayouts.Add(
                 new T4XenonRootInsertLayout(
                     root.Index,
@@ -399,7 +407,12 @@ public static class T4XenonGraphBlockLayoutPlanner
                 blockers.Add($"Unsupported all-name-shell type '{root.TypeName}' at root #{root.Index}.");
                 shellSize = 4;
             }
-            state.TempRoot(shellSize);
+            // StringTable's 16-byte structure was allocated in VIRTUAL
+            // before its child XString. Do not count it as a TEMP root.
+            if (!directVirtualRoot)
+                state.TempRoot(shellSize);
+            else if (shellSize != 16)
+                throw new InvalidDataException("StringTable shell must be exactly 16 bytes.");
             EmitShellChildren(state, root, canonicalBaseName);
         }
 
@@ -425,7 +438,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         if (rawFileGraft.Count != 0)
             notes.Add($"PC-backed RawFile graft: {rawFileGraft.Count:N0} native roots with verified source SHA-256 and explicit logical buffer lengths.");
         notes.Add("TEMP is modeled as scratch: every top-level asset starts at TEMP+0; header TEMP size is the maximum root scope.");
-        notes.Add("Each first top-level root reserves one 4-byte VIRTUAL insert slot; insert slots and alignment holes consume block address space but no serialized bytes.");
+        notes.Add("TEMP-backed roots reserve 4-byte VIRTUAL insert slots; non-TEMP StringTable roots occupy 16 serialized VIRTUAL bytes directly (no INSERT alias).");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
         if (imageGraph is not null)
             notes.Add($"Image graph graft: {realImages:N0}/{imageGraph.Images:N0} real GfxImage roots; limit={(imageGraftLimit > 0 ? imageGraftLimit : imageGraph.Images):N0}; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; LARGE={state.Large:N0} bytes; source graph is validation-only unless independently PC-sourced.");
@@ -437,7 +450,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         // Keep the pre-emission layout diagnostic valid, but do not treat it as
         // proof that native table rows were reconstructed from PC assets.
         if (roots.Any(r => Normalize(r.TypeName) == "stringtable"))
-            notes.Add("StringTable layout: 16-byte Xenon ABI is supported; name-only empty table shell is validation-only. PC table row/value graph is not reconstructed.");
+            notes.Add("StringTable layout: root is FOLLOWING (not INSERT), 16-byte VIRTUAL ABI; name-only empty table shell is validation-only. PC table row/value graph is not reconstructed.");
         if (xmodelCorpus is not null)
             notes.Add(
                 $"XModel graph graft: {realXModels:N0}/{xmodelCorpus.OwnedByRoot.Count:N0} owned roots; " +
