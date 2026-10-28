@@ -461,6 +461,13 @@ public static class T4XenonRendererGraphEmitter
             else if (!oatZero)
                 oatError = "OAT root identity gate passed, but the log did not prove '0 warnings, 0 errors'.";
         }
+        catch (T4XenonIdentityGateException ex)
+        {
+            oatLoadedAssets = ex.LoadedAssets;
+            oatListedRoots = ex.ReconciledRoots;
+            oatExternalReferenceAssets = ex.SeenExternalReferences;
+            oatError = ex.Message;
+        }
         catch (Exception ex)
         {
             oatError = ex.Message;
