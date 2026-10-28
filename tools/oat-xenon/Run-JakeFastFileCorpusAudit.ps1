@@ -159,10 +159,21 @@ Write-Host '[NUCLEAR-5T-JAKE] READ ONLY: does not import or promote donor payloa
 Write-Host '[NUCLEAR-5T-JAKE] ========================================================='
 
 function Record-Hit([string]$type,[string]$listed,[string]$zone,[string]$lane,[string]$evidence,[string]$platform,[string]$archiveEntry,[bool]$reference,[bool]$scanClean) {
-    $key="$(Normalize-Type $type)|$(Normalize-Identity $listed)"
-    if (-not $targetByKey.ContainsKey($key)) { return }
-    foreach ($match in $targetByKey[$key]) {
+    $type=Normalize-Type $type
+    $keys=@("$type|$(Normalize-Identity $listed)")
+    # Loose images and archive entries can sit outside a conventional images/
+    # folder. Try the filename stem as a secondary exact identity, never fuzzy.
+    if ($type -eq 'image' -and $evidence -in @('loose-image-file','archive-image-file')) {
+        $stem=[IO.Path]::GetFileNameWithoutExtension($listed.Replace('\','/'))
+        $keys+=("$type|$(Normalize-Identity $stem)")
+    }
+    $seenRoots=New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($key in @($keys | Select-Object -Unique)) {
+      if (-not $targetByKey.ContainsKey($key)) { continue }
+      foreach ($match in $targetByKey[$key]) {
         $t=$match.Target
+        $rootKey="$($t.Index)|$($t.Type)|$($t.Name)|$($match.Role)"
+        if (-not $seenRoots.Add($rootKey)) { continue }
         $hits.Add([pscustomobject]@{
             RootIndex=[int]$t.Index; Type=[string]$t.Type; NativeName=[string]$t.Name
             PcImage=[string]$t.PcImage; MatchRole=[string]$match.Role
@@ -170,6 +181,7 @@ function Record-Hit([string]$type,[string]$listed,[string]$zone,[string]$lane,[s
             Platform=$platform; Lane=$lane; SourceFile=$zone; ArchiveEntry=$archiveEntry
             ListedName=$listed
         })
+      }
     }
 }
 
@@ -316,7 +328,7 @@ foreach ($job in $ffJobs.ToArray()) {
     } elseif (-not $InventoryOnly) {
         $failures.Add([pscustomobject]@{ SourceFile=$job.DisplayPath; Error="OAT --list failed (exit=$exit). See $log" })
     }
-    $listResults.Add([pscustomobject]@{ Path=$job.DisplayPath; Lane=$job.Lane; Archived=!!$job.ArchivePath
+    $listResults.Add([pscustomobject]@{ Path=$job.DisplayPath; Lane=$job.Lane; Archived=[bool]$job.ArchivePath
         Bytes=[long]$job.Length; Success=$clean; Platform=$platform; ExitCode=$exit
         ParsedAssetRows=$assetRows; LogFile=$log; OatTool=$toolUsed })
     if (($number % 10) -eq 0 -or $number -eq 1 -or $number -eq $ffJobs.Count) {
