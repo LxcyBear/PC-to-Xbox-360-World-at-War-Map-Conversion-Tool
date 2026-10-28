@@ -104,6 +104,96 @@ function Resolve-DumpedRawFile {
     return $null
 }
 
+function Get-ByteHash {
+    param([byte[]]$Bytes)
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try {
+        $digest=$sha.ComputeHash($Bytes)
+    }
+    finally {
+        $sha.Dispose()
+    }
+    return (($digest | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
+function Get-RawCanonicalFingerprints {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    $bytes=[IO.File]::ReadAllBytes($Path)
+    $end=$bytes.Length
+    while ($end -gt 0 -and $bytes[$end-1] -eq 0) { $end-- }
+
+    $trimmed=New-Object byte[] $end
+    if ($end -gt 0) { [Array]::Copy($bytes,0,$trimmed,0,$end) }
+
+    $noNullHash=Get-ByteHash -Bytes $trimmed
+
+    $text=''
+    $textValid=$true
+    try {
+        $utf8=New-Object Text.UTF8Encoding($false,$true)
+        $text=$utf8.GetString($trimmed)
+    }
+    catch {
+        $textValid=$false
+    }
+
+    if (-not $textValid) {
+        return [pscustomobject]@{
+            TextValid=$false
+            NoTrailingNullSha256=$noNullHash
+            EolNormalizedSha256=''
+            TrimmedLinesSha256=''
+            WhitespaceFoldedSha256=''
+        }
+    }
+
+    if ($text.Length -gt 0 -and [int][char]$text[0] -eq 0xFEFF) {
+        $text=$text.Substring(1)
+    }
+
+    $crlf=([string][char]13)+([string][char]10)
+    $lf=[string][char]10
+    $cr=[string][char]13
+    $eol=$text.Replace($crlf,$lf).Replace($cr,$lf)
+    $eolHash=Get-ByteHash -Bytes ([Text.Encoding]::UTF8.GetBytes($eol))
+
+    $lines=@($eol.Split([char]10))
+    $clean=New-Object 'System.Collections.Generic.List[string]'
+    foreach ($line in $lines) {
+        $clean.Add($line.Trim())
+    }
+    while ($clean.Count -gt 0 -and [string]::IsNullOrWhiteSpace($clean[$clean.Count-1])) {
+        $clean.RemoveAt($clean.Count-1)
+    }
+    $trimmedLines=($clean.ToArray() -join $lf)
+    $trimmedHash=Get-ByteHash -Bytes ([Text.Encoding]::UTF8.GetBytes($trimmedLines))
+
+    $folded=[Text.RegularExpressions.Regex]::Replace($eol,'\s+',' ').Trim()
+    $foldedHash=Get-ByteHash -Bytes ([Text.Encoding]::UTF8.GetBytes($folded))
+
+    return [pscustomobject]@{
+        TextValid=$true
+        NoTrailingNullSha256=$noNullHash
+        EolNormalizedSha256=$eolHash
+        TrimmedLinesSha256=$trimmedHash
+        WhitespaceFoldedSha256=$foldedHash
+    }
+}
+
+function Add-CanonicalIndex {
+    param(
+        [hashtable]$Index,
+        [string]$Hash,
+        [object]$Row
+    )
+    if ([string]::IsNullOrWhiteSpace($Hash)) { return }
+    if (-not $Index.ContainsKey($Hash)) {
+        $Index[$Hash]=New-Object 'System.Collections.Generic.List[object]'
+    }
+    $Index[$Hash].Add($Row)
+}
+
 function Copy-RawAsset {
     param([string]$Source,[string]$Root,[string]$Name)
     $relative=$Name.Replace('/','\').TrimStart('\')
@@ -182,6 +272,10 @@ if ($pcFastFiles.Count -eq 0) {
 $pcRows=New-Object 'System.Collections.Generic.List[object]'
 $pcByName=@{}
 $pcByHash=@{}
+$pcByNoNullHash=@{}
+$pcByEolHash=@{}
+$pcByTrimmedLinesHash=@{}
+$pcByWhitespaceHash=@{}
 $listFailures=0
 $dumpFailures=0
 
@@ -225,10 +319,12 @@ foreach ($ff in $pcFastFiles) {
         $exists=-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path -PathType Leaf)
         $hash=''
         $bytes=0L
+        $canonical=$null
         if ($exists) {
             $resolvedBodies++
             $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
             $bytes=[int64](Get-Item -LiteralPath $path).Length
+            $canonical=Get-RawCanonicalFingerprints -Path $path
         }
 
         $row=[pscustomobject]@{
@@ -240,6 +336,7 @@ foreach ($ff in $pcFastFiles) {
             BodyPresent=$exists
             Bytes=$bytes
             Sha256=$hash
+            Canonical=$canonical
         }
         $pcRows.Add($row)
 
@@ -254,6 +351,12 @@ foreach ($ff in $pcFastFiles) {
                 $pcByHash[$hash]=New-Object 'System.Collections.Generic.List[object]'
             }
             $pcByHash[$hash].Add($row)
+            Add-CanonicalIndex -Index $pcByNoNullHash -Hash ([string]$canonical.NoTrailingNullSha256) -Row $row
+            if ([bool]$canonical.TextValid) {
+                Add-CanonicalIndex -Index $pcByEolHash -Hash ([string]$canonical.EolNormalizedSha256) -Row $row
+                Add-CanonicalIndex -Index $pcByTrimmedLinesHash -Hash ([string]$canonical.TrimmedLinesSha256) -Row $row
+                Add-CanonicalIndex -Index $pcByWhitespaceHash -Hash ([string]$canonical.WhitespaceFoldedSha256) -Row $row
+            }
         }
     }
 
@@ -275,9 +378,11 @@ foreach ($native in $unresolvedNative) {
     $present=-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path -PathType Leaf)
     $hash=''
     $bytes=0L
+    $canonical=$null
     if ($present) {
         $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
         $bytes=[int64](Get-Item -LiteralPath $path).Length
+        $canonical=Get-RawCanonicalFingerprints -Path $path
         $nativeValidationBodies++
     }
 
@@ -288,12 +393,17 @@ foreach ($native in $unresolvedNative) {
         BodyPresent=$present
         Bytes=$bytes
         Sha256=$hash
+        Canonical=$canonical
     }
 }
 
 $mapping=New-Object 'System.Collections.Generic.List[object]'
 $exactMapped=0
 $hashMapped=0
+$canonicalNoNullMapped=0
+$canonicalEolMapped=0
+$canonicalTrimmedLinesMapped=0
+$canonicalWhitespaceMapped=0
 $missingNative=0
 $ambiguousSource=0
 
@@ -323,20 +433,62 @@ foreach ($native in $unresolvedNative) {
             $ambiguousSource++
         }
     }
-    elseif ($null -ne $nativeValidation -and
-            [bool]$nativeValidation.BodyPresent -and
-            -not [string]::IsNullOrWhiteSpace([string]$nativeValidation.Sha256) -and
+    elseif ($null -ne $nativeValidation -and [bool]$nativeValidation.BodyPresent) {
+        $canonical=[object]$nativeValidation.Canonical
+        $matchedTier=''
+        $candidateSources=@()
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$nativeValidation.Sha256) -and
             $pcByHash.ContainsKey([string]$nativeValidation.Sha256)) {
-        $sources=@($pcByHash[[string]$nativeValidation.Sha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
-        $hashes=@($sources | Select-Object -ExpandProperty Sha256 -Unique)
-        if ($hashes.Count -eq 1 -and $sources.Count -ge 1) {
-            $status='exact-body-hash-pc-source'
-            $hashMapped++
-            $sources=@($sources | Select-Object -First 1)
+            $candidateSources=@($pcByHash[[string]$nativeValidation.Sha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
+            $matchedTier='exact-body-hash-pc-source'
+        }
+        elseif ($null -ne $canonical -and
+                -not [string]::IsNullOrWhiteSpace([string]$canonical.NoTrailingNullSha256) -and
+                $pcByNoNullHash.ContainsKey([string]$canonical.NoTrailingNullSha256)) {
+            $candidateSources=@($pcByNoNullHash[[string]$canonical.NoTrailingNullSha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
+            $matchedTier='canonical-no-trailing-null-pc-source'
+        }
+        elseif ($null -ne $canonical -and [bool]$canonical.TextValid -and
+                -not [string]::IsNullOrWhiteSpace([string]$canonical.EolNormalizedSha256) -and
+                $pcByEolHash.ContainsKey([string]$canonical.EolNormalizedSha256)) {
+            $candidateSources=@($pcByEolHash[[string]$canonical.EolNormalizedSha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
+            $matchedTier='canonical-eol-pc-source'
+        }
+        elseif ($null -ne $canonical -and [bool]$canonical.TextValid -and
+                -not [string]::IsNullOrWhiteSpace([string]$canonical.TrimmedLinesSha256) -and
+                $pcByTrimmedLinesHash.ContainsKey([string]$canonical.TrimmedLinesSha256)) {
+            $candidateSources=@($pcByTrimmedLinesHash[[string]$canonical.TrimmedLinesSha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
+            $matchedTier='canonical-trimmed-lines-pc-source'
+        }
+        elseif ($null -ne $canonical -and [bool]$canonical.TextValid -and
+                -not [string]::IsNullOrWhiteSpace([string]$canonical.WhitespaceFoldedSha256) -and
+                $pcByWhitespaceHash.ContainsKey([string]$canonical.WhitespaceFoldedSha256)) {
+            $candidateSources=@($pcByWhitespaceHash[[string]$canonical.WhitespaceFoldedSha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
+            $matchedTier='canonical-whitespace-pc-source'
+        }
+
+        if ($candidateSources.Count -gt 0) {
+            $rawHashes=@($candidateSources | Select-Object -ExpandProperty Sha256 -Unique)
+            if ($rawHashes.Count -eq 1) {
+                $sources=@($candidateSources | Select-Object -First 1)
+                $status=$matchedTier
+                switch ($matchedTier) {
+                    'exact-body-hash-pc-source' { $hashMapped++ }
+                    'canonical-no-trailing-null-pc-source' { $canonicalNoNullMapped++ }
+                    'canonical-eol-pc-source' { $canonicalEolMapped++ }
+                    'canonical-trimmed-lines-pc-source' { $canonicalTrimmedLinesMapped++ }
+                    'canonical-whitespace-pc-source' { $canonicalWhitespaceMapped++ }
+                }
+            }
+            else {
+                $status='ambiguous-canonical-pc-source'
+                $sources=$candidateSources
+                $ambiguousSource++
+            }
         }
         else {
-            $status='ambiguous-body-hash-pc-source'
-            $ambiguousSource++
+            $missingNative++
         }
     }
     else {
@@ -354,7 +506,15 @@ foreach ($native in $unresolvedNative) {
 
 $linkTargets=@(
     $mapping.ToArray() |
-    Where-Object { $_.Status -in @('exact-name-pc-body','duplicate-identical-name-pc-body','exact-body-hash-pc-source') } |
+    Where-Object { $_.Status -in @(
+        'exact-name-pc-body',
+        'duplicate-identical-name-pc-body',
+        'exact-body-hash-pc-source',
+        'canonical-no-trailing-null-pc-source',
+        'canonical-eol-pc-source',
+        'canonical-trimmed-lines-pc-source',
+        'canonical-whitespace-pc-source'
+    ) } |
     Sort-Object Index
 )
 
@@ -441,6 +601,10 @@ $manifest=[ordered]@{
     nonRetailNativeRawFiles=$unresolvedNative.Count
     exactPcBodyMappings=$exactMapped
     exactBodyHashMappings=$hashMapped
+    canonicalNoTrailingNullMappings=$canonicalNoNullMapped
+    canonicalEolMappings=$canonicalEolMapped
+    canonicalTrimmedLinesMappings=$canonicalTrimmedLinesMapped
+    canonicalWhitespaceMappings=$canonicalWhitespaceMapped
     nativeValidationDumpExitCode=$nativeDumpExit
     nativeValidationBodies=$nativeValidationBodies
     missingPcBodyMappings=$missingNative
@@ -456,8 +620,9 @@ $manifest=[ordered]@{
     policy=@(
         'Stage 5I uses OAT asset loading/dumping to obtain authoritative PC RawFile identities and bodies, bypassing global raw-byte signature ambiguity.',
         'The 46 Stage 4W retail RawFile roots remain runtime references and are not copied from PC.',
-        'Exact native-name matches are preferred. When names differ, native/oracle RawFile bodies are used only as SHA-256 validation fingerprints to bind an identical OAT-dumped PC body.',
-        'Any hash-bound production payload is copied from the PC dump and emitted under the native Xbox identity; native/oracle body bytes are never copied.',
+        'Exact native-name and exact byte-hash matches are preferred. When platform serialization differs, validation-only canonical fingerprints are attempted in strict order: trailing-NUL removal, EOL normalization, per-line trim, then whitespace folding.',
+        'Canonical matches are accepted only when they resolve to one unique raw PC byte hash; ambiguous canonical collisions stay blocked.',
+        'Any bound production payload is copied from the PC dump and emitted under the native Xbox identity; native/oracle body bytes are never copied.',
         'Production credit requires exact PC-source/readback SHA-256 equality after standalone Xbox360 link and reload.',
         'No native/oracle RawFile payload bytes are copied.'
     )
@@ -478,6 +643,10 @@ $report.Add(("Retail-reference RawFiles:        {0:N0}" -f $retailRawIndices.Cou
 $report.Add(("Non-retail native RawFiles:       {0:N0}" -f $unresolvedNative.Count))
 $report.Add(("Exact-name PC body mappings:      {0:N0}" -f $exactMapped))
 $report.Add(("Exact body-hash mappings:         {0:N0}" -f $hashMapped))
+$report.Add(("Canonical no-NUL mappings:        {0:N0}" -f $canonicalNoNullMapped))
+$report.Add(("Canonical EOL mappings:           {0:N0}" -f $canonicalEolMapped))
+$report.Add(("Canonical trimmed-line mappings:  {0:N0}" -f $canonicalTrimmedLinesMapped))
+$report.Add(("Canonical whitespace mappings:    {0:N0}" -f $canonicalWhitespaceMapped))
 $report.Add(("Native validation bodies:         {0:N0}/8" -f $nativeValidationBodies))
 $report.Add(("Native validation dump exit:      {0}" -f $nativeDumpExit))
 $report.Add(("Missing PC body mappings:         {0:N0}" -f $missingNative))
@@ -507,6 +676,10 @@ Write-Host "[NUCLEAR-5I-RAW] PC RawFile bodies dumped     : $(@($pcRows.ToArray(
 Write-Host "[NUCLEAR-5I-RAW] Non-retail native RawFiles   : $($unresolvedNative.Count)"
 Write-Host "[NUCLEAR-5I-RAW] Exact-name PC body mappings  : $exactMapped"
 Write-Host "[NUCLEAR-5I-RAW] Exact body-hash mappings     : $hashMapped"
+Write-Host "[NUCLEAR-5I-RAW] Canonical no-NUL mappings    : $canonicalNoNullMapped"
+Write-Host "[NUCLEAR-5I-RAW] Canonical EOL mappings       : $canonicalEolMapped"
+Write-Host "[NUCLEAR-5I-RAW] Canonical trimmed mappings   : $canonicalTrimmedLinesMapped"
+Write-Host "[NUCLEAR-5I-RAW] Canonical whitespace mappings: $canonicalWhitespaceMapped"
 Write-Host "[NUCLEAR-5I-RAW] Native validation bodies     : $nativeValidationBodies/8"
 Write-Host "[NUCLEAR-5I-RAW] Native validation dump exit  : $nativeDumpExit"
 Write-Host "[NUCLEAR-5I-RAW] Missing PC body mappings     : $missingNative"
