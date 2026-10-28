@@ -802,7 +802,7 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
                 Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; mainZoneBytes={result.MainZoneBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}; LARGE={result.LargeBytes:N0}");
                 Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
-                Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
+                Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; oatLoadedAssets={result.OatLoadedAssets:N0}; oatExternalRefs={result.OatExternalReferenceAssets:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
                 Console.WriteLine($"oatZeroWarningsZeroErrors={result.OatZeroWarningsZeroErrors}; validationOnly={result.ValidationOnly}; validationPass={result.ValidationPass}; readyForHardware={result.ReadyForHardware}");
                 Console.WriteLine($"candidate: {result.OutputFastFile}");
                 Console.WriteLine($"report:    {result.TextReportFile}");
