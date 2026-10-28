@@ -1,5 +1,7 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## fuck you 0x82168594
+
 PC2XB3 is a work-in-progress converter/linker for **Call of Duty: World at War** custom PC maps targeting **modified Xbox 360 consoles**.
 
 The project does **not** distribute retail World at War game files or copyrighted map content. Users provide their own game data and custom-map sources.
