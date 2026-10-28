@@ -207,10 +207,38 @@ internal sealed class T4XenonMaterialCorpus
         ICollection<string> errors)
     {
         var matches = FindCandidates(roots, types, name);
-        if (matches.Count != 1)
-            errors.Add(
-                $"{owner}: asset reference {string.Join("/", types)}:{name} resolves to {matches.Count} native root(s).");
+        if (matches.Count == 1)
+            return;
+
+        // A comma-prefixed OAT dependency is an explicit external/reference
+        // asset. It is valid for the full native zone to have no top-level
+        // root for it; production emission writes an inline reference shell.
+        if (matches.Count == 0 && IsExplicitReference(name))
+            return;
+
+        errors.Add(
+            $"{owner}: asset reference {string.Join("/", types)}:{name} resolves to {matches.Count} native root(s).");
     }
+
+    internal static bool IsExplicitReference(string name)
+    {
+        var value = name.Trim();
+        return value.StartsWith(",", StringComparison.Ordinal);
+    }
+
+    internal static string ReferenceAssetName(string name)
+    {
+        var value = name.Trim();
+        while (value.StartsWith(",", StringComparison.Ordinal))
+            value = value[1..];
+        return "," + value;
+    }
+
+    internal static IReadOnlyList<T4XenonNativeIdentityEntry> FindDependencyCandidates(
+        IReadOnlyList<T4XenonNativeIdentityEntry> roots,
+        IReadOnlyCollection<string> acceptedTypes,
+        string name) =>
+        FindCandidates(roots, acceptedTypes, name);
 
     private static IReadOnlyList<T4XenonNativeIdentityEntry> FindCandidates(
         IReadOnlyList<T4XenonNativeIdentityEntry> roots,
@@ -284,18 +312,81 @@ internal static class T4XenonMaterialGraphCodec
 {
     public static void Plan(
         T4XenonMaterialCorpusEntry entry,
+        IReadOnlyList<T4XenonNativeIdentityEntry> roots,
         Action<long, int, bool> virtualAlloc,
         Action<int> tempRoot)
     {
         var g = entry.Graph;
-        tempRoot(g.Abi.Material);
+
+        var tempScope = g.Abi.Material;
+        var externalTechnique = false;
+        if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
+        {
+            var resolution = ResolveDependency(
+                roots,
+                new[] { "techset", "techniqueset" },
+                entry.ProductionTechniqueSet!);
+            externalTechnique = resolution.IsExternal;
+            if (externalTechnique)
+                tempScope = checked(tempScope + 216);
+        }
+
+        var externalImages = new bool[g.Textures.Count];
+        for (var i = 0; i < g.Textures.Count; i++)
+        {
+            var image = g.Textures[i].Image;
+            if (string.IsNullOrWhiteSpace(image))
+                continue;
+
+            var resolution = ResolveDependency(
+                roots,
+                new[] { "image" },
+                image!);
+            externalImages[i] = resolution.IsExternal;
+            if (resolution.IsExternal)
+                tempScope = checked(tempScope + 40);
+        }
+
+        // TEMP is one scratch scope per top-level Material. Referenced child
+        // assets are serialized into that same scope after the Material body.
+        tempRoot(tempScope);
+
+        // Material::info.name
         virtualAlloc(Utf8Z(entry.NativeName), 1, true);
 
-        PlanOptional(
-            g.Presence.TextureTable,
-            checked((long)g.Counts.Textures * g.Abi.TextureDef),
-            g.Alignments.TextureDef,
-            virtualAlloc);
+        // Material::techniqueSet is traversed before textureTable.
+        if (externalTechnique)
+            virtualAlloc(
+                Utf8Z(T4XenonMaterialCorpus.ReferenceAssetName(entry.ProductionTechniqueSet!)),
+                1,
+                true);
+
+        if (g.Presence.TextureTable)
+        {
+            virtualAlloc(
+                checked((long)g.Counts.Textures * g.Abi.TextureDef),
+                g.Alignments.TextureDef,
+                true);
+
+            // The texture array body is written first, then each embedded
+            // MaterialTextureDef asset pointer is traversed in index order.
+            for (var i = 0; i < g.Textures.Count; i++)
+            {
+                if (!externalImages[i])
+                    continue;
+
+                virtualAlloc(
+                    Utf8Z(T4XenonMaterialCorpus.ReferenceAssetName(g.Textures[i].Image!)),
+                    1,
+                    true);
+            }
+        }
+        else if (g.Counts.Textures != 0)
+        {
+            throw new InvalidDataException(
+                $"{entry.CorpusName}: null texture table with {g.Counts.Textures} texture(s).");
+        }
+
         PlanOptional(
             g.Presence.ConstantTable,
             checked((long)g.Counts.Constants * g.Abi.ConstantDef),
@@ -325,18 +416,36 @@ internal static class T4XenonMaterialGraphCodec
             g.Abi.Material,
             $"{entry.CorpusName} root");
 
+        var techniqueResolution = DependencyResolution.None;
         if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
         {
-            var stable = T4XenonMaterialCorpus.ResolveStablePointer(
+            techniqueResolution = ResolveDependency(
                 roots,
-                stableByRoot,
                 new[] { "techset", "techniqueset" },
                 entry.ProductionTechniqueSet!);
-            PutU32(rootBody, g.Offsets.TechniqueSet, stable);
+
+            PutU32(
+                rootBody,
+                g.Offsets.TechniqueSet,
+                techniqueResolution.IsExternal
+                    ? T4ZonePointer.Following
+                    : ResolveStablePointer(
+                        stableByRoot,
+                        techniqueResolution,
+                        "techset/techniqueset",
+                        entry.ProductionTechniqueSet!));
         }
 
         zone.Write(rootBody);
         EmitString(zone, virtualAlloc, entry.NativeName);
+
+        if (techniqueResolution.IsExternal)
+            EmitReferenceShell(
+                zone,
+                virtualAlloc,
+                shellSize: 216,
+                nameOffset: 0,
+                T4XenonMaterialCorpus.ReferenceAssetName(entry.ProductionTechniqueSet!));
 
         if (g.Presence.TextureTable)
         {
@@ -351,6 +460,7 @@ internal static class T4XenonMaterialGraphCodec
                 expected,
                 $"{entry.CorpusName} textures");
 
+            var imageResolutions = new DependencyResolution[g.Textures.Count];
             for (var i = 0; i < g.Textures.Count; i++)
             {
                 var texture = g.Textures[i];
@@ -361,15 +471,22 @@ internal static class T4XenonMaterialGraphCodec
                 if (string.IsNullOrWhiteSpace(texture.Image))
                     continue;
 
-                var stable = T4XenonMaterialCorpus.ResolveStablePointer(
+                var resolution = ResolveDependency(
                     roots,
-                    stableByRoot,
                     new[] { "image" },
                     texture.Image!);
+                imageResolutions[i] = resolution;
+
                 PutU32(
                     textureBytes,
                     checked(i * g.Abi.TextureDef + g.Offsets.TextureUnion),
-                    stable);
+                    resolution.IsExternal
+                        ? T4ZonePointer.Following
+                        : ResolveStablePointer(
+                            stableByRoot,
+                            resolution,
+                            "image",
+                            texture.Image!));
             }
 
             virtualAlloc(
@@ -377,6 +494,21 @@ internal static class T4XenonMaterialGraphCodec
                 g.Alignments.TextureDef,
                 true);
             zone.Write(textureBytes);
+
+            // ZoneCode writes the entire MaterialTextureDef array first, then
+            // traverses each image pointer in element order.
+            for (var i = 0; i < g.Textures.Count; i++)
+            {
+                if (!imageResolutions[i].IsExternal)
+                    continue;
+
+                EmitReferenceShell(
+                    zone,
+                    virtualAlloc,
+                    shellSize: 40,
+                    nameOffset: 36,
+                    T4XenonMaterialCorpus.ReferenceAssetName(g.Textures[i].Image!));
+            }
         }
         else if (g.Counts.Textures != 0)
         {
@@ -403,6 +535,64 @@ internal static class T4XenonMaterialGraphCodec
             checked((long)g.Counts.StateBits * g.Abi.StateBits),
             g.Alignments.StateBits,
             $"{entry.CorpusName} stateBits");
+    }
+
+    private readonly record struct DependencyResolution(
+        bool IsExternal,
+        int RootIndex)
+    {
+        public static DependencyResolution None => new(false, -1);
+    }
+
+    private static DependencyResolution ResolveDependency(
+        IReadOnlyList<T4XenonNativeIdentityEntry> roots,
+        IReadOnlyCollection<string> acceptedTypes,
+        string name)
+    {
+        var matches = T4XenonMaterialCorpus.FindDependencyCandidates(
+            roots,
+            acceptedTypes,
+            name);
+
+        if (matches.Count == 1)
+            return new DependencyResolution(false, matches[0].Index);
+
+        if (matches.Count == 0 &&
+            T4XenonMaterialCorpus.IsExplicitReference(name))
+            return new DependencyResolution(true, -1);
+
+        throw new InvalidDataException(
+            $"Asset reference {string.Join("/", acceptedTypes)}:{name} resolves to {matches.Count} native root(s) and is not a valid external reference.");
+    }
+
+    private static uint ResolveStablePointer(
+        IReadOnlyDictionary<int, uint> stableByRoot,
+        DependencyResolution resolution,
+        string type,
+        string name)
+    {
+        if (resolution.IsExternal || resolution.RootIndex < 0)
+            throw new InvalidOperationException(
+                $"External asset reference {type}:{name} has no root stable pointer.");
+
+        if (!stableByRoot.TryGetValue(resolution.RootIndex, out var stable))
+            throw new InvalidDataException(
+                $"Asset reference {type}:{name} root #{resolution.RootIndex} has no planned insert pointer.");
+
+        return stable;
+    }
+
+    private static void EmitReferenceShell(
+        Stream zone,
+        Action<long, int, bool> virtualAlloc,
+        int shellSize,
+        int nameOffset,
+        string referenceName)
+    {
+        var body = new byte[shellSize];
+        PutU32(body, nameOffset, T4ZonePointer.Following);
+        zone.Write(body);
+        EmitString(zone, virtualAlloc, referenceName);
     }
 
     private static void PlanOptional(
