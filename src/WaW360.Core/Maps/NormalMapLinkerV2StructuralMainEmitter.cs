@@ -1427,6 +1427,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         // payload round-trips.  Anything ambiguous remains on the fail-safe empty
         // RawFile path below.
         var rawOccupied = new List<(long Start, long End, string Owner)>();
+        var rawAnchors = new List<(int AssetIndex, long Start, long End, string Owner)>();
         foreach (var trackedType in TrackedTypes)
         {
             var trackedAssets = Physical(doc, trackedType);
@@ -1441,22 +1442,29 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                     $"RawFile occupied-span proof mismatch for {Path.GetFileName(sourcePath)} {trackedType}: " +
                     $"expected {trackedAssets.Count:N0}, proof={trackedProof.Records.Count:N0}.");
 
-            rawOccupied.AddRange(trackedProof.Records.Select(r => (
-                r.SourceOffset,
-                r.SourceOffset + (long)r.BlobLength,
-                $"{trackedType} proof")));
+            var records = trackedProof.Records.OrderBy(r => r.SourceOffset).ToList();
+            for (var i = 0; i < trackedAssets.Count; i++)
+            {
+                var asset = trackedAssets[i];
+                var record = records[i];
+                var end = record.SourceOffset + (long)record.BlobLength;
+                rawOccupied.Add((record.SourceOffset, end, $"{trackedType} proof"));
+                rawAnchors.Add((asset.Index, record.SourceOffset, end, $"{trackedType} proof"));
+            }
         }
 
-        rawOccupied.AddRange(sound.AssetsByIndex.Values.Select(s => (
-            s.SourceOffset,
-            s.SourceEndOffset,
-            "sound proof")));
+        foreach (var s in sound.AssetsByIndex.Values)
+        {
+            rawOccupied.Add((s.SourceOffset, s.SourceEndOffset, "sound proof"));
+            rawAnchors.Add((s.AssetIndex, s.SourceOffset, s.SourceEndOffset, "sound proof"));
+        }
 
         var rawFiles = T4RawFileOccupiedSpanSerializer.Build(
             doc,
             zone,
             rawOccupied.OrderBy(x => x.Start).ToList(),
-            ct);
+            ct,
+            rawAnchors.OrderBy(x => x.AssetIndex).ToList());
         if (rawFiles.ReadBackErrors != 0)
             throw new InvalidDataException(
                 $"RawFile structural read-back failed for {Path.GetFileName(sourcePath)}: " +
