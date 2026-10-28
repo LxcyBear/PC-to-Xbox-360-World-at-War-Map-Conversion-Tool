@@ -235,7 +235,7 @@ $manifest = [ordered]@{
     distinctTechniqueSetReferences = $techniqueRefs.Count
     distinctImageReferences = $imageRefs.Count
     graphPass = $true
-    rows = @($rows)
+    rows = $rows.ToArray()
     log = $log
 }
 
