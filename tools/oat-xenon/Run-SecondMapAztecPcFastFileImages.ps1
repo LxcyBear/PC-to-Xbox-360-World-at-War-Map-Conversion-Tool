@@ -99,6 +99,9 @@ foreach($source in @($baseline.fastfiles)) {
 }
 $nativeKeys=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 foreach($root in $nativeImages){[void]$nativeKeys.Add((Normalize-Image ([string]$root.Name)))}
+if($byName.Count -eq 0) {
+    throw 'No image identities parsed from prior PC --list logs. Check image listing format before declaring source coverage.'
+}
 $listedMatch=0
 foreach($root in $nativeImages){
     if($byName.ContainsKey((Normalize-Image ([string]$root.Name)))){$listedMatch++}
