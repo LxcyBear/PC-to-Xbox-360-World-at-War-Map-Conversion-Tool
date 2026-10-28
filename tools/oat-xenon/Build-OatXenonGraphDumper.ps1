@@ -205,9 +205,11 @@ try {
         # We emit ONE line on exception, not 8,509 verbose per-asset messages.
         $loaderRel='src/ZoneLoading/Game/T4Xenon/ContentLoaderT4Xenon.cpp'
         $loader=Join-Path $oat 'src\ZoneLoading\Game\T4Xenon\ContentLoaderT4Xenon.cpp'
-        $loaderText=[IO.File]::ReadAllText($loader)
+        $loaderText=[IO.File]::ReadAllText($loader).Replace("`r`n","`n")
         $incAnchor='#include <cassert>'
-        if ($loaderText.Split($incAnchor).Length -ne 2) {
+        if ($loaderText.IndexOf($incAnchor,[StringComparison]::Ordinal) -lt 0 -or
+            $loaderText.IndexOf($incAnchor,[StringComparison]::Ordinal) -ne
+            $loaderText.LastIndexOf($incAnchor,[StringComparison]::Ordinal)) {
             throw 'Pinned OAT native loader include anchor is not unique.'
         }
         $loaderText=$loaderText.Replace($incAnchor,
@@ -237,7 +239,11 @@ try {
         varXAsset++;
     }
 '@
-        if ($loaderText.Split($oldLoop).Length -ne 2) {
+        $oldLoop=$oldLoop.Replace("`r`n","`n")
+        $newLoop=$newLoop.Replace("`r`n","`n")
+        if ($loaderText.IndexOf($oldLoop,[StringComparison]::Ordinal) -lt 0 -or
+            $loaderText.IndexOf($oldLoop,[StringComparison]::Ordinal) -ne
+            $loaderText.LastIndexOf($oldLoop,[StringComparison]::Ordinal)) {
             throw 'Pinned OAT native asset loader loop anchor is not unique.'
         }
         $loaderText=$loaderText.Replace($oldLoop,$newLoop)
@@ -254,7 +260,10 @@ try {
         throw;
     }
 '@
-        if ($loaderText.Split($first).Length -ne 2) {
+        $replacement=$replacement.Replace("`r`n","`n")
+        if ($loaderText.IndexOf($first,[StringComparison]::Ordinal) -lt 0 -or
+            $loaderText.IndexOf($first,[StringComparison]::Ordinal) -ne
+            $loaderText.LastIndexOf($first,[StringComparison]::Ordinal)) {
             throw 'Pinned OAT native ScriptString entry anchor is not unique.'
         }
         $loaderText=$loaderText.Replace($first,$replacement.TrimEnd([char]13,[char]10))
