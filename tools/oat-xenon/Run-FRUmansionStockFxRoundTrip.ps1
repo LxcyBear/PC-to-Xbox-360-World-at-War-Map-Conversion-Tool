@@ -104,10 +104,10 @@ function Parse-FxList {
         $line = ([string]$raw).Trim()
         if (-not $line.StartsWith('fx,', [StringComparison]::OrdinalIgnoreCase)) { continue }
 
-        $parts = $line.Split(@(','), 2)
-        if ($parts.Count -ne 2) { continue }
+        $comma = $line.IndexOf(',')
+        if ($comma -lt 0 -or $comma + 1 -ge $line.Length) { continue }
 
-        $name = Normalize-AssetName -Value $parts[1]
+        $name = Normalize-AssetName -Value $line.Substring($comma + 1)
         if (-not [string]::IsNullOrWhiteSpace($name)) {
             [void]$names.Add($name)
         }
