@@ -338,6 +338,12 @@ Write-Host "[AZTEC-PC-FF-IMAGE] status=$status"
 Write-Host "[AZTEC-PC-FF-IMAGE] PC FF image names=$($byName.Count), native matches=$listedMatch/666"
 Write-Host "[AZTEC-PC-FF-IMAGE] PC IWI files=$($extracted.Count), unambiguous native payload identities=$matchedNative"
 Write-Host "[AZTEC-PC-FF-IMAGE] Combined PC FF/IWD source identities=$union/666; remaining no-match=$($summary.nativeImageRootsStillWithoutMatchedSource)"
+foreach($key in @($errorCategories.Keys | Sort-Object)) {
+    Write-Host "[AZTEC-PC-FF-IMAGE] ERROR CATEGORY $($key)=$($errorCategories[$key])"
+}
+foreach($sample in @($errorSamples | Select-Object -First 6)) {
+    Write-Host "[AZTEC-PC-FF-IMAGE] SAMPLE [$($sample.Role)/$($sample.Category)] $($sample.Message)"
+}
 Write-Host "[AZTEC-PC-FF-IMAGE] Report: $txt"
 Write-Host '[AZTEC-PC-FF-IMAGE] Source evidence ONLY. No Xbox FF created.'
 if($status -eq 'AZTEC_PC_FF_IMAGE_SOURCE_DUMP_BLOCKED'){exit 4}
