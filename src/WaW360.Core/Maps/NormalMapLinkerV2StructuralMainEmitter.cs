@@ -1476,6 +1476,13 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             }
         }
 
+        var rawFallbackDiagnostic =
+            $"rawfile occupied-span verified={rawFiles.Verified}; declared={rawFiles.DeclaredPhysicalRawFiles}; " +
+            $"structural={rawFiles.StructuralRawFiles}; nativePromotable={rawFiles.NativePromotableRawFiles}; " +
+            $"packedNamePending={rawFiles.PackedNameRawFilesPending}; rejectedOccupied={rawFiles.RejectedOccupiedCandidates}; " +
+            $"rejectedWeak={rawFiles.RejectedWeakNameCandidates}; readBackErrors={rawFiles.ReadBackErrors}" +
+            (rawFiles.Warnings.Count == 0 ? string.Empty : $"; firstWarning={rawFiles.Warnings[0]}");
+
         var techsets = T4TechniqueSetNullGraphSerializer.Build(doc);
         if (!techsets.Verified && techsets.DeclaredPhysicalTechniqueSets != 0)
             throw new InvalidDataException($"TechniqueSet structural serialization failed for {Path.GetFileName(sourcePath)}.");
@@ -1540,7 +1547,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 {
                     var name = $"__waw360_raw_{Path.GetFileNameWithoutExtension(sourcePath)}_{asset.Index:D5}";
                     output[asset.Index] = new StructuralPayload("rawfile", name, BuildRawFileEmpty(name), true,
-                        "fallback empty RawFile; source body/name mapping unresolved in this structural diagnostic");
+                        "fallback empty RawFile; " + rawFallbackDiagnostic);
                     break;
                 }
                 case "localize":
