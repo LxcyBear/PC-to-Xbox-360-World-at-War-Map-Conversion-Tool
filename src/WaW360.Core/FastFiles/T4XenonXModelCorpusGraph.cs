@@ -133,36 +133,73 @@ internal sealed class T4XenonXModelCorpus
     internal static IReadOnlyList<T4XenonNativeIdentityEntry> FindReferenceCandidates(
         IReadOnlyList<T4XenonNativeIdentityEntry> roots,
         string type,
-        string name) =>
-        roots.Where(x =>
-                NormalizeType(x.OatTypeName) == NormalizeType(type) &&
-                NormalizeReferenceName(x.Name).Equals(
-                    NormalizeReferenceName(name),
-                    StringComparison.OrdinalIgnoreCase))
+        string name)
+    {
+        var wantedType = NormalizeType(type);
+        var typed = roots
+            .Where(x => NormalizeType(x.OatTypeName) == wantedType)
             .ToList();
+
+        // Tier 1: exact identity, including OAT's leading reference comma.
+        // This is authoritative when the full native sequence already contains
+        // the exact reference root emitted by standalone OAT XModel linking.
+        var exact = typed
+            .Where(x => NormalizeSlashes(x.Name).Equals(
+                NormalizeSlashes(name),
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (exact.Count != 0)
+            return exact;
+
+        // Tier 2: ignore only OAT's reference marker. This preserves a native
+        // unsuffixed material when no comma-decorated reference root exists,
+        // without collapsing it together with the Xbox-owned _wj variant.
+        var noReference = typed
+            .Where(x => StripReferenceMarker(x.Name).Equals(
+                StripReferenceMarker(name),
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (noReference.Count != 0)
+            return noReference;
+
+        // Tier 3: Xbox identity fallback. Some standalone OAT references have
+        // no corresponding reference/unsuffixed root in the full map; their
+        // native material exists only as the _wj-owned identity. Use this only
+        // after the stronger tiers above fail.
+        var xboxEquivalent = typed
+            .Where(x => StripXboxSuffix(StripReferenceMarker(x.Name)).Equals(
+                StripXboxSuffix(StripReferenceMarker(name)),
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return xboxEquivalent;
+    }
 
     internal static string NormalizeType(string value) =>
         value.Replace("_", string.Empty, StringComparison.Ordinal)
              .Replace("-", string.Empty, StringComparison.Ordinal)
              .ToLowerInvariant();
 
-    internal static string NormalizeReferenceName(string value)
-    {
-        var result = value.Trim().Replace('\\', '/');
+    private static string NormalizeSlashes(string value) =>
+        value.Trim().Replace('\\', '/');
 
-        // OAT reference assets are prefixed with one or more commas. Native
-        // World at War Xbox identities may additionally carry the _wj suffix
-        // even when the canonical dependency name does not. These are identity
-        // decorations, not different assets. Normalize both while keeping the
-        // full path prefix (mc/, wc/, gfx_, etc.) significant.
+    private static string StripReferenceMarker(string value)
+    {
+        var result = NormalizeSlashes(value);
         while (result.StartsWith(",", StringComparison.Ordinal))
             result = result[1..];
-
-        if (result.EndsWith("_wj", StringComparison.OrdinalIgnoreCase))
-            result = result[..^3];
-
         return result;
     }
+
+    private static string StripXboxSuffix(string value)
+    {
+        var result = NormalizeSlashes(value);
+        if (result.EndsWith("_wj", StringComparison.OrdinalIgnoreCase))
+            result = result[..^3];
+        return result;
+    }
+
+    internal static string NormalizeReferenceName(string value) =>
+        StripXboxSuffix(StripReferenceMarker(value));
 
     private static void ValidateGraph(
         T4XenonRelocatableXModelGraph graph,
