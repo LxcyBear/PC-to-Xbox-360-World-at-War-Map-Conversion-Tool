@@ -13,6 +13,8 @@ public sealed class T4XenonRendererEmitResult
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
     public required int RealImageRoots { get; init; }
+    public required int RealXModelRoots { get; init; }
+    public required int XModelReferenceRoots { get; init; }
     public required long ZoneBytes { get; init; }
     public required long MainZoneBytes { get; init; }
     public required long LargeRuntimeBytes { get; init; }
@@ -57,7 +59,9 @@ public static class T4XenonRendererGraphEmitter
         string? imageGraphDumpRoot = null,
         int expectedImages = 0,
         bool imageGraphValidationOnly = true,
-        int imageGraftLimit = 0)
+        int imageGraftLimit = 0,
+        string? xmodelGraphRoot = null,
+        string? xmodelBindingManifest = null)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -83,6 +87,20 @@ public static class T4XenonRendererGraphEmitter
                     string.Join(" | ", imageGraph.Errors.Take(20)));
         }
 
+        T4XenonXModelCorpus? xmodelCorpus = null;
+        if (!string.IsNullOrWhiteSpace(xmodelGraphRoot) ||
+            !string.IsNullOrWhiteSpace(xmodelBindingManifest))
+        {
+            if (string.IsNullOrWhiteSpace(xmodelGraphRoot) ||
+                string.IsNullOrWhiteSpace(xmodelBindingManifest))
+                throw new InvalidDataException(
+                    "Stage 4E requires both XModel graph root and XModel binding manifest.");
+
+            xmodelCorpus = T4XenonXModelCorpus.Load(
+                xmodelGraphRoot!,
+                xmodelBindingManifest!);
+        }
+
         // Re-run the corrected Stage 4D allocator inside 4E. This makes byte
         // emission fail closed if traversal order and allocation ever drift.
         var layout = await T4XenonGraphBlockLayoutPlanner.BuildAsync(
@@ -97,7 +115,9 @@ public static class T4XenonRendererGraphEmitter
             cancellationToken,
             imageGraphDumpRoot,
             expectedImages,
-            imageGraftLimit);
+            imageGraftLimit,
+            xmodelGraphRoot,
+            xmodelBindingManifest);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -105,6 +125,14 @@ public static class T4XenonRendererGraphEmitter
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         var roots = LoadNativeIdentity(nativeIdentityManifest);
         var bindings = LoadBindings(bindingManifest);
+        if (xmodelCorpus is not null)
+        {
+            var dependencyErrors = xmodelCorpus.ValidateDependencies(roots);
+            if (dependencyErrors.Count != 0)
+                throw new InvalidDataException(
+                    "Stage 4E XModel dependency validation failed: " +
+                    string.Join(" | ", dependencyErrors.Take(20)));
+        }
         if (!bindings.Ready)
             throw new InvalidDataException("Stage 4C binding manifest is not ready.");
 
@@ -125,6 +153,11 @@ public static class T4XenonRendererGraphEmitter
         var plannedLiterals = layout.Nodes
             .Where(x => x.Kind == "literal")
             .ToDictionary(x => x.Key, x => x.Offset, StringComparer.Ordinal);
+
+        var plannedRootInsert = layout.RootInsertLayouts
+            .ToDictionary(x => x.RootIndex);
+        var stableByRoot = layout.RootInsertLayouts
+            .ToDictionary(x => x.RootIndex, x => x.StablePointer);
 
         var state = new EmitState();
         var blobIndex = BuildBlobIndex(dumpRoot);
@@ -155,6 +188,7 @@ public static class T4XenonRendererGraphEmitter
         var rendererTechsets = 0;
         var rendererPixels = 0;
         var realImages = 0;
+        var realXModels = 0;
         var targetImageRoots = imageGraph is null
             ? 0
             : imageGraftLimit > 0
@@ -166,7 +200,13 @@ public static class T4XenonRendererGraphEmitter
             cancellationToken.ThrowIfCancellationRequested();
 
             var insertOffset = state.VirtualAlloc(4, 4, serialized: false);
-            var stablePointer = T4ZonePointer.Encode(T4ZoneBlock.Virtual, checked((uint)insertOffset));
+            if (!plannedRootInsert.TryGetValue(root.Index, out var plannedRoot))
+                throw new InvalidDataException(
+                    $"Missing planned root insert for #{root.Index} {root.TypeName}:{root.Name}.");
+            if (plannedRoot.InsertOffset != insertOffset)
+                throw new InvalidDataException(
+                    $"Root insert drift at #{root.Index}: emit=0x{insertOffset:X}, plan=0x{plannedRoot.InsertOffset:X}.");
+            var stablePointer = plannedRoot.StablePointer;
 
             if (pixelByRoot.TryGetValue(root.Index, out var pixelBinding))
             {
@@ -225,6 +265,24 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            if (xmodelCorpus is not null &&
+                xmodelCorpus.OwnedByRoot.TryGetValue(root.Index, out var xmodelEntry))
+            {
+                realXModels++;
+                T4XenonXModelGraphCodec.Emit(
+                    xmodelEntry,
+                    zone,
+                    (size, align, serialized) =>
+                    {
+                        state.VirtualAlloc(size, align, serialized);
+                    },
+                    state.TempRoot,
+                    native.Document.ScriptStrings,
+                    roots,
+                    stableByRoot);
+                continue;
+            }
+
             if (imageGraph is not null &&
                 realImages < targetImageRoots &&
                 Normalize(root.TypeName) == "image" &&
@@ -255,6 +313,10 @@ public static class T4XenonRendererGraphEmitter
         if (imageGraph is not null && realImages != targetImageRoots)
             throw new InvalidDataException(
                 $"Image root upgrade mismatch: upgraded={realImages:N0}, target={targetImageRoots:N0}, graph={imageGraph.Images:N0}.");
+
+        if (xmodelCorpus is not null && realXModels != xmodelCorpus.OwnedByRoot.Count)
+            throw new InvalidDataException(
+                $"XModel root upgrade mismatch: upgraded={realXModels:N0}, expected={xmodelCorpus.OwnedByRoot.Count:N0}.");
 
         var layoutReplayExact =
             state.TempMax == layout.TempBytes &&
@@ -361,6 +423,8 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Native roots:               {roots.Count:N0}");
         report.AppendLine($"Renderer TechniqueSets:     {rendererTechsets:N0}");
         report.AppendLine($"Renderer PixelShaders:      {rendererPixels:N0}");
+        report.AppendLine($"Real XModel roots:          {realXModels:N0}");
+        report.AppendLine($"XModel reference roots:     {xmodelCorpus?.ReferenceRoots ?? 0:N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
         report.AppendLine($"VIRTUAL:                    0x{state.Virtual:X}");
@@ -388,6 +452,8 @@ public static class T4XenonRendererGraphEmitter
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
             RealImageRoots = realImages,
+            RealXModelRoots = realXModels,
+            XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             ZoneBytes = zoneBytes.LongLength,
             MainZoneBytes = mainBytes.LongLength,
             LargeRuntimeBytes = state.LargeRuntime,
