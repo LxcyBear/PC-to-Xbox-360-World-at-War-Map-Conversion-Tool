@@ -21,8 +21,12 @@ if (-not (Test-Path -LiteralPath $TargetManifest -PathType Leaf)) { throw "Targe
 if ($MaxTextFileBytes -le 0) { throw 'MaxTextFileBytes must be positive.' }
 
 $source=(Resolve-Path -LiteralPath $SourceRoot).Path
-if ($source.Equals((Resolve-Path -LiteralPath $OutputRoot -ErrorAction SilentlyContinue).Path,[StringComparison]::OrdinalIgnoreCase)) {
-    throw 'OutputRoot must not be the same as SourceRoot.'
+if (Test-Path -LiteralPath $OutputRoot -PathType Container) {
+    $existingOutput=(Resolve-Path -LiteralPath $OutputRoot).Path
+    if ($source.Equals($existingOutput,[StringComparison]::OrdinalIgnoreCase) -or
+        $existingOutput.StartsWith($source.TrimEnd('\') + '\',[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'OutputRoot must not be inside SourceRoot.'
+    }
 }
 $prior=Get-Content -LiteralPath $TargetManifest -Raw | ConvertFrom-Json
 if ([string]$prior.format -ne 'WaW360.Nuclear5T.JakeFastFileCorpusAudit.v1' -or
@@ -125,7 +129,7 @@ function Inspect-Text([IO.Stream]$stream,[string]$path,[string]$entry,[long]$len
         $script:skippedLargeText++
         return
     }
-    $reader=New-Object IO.StreamReader($stream,[Text.Encoding]::UTF8,$true,65536,$true)
+    $reader=[IO.StreamReader]::new($stream,[Text.Encoding]::UTF8,$true,65536,$true)
     try {
         $script:textFilesRead++
         $lineNo=0
