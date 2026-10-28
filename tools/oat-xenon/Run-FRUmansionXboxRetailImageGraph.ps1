@@ -307,14 +307,126 @@ foreach ($match in @($matches | Sort-Object { [int]$_.Index })) {
     }
 }
 
+
+# The census is identity-oriented and can point at a zone that references an image
+# without owning its payload. Exhaustively search the remaining retail FF corpus
+# for any identities still unresolved after the preferred-zone pass.
+if ($unresolved.Count -gt 0) {
+    Write-Host ''
+    Write-Host ("[NUCLEAR-4R-XBOX-GRAPH] preferred-zone pass left {0} unresolved; scanning full retail FF corpus..." -f $unresolved.Count) -ForegroundColor Cyan
+
+    $pending = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($item in $unresolved.ToArray()) { $pending.Add($item) }
+
+    $retailFastFiles = @(
+        Get-ChildItem -LiteralPath $XboxGameRoot -Filter '*.ff' -File -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object FullName
+    )
+
+    foreach ($retailFf in $retailFastFiles) {
+        if ($pending.Count -eq 0) { break }
+
+        $zoneGraph = Get-ZoneGraphIndex -ZonePath $retailFf.FullName -ZoneName $retailFf.Name
+        if ($zoneGraph.ExitCode -ne 0) { continue }
+
+        $remaining = New-Object 'System.Collections.Generic.List[object]'
+
+        foreach ($item in $pending.ToArray()) {
+            $targetName = [string]$item.Name
+            $targetKey = [string]$item.Normalized
+
+            if (-not $zoneGraph.Index.ContainsKey($targetKey)) {
+                $remaining.Add($item)
+                continue
+            }
+
+            $candidates = @($zoneGraph.Index[$targetKey].ToArray())
+            if ($candidates.Count -eq 0) {
+                $remaining.Add($item)
+                continue
+            }
+
+            $exact = @($candidates | Where-Object { [string]$_.ListedName -ceq $targetName } | Select-Object -First 1)
+            $chosenEntry = if ($exact.Count -eq 1) { $exact[0] } else { $candidates[0] }
+
+            try {
+                $sourceDoc = $chosenEntry.Doc
+                $sourceDump = [string]$zoneGraph.DumpRoot
+                $safe = Get-SafeStem -Value $targetName
+                $prefix = ("{0:D5}_{1}" -f [int]$item.Index, $safe)
+
+                $sourcePixel = Resolve-GraphBlob -Root $sourceDump -Relative ([string]$sourceDoc.pixelsFile)
+                $sourceHeader = Resolve-GraphBlob -Root $sourceDump -Relative ([string]$sourceDoc.loadDef.textureHeaderFile)
+
+                if (-not (Test-Path -LiteralPath $sourceHeader -PathType Leaf)) {
+                    throw "texture header missing"
+                }
+
+                $pixelRel = ''
+                if ([int64]$sourceDoc.pixelsBytes -gt 0) {
+                    if (-not (Test-Path -LiteralPath $sourcePixel -PathType Leaf)) {
+                        throw "pixel blob missing"
+                    }
+                    $pixelRel = "xenon_image_pixels/$prefix.pixels.bin"
+                    Copy-Item -LiteralPath $sourcePixel -Destination (Join-Path $consolidated $pixelRel.Replace('/', '\')) -Force
+                    $totalPixelBytes += [int64](Get-Item -LiteralPath $sourcePixel).Length
+                }
+
+                $headerRel = "xenon_image_headers/$prefix.d3dtexture.bin"
+                Copy-Item -LiteralPath $sourceHeader -Destination (Join-Path $consolidated $headerRel.Replace('/', '\')) -Force
+
+                $sourceDoc.name = $targetName
+                $sourceDoc.pixelsFile = $pixelRel
+                $sourceDoc.loadDef.textureHeaderFile = $headerRel
+
+                $graphRel = "xenon_image_graphs/$prefix.json"
+                $graphPath = Join-Path $consolidated $graphRel.Replace('/', '\')
+                $sourceDoc | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $graphPath -Encoding UTF8
+
+                $cardBytes = [int64]$sourceDoc.cardMemoryBytes
+                $totalCardMemory += $cardBytes
+
+                $resolved.Add([pscustomobject]@{
+                    Index = [int]$item.Index
+                    Name = $targetName
+                    Normalized = $targetKey
+                    BestClass = [string]$item.BestClass
+                    SourceZone = [string]$retailFf.Name
+                    SourceZoneClass = 'fallback-retail-corpus'
+                    SourceZonePath = [string]$retailFf.FullName
+                    SourceListedName = [string]$chosenEntry.ListedName
+                    CardMemoryBytes = $cardBytes
+                    PixelsBytes = [int64]$sourceDoc.pixelsBytes
+                    GraphFile = $graphRel
+                    PixelsFile = $pixelRel
+                    TextureHeaderFile = $headerRel
+                })
+
+                Write-Host ("[NUCLEAR-4R-XBOX-GRAPH] FALLBACK HIT root #{0}: {1} <- {2}" -f [int]$item.Index, $targetName, $retailFf.Name) -ForegroundColor Green
+            }
+            catch {
+                $remaining.Add($item)
+            }
+        }
+
+        $pending = $remaining
+    }
+
+    $unresolved = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($item in $pending.ToArray()) { $unresolved.Add($item) }
+
+    Write-Host ("[NUCLEAR-4R-XBOX-GRAPH] full-corpus fallback complete: resolved={0}, unresolved={1}, zonesDumped={2}" -f $resolved.Count, $unresolved.Count, $zoneCache.Count)
+}
+
 $graphFiles = @(Get-ChildItem -LiteralPath $graphDir -Filter '*.json' -File -ErrorAction SilentlyContinue)
 $pixelFiles = @(Get-ChildItem -LiteralPath $pixelDir -Filter '*.pixels.bin' -File -ErrorAction SilentlyContinue)
 $headerFiles = @(Get-ChildItem -LiteralPath $headerDir -Filter '*.d3dtexture.bin' -File -ErrorAction SilentlyContinue)
 
 $graphPass =
-    $resolved.Count -gt 0 -and
-    $graphFiles.Count -eq $resolved.Count -and
-    $headerFiles.Count -eq $resolved.Count
+    $resolved.Count -eq $matches.Count -and
+    $unresolved.Count -eq 0 -and
+    $graphFiles.Count -eq $matches.Count -and
+    $headerFiles.Count -eq $matches.Count
 
 $zoneRows = New-Object 'System.Collections.Generic.List[object]'
 foreach ($zoneKey in $zoneOrder.ToArray()) {
@@ -399,4 +511,4 @@ if (-not $graphPass) {
     exit 4
 }
 
-Write-Host '[NUCLEAR-4R-XBOX-GRAPH] PASS: all retail-Xbox stock matches have verified Xbox-native image graphs.' -ForegroundColor Green
+Write-Host '[NUCLEAR-4R-XBOX-GRAPH] PASS: all requested retail-Xbox stock roots have verified Xbox-native image graphs.' -ForegroundColor Green
