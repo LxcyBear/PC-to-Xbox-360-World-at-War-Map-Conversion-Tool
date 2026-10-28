@@ -23,6 +23,7 @@ $productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\n
 $productionXModelGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4y_xmodel_production_graft\nuclear_4y_xmodel_production_graft.json'
 $productionMaterialGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_production_graft\nuclear_4zd_material_production_graft.json'
 $productionCriticalReferenceProofManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4w_xbox_reference_proof\nuclear_4w_xbox_reference_proof.json'
+$productionImageReferenceProofManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4x_xbox_image_reference_proof\nuclear_4x_xbox_image_reference_proof.json'
 
 function Find-MainFastFile {
     param([Parameter(Mandatory=$true)][string]$Directory)
@@ -142,6 +143,26 @@ if (Test-Path -LiteralPath $productionCriticalReferenceProofManifest -PathType L
     }
 }
 
+$productionImageReferenceCredit = $null
+if (Test-Path -LiteralPath $productionImageReferenceProofManifest -PathType Leaf) {
+    try {
+        $stage4x = Get-Content -LiteralPath $productionImageReferenceProofManifest -Raw | ConvertFrom-Json
+        if ([string]$stage4x.format -eq 'WaW360.Nuclear4X.XboxImageRuntimeReferenceProof.v1' -and
+            [bool]$stage4x.referenceProofPass -and
+            [int]$stage4x.runtimeReferenceCandidates -eq 7 -and
+            [int]$stage4x.payloadRequiredStockImages -eq 0 -and
+            [int]$stage4x.resolvedReferences -eq 7 -and
+            [int]$stage4x.missingReferences -eq 0 -and
+            [int]$stage4x.linkerExitCode -eq 0 -and
+            [int]$stage4x.unlinkerExitCode -eq 0) {
+            $productionImageReferenceCredit = $productionImageReferenceProofManifest
+        }
+    }
+    catch {
+        throw "Stage 4X manifest exists but could not be validated: $($_.Exception.Message)"
+    }
+}
+
 Write-Host '[NUCLEAR-4F] ================================================================ '
 Write-Host '[NUCLEAR-4F] FULL-CONTENT MASS / PRE-HARDWARE GATE'
 Write-Host '[NUCLEAR-4F] ================================================================'
@@ -155,6 +176,7 @@ Write-Host "[NUCLEAR-4F] 4U image credit    : $(if ($null -eq $productionImageCr
 Write-Host "[NUCLEAR-4F] 4Y XModel credit   : $(if ($null -eq $productionXModelCredit) { '<none>' } else { $productionXModelCredit })"
 Write-Host "[NUCLEAR-4F] 4Z-D Material credit: $(if ($null -eq $productionMaterialCredit) { '<none>' } else { $productionMaterialCredit })"
 Write-Host "[NUCLEAR-4F] 4W retail refs     : $(if ($null -eq $productionCriticalReferenceCredit) { '<none>' } else { $productionCriticalReferenceCredit })"
+Write-Host "[NUCLEAR-4F] 4X image refs      : $(if ($null -eq $productionImageReferenceCredit) { '<none>' } else { $productionImageReferenceCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
 Write-Host ''
 Write-Host '[NUCLEAR-4F] POLICY: no Xbox test candidate until size + critical-content gates both pass.'
@@ -184,22 +206,29 @@ try {
     if ($null -ne $productionImageCredit -or
         $null -ne $productionXModelCredit -or
         $null -ne $productionMaterialCredit -or
-        $null -ne $productionCriticalReferenceCredit) {
+        $null -ne $productionCriticalReferenceCredit -or
+        $null -ne $productionImageReferenceCredit) {
         # CLI positions keep image -> 4Y -> 4Z-D -> 4W. Preserve empty earlier
         # slots whenever a later production credit exists.
         $args += $(if ($null -eq $productionImageCredit) { '' } else { $productionImageCredit })
     }
     if ($null -ne $productionXModelCredit -or
         $null -ne $productionMaterialCredit -or
-        $null -ne $productionCriticalReferenceCredit) {
+        $null -ne $productionCriticalReferenceCredit -or
+        $null -ne $productionImageReferenceCredit) {
         $args += $(if ($null -eq $productionXModelCredit) { '' } else { $productionXModelCredit })
     }
     if ($null -ne $productionMaterialCredit -or
-        $null -ne $productionCriticalReferenceCredit) {
+        $null -ne $productionCriticalReferenceCredit -or
+        $null -ne $productionImageReferenceCredit) {
         $args += $(if ($null -eq $productionMaterialCredit) { '' } else { $productionMaterialCredit })
     }
-    if ($null -ne $productionCriticalReferenceCredit) {
-        $args += $productionCriticalReferenceCredit
+    if ($null -ne $productionCriticalReferenceCredit -or
+        $null -ne $productionImageReferenceCredit) {
+        $args += $(if ($null -eq $productionCriticalReferenceCredit) { '' } else { $productionCriticalReferenceCredit })
+    }
+    if ($null -ne $productionImageReferenceCredit) {
+        $args += $productionImageReferenceCredit
     }
 
     & dotnet @args
