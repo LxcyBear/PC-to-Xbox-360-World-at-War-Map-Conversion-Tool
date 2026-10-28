@@ -598,14 +598,16 @@ public static class T4XenonXModelReplayEmitter
 
         EmitOptionalBlob(
             zone, state, graphRoot, graph.BoneInfoFile,
+            graph.Presence.BoneInfo,
             checked((long)graph.Counts.NumBones * graph.Abi.BoneInfo),
-            4,
+            graph.Alignments.BoneInfo,
             "boneInfo");
 
         EmitOptionalBlob(
             zone, state, graphRoot, graph.HighMipBoundsFile,
+            graph.Presence.HighMipBounds,
             checked((long)graph.Counts.HighMipBounds * graph.Abi.HighMipBounds),
-            4,
+            graph.Alignments.HighMipBounds,
             "highMipBounds");
     }
 
