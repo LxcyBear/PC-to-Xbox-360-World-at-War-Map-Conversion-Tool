@@ -47,6 +47,7 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required int ProductionMaterialRoots { get; init; }
     public required int ProductionMaterialReferenceRoots { get; init; }
     public required long ProductionMaterialSerializedBytes { get; init; }
+    public required int ProductionCriticalReferenceRoots { get; init; }
     public required long ProductionIntegratedBaselineZoneBytes { get; init; }
     public required bool RendererLayoutReady { get; init; }
     public required bool ProperSizeGate { get; init; }
@@ -108,6 +109,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         string? productionImageGraftManifest = null,
         string? productionXModelGraftManifest = null,
         string? productionMaterialGraftManifest = null,
+        string? productionCriticalReferenceProofManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -143,6 +145,11 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         var productionMaterials = LoadProductionMaterialCredit(
             productionMaterialGraftManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
+        var productionCriticalReferences = LoadProductionCriticalReferenceCredit(
+            productionCriticalReferenceProofManifest,
             nativeIdentity,
             native.Document.AssetCount);
 
@@ -354,6 +361,21 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            // Stage 4W proves these exact native FX/Weapon/RawFile roots resolve as
+            // external references through the retail Xbox common/base-Zombies pools.
+            // Consume the legacy type-order source slot if one exists so subsequent
+            // source/native pairing remains aligned, but do not charge embedded
+            // payload bytes: the production representation is the reference itself.
+            if (productionCriticalReferences.ReferenceNativeIndices.Contains(i))
+            {
+                if (pools.TryGetValue(type, out var referenceQueue) && referenceQueue.Count != 0)
+                    referenceQueue.Dequeue();
+
+                realPromotedRoots++;
+                stat.RealPromotedRoots++;
+                continue;
+            }
+
             if (pools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var pair = queue.Dequeue();
@@ -511,6 +533,17 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (productionCriticalReferences.ReferenceNativeIndices.Contains(i))
+            {
+                if (deltaPools.TryGetValue(type, out var referenceQueue) && referenceQueue.Count != 0)
+                    referenceQueue.Dequeue();
+
+                // The integrated baseline already carries a name/reference-sized shell
+                // for this native root. Stage 4W proves that shell can remain an
+                // external retail reference, so no source-payload delta is applied.
+                continue;
+            }
+
             if (deltaPools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var payload = queue.Dequeue().Payload;
@@ -562,6 +595,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionMaterials.SerializedBytesByNativeIndex.Count == 0
                 ? "No passing Stage 4Z-D Material production graft was supplied; Material readiness is still evaluated from the legacy structural source path."
                 : $"Stage 4Z-D resolves all {productionMaterials.SerializedBytesByNativeIndex.Count + productionMaterials.ReferenceRoots:N0} native Material roots: {productionMaterials.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon payloads + {productionMaterials.ReferenceRoots:N0} OAT-validated reference roots, and supplies an OAT-clean {productionMaterials.IntegratedZoneBytes:N0}-byte integrated baseline.",
+            productionCriticalReferences.ReferenceNativeIndices.Count == 0
+                ? "No passing Stage 4W retail critical-reference proof was supplied; FX/Weapon/RawFile readiness still follows the legacy structural source path."
+                : $"Stage 4W credits {productionCriticalReferences.ReferenceNativeIndices.Count:N0} exact retail-Xbox runtime references: {productionCriticalReferences.FxRoots:N0} FX + {productionCriticalReferences.WeaponRoots:N0} Weapon + {productionCriticalReferences.RawFileRoots:N0} RawFile.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -610,6 +646,7 @@ public static class NormalMapLinkerV2FullContentReadiness
             ProductionMaterialRoots = productionMaterials.SerializedBytesByNativeIndex.Count,
             ProductionMaterialReferenceRoots = productionMaterials.ReferenceRoots,
             ProductionMaterialSerializedBytes = productionMaterials.TotalSerializedBytes,
+            ProductionCriticalReferenceRoots = productionCriticalReferences.ReferenceNativeIndices.Count,
             ProductionIntegratedBaselineZoneBytes = provenIntegratedBaseZoneBytes,
             RendererLayoutReady = rendererLayout.LayoutReady,
             ProperSizeGate = properSizeGate,
@@ -630,6 +667,96 @@ public static class NormalMapLinkerV2FullContentReadiness
             cancellationToken);
 
         return result;
+    }
+
+    private sealed record ProductionCriticalReferenceCredit(
+        IReadOnlySet<int> ReferenceNativeIndices,
+        int FxRoots,
+        int WeaponRoots,
+        int RawFileRoots);
+
+    private static ProductionCriticalReferenceCredit LoadProductionCriticalReferenceCredit(
+        string? proofManifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(proofManifestPath))
+            return new ProductionCriticalReferenceCredit(
+                new HashSet<int>(),
+                0,
+                0,
+                0);
+
+        proofManifestPath = Path.GetFullPath(proofManifestPath);
+        if (!File.Exists(proofManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4F critical-reference proof manifest was not found.",
+                proofManifestPath);
+
+        using var proofDoc = JsonDocument.Parse(File.ReadAllText(proofManifestPath));
+        var proof = proofDoc.RootElement;
+
+        if (GetString(proof, "format") != "WaW360.Nuclear4W.XboxRuntimeReferenceProof.v1" ||
+            !GetBool(proof, "referenceProofPass") ||
+            GetInt(proof, "referenceCandidates") != 200 ||
+            GetInt(proof, "resolvedReferences") != 200 ||
+            GetInt(proof, "missingReferences") != 0 ||
+            GetInt(proof, "linkerExitCode") != 0 ||
+            GetInt(proof, "unlinkerExitCode") != 0)
+            throw new InvalidDataException(
+                "Stage 4W manifest does not prove a clean 200-root retail Xbox runtime-reference replay.");
+
+        var indices = new HashSet<int>();
+        var fx = 0;
+        var weapon = 0;
+        var rawfile = 0;
+
+        foreach (var item in GetProperty(proof, "resolved").EnumerateArray())
+        {
+            var index = GetInt(item, "Index");
+            var type = GetString(item, "Type").Trim().ToLowerInvariant();
+            var name = GetString(item, "Name");
+
+            if ((uint)index >= (uint)nativeRootCount)
+                throw new InvalidDataException(
+                    $"Stage 4W reference root #{index} is outside the native sequence.");
+
+            var nativeRoot = nativeIdentity[index];
+            var nativeType = nativeRoot.OatTypeName.Trim().ToLowerInvariant();
+            if (nativeType.Length == 0)
+                nativeType = nativeRoot.TypeName.Trim().ToLowerInvariant();
+
+            if (!nativeType.Equals(type, StringComparison.OrdinalIgnoreCase) ||
+                !nativeRoot.Name.Equals(name, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Stage 4W reference root #{index} identity/type no longer matches the native sequence.");
+
+            if (!indices.Add(index))
+                throw new InvalidDataException(
+                    $"Stage 4W repeats native reference root #{index}.");
+
+            switch (type)
+            {
+                case "fx":
+                    fx++;
+                    break;
+                case "weapon":
+                    weapon++;
+                    break;
+                case "rawfile":
+                    rawfile++;
+                    break;
+                default:
+                    throw new InvalidDataException(
+                        $"Stage 4W contains unsupported critical reference type '{type}' at root #{index}.");
+            }
+        }
+
+        if (indices.Count != 200 || fx != 110 || weapon != 44 || rawfile != 46)
+            throw new InvalidDataException(
+                $"Stage 4W reference census changed: total={indices.Count:N0}, FX={fx:N0}, Weapon={weapon:N0}, RawFile={rawfile:N0}; expected 200 / 110 / 44 / 46.");
+
+        return new ProductionCriticalReferenceCredit(indices, fx, weapon, rawfile);
     }
 
     private sealed record ProductionMaterialCredit(
@@ -1300,6 +1427,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Production Material roots:   {r.ProductionMaterialRoots:N0}");
         sb.AppendLine($"Material reference roots:    {r.ProductionMaterialReferenceRoots:N0}");
         sb.AppendLine($"Production Material bytes:   {r.ProductionMaterialSerializedBytes:N0} serialized");
+        sb.AppendLine($"Critical retail references:  {r.ProductionCriticalReferenceRoots:N0}");
         sb.AppendLine($"Integrated production zone:  {r.ProductionIntegratedBaselineZoneBytes:N0} B");
         sb.AppendLine();
         sb.AppendLine($"Renderer layout ready:       {r.RendererLayoutReady}");
