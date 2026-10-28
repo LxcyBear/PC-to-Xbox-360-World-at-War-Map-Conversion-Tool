@@ -187,7 +187,7 @@ $rowArray = [object[]]$rows.ToArray()
 $groups = @(
     $rowArray |
     Group-Object Classification |
-    Sort-Object Count -Descending, Name |
+    Sort-Object @{ Expression = { $_.Count }; Descending = $true }, Name |
     ForEach-Object {
         [pscustomobject]@{
             Classification = $_.Name
