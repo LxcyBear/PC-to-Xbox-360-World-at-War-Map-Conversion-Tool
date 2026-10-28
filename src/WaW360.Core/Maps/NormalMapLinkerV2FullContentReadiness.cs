@@ -150,14 +150,14 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionXModels.IntegratedImageRoots != productionImages.SerializedBytesByNativeIndex.Count)
             throw new InvalidDataException(
                 $"Stage 4Y integrated image roots={productionXModels.IntegratedImageRoots:N0} " +
-                $"but Stage 4S credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
+                $"but production-image credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
 
         if (productionMaterials.SerializedBytesByNativeIndex.Count != 0)
         {
             if (productionMaterials.IntegratedImageRoots != productionImages.SerializedBytesByNativeIndex.Count)
                 throw new InvalidDataException(
                     $"Stage 4Z-D integrated image roots={productionMaterials.IntegratedImageRoots:N0} " +
-                    $"but Stage 4S credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
+                    $"but production-image credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
             if (productionMaterials.IntegratedXModelRoots != productionXModels.SerializedBytesByNativeIndex.Count)
                 throw new InvalidDataException(
                     $"Stage 4Z-D integrated XModel roots={productionMaterials.IntegratedXModelRoots:N0} " +
@@ -333,9 +333,9 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
-            // Stage 4S production images are exact native-root credits backed by PC-owned
-            // pixels passed through OAT's real T4 Xenon image encoder. Credit only roots
-            // whose 4R identity and graph both validate; unresolved image roots continue
+            // Production images are exact native-root credits backed by verified multi-source
+            // Xenon graphs. Credit only roots whose image graph and full 6,811-root 4U
+            // replay both validate; unresolved image roots continue
             // through the ordinary fallback/synthetic accounting below.
             if (type.Equals("image", StringComparison.OrdinalIgnoreCase) &&
                 productionImages.SerializedBytesByNativeIndex.TryGetValue(i, out var productionImageBytes))
@@ -507,7 +507,7 @@ public static class NormalMapLinkerV2FullContentReadiness
                     imageQueue.Dequeue();
                 if (productionXModels.IntegratedZoneBytes == 0)
                     nonRendererDelta += productionImageBytes - shell.Bytes.LongLength;
-                // A passing 4Y baseline already includes the exact 4S/4R image roots.
+                // A passing 4Y baseline already includes the exact production image roots.
                 continue;
             }
 
@@ -554,8 +554,8 @@ public static class NormalMapLinkerV2FullContentReadiness
             $"A proper-size candidate must be between {minimumSizeRatio:P0} and {maximumSizeRatio:P0} of the native oracle before hardware testing is allowed.",
             "Critical families must have zero fallback/synthetic roots before Stage 4F can declare full native emission ready.",
             productionImages.SerializedBytesByNativeIndex.Count == 0
-                ? "No Stage 4S production-image manifest was supplied; image readiness is still evaluated only from the structural source path."
-                : $"Stage 4S credits {productionImages.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon image roots ({productionImages.TotalPixelBytes:N0} pixel bytes; {productionImages.TotalSerializedBytes:N0} serialized bytes). Unresolved images remain critical blockers.",
+                ? "No production-image graft manifest was supplied; image readiness is still evaluated only from the structural source path."
+                : $"Production image graft credits {productionImages.SerializedBytesByNativeIndex.Count:N0} exact Xenon image roots ({productionImages.TotalPixelBytes:N0} pixel bytes; {productionImages.TotalSerializedBytes:N0} serialized bytes). Unresolved images remain critical blockers.",
             productionXModels.SerializedBytesByNativeIndex.Count == 0
                 ? "No passing Stage 4Y XModel production graft was supplied; XModel readiness is still evaluated from the legacy structural source path."
                 : $"Stage 4Y resolves all {productionXModels.SerializedBytesByNativeIndex.Count + productionXModels.ReferenceRoots:N0} native XModel roots: {productionXModels.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon payloads + {productionXModels.ReferenceRoots:N0} OAT-validated reference roots.",
@@ -1022,10 +1022,111 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         using var graftDoc = JsonDocument.Parse(File.ReadAllText(graftManifestPath));
         var graft = graftDoc.RootElement;
-        if (GetString(graft, "format") != "WaW360.Nuclear4S.PcImageProductionGraft.v1" ||
+        var format = GetString(graft, "format");
+
+        if (format == "WaW360.Nuclear4U.ProductionImageGraft.v1")
+        {
+            if (!GetBool(graft, "productionImageGraftPass") ||
+                !GetBool(graft, "validationPass") ||
+                GetInt(graft, "nativeRoots") != nativeRootCount ||
+                GetInt(graft, "oatListedRoots") != nativeRootCount ||
+                !GetBool(graft, "exactIdentitySequence") ||
+                !GetBool(graft, "oatZeroWarningsZeroErrors") ||
+                !GetBool(graft, "layoutReplayExact"))
+                throw new InvalidDataException(
+                    "Stage 4U manifest does not prove an exact clean full native-root production-image replay.");
+
+            var productionGraphManifestPath = GetString(graft, "productionImageManifest");
+            if (string.IsNullOrWhiteSpace(productionGraphManifestPath))
+                throw new InvalidDataException("Stage 4U manifest has no Stage 4T production-image manifest path.");
+            if (!Path.IsPathRooted(productionGraphManifestPath))
+                productionGraphManifestPath = Path.GetFullPath(
+                    Path.Combine(Path.GetDirectoryName(graftManifestPath)!, productionGraphManifestPath));
+            if (!File.Exists(productionGraphManifestPath))
+                throw new FileNotFoundException(
+                    "Stage 4T production-image manifest referenced by 4U was not found.",
+                    productionGraphManifestPath);
+
+            using var graphDoc = JsonDocument.Parse(File.ReadAllText(productionGraphManifestPath));
+            var graph = graphDoc.RootElement;
+            if (GetString(graph, "format") != "WaW360.Nuclear4T.ProductionImageGraph.v1" ||
+                !GetBool(graph, "mergePass"))
+                throw new InvalidDataException(
+                    "Stage 4U references a non-passing Stage 4T production-image graph.");
+
+            var expectedImages = GetInt(graft, "expectedImages");
+            if (GetInt(graft, "actualRealImageRoots") != expectedImages ||
+                GetInt(graph, "imageGraphs") != expectedImages)
+                throw new InvalidDataException(
+                    "Stage 4T/4U production-image root counts disagree.");
+
+            var graphRoot = GetString(graph, "graphRoot");
+            var imageGraph = T4XenonImageGraphImporter.Load(graphRoot, expectedImages);
+            if (!imageGraph.Verified)
+                throw new InvalidDataException(
+                    "Stage 4T production image graph is no longer verified: " +
+                    string.Join(" | ", imageGraph.Errors.Take(20)));
+
+            var byIndex = new Dictionary<int, long>();
+            long totalSerialized = 0;
+            long totalPixels = 0;
+
+            foreach (var item in GetProperty(graph, "images").EnumerateArray())
+            {
+                var name = GetString(item, "Name");
+                var matches = nativeIdentity
+                    .Where(x =>
+                        x.Name.Equals(name, StringComparison.Ordinal) &&
+                        (x.OatTypeName.Equals("image", StringComparison.OrdinalIgnoreCase) ||
+                         x.TypeName.Equals("image", StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (matches.Count != 1)
+                    throw new InvalidDataException(
+                        $"Stage 4T image '{name}' maps to {matches.Count:N0} native image roots; expected exactly one.");
+
+                var index = matches[0].Index;
+                if (!imageGraph.ImagesByName.TryGetValue(name, out var image))
+                    throw new InvalidDataException(
+                        $"Stage 4T graph is missing proven image '{name}'.");
+
+                var serializedBytes = checked(
+                    40L +
+                    Encoding.UTF8.GetByteCount(name) + 1L +
+                    16L +
+                    52L +
+                    image.PixelsBytes);
+
+                if (!byIndex.TryAdd(index, serializedBytes))
+                    throw new InvalidDataException(
+                        $"Stage 4T repeats native image root #{index:N0}.");
+
+                totalSerialized = checked(totalSerialized + serializedBytes);
+                totalPixels = checked(totalPixels + image.PixelsBytes);
+            }
+
+            if (byIndex.Count != expectedImages)
+                throw new InvalidDataException(
+                    $"Stage 4T image list contains {byIndex.Count:N0} roots; expected {expectedImages:N0}.");
+
+            var expectedPixels = GetLong(graft, "actualImageBytes");
+            var graphPixels = GetLong(graph, "xenonPixelBytes");
+            if (totalPixels != expectedPixels ||
+                graphPixels != expectedPixels ||
+                imageGraph.CardMemoryBytes != expectedPixels)
+                throw new InvalidDataException(
+                    $"Stage 4T/4U Xenon pixel mass disagrees: roots={totalPixels:N0}, " +
+                    $"graphManifest={graphPixels:N0}, graphImporter={imageGraph.CardMemoryBytes:N0}, " +
+                    $"4U={expectedPixels:N0}.");
+
+            return new ProductionImageCredit(byIndex, totalSerialized, totalPixels);
+        }
+
+        if (format != "WaW360.Nuclear4S.PcImageProductionGraft.v1" ||
             !GetBool(graft, "productionImageGraftPass"))
             throw new InvalidDataException(
-                "Stage 4F requires a passing WaW360.Nuclear4S.PcImageProductionGraft.v1 manifest.");
+                "Stage 4F requires a passing Stage 4U production-image graft " +
+                "or legacy WaW360.Nuclear4S.PcImageProductionGraft.v1 manifest.");
 
         if (GetInt(graft, "nativeRoots") != nativeRootCount ||
             GetInt(graft, "oatListedRoots") != nativeRootCount ||
@@ -1033,36 +1134,40 @@ public static class NormalMapLinkerV2FullContentReadiness
             !GetBool(graft, "oatZeroWarningsZeroErrors") ||
             !GetBool(graft, "layoutReplayExact"))
             throw new InvalidDataException(
-                "Stage 4S manifest does not prove an exact clean full native-root replay.");
+                "Legacy Stage 4S manifest does not prove an exact clean full native-root replay.");
 
         var bridgePath = GetString(graft, "pcImageBridgeManifest");
         if (string.IsNullOrWhiteSpace(bridgePath))
-            throw new InvalidDataException("Stage 4S manifest has no 4R bridge manifest path.");
+            throw new InvalidDataException("Legacy Stage 4S manifest has no 4R bridge manifest path.");
         if (!Path.IsPathRooted(bridgePath))
             bridgePath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(graftManifestPath)!, bridgePath));
         if (!File.Exists(bridgePath))
-            throw new FileNotFoundException("Stage 4R bridge manifest referenced by 4S was not found.", bridgePath);
+            throw new FileNotFoundException(
+                "Stage 4R bridge manifest referenced by legacy 4S was not found.",
+                bridgePath);
 
         using var bridgeDoc = JsonDocument.Parse(File.ReadAllText(bridgePath));
         var bridge = bridgeDoc.RootElement;
         if (GetString(bridge, "format") != "WaW360.Nuclear4R.PcOwnedImageBridge.v1" ||
             !GetBool(bridge, "bridgePass"))
-            throw new InvalidDataException("Stage 4S references a non-passing Stage 4R image bridge.");
+            throw new InvalidDataException(
+                "Legacy Stage 4S references a non-passing Stage 4R image bridge.");
 
-        var expectedImages = GetInt(graft, "pcBackedImages");
-        if (GetInt(bridge, "resolvedSources") != expectedImages)
-            throw new InvalidDataException("Stage 4R/4S production-image root counts disagree.");
+        var legacyExpectedImages = GetInt(graft, "pcBackedImages");
+        if (GetInt(bridge, "resolvedSources") != legacyExpectedImages)
+            throw new InvalidDataException(
+                "Stage 4R/legacy-4S production-image root counts disagree.");
 
-        var graphRoot = GetString(bridge, "graphRoot");
-        var imageGraph = T4XenonImageGraphImporter.Load(graphRoot, expectedImages);
-        if (!imageGraph.Verified)
+        var legacyGraphRoot = GetString(bridge, "graphRoot");
+        var legacyImageGraph = T4XenonImageGraphImporter.Load(legacyGraphRoot, legacyExpectedImages);
+        if (!legacyImageGraph.Verified)
             throw new InvalidDataException(
                 "Stage 4R production image graph is no longer verified: " +
-                string.Join(" | ", imageGraph.Errors.Take(20)));
+                string.Join(" | ", legacyImageGraph.Errors.Take(20)));
 
-        var byIndex = new Dictionary<int, long>();
-        long totalSerialized = 0;
-        long totalPixels = 0;
+        var legacyByIndex = new Dictionary<int, long>();
+        long legacyTotalSerialized = 0;
+        long legacyTotalPixels = 0;
 
         foreach (var item in GetProperty(bridge, "resolved").EnumerateArray())
         {
@@ -1070,16 +1175,15 @@ public static class NormalMapLinkerV2FullContentReadiness
             var name = GetString(item, "Name");
 
             if ((uint)index >= (uint)nativeIdentity.Count)
-                throw new InvalidDataException($"Stage 4R image root index {index} is outside the native sequence.");
+                throw new InvalidDataException(
+                    $"Stage 4R image root index {index} is outside the native sequence.");
             if (!nativeIdentity[index].Name.Equals(name, StringComparison.Ordinal))
                 throw new InvalidDataException(
                     $"Stage 4R image root #{index:N0} identity '{name}' != native '{nativeIdentity[index].Name}'.");
-            if (!imageGraph.ImagesByName.TryGetValue(name, out var image))
-                throw new InvalidDataException($"Stage 4R graph is missing proven image '{name}'.");
+            if (!legacyImageGraph.ImagesByName.TryGetValue(name, out var image))
+                throw new InvalidDataException(
+                    $"Stage 4R graph is missing proven image '{name}'.");
 
-            // Exact serialized contribution used by the Xenon graph emitter:
-            // GfxImage(40) + name + NUL + GfxImageLoadDef(16) + D3D texture header(52)
-            // + LARGE_RUNTIME tiled pixel payload.
             var serializedBytes = checked(
                 40L +
                 Encoding.UTF8.GetByteCount(name) + 1L +
@@ -1087,23 +1191,29 @@ public static class NormalMapLinkerV2FullContentReadiness
                 52L +
                 image.PixelsBytes);
 
-            if (!byIndex.TryAdd(index, serializedBytes))
-                throw new InvalidDataException($"Stage 4R repeats native image root #{index:N0}.");
+            if (!legacyByIndex.TryAdd(index, serializedBytes))
+                throw new InvalidDataException(
+                    $"Stage 4R repeats native image root #{index:N0}.");
 
-            totalSerialized = checked(totalSerialized + serializedBytes);
-            totalPixels = checked(totalPixels + image.PixelsBytes);
+            legacyTotalSerialized = checked(legacyTotalSerialized + serializedBytes);
+            legacyTotalPixels = checked(legacyTotalPixels + image.PixelsBytes);
         }
 
-        if (byIndex.Count != expectedImages)
+        if (legacyByIndex.Count != legacyExpectedImages)
             throw new InvalidDataException(
-                $"Stage 4R resolved list contains {byIndex.Count:N0} roots; expected {expectedImages:N0}.");
+                $"Stage 4R resolved list contains {legacyByIndex.Count:N0} roots; expected {legacyExpectedImages:N0}.");
 
-        var expectedPixels = GetLong(graft, "actualImagePixelBytes");
-        if (totalPixels != expectedPixels || imageGraph.CardMemoryBytes != expectedPixels)
+        var legacyExpectedPixels = GetLong(graft, "actualImagePixelBytes");
+        if (legacyTotalPixels != legacyExpectedPixels ||
+            legacyImageGraph.CardMemoryBytes != legacyExpectedPixels)
             throw new InvalidDataException(
-                $"Stage 4R/4S Xenon pixel mass disagrees: roots={totalPixels:N0}, graph={imageGraph.CardMemoryBytes:N0}, 4S={expectedPixels:N0}.");
+                $"Stage 4R/legacy-4S Xenon pixel mass disagrees: roots={legacyTotalPixels:N0}, " +
+                $"graph={legacyImageGraph.CardMemoryBytes:N0}, 4S={legacyExpectedPixels:N0}.");
 
-        return new ProductionImageCredit(byIndex, totalSerialized, totalPixels);
+        return new ProductionImageCredit(
+            legacyByIndex,
+            legacyTotalSerialized,
+            legacyTotalPixels);
     }
 
     private static JsonElement GetProperty(JsonElement element, string name)
