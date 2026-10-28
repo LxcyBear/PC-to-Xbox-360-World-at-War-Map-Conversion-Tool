@@ -413,6 +413,26 @@ namespace xmodel
         out << ",\"highMipBounds\":" << sizeof(XModelHighMipBounds);
         out << "}";
 
+        out << ",\"alignments\":{";
+        out << "\"scriptString\":" << alignof(ScriptString);
+        out << ",\"parentList\":" << alignof(unsigned char);
+        out << ",\"xmodelQuat\":" << alignof(XModelQuat);
+        out << ",\"trans\":" << alignof(float);
+        out << ",\"partClassification\":" << alignof(unsigned char);
+        out << ",\"dobjAnimMat\":" << alignof(DObjAnimMat);
+        out << ",\"xsurface\":" << alignof(XSurface);
+        out << ",\"materialHandle\":" << alignof(Material*);
+        out << ",\"boneInfo\":" << alignof(XBoneInfo);
+        out << ",\"highMipBounds\":" << alignof(XModelHighMipBounds);
+        out << ",\"vertsBlend\":" << alignof(unsigned short);
+        out << ",\"verts0\":16";
+        out << ",\"rigidVertList\":" << alignof(XRigidVertList);
+        out << ",\"triIndices\":16";
+        out << ",\"collisionTree\":" << alignof(XSurfaceCollisionTree);
+        out << ",\"collisionNodes\":16";
+        out << ",\"collisionLeafs\":" << alignof(XSurfaceCollisionLeaf);
+        out << "}";
+
         out << ",\"offsets\":{";
         out << "\"physPreset\":" << offsetof(XModel, physPreset);
         out << "}";
@@ -440,6 +460,19 @@ namespace xmodel
         out << ",\"reusable\":{";
         out << "\"uniquePointers\":" << reusablePointers.size();
         out << ",\"aliasCount\":" << reusableAliasCount;
+        out << "}";
+
+        out << ",\"presence\":{";
+        out << "\"boneNames\":" << (model.boneNames ? "true" : "false");
+        out << ",\"parentList\":" << (model.parentList ? "true" : "false");
+        out << ",\"quats\":" << (model.quats ? "true" : "false");
+        out << ",\"trans\":" << (model.trans ? "true" : "false");
+        out << ",\"partClassification\":" << (model.partClassification ? "true" : "false");
+        out << ",\"baseMat\":" << (model.baseMat ? "true" : "false");
+        out << ",\"surfs\":" << (model.surfs ? "true" : "false");
+        out << ",\"materialHandles\":" << (model.materialHandles ? "true" : "false");
+        out << ",\"boneInfo\":" << (model.boneInfo ? "true" : "false");
+        out << ",\"highMipBounds\":" << (model.streamInfo.highMipBounds ? "true" : "false");
         out << "}";
 
         out << ",\"rootFile\":";
@@ -504,6 +537,12 @@ namespace xmodel
             out << ",\"triCount\":" << surface.triCount;
             out << ",\"vertListCount\":" << surface.vertListCount;
             out << ",\"vertsBlendCount\":" << blendCount;
+            out << ",\"presence\":{";
+            out << "\"vertsBlend\":" << (surface.vertInfo.vertsBlend ? "true" : "false");
+            out << ",\"verts0\":" << (surface.verts0 ? "true" : "false");
+            out << ",\"vertList\":" << (surface.vertList ? "true" : "false");
+            out << ",\"triIndices\":" << (surface.triIndices ? "true" : "false");
+            out << "}";
 
             WriteFileField(
                 out, "vertsBlendFile", surfacePrefix + ".vertsBlend.bin",
@@ -535,6 +574,10 @@ namespace xmodel
                 out << "\"vertListIndex\":" << listIndex;
                 out << ",\"nodeCount\":" << tree->nodeCount;
                 out << ",\"leafCount\":" << tree->leafCount;
+                out << ",\"presence\":{";
+                out << "\"nodes\":" << (tree->nodes ? "true" : "false");
+                out << ",\"leafs\":" << (tree->leafs ? "true" : "false");
+                out << "}";
                 out << ",\"treeFile\":";
                 JsonString(out, treePrefix + ".bin");
                 WriteFileField(out, "nodesFile", treePrefix + ".nodes.bin", tree->nodes && tree->nodeCount);
