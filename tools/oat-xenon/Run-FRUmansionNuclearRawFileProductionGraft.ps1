@@ -58,8 +58,11 @@ $rows = @(Import-Csv -LiteralPath $csv)
 if ($rows.Count -ne 8) { throw "5O requires exactly eight rows, got $($rows.Count)." }
 
 $entries = @()
-foreach ($index in $expected.Keys) {
-    $name = [string]$expected[$index]
+# OrderedDictionary treats numeric [key] as positional access; use the entry
+# directly so native root #6362 is never mistaken for collection index 6362.
+foreach ($pair in $expected.GetEnumerator()) {
+    $index = [int]$pair.Key
+    $name = [string]$pair.Value
     $matches = @($rows | Where-Object { $_.Asset -ieq $name })
     if ($matches.Count -ne 1) { throw "Missing/duplicate 5O identity: $name" }
     $row = $matches[0]
