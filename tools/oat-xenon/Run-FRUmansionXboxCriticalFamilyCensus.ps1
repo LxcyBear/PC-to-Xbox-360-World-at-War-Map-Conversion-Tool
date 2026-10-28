@@ -49,7 +49,9 @@ function Normalize-Identity {
 function Normalize-Type {
     param([string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
-    return $Value.Trim().ToLowerInvariant()
+    $v = $Value.Trim().ToLowerInvariant()
+    if ($v -eq 'clipmap') { return 'clipmap_pvs' }
+    return $v
 }
 
 function Strip-LogPrefix {
@@ -116,7 +118,9 @@ if (-not [bool]$native.typeSequenceVerified) {
 
 $targets = New-Object 'System.Collections.Generic.List[object]'
 foreach ($entry in @($native.entries)) {
-    $type = Normalize-Type -Value ([string]$entry.OatTypeName)
+    $oatType = Normalize-Type -Value ([string]$entry.OatTypeName)
+    $nativeType = Normalize-Type -Value ([string]$entry.TypeName)
+    $type = if ($oatType -in $targetTypes) { $oatType } else { $nativeType }
     if ($type -notin $targetTypes) { continue }
 
     $targets.Add([pscustomobject]@{
