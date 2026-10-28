@@ -93,6 +93,29 @@ $materialGraphManifest = Join-Path $MaterialGraphRoot 'nuclear_4zb_material_relo
 $materialReplayManifest = Join-Path $MaterialReplayRoot 'nuclear_4zc_material_replay.json'
 $materialBindingManifest = Join-Path $MaterialBindingRoot 'nuclear_4zd_material_root_binding.json'
 $materialBindingRunner = Join-Path $PSScriptRoot 'Run-FRUmansionMaterialRootBinding.ps1'
+$materialPipelineRunner = Join-Path $PSScriptRoot 'Run-FRUmansionMaterialPipeline.ps1'
+
+$needsIdentityRefresh = $true
+if (Test-Path -LiteralPath $materialGraphManifest -PathType Leaf) {
+    try {
+        $existingMaterialGraph = Get-Content -LiteralPath $materialGraphManifest -Raw | ConvertFrom-Json
+        if ($existingMaterialGraph.PSObject.Properties.Name -contains 'trueMaterialIdentityRecovered' -and
+            [bool]$existingMaterialGraph.trueMaterialIdentityRecovered) {
+            $needsIdentityRefresh = $false
+        }
+    }
+    catch {
+        $needsIdentityRefresh = $true
+    }
+}
+
+if ($needsIdentityRefresh) {
+    Write-Host '[NUCLEAR-4Z-D] Material graph predates true-identity recovery; rebuilding 4Z-A -> 4Z-B -> 4Z-C once...'
+    & powershell -ExecutionPolicy Bypass -File $materialPipelineRunner
+    if ($LASTEXITCODE -ne 0 -or -not $?) {
+        throw "Corrected Material pipeline rebuild failed with exit code $LASTEXITCODE."
+    }
+}
 
 Write-Host '[NUCLEAR-4Z-D] Refreshing calibrated 4Z-D0 Material root binding...'
 & powershell -ExecutionPolicy Bypass -File $materialBindingRunner -GraphRoot $MaterialGraphRoot -BindingRoot $BindingRoot -OutputRoot $MaterialBindingRoot
