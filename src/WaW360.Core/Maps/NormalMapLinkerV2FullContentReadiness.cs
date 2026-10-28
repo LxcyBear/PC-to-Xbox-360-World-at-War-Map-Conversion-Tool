@@ -303,23 +303,6 @@ public static class NormalMapLinkerV2FullContentReadiness
             // The 9 native XModel reference roots are intentional reference assets,
             // not missing payloads. Stage 4Y preserved and OAT validated them. Mark
             // them resolved without consuming one of the 280 PC-owned model payloads.
-            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
-                productionMaterials.ReferenceNativeIndices.Contains(i))
-            {
-                // Stage 4Z-D baseline already contains this validated Material reference root.
-                continue;
-            }
-
-            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
-                productionMaterials.SerializedBytesByNativeIndex.ContainsKey(i))
-            {
-                if (deltaPools.TryGetValue(type, out var materialQueue) && materialQueue.Count != 0)
-                    materialQueue.Dequeue();
-
-                // Stage 4Z-D baseline already contains this exact production Material.
-                continue;
-            }
-
             if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
                 productionXModels.ReferenceNativeIndices.Contains(i))
             {
@@ -481,6 +464,23 @@ public static class NormalMapLinkerV2FullContentReadiness
             {
                 if (deltaPools.TryGetValue(type, out var rendererQueue) && rendererQueue.Count != 0)
                     rendererQueue.Dequeue();
+                continue;
+            }
+
+            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
+                productionMaterials.ReferenceNativeIndices.Contains(i))
+            {
+                // Stage 4Z-D baseline already contains this validated Material reference root.
+                continue;
+            }
+
+            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
+                productionMaterials.SerializedBytesByNativeIndex.ContainsKey(i))
+            {
+                if (deltaPools.TryGetValue(type, out var materialQueue) && materialQueue.Count != 0)
+                    materialQueue.Dequeue();
+
+                // Stage 4Z-D baseline already contains this exact production Material.
                 continue;
             }
 
