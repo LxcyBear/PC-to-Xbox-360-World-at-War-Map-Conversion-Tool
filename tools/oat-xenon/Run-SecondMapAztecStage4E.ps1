@@ -74,6 +74,23 @@ if (-not (Test-Path -LiteralPath $unlinker -PathType Leaf)) { throw "OAT missing
 # Converted Maps folder and never creates numbered FF build subfolders.
 $work=Join-Path $nativeWork 'renderer_preflight\4e_validation'
 New-Item -ItemType Directory -Path $work -Force | Out-Null
+# 4D and 4E C# source were repaired together. A stale --no-build CLI would
+# silently reproduce the historical invalid-block-7 StringTable failure.
+# Compile ONLY the .NET CLI incrementally; no OAT rebuild or shader dump.
+$buildLog=Join-Path $work 'aztec_4e_incremental_dotnet_build.log'
+$oldBuildPreference=$ErrorActionPreference
+try {
+    $ErrorActionPreference='Continue'
+    $buildOutput=@(& dotnet 'build' $cli '-c' 'Release' '--nologo' '-v:q' 2>&1 |
+        ForEach-Object { [string]$_ })
+    $buildCode=[int]$LASTEXITCODE
+} finally { $ErrorActionPreference=$oldBuildPreference }
+[IO.File]::WriteAllLines($buildLog,[string[]]$buildOutput,[Text.UTF8Encoding]::new($false))
+Write-Host "[AZTEC-4E] Incremental CLI build exit=$buildCode; no OAT rebuild"
+if ($buildCode -ne 0) {
+    foreach($line in @($buildOutput | Select-Object -Last 25)) { Write-Host "[AZTEC-4E] $line" }
+    throw "Cannot emit new FF from stale .NET binaries. Build log: $buildLog"
+}
 $emitManifest=Join-Path $work 'nuclear_xenon_renderer_emit.json'
 $emitFF=Join-Path $work 'nazi_zombie_aztec.ff'
 $emitZone=Join-Path $work 'nuclear_xenon_renderer.zone'
