@@ -79,11 +79,11 @@ $allNames=@($detected.ToArray() | Sort-Object -Unique)
 if ($allNames.Count -eq 0) { throw "No map names identified by scan-maps; inspect $scanLog" }
 Write-Host "[SECOND-MAP] Discovered map names: $($allNames.Count)"
 if ($MapName) {
-    $matches=@($allNames | Where-Object { $_ -ieq $MapName })
-    if ($matches.Count -ne 1) {
+    $exactNames=@($allNames | Where-Object { $_ -ieq $MapName })
+    if ($exactNames.Count -ne 1) {
         throw "MapName '$MapName' not found exactly. Available names: $($allNames -join ', ')"
     }
-    $selected=[string]$matches[0]
+    $selected=[string]$exactNames[0]
 } else {
     $candidates=@($allNames | Where-Object { $_ -match [regex]::Escape($MapHint) })
     $preferred=@($candidates | Where-Object { $_ -ieq "nazi_zombie_$MapHint" })
@@ -114,7 +114,10 @@ $oatLogRoot=Join-Path $workspace 'oat_asset_lists'
 New-Item -ItemType Directory -Force -Path $oatLogRoot | Out-Null
 $ffOrdinal=0
 $ffItems=@($analysis.FastFiles)
-Write-Host "[SECOND-MAP] FFs in analysis: $($ffItems.Count); IWDS: $(@($analysis.Iwds).Count)"
+if ($ffItems.Count -eq 0) {
+    throw "Selected map '$selected' has no analyzable fastfiles. See $analysisJson"
+}
+Write-Host "[SECOND-MAP] FFs in analysis: $($ffItems.Count); IWDs: $(@($analysis.Iwds).Count)"
 foreach ($item in $ffItems) {
     $ffOrdinal++
     $file=[string]$item.Path
