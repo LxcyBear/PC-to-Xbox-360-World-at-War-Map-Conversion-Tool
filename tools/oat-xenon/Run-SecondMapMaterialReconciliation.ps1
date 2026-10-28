@@ -56,6 +56,7 @@ function Get-Frequencies([string[]]$names) {
 $perFile=New-Object 'System.Collections.Generic.List[object]'
 $unexported=New-Object 'System.Collections.Generic.List[object]'
 $crossRefs=New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::OrdinalIgnoreCase)
+$dumpNameRoles=New-Object 'System.Collections.Hashtable' ([StringComparer]::OrdinalIgnoreCase)
 $idx=0
 foreach ($ff in @($baseline.fastfiles)) {
     $idx++
@@ -91,6 +92,8 @@ foreach ($ff in @($baseline.fastfiles)) {
     foreach ($name in $dumpNames.Keys) {
         if ($crossRefs.ContainsKey($name)) { $crossRefs[$name]++ }
         else { $crossRefs.Add($name,1) }
+        if (-not $dumpNameRoles.ContainsKey($name)) { $dumpNameRoles[$name]=New-Object 'System.Collections.Generic.List[string]' }
+        $dumpNameRoles[$name].Add($role)
     }
     $row=[pscustomobject]@{
         Role=$role
@@ -116,6 +119,73 @@ foreach ($ff in @($baseline.fastfiles)) {
 }
 $sharedNames=@($crossRefs.Keys | Where-Object { $crossRefs[$_] -gt 1 } | Sort-Object)
 $allSafe=@($perFile | Where-Object { -not $_.DifferenceFullyExplainedByListDuplicates }).Count -eq 0
+
+# Cross-reference listed-but-unexported Material identities against other FFs.
+# A same-name export in a different source is evidence of potential override/stock
+# resolution, but it does not prove payload equivalence or authorize root removal.
+$recoveredOther=0
+$unresolvedAll=0
+foreach ($item in $unexported) {
+    $foundRoles=@()
+    if ($dumpNameRoles.ContainsKey([string]$item.Name)) {
+        $foundRoles=@($dumpNameRoles[[string]$item.Name] | Where-Object { $_ -ne $item.Role } | Sort-Object -Unique)
+    }
+    $kind=if ($foundRoles.Count -gt 0) { 'EXPORTED_IN_OTHER_SOURCE' } else { 'NO_SOURCE_MATERIAL_DUMP' }
+    if ($foundRoles.Count -gt 0) { $recoveredOther++ } else { $unresolvedAll++ }
+    $item | Add-Member -NotePropertyName AlsoDumpedInRoles -NotePropertyValue ([string[]]$foundRoles)
+    $item | Add-Member -NotePropertyName Reconciliation -NotePropertyValue $kind
+}
+
+# The authoritative XAsset table distinguishes physical root payloads from
+# packed/alias and null references. Use the existing Release CLI binary once;
+# do not rebuild or repeat OAT exports. Aggregate counts, not name-to-index
+# pairings: OAT semantic pool order is not proven equal to XAsset table order.
+$mainRecords=@($baseline.fastfiles | Where-Object { $_.Role -eq 'map.ff' })
+$rootKinds=[ordered]@{
+    Status='NOT_CHECKED'; MaterialRows=0; InlineShared=0; Inline=0
+    OffsetOrAlias=0; Null=0; Physical=0; ExportedPhysicalGap=$null
+    PhysicallyMatchesDump=$false; Log=''; Manifest=''
+}
+if ($mainRecords.Count -eq 1) {
+    $cli=Join-Path $repo 'src\WaW360.Cli\WaW360.Cli.csproj'
+    $mainPath=[string]$mainRecords[0].Path
+    $manifestFile=Join-Path $work 'main_xasset_reference_kinds.json'
+    $manifestLog=Join-Path $work 'main_xasset_reference_kinds.console.log'
+    $rootKinds.Log=$manifestLog
+    $rootKinds.Manifest=$manifestFile
+    if (Test-Path -LiteralPath $manifestFile) { Remove-Item -LiteralPath $manifestFile -Force }
+    if ((Test-Path -LiteralPath $cli -PathType Leaf) -and (Test-Path -LiteralPath $mainPath -PathType Leaf)) {
+        $old=$ErrorActionPreference
+        try {
+            $ErrorActionPreference='Continue'
+            $outputs=@(& dotnet 'run' '--no-build' '-c' 'Release' '--project' $cli '--' 'manifest' $mainPath $manifestFile 2>&1 | ForEach-Object { [string]$_ })
+            $code=[int]$LASTEXITCODE
+        } finally { $ErrorActionPreference=$old }
+        [IO.File]::WriteAllLines($manifestLog,[string[]]$outputs,[Text.UTF8Encoding]::new($false))
+        if ($code -eq 0 -and (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
+            $rootManifest=Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+            $materialRoots=@($rootManifest.assets | Where-Object { $_.TypeName -ieq 'material' })
+            $rootKinds.MaterialRows=$materialRoots.Count
+            foreach ($k in @('InlineShared','Inline','OffsetOrAlias','Null')) {
+                $rootKinds[$k]=@($materialRoots | Where-Object { $_.ReferenceKind -eq $k }).Count
+            }
+            $rootKinds.Physical=$rootKinds.InlineShared+$rootKinds.Inline
+            $mainReconcile=@($perFile | Where-Object { $_.Role -eq 'map.ff' })
+            if ($mainReconcile.Count -eq 1) {
+                $rootKinds.ExportedPhysicalGap=$rootKinds.Physical-$mainReconcile[0].ExportOccurrences
+                $rootKinds.PhysicallyMatchesDump=($rootKinds.Physical -eq $mainReconcile[0].ExportOccurrences)
+                $rootKinds.Status=if ($rootKinds.MaterialRows -eq $mainReconcile[0].ListOccurrences) { 'EXACT_ROOT_COUNT' } else { 'OAT_LIST_XASSET_COUNT_DISAGREE' }
+            }
+        } else {
+            $rootKinds.Status="CLI_MANIFEST_FAILED_EXIT_$code"
+        }
+    } else {
+        $rootKinds.Status='CLI_OR_SOURCE_NOT_FOUND'
+    }
+}
+Write-Host "[MATERIAL-RECON] Main Material XAsset kinds: status=$($rootKinds.Status) physical=$($rootKinds.Physical) alias=$($rootKinds.OffsetOrAlias) null=$($rootKinds.Null)"
+Write-Host "[MATERIAL-RECON] Unexported name cross-file: found in patch/mod=$recoveredOther, no source export=$unresolvedAll"
+
 $report=[ordered]@{
     schema='WaW360.MaterialOatReconciliation.v1'
     mapFolder=$MapName
@@ -124,6 +194,9 @@ $report=[ordered]@{
     perFastFile=[object[]]$perFile.ToArray()
     unmatchedListedNames=[object[]]$unexported.ToArray()
     materialNamesSharedAcrossSourceFiles=[string[]]$sharedNames
+    missingNamesExportedInOtherSource=$recoveredOther
+    missingNamesNotDumpedFromAnySource=$unresolvedAll
+    mainFastFileMaterialRootKinds=$rootKinds
     allListToDumpCountDifferencesExplainedByDuplicates=$allSafe
     sourceOnly=$true
     hardwareReady=$false
@@ -154,6 +227,15 @@ foreach ($row in $perFile) {
     }
 }
 $body.Add("Cross-source shared Material names=$($sharedNames.Count)")
+$body.Add("Main listed-but-unexported identities found in other source dump=$recoveredOther")
+$body.Add("Main listed-but-unexported identities absent from every source dump=$unresolvedAll")
+$body.Add("Main XAsset kind status=$($rootKinds.Status); physical=$($rootKinds.Physical); alias=$($rootKinds.OffsetOrAlias); null=$($rootKinds.Null); physicalMinusExport=$($rootKinds.ExportedPhysicalGap)")
+$body.Add("Main physical root count exactly matches material exports=$($rootKinds.PhysicallyMatchesDump)")
+$body.Add('NOTE: aggregate XAsset root kinds do not establish which individual OAT names are aliases.')
+$body.Add('UNEXPORTED NAMES AND THEIR CROSS-FILE RESOLUTION')
+foreach ($item in $unexported) {
+    $body.Add("  $($item.Name) | $($item.Reconciliation) | $(@($item.AlsoDumpedInRoles) -join ',')")
+}
 $body.Add("All source list/dump gaps explained by duplicates=$allSafe")
 $body.Add('This is evidence classification only; do not delete or serialize any Xbox roots from this report.')
 $body.Add("Unexported names: $csv")
@@ -162,6 +244,8 @@ $body.Add("Machine-readable: $json")
 Write-Host '[MATERIAL-RECON] ================= RESULT =================================='
 Write-Host "[MATERIAL-RECON] All gaps explained by list duplicates: $allSafe"
 Write-Host "[MATERIAL-RECON] Shared source Material names: $($sharedNames.Count)"
+Write-Host "[MATERIAL-RECON] Missing 49 cross-file: $recoveredOther exported elsewhere / $unresolvedAll absent across sources"
+Write-Host "[MATERIAL-RECON] Main XAsset physical=$($rootKinds.Physical), alias=$($rootKinds.OffsetOrAlias), null=$($rootKinds.Null)"
 Write-Host "[MATERIAL-RECON] Report: $txt"
 Write-Host "[MATERIAL-RECON] Unexported: $csv"
 Write-Host '[MATERIAL-RECON] Hardware readiness unchanged.'
