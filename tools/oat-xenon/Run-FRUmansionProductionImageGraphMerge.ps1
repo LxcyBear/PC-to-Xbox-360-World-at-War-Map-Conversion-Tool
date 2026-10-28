@@ -1,6 +1,7 @@
 param(
     [string]$PcOwnedBridgeManifest = '',
     [string]$MapAssetBridgeManifest = '',
+    [string]$ModDependencyBridgeManifest = '',
     [string]$XboxRetailGraphManifest = '',
     [string]$OutputRoot = ''
 )
@@ -15,6 +16,9 @@ if ([string]::IsNullOrWhiteSpace($PcOwnedBridgeManifest)) {
 }
 if ([string]::IsNullOrWhiteSpace($MapAssetBridgeManifest)) {
     $MapAssetBridgeManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4s_map_asset_image_bridge\nuclear_4s_map_asset_image_bridge.json'
+}
+if ([string]::IsNullOrWhiteSpace($ModDependencyBridgeManifest)) {
+    $ModDependencyBridgeManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4s_mod_dependency_image_bridge\nuclear_4s_mod_dependency_image_bridge.json'
 }
 if ([string]::IsNullOrWhiteSpace($XboxRetailGraphManifest)) {
     $XboxRetailGraphManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_xbox_retail_image_graph\nuclear_4r_xbox_retail_image_graph.json'
@@ -78,7 +82,33 @@ $sources = New-Object 'System.Collections.Generic.List[object]'
 
 Add-GraphSource -Sources $sources -ManifestPath $PcOwnedBridgeManifest -ExpectedFormat 'WaW360.Nuclear4R.PcOwnedImageBridge.v1' -PassProperty 'bridgePass' -GraphRootProperty 'graphRoot' -Label 'frumansion-owned-pc' -Required $false
 Add-GraphSource -Sources $sources -ManifestPath $MapAssetBridgeManifest -ExpectedFormat 'WaW360.Nuclear4S.MapAssetImageBridge.v1' -PassProperty 'bridgePass' -GraphRootProperty 'graphRoot' -Label 'packaged-map-pc' -Required $true
-Add-GraphSource -Sources $sources -ManifestPath $XboxRetailGraphManifest -ExpectedFormat 'WaW360.Nuclear4R.XboxRetailImageGraph.v1' -PassProperty 'graphPass' -GraphRootProperty 'graphRoot' -Label 'retail-xbox-stock' -Required $true
+Add-GraphSource -Sources $sources -ManifestPath $ModDependencyBridgeManifest -ExpectedFormat 'WaW360.Nuclear4S.ModDependencyImageBridge.v1' -PassProperty 'bridgePass' -GraphRootProperty 'graphRoot' -Label 'mod-dependency-pc' -Required $true
+
+if (-not (Test-Path -LiteralPath $XboxRetailGraphManifest -PathType Leaf)) {
+    throw "Required retail Xbox graph manifest not found: $XboxRetailGraphManifest"
+}
+$xboxStock = Get-Content -LiteralPath $XboxRetailGraphManifest -Raw | ConvertFrom-Json
+if ([string]$xboxStock.format -ne 'WaW360.Nuclear4R.XboxRetailImageGraph.v1') {
+    throw "Retail Xbox graph manifest format '$($xboxStock.format)' is unexpected."
+}
+$xboxStockResolved = [int]$xboxStock.stockGraphsResolved
+$xboxStockUnresolved = [int]$xboxStock.stockGraphsUnresolved
+if ($xboxStockResolved -le 0) {
+    throw 'Retail Xbox graph extraction produced zero verified stock image graphs.'
+}
+$xboxStockGraphRoot = [string]$xboxStock.graphRoot
+if (-not (Test-Path -LiteralPath $xboxStockGraphRoot -PathType Container)) {
+    throw "Retail Xbox stock graph root not found: $xboxStockGraphRoot"
+}
+$sources.Add([pscustomobject]@{
+    Label = 'retail-xbox-stock'
+    ManifestPath = (Resolve-Path -LiteralPath $XboxRetailGraphManifest).Path
+    GraphRoot = (Resolve-Path -LiteralPath $xboxStockGraphRoot).Path
+})
+
+if ($xboxStockUnresolved -gt 0) {
+    Write-Host ("[NUCLEAR-4T] Retail Xbox source is partial: {0} verified payloads, {1} identity-only roots fenced." -f $xboxStockResolved, $xboxStockUnresolved) -ForegroundColor Yellow
+}
 
 if (Test-Path -LiteralPath $OutputRoot) {
     Remove-Item -LiteralPath $OutputRoot -Recurse -Force
@@ -235,6 +265,9 @@ $manifest = [ordered]@{
     textureHeaders = $headerFiles.Count
     xenonCardMemoryBytes = $totalCardMemory
     xenonPixelBytes = $totalPixelBytes
+    retailStockGraphsResolved = $xboxStockResolved
+    retailStockGraphsUnresolved = $xboxStockUnresolved
+    retailStockUnresolved = [object[]]@($xboxStock.unresolved)
     bySource = $bySource
     images = $rowArray
     errors = [object[]]$errors.ToArray()
@@ -253,6 +286,8 @@ $report.Add(("Pixel blobs:               {0:N0}" -f $pixelFiles.Count))
 $report.Add(("Texture headers:           {0:N0}" -f $headerFiles.Count))
 $report.Add(("Xenon cardMemory bytes:    {0:N0}" -f $totalCardMemory))
 $report.Add(("Xenon pixel bytes:         {0:N0}" -f $totalPixelBytes))
+$report.Add(("Retail stock resolved:     {0:N0}" -f $xboxStockResolved))
+$report.Add(("Retail stock fenced:       {0:N0}" -f $xboxStockUnresolved))
 $report.Add(("Merge errors:              {0:N0}" -f $errors.Count))
 $report.Add(("MERGE PASS:                {0}" -f $mergePass))
 $report.Add('')
@@ -274,6 +309,8 @@ Write-Host "[NUCLEAR-4T] Pixel blobs         : $($pixelFiles.Count)"
 Write-Host "[NUCLEAR-4T] Texture headers     : $($headerFiles.Count)"
 Write-Host "[NUCLEAR-4T] Xenon cardMemory    : $totalCardMemory bytes"
 Write-Host "[NUCLEAR-4T] Xenon pixel bytes   : $totalPixelBytes"
+Write-Host "[NUCLEAR-4T] Retail stock verified: $xboxStockResolved"
+Write-Host "[NUCLEAR-4T] Retail stock fenced  : $xboxStockUnresolved"
 Write-Host "[NUCLEAR-4T] Merge errors        : $($errors.Count)"
 foreach ($row in $bySource) {
     Write-Host ("[NUCLEAR-4T]   {0}: {1} image(s), {2} bytes" -f $row.Source, $row.Images, $row.CardMemoryBytes)
