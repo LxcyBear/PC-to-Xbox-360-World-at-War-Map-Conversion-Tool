@@ -1,4 +1,4 @@
-[$([System.Management.Automation.CmdletBindingAttribute]::new())]
+[CmdletBinding()]
 param(
     [string]$PcMapsRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps',
     [string]$MapName = 'nazi_zombie_FRUmansion',
