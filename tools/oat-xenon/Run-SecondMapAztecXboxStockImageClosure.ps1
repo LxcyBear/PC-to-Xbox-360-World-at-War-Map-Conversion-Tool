@@ -2,10 +2,12 @@
 param(
     [string]$XboxGameRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\XBOX GAME FILES',
     [switch]$AllRetailZones,
-    [switch]$Rescan
+    [switch]$Rescan,
+    [switch]$CacheOnly
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+if($CacheOnly -and $Rescan){throw 'Cannot use -CacheOnly and -Rescan together.'}
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2'
 $nativeWork=Join-Path $base 'native_material_mapping'
@@ -88,6 +90,7 @@ Write-Host '[AZTEC-STOCK-IMG] LOCATE EXTERNAL IMAGE ROOTS IN OWNED RETAIL XBOX Z
 Write-Host "[AZTEC-STOCK-IMG] Prior image errors: $totalErrorOccurrences occurrences, $($errors.Count) distinct names"
 Write-Host "[AZTEC-STOCK-IMG] Retail identity scan: $($zones.Count) zones"
 Write-Host '[AZTEC-STOCK-IMG] Names and zone identities only. NO RETAIL PIXEL COPIES.'
+if($CacheOnly){Write-Host '[AZTEC-STOCK-IMG] CACHE-ONLY: no OAT process will be launched.'}
 Write-Host '[AZTEC-STOCK-IMG] ==========================================================='
 
 $index=@{}
@@ -108,6 +111,9 @@ foreach($ff in $zones){
             [long]$m.bytes -eq $fileInfo.Length -and
             [string]$m.modifiedUtc -eq $fileInfo.LastWriteTimeUtc.ToString('o') -and
             [int]$m.exitCode -eq 0)
+    }
+    if($CacheOnly -and -not $reuse){
+        throw "Cached retail OAT --list evidence is missing, changed, or failed for $($ff.Name): $log. Refusing to rescan in -CacheOnly mode."
     }
     $exit=0
     if(-not $reuse){
@@ -151,7 +157,14 @@ $nativeMatched=New-Object 'System.Collections.Generic.HashSet[string]' ([StringC
 $uniqueFailures=0;$matchingFailures=0;$generatedNames=0
 foreach($key in @($errors.Keys | Sort-Object)){
     $e=$errors[$key]
-    $zonesForKey=if($index.ContainsKey($key)){@($index[$key].ToArray())}else{@()}
+    # Windows PowerShell 5.1 unwraps pipeline results of an if expression.
+    # An empty else branch may become $null under StrictMode, then .Count
+    # throws even though 'not found in retail' is perfectly valid evidence.
+    # Always assign an explicit strongly typed array, including zero matches.
+    [string[]]$zonesForKey=@()
+    if($index.ContainsKey($key)){
+        $zonesForKey=[string[]]$index[$key].ToArray()
+    }
     $inNative=$allNative.Contains($key)
     $generated=$key.StartsWith('~',[StringComparison]::Ordinal)
     if($generated){$generatedNames++}
@@ -164,7 +177,9 @@ foreach($key in @($errors.Keys | Sort-Object)){
         LooksGenerated=$generated;FoundInScannedXboxRetail=$zonesForKey.Count -gt 0
         XboxRetailZones=$zonesForKey})
 }
-$notScanned=@($available | Where-Object {$_.FullName -notin @($zones.FullName)}).Count
+$scannedPaths=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach($ff in $zones){[void]$scannedPaths.Add([string]$ff.FullName)}
+$notScanned=@($available | Where-Object {-not $scannedPaths.Contains([string]$_.FullName)}).Count
 $complete=(@($zoneStats.ToArray() | Where-Object {-not $_.Loaded}).Count -eq 0)
 $status=if($complete){'AZTEC_EXTERNAL_IMAGE_RETAIL_IDENTITY_AUDIT_PASS'}else{'AZTEC_EXTERNAL_IMAGE_RETAIL_IDENTITY_AUDIT_PARTIAL'}
 $summary=[ordered]@{
@@ -181,6 +196,8 @@ $summary=[ordered]@{
     zonesScanned=$zoneStats.Count
     otherZonesNotScanned=$notScanned
     scanComplete=$complete
+    cacheOnly=[bool]$CacheOnly
+    usedOnlyVerifiedCachedLogs=[bool]($CacheOnly -and $complete)
     zones=$zoneStats.ToArray()
     missingPcImageClassifications=$rows.ToArray()
     copiedXboxPixelPayloads=0
