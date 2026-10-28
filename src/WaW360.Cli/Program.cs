@@ -705,6 +705,28 @@ static async Task<int> MainAsync(string[] args)
                     Console.WriteLine("DIAGNOSTIC: " + diagnostic);
                 return result.ReplayPass ? 0 : 4;
             }
+            case "xenon-material-replay" when args.Length >= 5:
+            {
+                var result = await T4XenonMaterialReplayEmitter.EmitAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4]);
+
+                Console.WriteLine("NUCLEAR STAGE 4Z-C standalone exact Xenon Material corpus replay");
+                Console.WriteLine($"materials={result.Materials:N0}; roots={result.Roots:N0}; scripts={result.ScriptStrings:N0}; zoneBytes={result.ZoneBytes:N0}");
+                Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}");
+                Console.WriteLine($"exactIdentity={result.ExactIdentitySequence}; oatZero={result.OatZeroWarningsZeroErrors}; graphCorpusExact={result.GraphCorpusRedumpExact}; wrapper={result.WrapperRoundTripVerified}");
+                Console.WriteLine($"replayPass={result.ReplayPass}");
+                Console.WriteLine($"candidate: {result.OutputFastFile}");
+                Console.WriteLine($"report:    {result.TextReportFile}");
+                Console.WriteLine($"manifest:  {result.JsonReportFile}");
+                foreach (var blocker in result.Blockers.Take(32))
+                    Console.WriteLine("BLOCKER: " + blocker);
+                foreach (var diagnostic in result.Diagnostics.Take(32))
+                    Console.WriteLine("DIAGNOSTIC: " + diagnostic);
+                return result.ReplayPass ? 0 : 4;
+            }
             case "xenon-image-replay" when args.Length >= 4:
             {
                 var unlinker = args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]) ? args[4] : null;
