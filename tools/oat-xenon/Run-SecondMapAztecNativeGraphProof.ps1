@@ -87,6 +87,8 @@ foreach ($item in $pending) {
 $status='GRAPH_DUMPER_NOT_INSTALLED'
 $dumpRan=$false
 $dumpCode=$null
+$dumperReportedErrors=$null
+$shortDriveUsed=''
 $importCode=$null
 $importOutput=@()
 $cacheUsed=$false
@@ -107,7 +109,10 @@ if (Test-Path -LiteralPath $GraphUnlinkerExe -PathType Leaf) {
             $cacheOkay=([string]$cached.nativeSha256 -eq $actualSha -and
                 [string]$cached.graphUnlinker -ieq (Resolve-Path -LiteralPath $GraphUnlinkerExe).Path -and
                 [int]$cached.nativeTechniqueSetRoots -eq $expectedTechsets -and
-                [int]$cached.nativePixelShaderRoots -eq $expectedPixels)
+                [int]$cached.nativePixelShaderRoots -eq $expectedPixels -and
+                [string]$cached.longPathMitigation -eq 'temporary-subst-drive' -and
+                [int]$cached.dumperReportedErrors -eq 0 -and
+                [int]$cached.dumperExitCode -eq 0)
         } catch {
             $cacheOkay=$false
         }
@@ -125,33 +130,82 @@ if (Test-Path -LiteralPath $GraphUnlinkerExe -PathType Leaf) {
         if (Test-Path -LiteralPath $sourceManifest) {
             Remove-Item -LiteralPath $sourceManifest -Force
         }
-        Write-Host '[AZTEC-GRAPH] Dumping fixed-up native graph identities and blobs once...'
+
+        # Windows MAX_PATH: the real output root is ~196 characters long;
+        # long Xenon shader names cause OpenAssetFile to fail at >=260 chars.
+        # Map ONLY this owned existing scratch directory to an unused drive
+        # letter. No game data moves and no release folder is involved.
+        $driveToken=''
+        $virtualRoot=''
+        foreach ($letter in @('Q','P','R','S','T','U','V','W','X','Y','Z')) {
+            if ($null -ne (Get-PSDrive -Name $letter -ErrorAction SilentlyContinue)) { continue }
+            $candidate=('{0}:' -f $letter)
+            if (Test-Path -LiteralPath ($candidate + '\')) { continue }
+            $driveToken=$candidate
+            # \. avoids trailing-backslash quoting problems on native argv.
+            $virtualRoot=$candidate + '\.'
+            break
+        }
+        if (-not $driveToken) { throw 'No unused drive letter available for Windows MAX_PATH workaround.' }
+        Write-Host "[AZTEC-GRAPH] Fixed-up graph dump via temporary $virtualRoot -> $graphsRoot"
+        $mounted=$false
         $old=$ErrorActionPreference
         try {
+            $mountOutput=@(& subst.exe $driveToken $graphsRoot 2>&1 | ForEach-Object { [string]$_ })
+            if ([int]$LASTEXITCODE -ne 0) {
+                throw "Could not mount $driveToken as short scratch path: $($mountOutput -join ' | ')"
+            }
+            $mounted=$true
+            $shortDriveUsed=$driveToken
+            if (-not (Test-Path -LiteralPath $virtualRoot -PathType Container)) {
+                throw "subst short path did not resolve: $virtualRoot"
+            }
             $ErrorActionPreference='Continue'
-            & $GraphUnlinkerExe '--no-color' '--include-assets' 'techniqueset' '--output-folder' $graphsRoot $native 2>&1 |
+            & $GraphUnlinkerExe '--no-color' '--include-assets' 'techniqueset' '--output-folder' $virtualRoot $native 2>&1 |
                 ForEach-Object { [string]$_ } | Set-Content -LiteralPath $dumpLog -Encoding UTF8
             $dumpCode=[int]$LASTEXITCODE
         } finally {
             $ErrorActionPreference=$old
+            if ($mounted) {
+                $unmountOutput=@(& subst.exe $driveToken '/D' 2>&1 | ForEach-Object { [string]$_ })
+                if ([int]$LASTEXITCODE -ne 0) {
+                    Write-Host "[AZTEC-GRAPH] WARNING: Could not unmount $($driveToken): $($unmountOutput -join ' | ')" -ForegroundColor Yellow
+                } else {
+                    Write-Host "[AZTEC-GRAPH] Temporary drive $driveToken unmounted."
+                }
+            }
         }
         $dumpRan=$true
         foreach ($line in @(Get-Content -LiteralPath $dumpLog -Tail 12)) {
             Write-Host "[AZTEC-GRAPH]   $line"
         }
-        if ($dumpCode -eq 0) {
+
+        # OAT may return EXIT 0 despite thousands of failed shader writes.
+        # Require its own summary AND absence of all ERROR lines.
+        $summary=@(Select-String -LiteralPath $dumpLog -Pattern 'Finished with \d+ warnings,\s*(\d+)\s+errors' | Select-Object -Last 1)
+        $errorLines=@(Select-String -LiteralPath $dumpLog -Pattern '^\s*ERROR:').Count
+        if ($summary.Count -eq 1) {
+            $dumperReportedErrors=[int]$summary[0].Matches[0].Groups[1].Value
+        }
+        if ($null -eq $dumperReportedErrors) {
+            $status='GRAPH_DUMP_MISSING_ERROR_SUMMARY'
+        } elseif ($dumpCode -eq 0 -and $dumperReportedErrors -eq 0 -and $errorLines -eq 0) {
             $src=[ordered]@{
-                schema='WaW360.AztecNativeGraphSource.v1'
+                schema='WaW360.AztecNativeGraphSource.v2'
                 nativeFF=$native
                 nativeSha256=$actualSha
                 graphUnlinker=(Resolve-Path -LiteralPath $GraphUnlinkerExe).Path
                 nativeTechniqueSetRoots=$expectedTechsets
                 nativePixelShaderRoots=$expectedPixels
+                longPathMitigation='temporary-subst-drive'
+                dumperReportedErrors=0
+                dumperExitCode=0
             }
             $src | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $sourceManifest -Encoding UTF8
             $status='DUMP_COMPLETED_VALIDATION_PENDING'
         } else {
-            $status="GRAPH_DUMP_FAILED_EXIT_$dumpCode"
+            $status='GRAPH_DUMP_REPORTED_ERRORS'
+            Write-Host "[AZTEC-GRAPH] Incomplete blob export: exit=$dumpCode OATerrors=$dumperReportedErrors ERROR-lines=$errorLines" -ForegroundColor Yellow
         }
     }
 }
@@ -243,6 +297,8 @@ $report=[ordered]@{
     usedCachedDump=$cacheUsed
     ranOatGraphDump=$dumpRan
     oatExitCode=$dumpCode
+    oatReportedErrors=$dumperReportedErrors
+    temporarySubstDrive=$shortDriveUsed
     typedGraphImportExitCode=$importCode
     graphFiles=$allGraphFiles.Count
     distinctGraphNames=$graphNames.Count
@@ -274,7 +330,7 @@ $lines.Add("Golden native FF: $native")
 $lines.Add("Native TechniqueSet roots=$expectedTechsets; PixelShader roots=$expectedPixels")
 $lines.Add("Exported graph files=$($allGraphFiles.Count); distinct graph names=$($graphNames.Count); missing=$($missing.Count); extras=$($extras.Count); invalid=$($invalidGraphs.Count)")
 $lines.Add("Non-null TechniqueSet slots=$slots; passes=$passes; shader blob files=$($shaderBlobFiles.Count)")
-$lines.Add("Typed graph importer exit=$importCode; cache reused=$cacheUsed")
+$lines.Add("Typed graph importer exit=$importCode; cache reused=$cacheUsed; OAT reported errors=$dumperReportedErrors; short drive=$shortDriveUsed")
 $lines.Add("Pending material-referenced PC roots=$($pending.Count)")
 foreach ($p in $pending) { $lines.Add("  $($p.Role): $($p.PcTechniqueSet) | $($p.Classification)") }
 foreach ($name in $missing) { $lines.Add("  NATIVE GRAPH MISSING: $name") }
