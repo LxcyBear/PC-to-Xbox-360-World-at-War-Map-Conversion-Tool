@@ -21,6 +21,7 @@ $identityManifest = @(Get-ChildItem -LiteralPath $identityDir -Filter '*_native_
 
 $productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4s_pc_image_graft\nuclear_4s_pc_image_graft.json'
 $productionXModelGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4y_xmodel_production_graft\nuclear_4y_xmodel_production_graft.json'
+$productionMaterialGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_production_graft\nuclear_4zd_material_production_graft.json'
 
 function Find-MainFastFile {
     param([Parameter(Mandatory=$true)][string]$Directory)
@@ -93,6 +94,29 @@ if (Test-Path -LiteralPath $productionXModelGraftManifest -PathType Leaf) {
     }
 }
 
+$productionMaterialCredit = $null
+if (Test-Path -LiteralPath $productionMaterialGraftManifest -PathType Leaf) {
+    try {
+        $stage4zd = Get-Content -LiteralPath $productionMaterialGraftManifest -Raw | ConvertFrom-Json
+        if ([string]$stage4zd.format -eq 'WaW360.Nuclear4ZD.MaterialProductionGraft.v1' -and
+            [bool]$stage4zd.productionMaterialGraftPass -and
+            [int]$stage4zd.nativeRoots -eq 6811 -and
+            [int]$stage4zd.oatListedRoots -eq 6811 -and
+            [int]$stage4zd.pcBackedMaterials -eq 502 -and
+            [int]$stage4zd.materialReferenceRoots -eq 88 -and
+            [int]$stage4zd.pcBackedOwnedXModels -eq 280 -and
+            [int]$stage4zd.preservedXModelReferenceRoots -eq 9 -and
+            [bool]$stage4zd.exactIdentitySequence -and
+            [bool]$stage4zd.oatZeroWarningsZeroErrors -and
+            [bool]$stage4zd.layoutReplayExact) {
+            $productionMaterialCredit = $productionMaterialGraftManifest
+        }
+    }
+    catch {
+        throw "Stage 4Z-D manifest exists but could not be validated: $($_.Exception.Message)"
+    }
+}
+
 Write-Host '[NUCLEAR-4F] ================================================================'
 Write-Host '[NUCLEAR-4F] FULL-CONTENT MASS / PRE-HARDWARE GATE'
 Write-Host '[NUCLEAR-4F] ================================================================'
@@ -104,6 +128,7 @@ Write-Host "[NUCLEAR-4F] Native identities  : $($identityManifest[0].FullName)"
 Write-Host "[NUCLEAR-4F] Renderer bindings  : $bindingManifest"
 Write-Host "[NUCLEAR-4F] 4S image credit    : $(if ($null -eq $productionImageCredit) { '<none>' } else { $productionImageCredit })"
 Write-Host "[NUCLEAR-4F] 4Y XModel credit   : $(if ($null -eq $productionXModelCredit) { '<none>' } else { $productionXModelCredit })"
+Write-Host "[NUCLEAR-4F] 4Z-D Material credit: $(if ($null -eq $productionMaterialCredit) { '<none>' } else { $productionMaterialCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
 Write-Host ''
 Write-Host '[NUCLEAR-4F] POLICY: no Xbox test candidate until size + critical-content gates both pass.'
@@ -130,13 +155,18 @@ try {
         $minInvariant,
         $maxInvariant
     )
-    if ($null -ne $productionImageCredit -or $null -ne $productionXModelCredit) {
-        # CLI positions keep 4S before 4Y. Preserve an empty 4S slot if a future
-        # run has XModel credit but no production-image credit.
+    if ($null -ne $productionImageCredit -or
+        $null -ne $productionXModelCredit -or
+        $null -ne $productionMaterialCredit) {
+        # CLI positions keep 4S -> 4Y -> 4Z-D. Preserve empty earlier slots
+        # whenever a later production credit exists.
         $args += $(if ($null -eq $productionImageCredit) { '' } else { $productionImageCredit })
     }
-    if ($null -ne $productionXModelCredit) {
-        $args += $productionXModelCredit
+    if ($null -ne $productionXModelCredit -or $null -ne $productionMaterialCredit) {
+        $args += $(if ($null -eq $productionXModelCredit) { '' } else { $productionXModelCredit })
+    }
+    if ($null -ne $productionMaterialCredit) {
+        $args += $productionMaterialCredit
     }
 
     & dotnet @args
@@ -161,8 +191,8 @@ elseif (Test-Path -LiteralPath $report -PathType Leaf) {
 if ($code -ne 0) {
     Write-Host ''
     Write-Host '[NUCLEAR-4F] FULL-CONTENT READINESS: BLOCKED' -ForegroundColor Yellow
-    Write-Host '[NUCLEAR-4F] This is expected until the large missing families are promoted.'
-    Write-Host '[NUCLEAR-4F] Do NOT hardware-test the 4Y integrated candidate while this gate is blocked.'
+    Write-Host '[NUCLEAR-4F] This is expected until the remaining critical families are promoted.'
+    Write-Host '[NUCLEAR-4F] Do NOT hardware-test the 4Z-D integrated candidate while this gate is blocked.'
     exit $code
 }
 
