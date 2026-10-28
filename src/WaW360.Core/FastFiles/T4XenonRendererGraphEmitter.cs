@@ -25,6 +25,8 @@ public sealed class T4XenonRendererEmitResult
     public required long VirtualBytes { get; init; }
     public required long PhysicalBytes { get; init; }
     public required int OatListedRoots { get; init; }
+    public required int OatLoadedAssets { get; init; }
+    public required int OatExternalReferenceAssets { get; init; }
     public required bool OatZeroWarningsZeroErrors { get; init; }
     public required bool ExactIdentitySequence { get; init; }
     public required bool LayoutReplayExact { get; init; }
@@ -423,19 +425,28 @@ public static class T4XenonRendererGraphEmitter
             cancellationToken);
 
         var oatListedRoots = 0;
+        var oatLoadedAssets = 0;
+        var oatExternalReferenceAssets = 0;
         var oatZero = false;
         var exactIdentity = false;
         string? oatError = null;
 
         try
         {
+            var externalReferences = materialCorpus?.CollectExternalReferences(roots)
+                ?? Array.Empty<T4XenonOatExternalReference>();
+
             var gate = await T4XenonNativeIdentityOracle.RunAsync(
                 ffPath,
                 Path.Combine(outputDirectory, "oat_hard_gate"),
                 explicitUnlinkerExe,
-                cancellationToken);
+                cancellationToken,
+                roots,
+                externalReferences);
 
             oatListedRoots = gate.Entries.Count;
+            oatLoadedAssets = gate.LoadedAssets;
+            oatExternalReferenceAssets = gate.ExternalReferenceAssets;
             exactIdentity =
                 gate.Entries.Count == roots.Count &&
                 gate.Entries.Zip(roots).All(pair =>
@@ -484,6 +495,8 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"4D layout replay exact:     {layoutReplayExact}");
         report.AppendLine($"Wrapper round-trip:         {wrapped.RoundTripVerified}");
         report.AppendLine($"OAT listed roots:           {oatListedRoots:N0}");
+        report.AppendLine($"OAT loaded assets:          {oatLoadedAssets:N0}");
+        report.AppendLine($"OAT external references:    {oatExternalReferenceAssets:N0}");
         report.AppendLine($"OAT exact identity sequence:{exactIdentity}");
         report.AppendLine($"OAT 0 warnings / 0 errors:  {oatZero}");
         report.AppendLine($"VALIDATION ONLY:            {validationOnly}");
@@ -514,6 +527,8 @@ public static class T4XenonRendererGraphEmitter
             VirtualBytes = state.Virtual,
             PhysicalBytes = state.Physical,
             OatListedRoots = oatListedRoots,
+            OatLoadedAssets = oatLoadedAssets,
+            OatExternalReferenceAssets = oatExternalReferenceAssets,
             OatZeroWarningsZeroErrors = oatZero,
             ExactIdentitySequence = exactIdentity,
             LayoutReplayExact = layoutReplayExact,
