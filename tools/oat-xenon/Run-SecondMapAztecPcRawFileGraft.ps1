@@ -35,6 +35,12 @@ if([string]$baseline.format -ne 'WaW360.SecondMapBaseline.v1' -or
    @($identity.Entries).Count -ne 8509) {
     throw 'PC baseline, native identity and previous 4E OAT PASS do not match.'
 }
+if (-not (Test-Path -LiteralPath $native -PathType Leaf) -or
+    [long](Get-Item -LiteralPath $native).Length -ne 82739469L -or
+    (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ine
+        'e0f3c244dd7b72d0fe71c05faf014c2c9bfb05f770183954b3e7cde625eba98f') {
+    throw 'Golden Aztec reference changed since the verified Stage 4E baseline.'
+}
 $roots=@($identity.Entries | Where-Object { [string]$_.TypeName -ieq 'rawfile' })
 if($roots.Count -ne 120) { throw "Expected 120 native RawFile roots, found $($roots.Count)" }
 $sourceFFs=@($baseline.fastfiles | Where-Object { $_.Role -in @('map.ff','map_patch.ff','mod.ff') })
