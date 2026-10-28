@@ -499,7 +499,13 @@ public static class T4XenonRendererGraphEmitter
             oatError = ex.Message;
         }
 
-        var validationOnly = imageGraph is not null && imageGraphValidationOnly;
+        // The 16-byte StringTable name shell is an EMPTY table (counts=0,
+        // values=null), not the game's actual column/row data. Even a perfect
+        // native identity + OAT pass cannot certify hardware readiness until
+        // PC-owned StringTable values have a real serializer.
+        var emptyStringTableShells = roots.Count(r => Normalize(r.TypeName) == "stringtable");
+        var validationOnly = (imageGraph is not null && imageGraphValidationOnly) ||
+                             emptyStringTableShells != 0;
         var validationPass =
             layoutReplayExact && wrapped.RoundTripVerified &&
             exactIdentity && oatZero;
@@ -533,6 +539,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"OAT external references:    {oatExternalReferenceAssets:N0}");
         report.AppendLine($"OAT exact identity sequence:{exactIdentity}");
         report.AppendLine($"OAT 0 warnings / 0 errors:  {oatZero}");
+        report.AppendLine($"StringTable empty shells:    {emptyStringTableShells:N0} (16-byte ABI only; no PC table values)");
         report.AppendLine($"VALIDATION ONLY:            {validationOnly}");
         report.AppendLine($"VALIDATION PASS:            {validationPass}");
         report.AppendLine($"READY FOR HARDWARE:         {ready}");
@@ -1049,6 +1056,17 @@ public static class T4XenonRendererGraphEmitter
             return new(b, new[] { string.Empty, name });
         }
 
+        if (type == "stringtable")
+        {
+            // T4 Xenon StringTable fixed ABI: name* at +0, columnCount +4,
+            // rowCount +8 and values* +12. Empty table shell has only the
+            // first pointer non-null, and emits exactly one name child.
+            // This is a diagnostic identity shell, NOT a table-data graft.
+            var b = new byte[16];
+            PutU32(b, 0, T4ZonePointer.Following);
+            return new(b, new[] { name });
+        }
+
         var size = ShellSize(typeName);
         if (size == 0)
             throw new InvalidDataException($"No all-name-shell ABI for '{typeName}'.");
@@ -1078,6 +1096,10 @@ public static class T4XenonRendererGraphEmitter
         "gfxworld" => 900,
         "localize" => 8,
         "mapents" => 12,
+        // Pinned T4Xenon_Assets.h: StringTable { name*, columnCount,
+        // rowCount, values* } = four 32-bit fields. Layout-only shell below
+        // has 0x0 rows and 0x0 columns; real CSV contents must be PC-owned.
+        "stringtable" => 16,
         _ => 0
     };
 
