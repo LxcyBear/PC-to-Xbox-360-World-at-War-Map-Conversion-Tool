@@ -194,6 +194,20 @@ What is **not yet proven** is the per-bone semantic criterion that divides PC `b
 - **No game content in the repository.**
 - **Keep Fast Mode fast.** Proven serializer knowledge moves into Linker V2 instead of forcing the old proof marathon on every conversion.
 
+## Release output policy — developer workspace
+
+The local **release-only** directory for verified Xbox 360 converted maps is:
+
+```text
+C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\Converted Maps
+```
+
+- **Only working, hardware-verified Xbox 360 map packages** belong in this directory, arranged by canonical map name (for example, `Converted Maps\nazi_zombie_aztec\`). Include only the Xbox files actually required to deploy/play that map (main/load/patch/mod fastfiles and any needed accompanying assets such as stream audio).
+- **All intermediate outputs** (analysis reports, probes, experiments, generated candidates, validation oracles, logs, staging folders and temporary FFs) stay under the repository's ignored `output/` and other scratch/diagnostic paths, **never** in `Converted Maps`.
+- **No automatic promotion on serializer/OAT success alone.** An FF that parses, links, or passes OAT is not necessarily working on real Xbox hardware. Promote to the release-only directory after the relevant real-hardware checks pass.
+- **No proliferating FF build folders or backup version stacks in the release directory.** Keep one clean package per canonical map; preserve build history, when necessary, in development workspaces, not the published destination.
+- These are **local developer-machine paths**, not portable defaults for other users. The public converter must not rely on this user's directory existing.
+
 ## Repository layout
 
 - `src/WaW360.Core` — FF parsing, typed serializers, Linker V2, block planning, Xbox writers.
