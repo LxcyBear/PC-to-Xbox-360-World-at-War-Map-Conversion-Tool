@@ -22,6 +22,7 @@ $identityManifest = @(Get-ChildItem -LiteralPath $identityDir -Filter '*_native_
 $productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4u_production_image_graft\nuclear_4u_production_image_graft.json'
 $productionXModelGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4y_xmodel_production_graft\nuclear_4y_xmodel_production_graft.json'
 $productionMaterialGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_production_graft\nuclear_4zd_material_production_graft.json'
+$productionCriticalReferenceProofManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4w_xbox_reference_proof\nuclear_4w_xbox_reference_proof.json'
 
 function Find-MainFastFile {
     param([Parameter(Mandatory=$true)][string]$Directory)
@@ -122,7 +123,26 @@ if (Test-Path -LiteralPath $productionMaterialGraftManifest -PathType Leaf) {
     }
 }
 
-Write-Host '[NUCLEAR-4F] ================================================================'
+$productionCriticalReferenceCredit = $null
+if (Test-Path -LiteralPath $productionCriticalReferenceProofManifest -PathType Leaf) {
+    try {
+        $stage4w = Get-Content -LiteralPath $productionCriticalReferenceProofManifest -Raw | ConvertFrom-Json
+        if ([string]$stage4w.format -eq 'WaW360.Nuclear4W.XboxRuntimeReferenceProof.v1' -and
+            [bool]$stage4w.referenceProofPass -and
+            [int]$stage4w.referenceCandidates -eq 200 -and
+            [int]$stage4w.resolvedReferences -eq 200 -and
+            [int]$stage4w.missingReferences -eq 0 -and
+            [int]$stage4w.linkerExitCode -eq 0 -and
+            [int]$stage4w.unlinkerExitCode -eq 0) {
+            $productionCriticalReferenceCredit = $productionCriticalReferenceProofManifest
+        }
+    }
+    catch {
+        throw "Stage 4W manifest exists but could not be validated: $($_.Exception.Message)"
+    }
+}
+
+Write-Host '[NUCLEAR-4F] ================================================================ '
 Write-Host '[NUCLEAR-4F] FULL-CONTENT MASS / PRE-HARDWARE GATE'
 Write-Host '[NUCLEAR-4F] ================================================================'
 Write-Host "[NUCLEAR-4F] PC maps root       : $PcMapsRoot"
@@ -134,6 +154,7 @@ Write-Host "[NUCLEAR-4F] Renderer bindings  : $bindingManifest"
 Write-Host "[NUCLEAR-4F] 4U image credit    : $(if ($null -eq $productionImageCredit) { '<none>' } else { $productionImageCredit })"
 Write-Host "[NUCLEAR-4F] 4Y XModel credit   : $(if ($null -eq $productionXModelCredit) { '<none>' } else { $productionXModelCredit })"
 Write-Host "[NUCLEAR-4F] 4Z-D Material credit: $(if ($null -eq $productionMaterialCredit) { '<none>' } else { $productionMaterialCredit })"
+Write-Host "[NUCLEAR-4F] 4W retail refs     : $(if ($null -eq $productionCriticalReferenceCredit) { '<none>' } else { $productionCriticalReferenceCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
 Write-Host ''
 Write-Host '[NUCLEAR-4F] POLICY: no Xbox test candidate until size + critical-content gates both pass.'
@@ -162,16 +183,23 @@ try {
     )
     if ($null -ne $productionImageCredit -or
         $null -ne $productionXModelCredit -or
-        $null -ne $productionMaterialCredit) {
-        # CLI positions keep image -> 4Y -> 4Z-D. Preserve empty earlier slots
-        # whenever a later production credit exists.
+        $null -ne $productionMaterialCredit -or
+        $null -ne $productionCriticalReferenceCredit) {
+        # CLI positions keep image -> 4Y -> 4Z-D -> 4W. Preserve empty earlier
+        # slots whenever a later production credit exists.
         $args += $(if ($null -eq $productionImageCredit) { '' } else { $productionImageCredit })
     }
-    if ($null -ne $productionXModelCredit -or $null -ne $productionMaterialCredit) {
+    if ($null -ne $productionXModelCredit -or
+        $null -ne $productionMaterialCredit -or
+        $null -ne $productionCriticalReferenceCredit) {
         $args += $(if ($null -eq $productionXModelCredit) { '' } else { $productionXModelCredit })
     }
-    if ($null -ne $productionMaterialCredit) {
-        $args += $productionMaterialCredit
+    if ($null -ne $productionMaterialCredit -or
+        $null -ne $productionCriticalReferenceCredit) {
+        $args += $(if ($null -eq $productionMaterialCredit) { '' } else { $productionMaterialCredit })
+    }
+    if ($null -ne $productionCriticalReferenceCredit) {
+        $args += $productionCriticalReferenceCredit
     }
 
     & dotnet @args
