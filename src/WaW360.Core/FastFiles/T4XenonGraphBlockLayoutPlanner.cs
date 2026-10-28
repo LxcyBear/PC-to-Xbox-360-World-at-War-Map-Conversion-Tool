@@ -86,7 +86,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         int imageGraftLimit = 0,
         string? xmodelGraphRoot = null,
         string? xmodelBindingManifest = null,
-        string? materialGraphRoot = null)
+        string? materialGraphRoot = null,
+        string? materialBindingManifest = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -129,10 +130,17 @@ public static class T4XenonGraphBlockLayoutPlanner
         var notes = new List<string>();
 
         T4XenonMaterialCorpus? materialCorpus = null;
-        if (!string.IsNullOrWhiteSpace(materialGraphRoot))
+        if (!string.IsNullOrWhiteSpace(materialGraphRoot) ||
+            !string.IsNullOrWhiteSpace(materialBindingManifest))
         {
+            if (string.IsNullOrWhiteSpace(materialGraphRoot) ||
+                string.IsNullOrWhiteSpace(materialBindingManifest))
+                throw new InvalidDataException(
+                    "Stage 4D requires both Material graph root and Material binding manifest.");
+
             materialCorpus = T4XenonMaterialCorpus.Load(
                 materialGraphRoot!,
+                materialBindingManifest!,
                 roots);
             blockers.AddRange(materialCorpus.ValidateDependencies(roots));
         }
