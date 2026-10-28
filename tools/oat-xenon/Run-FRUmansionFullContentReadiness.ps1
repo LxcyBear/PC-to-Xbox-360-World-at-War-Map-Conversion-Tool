@@ -19,7 +19,7 @@ $identityManifest = @(Get-ChildItem -LiteralPath $identityDir -Filter '*_native_
     Sort-Object FullName |
     Select-Object -First 1)
 
-$productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4s_pc_image_graft\nuclear_4s_pc_image_graft.json'
+$productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4u_production_image_graft\nuclear_4u_production_image_graft.json'
 $productionXModelGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4y_xmodel_production_graft\nuclear_4y_xmodel_production_graft.json'
 $productionMaterialGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_production_graft\nuclear_4zd_material_production_graft.json'
 
@@ -64,14 +64,19 @@ if ($identityManifest.Count -ne 1) {
 $productionImageCredit = $null
 if (Test-Path -LiteralPath $productionImageGraftManifest -PathType Leaf) {
     try {
-        $stage4s = Get-Content -LiteralPath $productionImageGraftManifest -Raw | ConvertFrom-Json
-        if ([string]$stage4s.format -eq 'WaW360.Nuclear4S.PcImageProductionGraft.v1' -and
-            [bool]$stage4s.productionImageGraftPass) {
+        $stage4u = Get-Content -LiteralPath $productionImageGraftManifest -Raw | ConvertFrom-Json
+        if ([string]$stage4u.format -eq 'WaW360.Nuclear4U.ProductionImageGraft.v1' -and
+            [bool]$stage4u.productionImageGraftPass -and
+            [int]$stage4u.nativeRoots -eq 6811 -and
+            [int]$stage4u.oatListedRoots -eq 6811 -and
+            [bool]$stage4u.exactIdentitySequence -and
+            [bool]$stage4u.oatZeroWarningsZeroErrors -and
+            [bool]$stage4u.layoutReplayExact) {
             $productionImageCredit = $productionImageGraftManifest
         }
     }
     catch {
-        throw "Stage 4S manifest exists but could not be validated: $($_.Exception.Message)"
+        throw "Stage 4U manifest exists but could not be validated: $($_.Exception.Message)"
     }
 }
 
@@ -126,7 +131,7 @@ Write-Host "[NUCLEAR-4F] Native oracle      : $nativeMain"
 Write-Host "[NUCLEAR-4F] Renderer graph     : $graphRoot"
 Write-Host "[NUCLEAR-4F] Native identities  : $($identityManifest[0].FullName)"
 Write-Host "[NUCLEAR-4F] Renderer bindings  : $bindingManifest"
-Write-Host "[NUCLEAR-4F] 4S image credit    : $(if ($null -eq $productionImageCredit) { '<none>' } else { $productionImageCredit })"
+Write-Host "[NUCLEAR-4F] 4U image credit    : $(if ($null -eq $productionImageCredit) { '<none>' } else { $productionImageCredit })"
 Write-Host "[NUCLEAR-4F] 4Y XModel credit   : $(if ($null -eq $productionXModelCredit) { '<none>' } else { $productionXModelCredit })"
 Write-Host "[NUCLEAR-4F] 4Z-D Material credit: $(if ($null -eq $productionMaterialCredit) { '<none>' } else { $productionMaterialCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
@@ -158,7 +163,7 @@ try {
     if ($null -ne $productionImageCredit -or
         $null -ne $productionXModelCredit -or
         $null -ne $productionMaterialCredit) {
-        # CLI positions keep 4S -> 4Y -> 4Z-D. Preserve empty earlier slots
+        # CLI positions keep image -> 4Y -> 4Z-D. Preserve empty earlier slots
         # whenever a later production credit exists.
         $args += $(if ($null -eq $productionImageCredit) { '' } else { $productionImageCredit })
     }
