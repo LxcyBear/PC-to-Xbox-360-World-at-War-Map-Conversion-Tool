@@ -344,12 +344,7 @@ internal static class T4XenonXModelGraphCodec
         Action<long, int, bool> virtualAlloc)
     {
         if (!pointerPresent)
-        {
-            if (size != 0)
-                throw new InvalidDataException(
-                    $"XModel graph has null pointer for non-zero payload ({size:N0} bytes).");
             return;
-        }
         virtualAlloc(size, alignment, true);
     }
 
@@ -365,9 +360,6 @@ internal static class T4XenonXModelGraphCodec
     {
         if (!pointerPresent)
         {
-            if (expectedBytes != 0)
-                throw new InvalidDataException(
-                    $"{label}: pointer is null but count requires {expectedBytes:N0} bytes.");
             if (!string.IsNullOrWhiteSpace(relative))
                 throw new InvalidDataException(
                     $"{label}: pointer is null but graph contains blob path '{relative}'.");
