@@ -27,10 +27,12 @@ try {
 
     $srcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Techset'
     $imageSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Image'
+    $materialSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Material'
     $pcXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\XModel'
     $xenonXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\XModel'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $materialSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $pcXModelSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $xenonXModelSrcDir | Out-Null
 
@@ -51,6 +53,17 @@ try {
     $imageCppDst = Join-Path $imageSrcDir 'ImageGraphDumperT4Xenon.cpp'
     Copy-Item -LiteralPath $imageHeaderSrc -Destination $imageHeaderDst -Force
     Copy-Item -LiteralPath $imageCppSrc -Destination $imageCppDst -Force
+
+    $materialHeaderSrc = Join-Path $graphSrc 'MaterialRelocatableGraphDumperT4Xenon.h'
+    $materialCppSrc = Join-Path $graphSrc 'MaterialRelocatableGraphDumperT4Xenon.cpp'
+    if (-not (Test-Path -LiteralPath $materialHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $materialCppSrc -PathType Leaf)) {
+        throw 'Xenon Material relocatable graph dumper source is missing from converter repo.'
+    }
+    $materialHeaderDst = Join-Path $materialSrcDir 'MaterialRelocatableGraphDumperT4Xenon.h'
+    $materialCppDst = Join-Path $materialSrcDir 'MaterialRelocatableGraphDumperT4Xenon.cpp'
+    Copy-Item -LiteralPath $materialHeaderSrc -Destination $materialHeaderDst -Force
+    Copy-Item -LiteralPath $materialCppSrc -Destination $materialCppDst -Force
 
     $pcClassHeaderSrc = Join-Path $graphSrc 'XModelClassificationDumperT4.h'
     $pcClassCppSrc = Join-Path $graphSrc 'XModelClassificationDumperT4.cpp'
@@ -100,6 +113,13 @@ try {
         $text = $text.Replace($imageIncludeNeedle, $imageIncludeNeedle + [Environment]::NewLine + $imageIncludeLine)
     }
 
+    $materialIncludeNeedle = '#include "Game/T4Xenon/Material/MaterialJsonDumperT4Xenon.h"'
+    $materialIncludeLine = '#include "Material/MaterialRelocatableGraphDumperT4Xenon.h"'
+    if ($text -notmatch [regex]::Escape($materialIncludeLine)) {
+        if ($text -notmatch [regex]::Escape($materialIncludeNeedle)) { throw 'Could not find T4Xenon material dumper include anchor.' }
+        $text = $text.Replace($materialIncludeNeedle, $materialIncludeNeedle + [Environment]::NewLine + $materialIncludeLine)
+    }
+
     $xmodelIncludeNeedle = '#include "Game/T4Xenon/XModel/XModelDumperT4Xenon.h"'
     $xmodelIncludeLine = '#include "XModel/XModelGraphInventoryDumperT4Xenon.h"'
     if ($text -notmatch [regex]::Escape($xmodelIncludeLine)) {
@@ -125,6 +145,13 @@ try {
     if ($text -notmatch [regex]::Escape($imageRegisterLine)) {
         if ($text -notmatch [regex]::Escape($imageRegisterNeedle)) { throw 'Could not find T4Xenon image dumper registration anchor.' }
         $text = $text.Replace($imageRegisterNeedle, $imageRegisterNeedle + [Environment]::NewLine + '    ' + $imageRegisterLine)
+    }
+
+    $materialRegisterNeedle = 'RegisterAssetDumper(std::make_unique<material::JsonDumperT4Xenon>());'
+    $materialRegisterLine = 'RegisterAssetDumper(std::make_unique<material::RelocatableGraphDumperT4Xenon>());'
+    if ($text -notmatch [regex]::Escape($materialRegisterLine)) {
+        if ($text -notmatch [regex]::Escape($materialRegisterNeedle)) { throw 'Could not find T4Xenon material dumper registration anchor.' }
+        $text = $text.Replace($materialRegisterNeedle, $materialRegisterNeedle + [Environment]::NewLine + '    ' + $materialRegisterLine)
     }
 
     $xmodelRegisterNeedle = 'RegisterAssetDumper(std::make_unique<xmodel::DumperT4Xenon>());'
@@ -217,6 +244,7 @@ try {
         capabilities = @(
             't4xenon-techset-graph-v1',
             't4xenon-image-graph-v1',
+            't4xenon-material-relocatable-graph-v1',
             't4-xmodel-classification-v1',
             't4xenon-xmodel-graph-inventory-v1',
             't4xenon-xmodel-relocatable-graph-v1'
@@ -240,6 +268,8 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Material/MaterialRelocatableGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Material/MaterialRelocatableGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelGraphInventoryDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelGraphInventoryDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelRelocatableGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
