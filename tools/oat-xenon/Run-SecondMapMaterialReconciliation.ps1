@@ -174,7 +174,7 @@ if ($mainRecords.Count -eq 1) {
             if ($mainReconcile.Count -eq 1) {
                 $rootKinds.ExportedPhysicalGap=$rootKinds.Physical-$mainReconcile[0].ExportOccurrences
                 $rootKinds.PhysicallyMatchesDump=($rootKinds.Physical -eq $mainReconcile[0].ExportOccurrences)
-                $rootKinds.Status=if ($rootKinds.MaterialRows -eq $mainReconcile[0].ListOccurrences) { 'EXACT_ROOT_COUNT' } else { 'OAT_LIST_XASSET_COUNT_DISAGREE' }
+                $rootKinds.Status=if ($rootKinds.MaterialRows -eq $mainReconcile[0].ListOccurrences) { 'SAME_POPULATION_SIZE_NOT_PROOF' } else { 'SEMANTIC_POOL_AND_TOP_LEVEL_ROOTS_ARE_DIFFERENT_POPULATIONS' }
             }
         } else {
             $rootKinds.Status="CLI_MANIFEST_FAILED_EXIT_$code"
@@ -197,6 +197,7 @@ $report=[ordered]@{
     missingNamesExportedInOtherSource=$recoveredOther
     missingNamesNotDumpedFromAnySource=$unresolvedAll
     mainFastFileMaterialRootKinds=$rootKinds
+    materialCountComparisonPolicy='OAT --list enumerates semantically loaded identities; the parsed XAsset table enumerates top-level source roots. Do not equate or subtract the populations.'
     allListToDumpCountDifferencesExplainedByDuplicates=$allSafe
     sourceOnly=$true
     hardwareReady=$false
@@ -229,8 +230,9 @@ foreach ($row in $perFile) {
 $body.Add("Cross-source shared Material names=$($sharedNames.Count)")
 $body.Add("Main listed-but-unexported identities found in other source dump=$recoveredOther")
 $body.Add("Main listed-but-unexported identities absent from every source dump=$unresolvedAll")
-$body.Add("Main XAsset kind status=$($rootKinds.Status); physical=$($rootKinds.Physical); alias=$($rootKinds.OffsetOrAlias); null=$($rootKinds.Null); physicalMinusExport=$($rootKinds.ExportedPhysicalGap)")
-$body.Add("Main physical root count exactly matches material exports=$($rootKinds.PhysicallyMatchesDump)")
+$body.Add("Main XAsset kind status=$($rootKinds.Status); topLevelPhysicalMaterialRoots=$($rootKinds.Physical); topLevelAlias=$($rootKinds.OffsetOrAlias); topLevelNull=$($rootKinds.Null)")
+$body.Add('OAT semantic Material inventory is NOT a count of physical Material roots in the source XAsset table; never subtract them.')
+$body.Add("Top-level Material root count equals exported JSON count (coincidence only, not a validity gate)=$($rootKinds.PhysicallyMatchesDump)")
 $body.Add('NOTE: aggregate XAsset root kinds do not establish which individual OAT names are aliases.')
 $body.Add('UNEXPORTED NAMES AND THEIR CROSS-FILE RESOLUTION')
 foreach ($item in $unexported) {
