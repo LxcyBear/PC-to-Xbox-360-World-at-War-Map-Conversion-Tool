@@ -6,7 +6,22 @@ PC2XB3 is a work-in-progress converter/linker for **Call of Duty: World at War**
 
 The project does **not** distribute retail World at War game files or copyrighted map content. Users provide their own game data and custom-map sources.
 
-## Current status — October 25, 2026
+## Latest verified Aztec native-graph milestone — October 28, 2026
+
+The second-map `nazi_zombie_aztec_V2.2` investigation has a verified **reference-only** Xbox 360 TechniqueSet/Material graph foundation. The known-working Xbox `nazi_zombie_aztec.ff` was independently matched to the pinned SHA-256 `e0f3c244dd7b72d0fe71c05faf014c2c9bfb05f770183954b3e7cde625eba98f`. This reference is locally supplied by the developer and never redistributed.
+
+- **PC identity census:** 373/373 physical TechniqueSet roots verified (main 240, patch 1, mod 132).
+- **Cross-platform identity reconciliation:** 58 PC root entries have native names backed by shared-material evidence (12 main entries rely on *cross-source* material evidence), 26 further entries match native names but lack shared-material proof, 2 material-referenced root entries remain unresolved, 287 roots were not observed in the currently exported Material references. **Do not interpret unobserved as globally unused.** Zero conflicting native mappings detected.
+- **Native fixed-up TechniqueSet corpus:** 70/70 distinct graph identities, 1,216 non-null technique slots and passes, 379 distinct vertex shaders, 436/436 distinct pixel shaders, 1,628 referenced shader blob files, **1,410,348 verified shader blob bytes**. The existing typed Xenon graph importer returned `verified=True` / exit 0.
+- **Windows OAT file export:** 3,928 historical `Failed to open file` errors disappeared after switching from a deep output path (and an ineffective `SUBST` alias) to a genuinely short physical temp staging path. Final test produced `0 warnings, 0 errors` and verified transfer of 1,699 files / 4,589,622 bytes into the one ignored repository diagnostic folder.
+- **Boundary:** This proves extraction/validation of a **known-working Xbox-native oracle**, not that PC shaders have been translated into Xbox shader bytecode. The reference's shaders, FFs, audio and other game payloads are not converter distribution assets. No source-built, complete Aztec Xbox candidate has been authorized, and no real-hardware Aztec conversion pass has occurred.
+- **Next production tasks:** Promote PC-source-backed Material/TechniqueSet ownership into the Xbox native graph emitter; establish legitimate shader sourcing/compilation and dependency closure; resolve the two remaining material-referenced TechniqueSet identities and all weak matches; verify all output graph relocations and source-map runtime behavior before any hardware-ready release claim.
+
+Reproduce the successful reference graph proof from the repository using `tools/oat-xenon/Run-SecondMapAztecNativeGraphProof.ps1`. The main result is `IDENTITY_AND_TYPED_GRAPH_IMPORT_PASS`. All experimental outputs stay under ignored `output/`; the developer's `Converted Maps` directory is **reserved exclusively for hardware-verified, working Xbox map packages**.
+
+## Historical status — October 25, 2026
+
+
 
 The deterministic Linker V2 pipeline is in late native-loader bring-up. Source discovery, canonical root accounting, script-string reconstruction, Xbox type mapping, XFile/XAsset emission, block-capacity planning, Xbox single-zlib wrapping, selected-load generation, and real-hardware diagnostics are working foundations.
 
