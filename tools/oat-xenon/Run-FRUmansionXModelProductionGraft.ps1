@@ -3,7 +3,7 @@ param(
     [string]$NativeControlDirectory = 'C:\Users\jorda\OneDrive\Desktop\working frumansion',
     [string]$RendererGraphRoot = '',
     [string]$BindingRoot = '',
-    [string]$PcImageBridgeRoot = '',
+    [string]$ProductionImageGraphRoot = '',
     [string]$XModelGraphRoot = '',
     [string]$XModelBindingRoot = '',
     [string]$XModelReplaySuiteRoot = '',
@@ -23,8 +23,8 @@ if ([string]::IsNullOrWhiteSpace($RendererGraphRoot)) {
 if ([string]::IsNullOrWhiteSpace($BindingRoot)) {
     $BindingRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_xenon_root_binding'
 }
-if ([string]::IsNullOrWhiteSpace($PcImageBridgeRoot)) {
-    $PcImageBridgeRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_pc_image_bridge'
+if ([string]::IsNullOrWhiteSpace($ProductionImageGraphRoot)) {
+    $ProductionImageGraphRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4t_production_image_graph'
 }
 if ([string]::IsNullOrWhiteSpace($XModelGraphRoot)) {
     $XModelGraphRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4xb_xmodel_relocatable_graph'
@@ -73,7 +73,7 @@ if ($identityManifest.Count -ne 1) {
     throw "Expected exactly one native identity manifest under '$identityDir'; found $($identityManifest.Count)."
 }
 
-$imageBridgeManifest = Join-Path $PcImageBridgeRoot 'nuclear_4r_pc_image_bridge.json'
+$productionImageManifest = Join-Path $ProductionImageGraphRoot 'nuclear_4t_production_image_graph.json'
 $xmodelCorpusManifest = Join-Path $XModelGraphRoot 'nuclear_4xb_xmodel_relocatable_graph.json'
 $xmodelBindingManifest = Join-Path $XModelBindingRoot 'nuclear_4w_xmodel_root_binding.json'
 $xmodelSuiteManifest = Join-Path $XModelReplaySuiteRoot 'nuclear_4xc_replay_suite.json'
@@ -81,7 +81,7 @@ $xmodelSuiteManifest = Join-Path $XModelReplaySuiteRoot 'nuclear_4xc_replay_suit
 foreach ($required in @(
     $rendererBinding,
     $identityManifest[0].FullName,
-    $imageBridgeManifest,
+    $productionImageManifest,
     $xmodelCorpusManifest,
     $xmodelBindingManifest,
     $xmodelSuiteManifest,
@@ -95,14 +95,14 @@ if (-not (Test-Path -LiteralPath $RendererGraphRoot -PathType Container)) {
     throw "Missing renderer graph root: $RendererGraphRoot"
 }
 
-$imageBridge = Get-Content -LiteralPath $imageBridgeManifest -Raw | ConvertFrom-Json
+$productionImages = Get-Content -LiteralPath $productionImageManifest -Raw | ConvertFrom-Json
 $xmodelCorpus = Get-Content -LiteralPath $xmodelCorpusManifest -Raw | ConvertFrom-Json
 $xmodelBinding = Get-Content -LiteralPath $xmodelBindingManifest -Raw | ConvertFrom-Json
 $xmodelSuite = Get-Content -LiteralPath $xmodelSuiteManifest -Raw | ConvertFrom-Json
 
-if ([string]$imageBridge.format -ne 'WaW360.Nuclear4R.PcOwnedImageBridge.v1' -or
-    -not [bool]$imageBridge.bridgePass) {
-    throw 'Stage 4Y requires a passing PC-owned Stage 4R image bridge.'
+if ([string]$productionImages.format -ne 'WaW360.Nuclear4T.ProductionImageGraph.v1' -or
+    -not [bool]$productionImages.mergePass) {
+    throw 'Stage 4Y requires a passing Stage 4T production image graph.'
 }
 
 if ([string]$xmodelCorpus.format -ne 'WaW360.Nuclear4XB.XModelRelocatableGraph.v1' -or
@@ -126,8 +126,8 @@ if ([string]$xmodelSuite.format -ne 'WaW360.Nuclear4XC.XModelReplaySuite.v1' -or
     throw 'Stage 4Y requires the passing 4X-C representative replay suite.'
 }
 
-$imageGraphRoot = [string]$imageBridge.graphRoot
-$expectedImages = [int]$imageBridge.resolvedSources
+$imageGraphRoot = [string]$productionImages.graphRoot
+$expectedImages = [int]$productionImages.imageGraphs
 if ($expectedImages -le 0 -or -not (Test-Path -LiteralPath $imageGraphRoot -PathType Container)) {
     throw "Stage 4Y image graph is unavailable or empty: $imageGraphRoot"
 }
@@ -142,8 +142,8 @@ Write-Host '[NUCLEAR-4Y] =======================================================
 Write-Host "[NUCLEAR-4Y] Native oracle       : $nativeMain"
 Write-Host "[NUCLEAR-4Y] Native identity     : $($identityManifest[0].FullName)"
 Write-Host "[NUCLEAR-4Y] Renderer graph      : $RendererGraphRoot"
-Write-Host "[NUCLEAR-4Y] PC image graph      : $imageGraphRoot"
-Write-Host "[NUCLEAR-4Y] PC-backed images    : $expectedImages"
+Write-Host "[NUCLEAR-4Y] Production image graph: $imageGraphRoot"
+Write-Host "[NUCLEAR-4Y] Production images   : $expectedImages"
 Write-Host "[NUCLEAR-4Y] XModel graph corpus : $XModelGraphRoot"
 Write-Host '[NUCLEAR-4Y] Owned XModels       : 280'
 Write-Host '[NUCLEAR-4Y] XModel references   : 9 (reference shells preserved)'
@@ -207,7 +207,7 @@ $summary = [ordered]@{
     nativeFastFile = $nativeMain
     nativeIdentityManifest = $identityManifest[0].FullName
     rendererBindingManifest = $rendererBinding
-    pcImageBridgeManifest = $imageBridgeManifest
+    productionImageManifest = $productionImageManifest
     xmodelCorpusManifest = $xmodelCorpusManifest
     xmodelBindingManifest = $xmodelBindingManifest
     xmodelReplaySuiteManifest = $xmodelSuiteManifest
@@ -235,7 +235,7 @@ Write-Host "[NUCLEAR-4Y] Native roots           : $([int]$emitter.NativeRoots)"
 Write-Host "[NUCLEAR-4Y] OAT roots              : $([int]$emitter.OatListedRoots) / 6811"
 Write-Host "[NUCLEAR-4Y] Real XModel roots      : $([int]$emitter.RealXModelRoots) / 280"
 Write-Host "[NUCLEAR-4Y] XModel references      : $([int]$emitter.XModelReferenceRoots) / 9"
-Write-Host "[NUCLEAR-4Y] PC-backed image roots  : $([int]$emitter.RealImageRoots)"
+Write-Host "[NUCLEAR-4Y] Production image roots : $([int]$emitter.RealImageRoots)"
 Write-Host "[NUCLEAR-4Y] Layout replay exact    : $([bool]$emitter.LayoutReplayExact)"
 Write-Host "[NUCLEAR-4Y] Exact identity sequence: $([bool]$emitter.ExactIdentitySequence)"
 Write-Host "[NUCLEAR-4Y] OAT 0 warn / 0 error   : $([bool]$emitter.OatZeroWarningsZeroErrors)"
