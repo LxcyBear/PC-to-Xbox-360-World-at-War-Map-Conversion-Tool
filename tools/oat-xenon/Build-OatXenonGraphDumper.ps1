@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [switch]$TraceNativeAssetLoader
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -196,6 +198,72 @@ try {
         $normalizedPcText,
         [System.Text.UTF8Encoding]::new($false))
 
+    if ($TraceNativeAssetLoader) {
+        # A diagnostic-only exception boundary in pinned OAT's native loader.
+        # The stock --list path logs only the generic invalid-block error; at
+        # this point OAT knows which XAsset root it was trying to deserialize.
+        # We emit ONE line on exception, not 8,509 verbose per-asset messages.
+        $loaderRel='src/ZoneLoading/Game/T4Xenon/ContentLoaderT4Xenon.cpp'
+        $loader=Join-Path $oat 'src\ZoneLoading\Game\T4Xenon\ContentLoaderT4Xenon.cpp'
+        $loaderText=[IO.File]::ReadAllText($loader)
+        $incAnchor='#include <cassert>'
+        if ($loaderText.Split($incAnchor).Length -ne 2) {
+            throw 'Pinned OAT native loader include anchor is not unique.'
+        }
+        $loaderText=$loaderText.Replace($incAnchor,
+            $incAnchor + [Environment]::NewLine + '#include <exception>' +
+                         [Environment]::NewLine + '#include <iostream>')
+        $oldLoop=@'
+    for (size_t index = 0; index < count; index++)
+    {
+        LoadXAsset(false);
+        varXAsset++;
+    }
+'@
+        $newLoop=@'
+    for (size_t index = 0; index < count; index++)
+    {
+        try
+        {
+            LoadXAsset(false);
+        }
+        catch (const std::exception& ex)
+        {
+            std::cerr << "[AZTEC-OAT-FAULT] stage=asset rootIndex=" << index
+                      << " typeId=" << varXAsset->type
+                      << " error=" << ex.what() << std::endl;
+            throw;
+        }
+        varXAsset++;
+    }
+'@
+        if ($loaderText.Split($oldLoop).Length -ne 2) {
+            throw 'Pinned OAT native asset loader loop anchor is not unique.'
+        }
+        $loaderText=$loaderText.Replace($oldLoop,$newLoop)
+        $first='    LoadScriptStringList(false);'
+        $replacement=@'
+    try
+    {
+        LoadScriptStringList(false);
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "[AZTEC-OAT-FAULT] stage=scriptstrings rootIndex=none error="
+                  << ex.what() << std::endl;
+        throw;
+    }
+'@
+        if ($loaderText.Split($first).Length -ne 2) {
+            throw 'Pinned OAT native ScriptString entry anchor is not unique.'
+        }
+        $loaderText=$loaderText.Replace($first,$replacement.TrimEnd([char]13,[char]10))
+        [IO.File]::WriteAllText($loader,
+            $loaderText.TrimEnd([char]13,[char]10) + [char]10,
+            [Text.UTF8Encoding]::new($false))
+        Write-Host '[OAT-GRAPH] Native loader first-exception index tracing enabled (diagnostic build).'
+    }
+
     & git diff --check
     if ($LASTEXITCODE -ne 0) { throw 'OAT graph patch failed git diff --check.' }
 
@@ -250,6 +318,9 @@ try {
             't4xenon-xmodel-relocatable-graph-v1'
         )
     }
+    if ($TraceNativeAssetLoader) {
+        $capabilities.capabilities += 't4xenon-asset-fault-trace-v1'
+    }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
 
@@ -264,6 +335,7 @@ finally {
         try {
             & git checkout -- 'src/ObjWriting/Game/T4Xenon/ObjWriterT4Xenon.cpp' 2>$null
             & git checkout -- 'src/ObjWriting/Game/T4/ObjWriterT4.cpp' 2>$null
+            & git checkout -- 'src/ZoneLoading/Game/T4Xenon/ContentLoaderT4Xenon.cpp' 2>$null
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
