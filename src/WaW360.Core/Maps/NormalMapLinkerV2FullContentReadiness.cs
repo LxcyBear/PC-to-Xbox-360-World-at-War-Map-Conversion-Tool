@@ -544,6 +544,170 @@ public static class NormalMapLinkerV2FullContentReadiness
         long TotalSerializedBytes,
         long TotalPixelBytes);
 
+    private sealed record ProductionXModelCredit(
+        IReadOnlyDictionary<int, long> SerializedBytesByNativeIndex,
+        long TotalSerializedBytes,
+        int ReferenceRoots,
+        int IntegratedImageRoots,
+        long IntegratedZoneBytes);
+
+    private static ProductionXModelCredit LoadProductionXModelCredit(
+        string? graftManifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(graftManifestPath))
+            return new ProductionXModelCredit(
+                new Dictionary<int, long>(),
+                0,
+                0,
+                0,
+                0);
+
+        graftManifestPath = Path.GetFullPath(graftManifestPath);
+        if (!File.Exists(graftManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4F production-XModel graft manifest was not found.",
+                graftManifestPath);
+
+        using var graftDoc = JsonDocument.Parse(File.ReadAllText(graftManifestPath));
+        var graft = graftDoc.RootElement;
+
+        if (GetString(graft, "format") != "WaW360.Nuclear4Y.XModelProductionGraft.v1" ||
+            !GetBool(graft, "productionXModelGraftPass"))
+            throw new InvalidDataException(
+                "Stage 4F requires a passing WaW360.Nuclear4Y.XModelProductionGraft.v1 manifest.");
+
+        if (GetInt(graft, "nativeRoots") != nativeRootCount ||
+            GetInt(graft, "oatListedRoots") != nativeRootCount ||
+            GetInt(graft, "pcBackedOwnedXModels") != 280 ||
+            GetInt(graft, "preservedXModelReferenceRoots") != 9 ||
+            !GetBool(graft, "exactIdentitySequence") ||
+            !GetBool(graft, "oatZeroWarningsZeroErrors") ||
+            !GetBool(graft, "layoutReplayExact"))
+            throw new InvalidDataException(
+                "Stage 4Y manifest does not prove an exact clean 280-XModel / full native-root replay.");
+
+        var emitterManifestPath = GetString(graft, "emitterManifest");
+        if (string.IsNullOrWhiteSpace(emitterManifestPath))
+            throw new InvalidDataException("Stage 4Y manifest has no emitter-manifest path.");
+        if (!Path.IsPathRooted(emitterManifestPath))
+            emitterManifestPath = Path.GetFullPath(
+                Path.Combine(Path.GetDirectoryName(graftManifestPath)!, emitterManifestPath));
+        if (!File.Exists(emitterManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4Y emitter manifest referenced by the production graft was not found.",
+                emitterManifestPath);
+
+        using var emitterDoc = JsonDocument.Parse(File.ReadAllText(emitterManifestPath));
+        var emitter = emitterDoc.RootElement;
+
+        if (GetInt(emitter, "NativeRoots") != nativeRootCount ||
+            GetInt(emitter, "OatListedRoots") != nativeRootCount ||
+            GetInt(emitter, "RealXModelRoots") != 280 ||
+            GetInt(emitter, "XModelReferenceRoots") != 9 ||
+            !GetBool(emitter, "ExactIdentitySequence") ||
+            !GetBool(emitter, "OatZeroWarningsZeroErrors") ||
+            !GetBool(emitter, "LayoutReplayExact") ||
+            !GetBool(emitter, "ValidationPass"))
+            throw new InvalidDataException(
+                "Stage 4Y emitter manifest no longer proves a clean full-root OAT replay.");
+
+        var integratedZoneBytes = GetLong(emitter, "ZoneBytes");
+        var integratedImageRoots = GetInt(emitter, "RealImageRoots");
+        if (integratedZoneBytes <= 0)
+            throw new InvalidDataException("Stage 4Y emitter reports a non-positive zone size.");
+
+        var corpusManifestPath = GetString(graft, "xmodelCorpusManifest");
+        var bindingManifestPath = GetString(graft, "xmodelBindingManifest");
+
+        if (string.IsNullOrWhiteSpace(corpusManifestPath) ||
+            string.IsNullOrWhiteSpace(bindingManifestPath))
+            throw new InvalidDataException(
+                "Stage 4Y manifest is missing XModel corpus/binding provenance.");
+
+        if (!Path.IsPathRooted(corpusManifestPath))
+            corpusManifestPath = Path.GetFullPath(
+                Path.Combine(Path.GetDirectoryName(graftManifestPath)!, corpusManifestPath));
+        if (!Path.IsPathRooted(bindingManifestPath))
+            bindingManifestPath = Path.GetFullPath(
+                Path.Combine(Path.GetDirectoryName(graftManifestPath)!, bindingManifestPath));
+
+        if (!File.Exists(corpusManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4Y XModel corpus manifest was not found.",
+                corpusManifestPath);
+        if (!File.Exists(bindingManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4Y XModel binding manifest was not found.",
+                bindingManifestPath);
+
+        var graphRoot = Path.GetDirectoryName(corpusManifestPath)
+            ?? throw new InvalidDataException(
+                "Stage 4Y XModel corpus manifest has no parent graph directory.");
+
+        var corpus = T4XenonXModelCorpus.Load(
+            graphRoot,
+            bindingManifestPath,
+            expectedOwned: 280,
+            expectedReferences: 9);
+
+        var dependencyErrors = corpus.ValidateDependencies(nativeIdentity);
+        if (dependencyErrors.Count != 0)
+            throw new InvalidDataException(
+                "Stage 4Y XModel dependency provenance no longer resolves against the native sequence: " +
+                string.Join(" | ", dependencyErrors.Take(20)));
+
+        var byIndex = new Dictionary<int, long>();
+        long totalSerialized = 0;
+
+        foreach (var pair in corpus.OwnedByRoot.OrderBy(x => x.Key))
+        {
+            var rootIndex = pair.Key;
+            var entry = pair.Value;
+
+            if ((uint)rootIndex >= (uint)nativeIdentity.Count)
+                throw new InvalidDataException(
+                    $"Stage 4Y XModel root #{rootIndex} is outside the native sequence.");
+
+            var nativeRoot = nativeIdentity[rootIndex];
+            if (!nativeRoot.Name.Equals(entry.NativeName, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Stage 4Y XModel root #{rootIndex} identity '{entry.NativeName}' != native '{nativeRoot.Name}'.");
+
+            long serialized = 0;
+            T4XenonXModelGraphCodec.Plan(
+                entry,
+                (size, _, isSerialized) =>
+                {
+                    if (isSerialized)
+                        serialized = checked(serialized + size);
+                },
+                size => serialized = checked(serialized + size));
+
+            if (serialized <= 0)
+                throw new InvalidDataException(
+                    $"Stage 4Y XModel root #{rootIndex} computed non-positive serialized mass.");
+
+            if (!byIndex.TryAdd(rootIndex, serialized))
+                throw new InvalidDataException(
+                    $"Stage 4Y repeats XModel native root #{rootIndex}.");
+
+            totalSerialized = checked(totalSerialized + serialized);
+        }
+
+        if (byIndex.Count != 280)
+            throw new InvalidDataException(
+                $"Stage 4Y resolved {byIndex.Count:N0} owned XModel roots; expected 280.");
+
+        return new ProductionXModelCredit(
+            byIndex,
+            totalSerialized,
+            corpus.ReferenceRoots,
+            integratedImageRoots,
+            integratedZoneBytes);
+    }
+
     private static ProductionImageCredit LoadProductionImageCredit(
         string? graftManifestPath,
         IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
