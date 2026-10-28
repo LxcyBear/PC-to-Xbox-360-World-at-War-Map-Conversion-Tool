@@ -185,11 +185,11 @@ foreach ($targetKey in @($targetsByName.Keys | Sort-Object)) {
         if ($productionByName.ContainsKey($mappedPc)) {
             $prod=[object[]]$productionByName[$mappedPc].ToArray(); $status='existing-production-image-alias'; $productionAlias++
         } else {
-            $sources=Find-ExactImageSources -ImageName $mappedPc -Roots $sourceRoots
-            if ($sources.Count -gt 0) { $status='pc-image-source-resolved'; $sourceResolved++ } else { $status='pc-image-mapped-source-missing' }
+            $sources=@(Find-ExactImageSources -ImageName $mappedPc -Roots $sourceRoots)
+            if (@($sources).Count -gt 0) { $status='pc-image-source-resolved'; $sourceResolved++ } else { $status='pc-image-mapped-source-missing' }
         }
     } elseif ($pcNames.Count -gt 1) { $status='ambiguous-material-slot-mapping'; $ambiguous++ } else { $unreferenced++ }
-    $results.Add([pscustomobject]@{ Index=[int]$target.Index; Name=[string]$target.Name; Status=$status; MaterialOccurrences=$hits.Count; CandidatePcImages=$pcNames; MappedPcImage=$mappedPc; Occurrences=$hits; ProductionMatches=$prod; SourceMatches=$sources })
+    $results.Add([pscustomobject]@{ Index=[int]$target.Index; Name=[string]$target.Name; Status=$status; MaterialOccurrences=@($hits).Count; CandidatePcImages=[object[]]@($pcNames); MappedPcImage=$mappedPc; Occurrences=[object[]]@($hits); ProductionMatches=[object[]]@($prod); SourceMatches=[object[]]@($sources) })
 }
 
 $sourceMissing=@($results.ToArray() | Where-Object Status -eq 'pc-image-mapped-source-missing').Count
