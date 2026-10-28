@@ -4,6 +4,7 @@ param(
     [string]$OutputRoot = '',
     [string]$XboxAztecFastFile = '',
     [string]$NativeSearchRoot = '',
+    [string]$NativeArchivePath = '',
     [string]$UnlinkerExe = '',
     [switch]$SkipArchiveSearch
 )
@@ -84,13 +85,15 @@ function Try-GoldenFF([string]$candidate,[string]$origin) {
     if ($file.FullName -ieq $mainPc) { return $false }
     $sizeMatches = [long]$file.Length -eq $goldenBytes
     $hash = ''
+    $errorText = ''
     if ($sizeMatches) {
-        $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        try { $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() }
+        catch { $errorText = $_.Exception.Message }
     }
     $matched = $sizeMatches -and $hash -eq $goldenSha256
     $discovered.Add([pscustomobject]@{
         Path=$file.FullName; Origin=$origin; Bytes=[long]$file.Length
-        SizeMatch=$sizeMatches; Sha256=$hash; ExactGoldenMatch=$matched
+        SizeMatch=$sizeMatches; Sha256=$hash; ExactGoldenMatch=$matched; HashError=$errorText
     })
     if ($matched) {
         $script:native = $file.FullName
@@ -148,14 +151,27 @@ if ($XboxAztecFastFile) {
         }
     }
     if (-not $native -and -not $SkipArchiveSearch) {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
         Add-Type -AssemblyName System.IO.Compression
-        $archiveRoots = @($lookedIn.ToArray())
-        foreach ($root in $archiveRoots) {
-            if ($native) { break }
-            Write-Host "[NATIVE-AZTEC] Checking Aztec-named ZIP archives in: $root"
+        $archivesToCheck = New-Object 'System.Collections.Generic.List[string]'
+        if ($NativeArchivePath) {
+            if (-not (Test-Path -LiteralPath $NativeArchivePath -PathType Leaf)) {
+                throw "Specified ZIP archive missing: $NativeArchivePath"
+            }
+            $archivesToCheck.Add((Resolve-Path -LiteralPath $NativeArchivePath).Path)
+        }
+        foreach ($root in @($lookedIn.ToArray())) {
+            Write-Host "[NATIVE-AZTEC] Looking for Aztec-named ZIP archives in: $root"
             foreach ($zipFile in @(Get-ChildItem -LiteralPath $root -Filter '*aztec*.zip' -File -Recurse -ErrorAction SilentlyContinue)) {
+                $archivesToCheck.Add($zipFile.FullName)
+            }
+        }
+        $uniqueArchives = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+        foreach ($archivePath in $archivesToCheck) {
                 if ($native) { break }
-                $archiveHints.Add($zipFile.FullName)
+                if (-not $uniqueArchives.Add($archivePath)) { continue }
+                $archiveHints.Add($archivePath)
+                $zipFile = Get-Item -LiteralPath $archivePath
                 try {
                     $zip = [IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
                     try {
@@ -185,7 +201,6 @@ if ($XboxAztecFastFile) {
                 } catch {
                     Write-Host "[NATIVE-AZTEC] Cannot inspect archive $($zipFile.FullName) : $($_.Exception.Message)" -ForegroundColor Yellow
                 }
-            }
         }
     }
 }
@@ -287,7 +302,7 @@ $manifest = [ordered]@{
     searchRoots=[string[]]$lookedIn.ToArray()
     candidates=[object[]]$discovered.ToArray()
     archiveCandidates=[string[]]$archiveHints.ToArray()
-    mainPcTechniqueRoots=240
+    mainPcTechniqueRoots=[int]$primary[0].DeclaredTechsets
     mainNativeClosureComputed=($null -ne $closure)
     mainReachablePcTechniqueSets=$(if ($null -ne $closure) { [int]$closure.ReachablePcTechniqueRoots } else { $null })
     mainDonorBound=$(if ($null -ne $closure) { [int]$closure.DonorBoundTechniqueRoots } else { $null })
@@ -322,6 +337,7 @@ if (-not $native) {
     $report.Add('Native FF not found in configured CodxeFolder/XboxGameFolder, default World at War trees, Downloads or optional search root.')
     $report.Add('Try -XboxAztecFastFile "<full-path-to-known-working-nazi_zombie_aztec.ff>"')
     $report.Add('Or -NativeSearchRoot "<folder-containing-native-Xbox-Aztec>"')
+    $report.Add('If inside an unrelated-named ZIP, use -NativeArchivePath "<full-path-to-archive.zip>".')
     $report.Add('No material comparisons ran; prior PC identities remain preserved.')
 } else {
     if ($null -ne $closure) {
