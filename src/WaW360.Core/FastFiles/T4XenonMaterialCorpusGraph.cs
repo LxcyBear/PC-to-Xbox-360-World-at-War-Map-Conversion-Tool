@@ -12,31 +12,46 @@ internal sealed class T4XenonMaterialCorpus
 
     public static T4XenonMaterialCorpus Load(
         string graphRoot,
+        string bindingManifest,
         IReadOnlyList<T4XenonNativeIdentityEntry> roots,
         int expectedOwned = 502)
     {
         graphRoot = Path.GetFullPath(graphRoot);
+        bindingManifest = Path.GetFullPath(bindingManifest);
+
         if (!Directory.Exists(graphRoot))
             throw new DirectoryNotFoundException($"Material graph root not found: {graphRoot}");
+        if (!File.Exists(bindingManifest))
+            throw new FileNotFoundException(
+                "Material root-binding manifest not found.",
+                bindingManifest);
+
+        using var bindingDoc = JsonDocument.Parse(File.ReadAllText(bindingManifest));
+        var binding = bindingDoc.RootElement;
+        if (!binding.TryGetProperty("BindingPass", out var bindingPass) ||
+            !bindingPass.GetBoolean())
+            throw new InvalidDataException(
+                "Material root-binding manifest is not passing.");
+
+        var bindingRows = binding.GetProperty("OwnedBindings")
+            .EnumerateArray()
+            .ToArray();
+        if (bindingRows.Length != expectedOwned)
+            throw new InvalidDataException(
+                $"Material binding count {bindingRows.Length:N0} != expected {expectedOwned:N0}.");
 
         var graphDirectory = Path.Combine(graphRoot, "xenon_material_graphs");
         if (!Directory.Exists(graphDirectory))
             throw new DirectoryNotFoundException(
                 $"Material graph directory not found: {graphDirectory}");
 
-        var graphFiles = Directory.GetFiles(
-                graphDirectory,
-                "*.json",
-                SearchOption.AllDirectories)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var graphsByName = new Dictionary<string, (string File, T4XenonRelocatableMaterialGraph Graph)>(
+            StringComparer.OrdinalIgnoreCase);
 
-        if (graphFiles.Length != expectedOwned)
-            throw new InvalidDataException(
-                $"Material graph count {graphFiles.Length:N0} != expected {expectedOwned:N0}.");
-
-        var entries = new Dictionary<int, T4XenonMaterialCorpusEntry>();
-        foreach (var graphFile in graphFiles)
+        foreach (var graphFile in Directory.GetFiles(
+                     graphDirectory,
+                     "*.json",
+                     SearchOption.AllDirectories))
         {
             var graph = JsonSerializer.Deserialize<T4XenonRelocatableMaterialGraph>(
                 File.ReadAllText(graphFile),
@@ -45,39 +60,55 @@ internal sealed class T4XenonMaterialCorpus
                     $"Could not parse Material graph: {graphFile}");
 
             ValidateGraph(graph, graphFile);
-
-            var matches = T4XenonXModelCorpus.FindReferenceCandidates(
-                roots,
-                "material",
-                graph.Name);
-            if (matches.Count != 1)
+            if (!graphsByName.TryAdd(graph.Name, (graphFile, graph)))
                 throw new InvalidDataException(
-                    $"{graph.Name}: Material graph resolves to {matches.Count} native root(s).");
+                    $"Duplicate Material graph identity '{graph.Name}'.");
+        }
 
-            var nativeRoot = matches[0];
+        if (graphsByName.Count != expectedOwned)
+            throw new InvalidDataException(
+                $"Material graph count {graphsByName.Count:N0} != expected {expectedOwned:N0}.");
+
+        var entries = new Dictionary<int, T4XenonMaterialCorpusEntry>();
+        foreach (var row in bindingRows)
+        {
+            var rootIndex = row.GetProperty("NativeRootIndex").GetInt32();
+            var nativeName = row.GetProperty("NativeName").GetString() ?? "";
+            var corpusName = row.GetProperty("CorpusName").GetString() ?? "";
+
+            if (!graphsByName.TryGetValue(corpusName, out var graphRow))
+                throw new InvalidDataException(
+                    $"Material binding references missing graph '{corpusName}'.");
+
+            var nativeRoot = roots.SingleOrDefault(x => x.Index == rootIndex)
+                ?? throw new InvalidDataException(
+                    $"Material binding root #{rootIndex} is missing from native identity.");
+
+            if (T4XenonXModelCorpus.NormalizeType(nativeRoot.OatTypeName) != "material")
+                throw new InvalidDataException(
+                    $"Material binding root #{rootIndex} is {nativeRoot.OatTypeName}, expected material.");
+
+            if (!nativeRoot.Name.Equals(nativeName, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Material binding root #{rootIndex} name '{nativeName}' != native identity '{nativeRoot.Name}'.");
+
             if (!entries.TryAdd(
-                    nativeRoot.Index,
+                    rootIndex,
                     new T4XenonMaterialCorpusEntry
                     {
-                        NativeRootIndex = nativeRoot.Index,
-                        NativeName = nativeRoot.Name,
-                        CorpusName = graph.Name,
-                        GraphFile = graphFile,
+                        NativeRootIndex = rootIndex,
+                        NativeName = nativeName,
+                        CorpusName = corpusName,
+                        GraphFile = graphRow.File,
                         DumpRoot = graphRoot,
-                        Graph = graph
+                        Graph = graphRow.Graph
                     }))
                 throw new InvalidDataException(
-                    $"{graph.Name}: native Material root #{nativeRoot.Index} is already claimed by another graph.");
+                    $"Duplicate Material binding for native root #{rootIndex}.");
         }
 
         var nativeMaterialRoots = roots.Count(
             x => T4XenonXModelCorpus.NormalizeType(x.OatTypeName) == "material");
-        if (entries.Count != expectedOwned)
-            throw new InvalidDataException(
-                $"Bound Material graph count {entries.Count:N0} != expected {expectedOwned:N0}.");
-        if (nativeMaterialRoots < entries.Count)
-            throw new InvalidDataException(
-                $"Native Material roots {nativeMaterialRoots:N0} < bound corpus {entries.Count:N0}.");
 
         return new T4XenonMaterialCorpus
         {
