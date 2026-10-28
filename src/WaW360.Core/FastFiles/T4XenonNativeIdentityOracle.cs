@@ -16,7 +16,7 @@ public sealed record T4XenonOatExternalReference(
     string OatTypeName,
     string Name);
 
-public sealed class T4XenonIdentityGateException : InvalidDataException
+public sealed class T4XenonIdentityGateException : Exception
 {
     public T4XenonIdentityGateException(
         string message,
