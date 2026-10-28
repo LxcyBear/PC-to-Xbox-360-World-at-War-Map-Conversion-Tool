@@ -402,9 +402,9 @@ public static class T4XenonNativeIdentityOracle
                 StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
-                g => g.First(),
+                g => g.Count(),
                 StringComparer.OrdinalIgnoreCase);
-        var seenExternal = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenExternal = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         var expectedIndex = 0;
         foreach (var row in listed)
@@ -423,16 +423,20 @@ public static class T4XenonNativeIdentityOracle
             }
 
             var key = NormalizeIdentityKey(row.Type, row.Name);
-            if (allowed.ContainsKey(key))
+            if (allowed.TryGetValue(key, out var allowedCount))
             {
-                if (!seenExternal.Add(key))
+                seenExternal.TryGetValue(key, out var seenCount);
+                if (seenCount >= allowedCount)
                 {
-                    error = $"duplicate external reference asset '{row.Type}:{row.Name}'";
+                    error =
+                        $"external reference occurrence overflow '{row.Type}:{row.Name}': " +
+                        $"seen={seenCount + 1}, expected={allowedCount}";
                     return false;
                 }
 
+                seenExternal[key] = seenCount + 1;
                 externalRows.Add(row);
-                seenExternalCount = seenExternal.Count;
+                seenExternalCount = externalRows.Count;
                 continue;
             }
 
@@ -451,14 +455,23 @@ public static class T4XenonNativeIdentityOracle
             return false;
         }
 
-        if (seenExternal.Count != allowed.Count)
+        var expectedExternalTotal = allowed.Values.Sum();
+        if (externalRows.Count != expectedExternalTotal)
         {
-            var missing = allowed.Keys
-                .Where(x => !seenExternal.Contains(x))
+            var missing = allowed
+                .Select(pair =>
+                {
+                    seenExternal.TryGetValue(pair.Key, out var seen);
+                    return (pair.Key, Missing: pair.Value - seen);
+                })
+                .Where(x => x.Missing > 0)
                 .Take(16)
+                .Select(x => $"{x.Key} x{x.Missing}")
                 .ToArray();
+
             error =
-                $"external reference set mismatch: OAT={seenExternal.Count:N0}, expected={allowed.Count:N0}, missing=[{string.Join(" | ", missing)}]";
+                $"external reference multiset mismatch: OAT={externalRows.Count:N0}, " +
+                $"expected={expectedExternalTotal:N0}, missing=[{string.Join(" | ", missing)}]";
             return false;
         }
 
