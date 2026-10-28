@@ -185,8 +185,12 @@ function Record-Hit([string]$type,[string]$listed,[string]$zone,[string]$lane,[s
     }
 }
 
+# Map SDKs ship original artwork as TGA/PNG/JPEG as well as game-ready IWI/DDS.
+# Inventory all recognized source-image extensions, without decoding or copying.
+$imageExtensions=@('.iwi','.dds','.tga','.png','.jpg','.jpeg','.bmp','.tif','.tiff')
+$scanExtensions=@('.ff','.iwd','.zip','.7z','.rar') + $imageExtensions
 $allFiles = @(Get-ChildItem -LiteralPath $corpus -File -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension.ToLowerInvariant() -in @('.ff','.iwd','.zip','.iwi','.dds','.7z','.rar') } |
+    Where-Object { $_.Extension.ToLowerInvariant() -in $scanExtensions } |
     Sort-Object FullName)
 foreach ($file in $allFiles) {
     $lane=Folder-Lane $file.FullName
@@ -196,7 +200,7 @@ foreach ($file in $allFiles) {
         $ffJobs.Add([pscustomobject]@{ DisplayPath=$file.FullName; Path=$file.FullName
             Lane=$lane; Length=[int64]$file.Length; Ticks=$file.LastWriteTimeUtc.Ticks
             ArchivePath=''; EntryName='' })
-    } elseif ($ext -eq '.iwi' -or $ext -eq '.dds') {
+    } elseif ($ext -in $imageExtensions) {
         Record-Hit 'image' $file.FullName $file.FullName $lane 'loose-image-file' 'unknown' '' $false $true
     } elseif ($ext -in @('.7z','.rar')) {
         $failures.Add([pscustomobject]@{ SourceFile=$file.FullName; Error='Compressed RAR/7z not indexed; extract into the corpus folder first.' })
@@ -206,7 +210,7 @@ foreach ($file in $allFiles) {
             try {
                 foreach ($entry in $zip.Entries) {
                     $extension=[IO.Path]::GetExtension($entry.FullName).ToLowerInvariant()
-                    if ($extension -eq '.iwi' -or $extension -eq '.dds') {
+                    if ($extension -in $imageExtensions) {
                         Record-Hit 'image' $entry.FullName $file.FullName $lane 'archive-image-file' 'unknown' $entry.FullName $false $true
                     } elseif ($extension -eq '.ff') {
                         $job=[pscustomobject]@{ DisplayPath="$($file.FullName)::$($entry.FullName)"
@@ -227,7 +231,8 @@ Write-Host "[NUCLEAR-5T-JAKE] Files inventoried: $($allFiles.Count); physical FF
 foreach ($laneGroup in @($inventory.ToArray() | Group-Object Lane | Sort-Object Name)) {
     $ffCount=@($laneGroup.Group | Where-Object Kind -eq '.ff').Count
     $compressed=@($laneGroup.Group | Where-Object Kind -in @('.zip','.iwd','.7z','.rar')).Count
-    Write-Host "[NUCLEAR-5T-JAKE] Folder '$($laneGroup.Name)' files=$($laneGroup.Count) FF=$ffCount archives=$compressed"
+    $sources=@($laneGroup.Group | Where-Object { $_.Kind -in $imageExtensions }).Count
+    Write-Host "[NUCLEAR-5T-JAKE] Folder '$($laneGroup.Name)' files=$($laneGroup.Count) FF=$ffCount archives=$compressed images=$sources"
 }
 Write-Host "[NUCLEAR-5T-JAKE] Image file hits from loose/IWD/ZIP: $($hits.Count)"
 
@@ -379,13 +384,15 @@ $manifest=[ordered]@{
     failedOrUnscannedFastFiles=@($listResults.ToArray() | Where-Object { -not $_.Success }).Count
     totalHits=$hitRows.Count
     byType=$byType
+    sourceImageFiles=@($inventory.ToArray() | Where-Object { $_.Kind -in $imageExtensions }).Count
+    sourceImageExtensions=[string[]]$imageExtensions
     inventories=[object[]]$inventory.ToArray()
     fastFiles=[object[]]$listResults.ToArray()
     rootTargets=[object[]]$rootResults.ToArray()
     failures=[object[]]$failures.ToArray()
     policy=@(
         'A fastfile --list hit proves an identity, not that the zone owns or can export its payload.',
-        'IWI/DDS file presence is only a source candidate; codec/platform/semantic compatibility still require validation.',
+        'IWI/DDS/TGA/PNG/JPEG/BMP/TIFF file presence is only a source candidate; codec/platform/semantic compatibility still require validation.',
         'The corpus remains untouched; no donor bytes are copied into production output or the Git repository.',
         'The audit does not lower 4F blocker counts or enable Xbox hardware testing.'
     )
@@ -401,6 +408,7 @@ $summary.Add('==================================================================
 $summary.Add("Corpus: $corpus")
 $summary.Add("Files inventoried: $($allFiles.Count)")
 $summary.Add("Physical FFs: $($manifest.physicalFastFiles)")
+$summary.Add("Loose image files (IWI/DDS/raw artwork): $($manifest.sourceImageFiles)")
 $summary.Add("FFs in ZIP/IWD: $($archiveFfs.Count)")
 $summary.Add("Clean OAT FF listings: $($manifest.cleanFastFiles)")
 $summary.Add("Cached listings: $reuse")
