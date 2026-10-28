@@ -3,7 +3,8 @@ param(
     [string]$PcMapsRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps',
     [string]$MapName = 'nazi_zombie_aztec_V2.2',
     [string]$OutputRoot = '',
-    [switch]$SkipSerializerCoverage
+    [switch]$SkipSerializerCoverage,
+    [switch]$SkipXAnimProof
 )
 
 Set-StrictMode -Version Latest
@@ -96,6 +97,15 @@ if ($null -eq $source) { throw "Canonical source report was not created; see $($
 if ([string]$source.CanonicalBaseName -ine $canonical) {
     throw "Canonical source graph reports $($source.CanonicalBaseName), expected $canonical"
 }
+# Deduplicate weapon-referenced XAnims using proven source identities first.
+# Without this proof, proposed IWD XAnim promotions may be overcounted.
+$xanimFile=Join-Path $workspace ('stage4_alpha4_xanim\'+$MapName+'_stage4_alpha4_xanim.json')
+$xanim=$null
+if (-not $SkipXAnimProof) {
+    if (Test-Path -LiteralPath $xanimFile) { Remove-Item -LiteralPath $xanimFile -Force }
+    $stages.Add((Invoke-Stage 'Source-backed Xbox XAnim proof' 'stage4-native-xanim' (Join-Path $workspace 'readiness_xanim_proof.log')))
+    $xanim=Read-StageJson $xanimFile
+}
 $typedFile=Join-Path $workspace ('linker_v2_typed_closure\'+$MapName+'_linker_v2_typed_closure.json')
 if (Test-Path -LiteralPath $typedFile) { Remove-Item -LiteralPath $typedFile -Force }
 $stages.Add((Invoke-Stage 'Linker V2 typed closure' 'linker-v2-typed-closure' (Join-Path $workspace 'readiness_typed_closure.log')))
@@ -111,6 +121,9 @@ if (-not $SkipSerializerCoverage) {
 $issues=New-Object 'System.Collections.Generic.List[string]'
 foreach ($row in $stages) {
     if ($row.ExitCode -notin @(0,3)) { $issues.Add("$($row.Stage) exited $($row.ExitCode)") }
+}
+if (-not $SkipXAnimProof -and ($null -eq $xanim -or -not [bool]$xanim.Verified)) {
+    $issues.Add('Source-backed XAnim proof missing or incomplete; XAnim promotions may be overestimated.')
 }
 if ($null -eq $typed) { $issues.Add('Typed closure did not produce a report.') }
 if (-not $SkipSerializerCoverage -and $null -eq $coverage) {
@@ -130,6 +143,12 @@ $manifest=[ordered]@{
     externalSoundsExpected=[bool]$source.ExternalSoundsExpected
     canonicalSourceVerified=[bool]$source.Verified
     canonicalSourceBlockers=@($source.Blockers)
+    xanimProofAttempted=(-not $SkipXAnimProof)
+    xanimProofVerified=$(if ($null -ne $xanim) { [bool]$xanim.Verified } else { $false })
+    xanimProofAssets=$(if ($null -ne $xanim) { [int]$xanim.SerializedXAnim } else { 0 })
+    proposedXAnimPromotions=$(if ($null -ne $typed) { [int]$typed.PromotedXAnimCandidates } else { 0 })
+    proposedRawFilePromotions=$(if ($null -ne $typed) { [int]$typed.PromotedRawFileCandidates } else { 0 })
+    xboxDonorSettingsPath=(Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'WaW360Converter\settings.json')
     typedClosureVerified=$(if ($null -ne $typed) { [bool]$typed.Verified } else { $false })
     typedClosureReady=$(if ($null -ne $typed) { [bool]$typed.FullTypedClosureReady } else { $false })
     typedClosureBlockers=[object[]]$typedBlockers
@@ -155,6 +174,9 @@ $summary.Add("PC folder: $MapName; Xbox runtime name: $canonical")
 $summary.Add("Xbox external sounds: $($manifest.xboxSoundsFolder)")
 $summary.Add("Primary graph roots: $($source.PrimaryGraphSourceRoots); IWD source entries: $($source.IwdEntries)")
 $summary.Add("Source graph verified: $($source.Verified); selected load: $($source.LoadOutputFastFile)")
+$summary.Add("XAnim source proof verified: $($manifest.xanimProofVerified); XAnim proof assets: $($manifest.xanimProofAssets)")
+$summary.Add("IWD proposed XAnim promotions: $($manifest.proposedXAnimPromotions); RawFile promotions: $($manifest.proposedRawFilePromotions)")
+$summary.Add("Xbox game folder configuration: $($manifest.xboxDonorSettingsPath)")
 $summary.Add("Typed closure verified: $($manifest.typedClosureVerified); ready: $($manifest.typedClosureReady); blockers: $($typedBlockers.Count)")
 $summary.Add("Serializer blockers: critical=$($critical.Count), high=$($high.Count)")
 $summary.Add('RUN STATUSES')
@@ -172,6 +194,7 @@ $summary.Add('Hardware-ready remains FALSE. No FF or XMA was emitted.')
 [IO.File]::WriteAllLines($txt,[string[]]$summary.ToArray(),[Text.UTF8Encoding]::new($false))
 Write-Host '[SECOND-READINESS] ===================== RESULT ============================'
 Write-Host "[SECOND-READINESS] Canonical=$canonical roots=$($source.PrimaryGraphSourceRoots) selectedLoad=$($source.LoadOutputFastFile)"
+Write-Host "[SECOND-READINESS] XAnim proof=$($manifest.xanimProofVerified) assets=$($manifest.xanimProofAssets) | proposed IWD XAnim=$($manifest.proposedXAnimPromotions) RawFile=$($manifest.proposedRawFilePromotions)"
 Write-Host "[SECOND-READINESS] Typed-ready=$($manifest.typedClosureReady) blockers=$($typedBlockers.Count)"
 Write-Host "[SECOND-READINESS] Serializer critical=$($critical.Count) high=$($high.Count)"
 Write-Host "[SECOND-READINESS] Report: $txt"
