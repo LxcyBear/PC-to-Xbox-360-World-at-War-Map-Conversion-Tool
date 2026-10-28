@@ -126,17 +126,34 @@ foreach ($role in $expectedRoles) {
         @($pcCatalog.Entries).Count -ne [int]$pcCatalog.DeclaredPhysicalTechniqueSets) {
         throw "Invalid root identity proof: $catalogFile"
     }
-    $mapped=0; $exact=0; $unresolved=0; $unreferenced=0; $conflictCount=0
+    $mapped=0; $crossRoleMapped=0; $exact=0; $unresolved=0; $unreferenced=0; $conflictCount=0
     foreach ($rootEntry in @($pcCatalog.Entries)) {
         $pcName=[string]$rootEntry.Name
         $needed=$referenced.Contains($pcName)
         $targets=@()
         $evidence=@()
         $support=0
+        $hasMaterialVote=$false
+        $hasSameRoleMaterialVote=$false
         if ($votes.ContainsKey($pcName)) {
             $targets=@($votes[$pcName] | Select-Object -ExpandProperty XboxTechniqueSet -Unique)
             $evidence=@($votes[$pcName] | Select-Object -ExpandProperty Evidence -Unique)
             $support=[int](($votes[$pcName] | Measure-Object -Property SupportingMaterials -Sum).Sum)
+            foreach ($vote in $votes[$pcName]) {
+                # An exact-name fallback is NEVER a material-bridge proof, even
+                # if the nuclear main-closure runner recorded a native root index.
+                $materialVote=([string]$vote.Evidence -eq 'main:MATERIAL_BRIDGE' -or
+                    [string]$vote.Evidence -eq 'mod:shared-material' -or
+                    [string]$vote.Evidence -eq 'patch:shared-material')
+                if ($materialVote -and [int]$vote.SupportingMaterials -gt 0) {
+                    $hasMaterialVote=$true
+                    if (($role -eq 'map.ff' -and [string]$vote.Evidence -eq 'main:MATERIAL_BRIDGE') -or
+                        ($role -eq 'mod.ff' -and [string]$vote.Evidence -eq 'mod:shared-material') -or
+                        ($role -eq 'map_patch.ff' -and [string]$vote.Evidence -eq 'patch:shared-material')) {
+                        $hasSameRoleMaterialVote=$true
+                    }
+                }
+            }
         }
         $status='NO_MATERIAL_REFERENCE_OBSERVED'
         $resolvedName=''
@@ -149,8 +166,24 @@ foreach ($role in $expectedRoles) {
             $resolvedName=[string]$targets[0]
             if ($nativeByName.ContainsKey($resolvedName)) {
                 $nativeIndex=[int]$nativeByName[$resolvedName].Index
-                $status=if ($needed) { 'MATERIAL_BRIDGE_NATIVE_ROOT_MATCH' } else { 'MATERIAL_BRIDGE_NOT_REACHABILITY_PROOF' }
-                $mapped++
+                if (-not $needed) {
+                    $status='NATIVE_NAME_MATCH_NO_MATERIAL_REFERENCE_OBSERVED'
+                    $unreferenced++
+                } elseif ($hasMaterialVote) {
+                    if ($hasSameRoleMaterialVote) {
+                        $status='LOCAL_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH'
+                    } else {
+                        # Same TechniqueSet identity is evidenced by a DIFFERENT
+                        # source FF. This is useful mapping evidence, not proof
+                        # that the current root graph is owned by that FF.
+                        $status='CROSS_SOURCE_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH'
+                        $crossRoleMapped++
+                    }
+                    $mapped++
+                } else {
+                    $status='EXACT_NATIVE_NAME_ONLY_NEEDS_MATERIAL_PROOF'
+                    $exact++
+                }
             } else {
                 $status='MAPPED_TO_RESIDENT_OR_NONLOCAL_NATIVE_TECHSET'
                 $unresolved++
@@ -176,6 +209,8 @@ foreach ($role in $expectedRoles) {
             NativeXboxRootIndex=$nativeIndex
             Evidence=[string]($evidence -join '|')
             SupportingMaterials=$support
+            HasSharedMaterialProof=$hasMaterialVote
+            SharedMaterialProofFromSameSource=$hasSameRoleMaterialVote
             Classification=$status
             HardwareShaderGraphReady=$false
         })
@@ -183,7 +218,8 @@ foreach ($role in $expectedRoles) {
     $roleStats.Add([pscustomobject]@{
         Role=$role
         Roots=@($pcCatalog.Entries).Count
-        NativeBoundViaExistingEvidence=$mapped
+        NativeBoundViaSharedMaterialEvidence=$mapped
+        OfWhichCrossSourceMaterialEvidence=$crossRoleMapped
         NativeExactNameOnly=$exact
         MaterialReachableUnresolved=$unresolved
         NoMaterialReferenceObserved=$unreferenced
@@ -196,7 +232,7 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 $csv=Join-Path $work 'pc_to_xbox_techset_root_classifications.csv'
 $allRoots.ToArray() | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
 $pending=@($allRoots | Where-Object { $_.ObservedByAnyExportedMaterial -and
-    $_.Classification -notin @('MATERIAL_BRIDGE_NATIVE_ROOT_MATCH','MATERIAL_BRIDGE_NOT_REACHABILITY_PROOF') })
+    $_.Classification -notin @('LOCAL_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH','CROSS_SOURCE_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH') })
 $pendingCsv=Join-Path $work 'techset_pending_or_ambiguous.csv'
 $pending | Export-Csv -LiteralPath $pendingCsv -NoTypeInformation -Encoding UTF8
 $json=Join-Path $work 'closure_reconciliation_result.json'
@@ -211,12 +247,17 @@ $report=[ordered]@{
     pcTechniqueNamesReferencedByExportedMaterials=$referenced.Count
     roleStatistics=[object[]]$roleStats.ToArray()
     pendingReferencedRows=$pending.Count
+    materialEvidenceRootCount=@($allRoots | Where-Object { $_.Classification -in @('LOCAL_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH','CROSS_SOURCE_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH') }).Count
+    exactNameOnlyRootCount=@($allRoots | Where-Object { $_.Classification -eq 'EXACT_NATIVE_NAME_ONLY_NEEDS_MATERIAL_PROOF' }).Count
+    crossSourceEvidenceRootCount=@($allRoots | Where-Object { $_.Classification -eq 'CROSS_SOURCE_MATERIAL_BRIDGE_NATIVE_ROOT_MATCH' }).Count
     conflicts=[object[]]$fullConflicts.ToArray()
     pendingCases=[object[]]$pending
     classificationCsv=$csv
     pendingCsv=$pendingCsv
     hardwareReady=$false
     notes=@(
+        'Material-evidenced counts exclude exact-name fallbacks (including the three main FF fallback mappings); neither is a production serializer proof.',
+        'Cross-source TechniqueSet-name bridges demonstrate semantic identity, not the current source FF root payload ownership.',
         'Only source-verified material bridges and native identity names are used. No shader bodies are copied.',
         'An exact-native-name-only match is weaker than a demonstrated material bridge and is NOT production-ready.',
         'A root not observed in Material JSON is not proven globally unreachable. Other assets may still need it.',
@@ -233,9 +274,12 @@ $lines.Add("PC physical TechniqueSet root entries: $($allRoots.Count)")
 $lines.Add("Xbox native TechniqueSet roots: $($nativeTechsets.Count)")
 $lines.Add("Distinct PC TechniqueSet names used by exported Materials: $($referenced.Count)")
 foreach ($st in $roleStats) {
-    $lines.Add("$($st.Role): roots=$($st.Roots) mapped=$($st.NativeBoundViaExistingEvidence) exact-name-only=$($st.NativeExactNameOnly) referenced-unresolved=$($st.MaterialReachableUnresolved) no-material-reference=$($st.NoMaterialReferenceObserved) conflicts=$($st.Conflicts)")
+    $lines.Add("$($st.Role): roots=$($st.Roots) shared-material-evidence=$($st.NativeBoundViaSharedMaterialEvidence) (cross-source=$($st.OfWhichCrossSourceMaterialEvidence)) exact-name-only=$($st.NativeExactNameOnly) referenced-unresolved=$($st.MaterialReachableUnresolved) no-material-reference=$($st.NoMaterialReferenceObserved) conflicts=$($st.Conflicts)")
 }
-$lines.Add("Pending mapped/reachability clarification rows: $($pending.Count)")
+$lines.Add("Pending material-referenced rows needing stronger proof: $($pending.Count)")
+$lines.Add('EXACT NAME ONLY — valid native identity candidate, not shared-material proof.')
+$lines.Add('UNRESOLVED — no native target demonstrated; inspect stock/reference source or missing materials.')
+$lines.Add('CROSS-SOURCE MATERIAL BRIDGE — useful identity mapping but source FF ownership unproven.')
 foreach ($entry in @($pending | Select-Object -First 60)) {
     $lines.Add("  $($entry.Role) pc#$($entry.PcAssetIndex) $($entry.PcTechniqueSet) => $($entry.XboxTechniqueSet) | $($entry.Classification)")
 }
@@ -248,7 +292,7 @@ Write-Host '[AZTEC-CLOSURE] RECONCILE ALL PC TECHNIQUESET ROOTS AGAINST NATIVE E
 Write-Host '[AZTEC-CLOSURE] Prior proofs and material CSV only. No build, no OAT, no FF emission.'
 Write-Host "[AZTEC-CLOSURE] PC roots=$($allRoots.Count) native Xbox TechniqueSet roots=$($nativeTechsets.Count)"
 foreach ($st in $roleStats) {
-    Write-Host "[AZTEC-CLOSURE] $($st.Role): mapped=$($st.NativeBoundViaExistingEvidence) exact-only=$($st.NativeExactNameOnly) unresolved=$($st.MaterialReachableUnresolved) unobserved=$($st.NoMaterialReferenceObserved) conflicts=$($st.Conflicts)"
+    Write-Host "[AZTEC-CLOSURE] $($st.Role): material-evidenced=$($st.NativeBoundViaSharedMaterialEvidence) (cross-source=$($st.OfWhichCrossSourceMaterialEvidence)) exact-only=$($st.NativeExactNameOnly) unresolved=$($st.MaterialReachableUnresolved) unobserved=$($st.NoMaterialReferenceObserved) conflicts=$($st.Conflicts)"
 }
 Write-Host "[AZTEC-CLOSURE] Pending material-referenced cases=$($pending.Count)"
 Write-Host "[AZTEC-CLOSURE] Report: $txt"
