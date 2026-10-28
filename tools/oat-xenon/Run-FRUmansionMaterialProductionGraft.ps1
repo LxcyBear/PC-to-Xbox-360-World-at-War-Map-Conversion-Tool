@@ -94,12 +94,10 @@ $materialReplayManifest = Join-Path $MaterialReplayRoot 'nuclear_4zc_material_re
 $materialBindingManifest = Join-Path $MaterialBindingRoot 'nuclear_4zd_material_root_binding.json'
 $materialBindingRunner = Join-Path $PSScriptRoot 'Run-FRUmansionMaterialRootBinding.ps1'
 
-if (-not (Test-Path -LiteralPath $materialBindingManifest -PathType Leaf)) {
-    Write-Host '[NUCLEAR-4Z-D] Material root binding is missing; running calibrated 4Z-D0 binding first...'
-    & powershell -ExecutionPolicy Bypass -File $materialBindingRunner -GraphRoot $MaterialGraphRoot -BindingRoot $BindingRoot -OutputRoot $MaterialBindingRoot
-    if ($LASTEXITCODE -ne 0 -or -not $?) {
-        throw "4Z-D0 Material root binding failed with exit code $LASTEXITCODE."
-    }
+Write-Host '[NUCLEAR-4Z-D] Refreshing calibrated 4Z-D0 Material root binding...'
+& powershell -ExecutionPolicy Bypass -File $materialBindingRunner -GraphRoot $MaterialGraphRoot -BindingRoot $BindingRoot -OutputRoot $MaterialBindingRoot
+if ($LASTEXITCODE -ne 0 -or -not $?) {
+    throw "4Z-D0 Material root binding failed with exit code $LASTEXITCODE."
 }
 
 foreach ($required in @(
