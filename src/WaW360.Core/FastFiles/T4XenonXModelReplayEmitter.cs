@@ -52,6 +52,8 @@ public static class T4XenonXModelReplayEmitter
         var graph = LoadGraph(graphFile);
         var graphRoot = Directory.GetParent(Path.GetDirectoryName(graphFile)!)!.FullName;
 
+        ValidateAlignments(graph.Alignments);
+
         if (graph.Format != "WaW360.T4Xenon.XModelRelocatableGraph.v1")
             throw new InvalidDataException($"Unexpected XModel graph format '{graph.Format}'.");
         if (graph.Abi.XModel != 0xD4)
@@ -961,6 +963,38 @@ public static class T4XenonXModelReplayEmitter
 
     private static string Hash(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    private static void ValidateAlignments(AlignmentData a)
+    {
+        var values = new (string Name, int Value)[]
+        {
+            (nameof(a.ScriptString), a.ScriptString),
+            (nameof(a.ParentList), a.ParentList),
+            (nameof(a.XModelQuat), a.XModelQuat),
+            (nameof(a.Trans), a.Trans),
+            (nameof(a.PartClassification), a.PartClassification),
+            (nameof(a.DObjAnimMat), a.DObjAnimMat),
+            (nameof(a.XSurface), a.XSurface),
+            (nameof(a.MaterialHandle), a.MaterialHandle),
+            (nameof(a.BoneInfo), a.BoneInfo),
+            (nameof(a.HighMipBounds), a.HighMipBounds),
+            (nameof(a.VertsBlend), a.VertsBlend),
+            (nameof(a.Verts0), a.Verts0),
+            (nameof(a.RigidVertList), a.RigidVertList),
+            (nameof(a.TriIndices), a.TriIndices),
+            (nameof(a.CollisionTree), a.CollisionTree),
+            (nameof(a.CollisionNodes), a.CollisionNodes),
+            (nameof(a.CollisionLeafs), a.CollisionLeafs)
+        };
+
+        foreach (var (name, value) in values)
+        {
+            if (value <= 0 || (value & (value - 1)) != 0)
+                throw new InvalidDataException(
+                    $"XModel graph is missing a valid power-of-two ABI alignment for {name}: {value}. " +
+                    "Rebuild the specialized OAT graph dumper and regenerate this 4X-B graph.");
+        }
+    }
 
     private static Graph LoadGraph(string graphFile)
     {
