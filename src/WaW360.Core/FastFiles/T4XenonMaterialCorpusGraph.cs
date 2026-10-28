@@ -36,6 +36,23 @@ internal sealed class T4XenonMaterialCorpus
         var bindingRows = binding.GetProperty("OwnedBindings")
             .EnumerateArray()
             .ToArray();
+
+        var bridgeManifest = binding.GetProperty("BridgeManifest").GetString()
+            ?? throw new InvalidDataException(
+                "Material root-binding manifest does not identify its bridge manifest.");
+        using var bridgeDoc = JsonDocument.Parse(File.ReadAllText(bridgeManifest));
+        var techniqueMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (bridgeDoc.RootElement.TryGetProperty("Mappings", out var mappings) &&
+            mappings.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var mapRow in mappings.EnumerateArray())
+            {
+                var pc = mapRow.GetProperty("PcTechniqueSet").GetString() ?? "";
+                var xbox = mapRow.GetProperty("XboxTechniqueSet").GetString() ?? "";
+                if (!string.IsNullOrWhiteSpace(pc) && !string.IsNullOrWhiteSpace(xbox))
+                    techniqueMap[pc] = xbox;
+            }
+        }
         if (bindingRows.Length != expectedOwned)
             throw new InvalidDataException(
                 $"Material binding count {bindingRows.Length:N0} != expected {expectedOwned:N0}.");
@@ -101,6 +118,11 @@ internal sealed class T4XenonMaterialCorpus
                         CorpusName = corpusName,
                         GraphFile = graphRow.File,
                         DumpRoot = graphRoot,
+                        ProductionTechniqueSet =
+                            !string.IsNullOrWhiteSpace(graphRow.Graph.TechniqueSet) &&
+                            techniqueMap.TryGetValue(graphRow.Graph.TechniqueSet!, out var mappedTech)
+                                ? mappedTech
+                                : graphRow.Graph.TechniqueSet,
                         Graph = graphRow.Graph
                     }))
                 throw new InvalidDataException(
@@ -136,11 +158,11 @@ internal sealed class T4XenonMaterialCorpus
                 errors.Add(
                     $"{entry.CorpusName}: root #{entry.NativeRootIndex} is {nativeRoot.OatTypeName}, expected material.");
 
-            if (!string.IsNullOrWhiteSpace(entry.Graph.TechniqueSet))
+            if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
                 ValidateReference(
                     roots,
                     new[] { "techset", "techniqueset" },
-                    entry.Graph.TechniqueSet!,
+                    entry.ProductionTechniqueSet!,
                     entry.CorpusName,
                     errors);
 
@@ -254,6 +276,7 @@ internal sealed class T4XenonMaterialCorpusEntry
     public required string CorpusName { get; init; }
     public required string GraphFile { get; init; }
     public required string DumpRoot { get; init; }
+    public required string? ProductionTechniqueSet { get; init; }
     public required T4XenonRelocatableMaterialGraph Graph { get; init; }
 }
 
@@ -302,13 +325,13 @@ internal static class T4XenonMaterialGraphCodec
             g.Abi.Material,
             $"{entry.CorpusName} root");
 
-        if (!string.IsNullOrWhiteSpace(g.TechniqueSet))
+        if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
         {
             var stable = T4XenonMaterialCorpus.ResolveStablePointer(
                 roots,
                 stableByRoot,
                 new[] { "techset", "techniqueset" },
-                g.TechniqueSet!);
+                entry.ProductionTechniqueSet!);
             PutU32(rootBody, g.Offsets.TechniqueSet, stable);
         }
 
