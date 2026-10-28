@@ -9,6 +9,13 @@ $ErrorActionPreference='Stop'
 if ($MapName -ine 'nazi_zombie_aztec_V2.2') { throw 'This fixed-oracle test is for Aztec V2.2 only.' }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $OutputRoot) { $OutputRoot=Join-Path $repo 'output\second_map_baselines' }
+# Never allow an explicit OutputRoot to redirect an oracle FF into release,
+# or outside the repository's dedicated ignored diagnostic output tree.
+$allowedOutput=[IO.Path]::GetFullPath((Join-Path $repo 'output')).TrimEnd([char]'\') + '\'
+$OutputRoot=[IO.Path]::GetFullPath($OutputRoot)
+if (-not $OutputRoot.StartsWith($allowedOutput,[StringComparison]::OrdinalIgnoreCase)) {
+    throw "Stage 4E diagnostics must stay inside repository output: $allowedOutput"
+}
 $root=Join-Path $OutputRoot $MapName
 $nativeWork=Join-Path $root 'native_material_mapping'
 $graphProofPath=Join-Path $nativeWork 'native_graph_proof\native_graph_proof_result.json'
@@ -75,6 +82,13 @@ $reportPath=Join-Path $work 'aztec_4e_validation_result.txt'
 $jsonPath=Join-Path $work 'aztec_4e_validation_result.json'
 foreach($f in @($emitManifest,$emitFF,$emitZone,$reportPath,$jsonPath)) {
     if (Test-Path -LiteralPath $f -PathType Leaf) { Remove-Item -LiteralPath $f -Force }
+}
+# Remove stale OAT and layout reports from a prior diagnostic attempt.
+foreach($sub in @('oat_hard_gate','layout_recheck')) {
+    $ownedDirectory=Join-Path $work $sub
+    if (Test-Path -LiteralPath $ownedDirectory -PathType Container) {
+        Remove-Item -LiteralPath $ownedDirectory -Recurse -Force
+    }
 }
 Write-Host '[AZTEC-4E] ============================================================='
 Write-Host '[AZTEC-4E] REAL 4E BYTE EMISSION — NATIVE ORACLE VALIDATION ONLY'
