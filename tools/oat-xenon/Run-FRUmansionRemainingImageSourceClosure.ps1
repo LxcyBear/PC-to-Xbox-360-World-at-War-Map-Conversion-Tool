@@ -118,7 +118,7 @@ $readiness=Get-Content -LiteralPath $ReadinessManifest -Raw | ConvertFrom-Json
 $production=Get-Content -LiteralPath $ProductionImageGraphManifest -Raw | ConvertFrom-Json
 $imageRefs=Get-Content -LiteralPath $ImageReferenceProofManifest -Raw | ConvertFrom-Json
 $native=Get-Content -LiteralPath $NativeIdentityManifest -Raw | ConvertFrom-Json
-if ([int]$readiness.CriticalFallbackRoots -ne 78 -or -not [bool]$readiness.ProperSizeGate) { throw 'Stage 5A requires the fresh 78-root readiness state with ProperSizeGate=True.' }
+if ([int]$readiness.CriticalFallbackRoots -ne 70 -or [int]$readiness.ProductionRawFileRoots -ne 8 -or -not [bool]$readiness.ProperSizeGate) { throw 'Stage 5A requires the fresh 70-root readiness state with 8 integrated RawFiles and ProperSizeGate=True.' }
 if ([string]$production.format -ne 'WaW360.Nuclear4T.ProductionImageGraph.v1' -or -not [bool]$production.mergePass -or [int]$production.imageGraphs -ne 878) { throw 'Production image graph is not the expected passing 878-root graph.' }
 if ([string]$imageRefs.format -ne 'WaW360.Nuclear4X.XboxImageRuntimeReferenceProof.v1' -or -not [bool]$imageRefs.referenceProofPass -or [int]$imageRefs.resolvedReferences -ne 7) { throw 'Retail image reference proof is not the expected passing 7-root proof.' }
 if ([string]$native.format -ne 'WaW360.T4Xenon.NativeIdentityManifest.v1' -or -not [bool]$native.typeSequenceVerified) { throw 'Native identity manifest is not verified.' }
