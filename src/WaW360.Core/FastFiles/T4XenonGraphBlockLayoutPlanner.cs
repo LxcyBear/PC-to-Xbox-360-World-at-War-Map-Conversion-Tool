@@ -33,6 +33,8 @@ public sealed class T4XenonGraphBlockLayoutResult
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
     public required int RealImageRoots { get; init; }
+    public required int RealMaterialRoots { get; init; }
+    public required int MaterialReferenceRoots { get; init; }
     public required int RealXModelRoots { get; init; }
     public required int XModelReferenceRoots { get; init; }
     public required long LargeRuntimeBytes { get; init; }
@@ -83,7 +85,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         int expectedImages = 0,
         int imageGraftLimit = 0,
         string? xmodelGraphRoot = null,
-        string? xmodelBindingManifest = null)
+        string? xmodelBindingManifest = null,
+        string? materialGraphRoot = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -125,6 +128,15 @@ public static class T4XenonGraphBlockLayoutPlanner
         var blockers = new List<string>();
         var notes = new List<string>();
 
+        T4XenonMaterialCorpus? materialCorpus = null;
+        if (!string.IsNullOrWhiteSpace(materialGraphRoot))
+        {
+            materialCorpus = T4XenonMaterialCorpus.Load(
+                materialGraphRoot!,
+                roots);
+            blockers.AddRange(materialCorpus.ValidateDependencies(roots));
+        }
+
         if (xmodelCorpus is not null)
             blockers.AddRange(xmodelCorpus.ValidateDependencies(roots));
 
@@ -160,6 +172,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         var rendererTechsets = 0;
         var rendererPixels = 0;
         var realImages = 0;
+        var realMaterials = 0;
         var realXModels = 0;
         var targetImageRoots = imageGraph is null
             ? 0
@@ -303,6 +316,20 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if (materialCorpus is not null &&
+                materialCorpus.OwnedByRoot.TryGetValue(root.Index, out var materialEntry))
+            {
+                realMaterials++;
+                T4XenonMaterialGraphCodec.Plan(
+                    materialEntry,
+                    (size, align, serialized) =>
+                    {
+                        state.VirtualAlloc(size, align, serialized);
+                    },
+                    state.TempRoot);
+                continue;
+            }
+
             if (xmodelCorpus is not null &&
                 xmodelCorpus.OwnedByRoot.TryGetValue(root.Index, out var xmodelEntry))
             {
@@ -365,6 +392,9 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add($"Upgraded PixelShaders={rendererPixels:N0}; expected {expectedPixelShaders:N0}.");
         if (imageGraph is not null && realImages != targetImageRoots)
             blockers.Add($"Upgraded image roots={realImages:N0}; target={targetImageRoots:N0}; graph contains {imageGraph.Images:N0}.");
+        if (materialCorpus is not null && realMaterials != materialCorpus.OwnedByRoot.Count)
+            blockers.Add(
+                $"Upgraded Material roots={realMaterials:N0}; expected {materialCorpus.OwnedByRoot.Count:N0}.");
         if (xmodelCorpus is not null && realXModels != xmodelCorpus.OwnedByRoot.Count)
             blockers.Add(
                 $"Upgraded XModel roots={realXModels:N0}; expected {xmodelCorpus.OwnedByRoot.Count:N0}.");
@@ -378,6 +408,10 @@ public static class T4XenonGraphBlockLayoutPlanner
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
         if (imageGraph is not null)
             notes.Add($"Image graph graft: {realImages:N0}/{imageGraph.Images:N0} real GfxImage roots; limit={(imageGraftLimit > 0 ? imageGraftLimit : imageGraph.Images):N0}; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; LARGE={state.Large:N0} bytes; source graph is validation-only unless independently PC-sourced.");
+        if (materialCorpus is not null)
+            notes.Add(
+                $"Material graph graft: {realMaterials:N0}/{materialCorpus.OwnedByRoot.Count:N0} PC-backed roots; " +
+                $"{materialCorpus.ReferenceRoots:N0} remaining native Material roots stay reference/name shells.");
         if (xmodelCorpus is not null)
             notes.Add(
                 $"XModel graph graft: {realXModels:N0}/{xmodelCorpus.OwnedByRoot.Count:N0} owned roots; " +
@@ -396,6 +430,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
             RealImageRoots = realImages,
+            RealMaterialRoots = realMaterials,
+            MaterialReferenceRoots = materialCorpus?.ReferenceRoots ?? 0,
             RealXModelRoots = realXModels,
             XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             LargeRuntimeBytes = state.LargeRuntime,
@@ -605,6 +641,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         sb.AppendLine($"Renderer TechniqueSets:  {r.RendererTechniqueSets:N0}");
         sb.AppendLine($"Renderer PixelShaders:   {r.RendererPixelShaders:N0}");
         sb.AppendLine($"Real image roots:        {r.RealImageRoots:N0}");
+        sb.AppendLine($"Real Material roots:     {r.RealMaterialRoots:N0}");
+        sb.AppendLine($"Material reference roots:{r.MaterialReferenceRoots,10:N0}");
         sb.AppendLine($"Real XModel roots:       {r.RealXModelRoots:N0}");
         sb.AppendLine($"XModel reference roots:  {r.XModelReferenceRoots:N0}");
         sb.AppendLine($"LARGE_RUNTIME:           0x{r.LargeRuntimeBytes:X}");
