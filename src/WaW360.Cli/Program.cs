@@ -496,6 +496,9 @@ static async Task<int> MainAsync(string[] args)
                 var productionImageGraftManifest = args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10])
                     ? args[10]
                     : null;
+                var productionXModelGraftManifest = args.Length >= 12 && !string.IsNullOrWhiteSpace(args[11])
+                    ? args[11]
+                    : null;
 
                 var map = MapDiscovery.DiscoverSourceFolder(root)
                     .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
@@ -511,13 +514,15 @@ static async Task<int> MainAsync(string[] args)
                     bindingManifest,
                     minRatio,
                     maxRatio,
-                    productionImageGraftManifest);
+                    productionImageGraftManifest,
+                    productionXModelGraftManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4F full-content pre-hardware gate");
                 Console.WriteLine($"nativeFF={result.NativeOracleFastFileBytes:N0}; nativeZone={result.NativeOracleZoneBytes:N0}; shellBaseline={result.AllShellBaselineZoneBytes:N0}; rendererGain={result.ProvenRendererGainBytes:N0}");
                 Console.WriteLine($"estimatedFullContent={result.EstimatedFullContentZoneBytes:N0}; nativeSizeRatio={result.NativeSizeRatio:P2}");
                 Console.WriteLine($"sourceMapped={result.SourceMappedRoots:N0}; realPromoted={result.RealPromotedRoots:N0}; fallback={result.FallbackRoots:N0}; synthetic={result.SyntheticDependencyRoots:N0}; criticalFallback={result.CriticalFallbackRoots:N0}; externalAudioPending={result.ExternalAudioPendingRoots:N0}");
                 Console.WriteLine($"productionImages={result.ProductionImageRoots:N0}; productionImageSerializedBytes={result.ProductionImageSerializedBytes:N0}; productionImagePixelBytes={result.ProductionImagePixelBytes:N0}");
+                Console.WriteLine($"productionXModels={result.ProductionXModelRoots:N0}; xmodelRefs={result.ProductionXModelReferenceRoots:N0}; productionXModelSerializedBytes={result.ProductionXModelSerializedBytes:N0}; integrated4YBaseline={result.ProductionIntegratedBaselineZoneBytes:N0}");
                 Console.WriteLine($"properSizeGate={result.ProperSizeGate}; criticalContentGate={result.CriticalContentGate}; readyForFullNativeEmission={result.ReadyForFullNativeEmission}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
