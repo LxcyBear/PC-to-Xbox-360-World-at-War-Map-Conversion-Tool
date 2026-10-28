@@ -324,10 +324,22 @@ if ($dumpFailures.Count -eq 0) {
         $args.Add('--load')
         $args.Add($base)
     }
+
+    # T4 creator precedence is intentional here: raw/disk Weapon loaders are
+    # registered before GlobalAssetPools loaders. Therefore the three target
+    # WeaponDefs are reconstructed from our staged weapons/<name> files, while
+    # campaign source zones may satisfy their transitive dependencies (XModels,
+    # Materials, FX, etc.) through the loaded global pools.
+    foreach ($sourceZone in $sourceZones) {
+        if (-not ($baseZones -contains $sourceZone)) {
+            $args.Add('--load')
+            $args.Add($sourceZone)
+        }
+    }
     $args.Add($project)
 
     Write-Host ''
-    Write-Host '[NUCLEAR-4Y-WEAPON] Relinking all three dumped WeaponDefs together...'
+    Write-Host '[NUCLEAR-4Y-WEAPON] Relinking all three dumped WeaponDefs together with source-zone dependency closure...'
     Push-Location $work
     try {
         $linkCode = Invoke-NativeTee -FilePath $linker -Arguments ([object[]]$args.ToArray()) -LogPath $linkLog
@@ -441,9 +453,10 @@ $manifest = [ordered]@{
     productionCreditApproved = $false
     policy = @(
         'Retail WeaponDefs are dumped from the user-owned Xbox 360 game using OAT T4 WeaponDef dumping support.',
-        'The batch is relinked from disk weapon info strings; preferred nonresident source zones are not preloaded into the Linker.',
-        'Only common/base-Zombies retail zones are preloaded during relink/readback for dependencies already proven runtime-resident.',
-        'A passing batch proves OAT dump/load/readback viability for these three WeaponDefs but does not grant Stage 4F production credit until integrated emission consumes the resulting payloads.'
+        'The three target WeaponDefs are reconstructed from disk weapon info strings. OAT T4 raw Weapon loaders run before GlobalAssetPools reuse, preventing the original loaded WeaponDef from substituting for the disk reconstruction.',
+        'Their mak/oki2/pel1a source zones are preloaded only during Linker construction so transitive Weapon dependencies can be imported through OAT global pools.',
+        'Readback intentionally does not preload mak/oki2/pel1a; only common/base-Zombies pools are available. A passing readback therefore rejects a hidden dependency on those campaign zones.',
+        'A passing batch proves OAT dump/load/dependency-closure/readback viability for these three WeaponDefs but does not grant Stage 4F production credit until integrated emission consumes the resulting payloads.'
     )
 }
 
