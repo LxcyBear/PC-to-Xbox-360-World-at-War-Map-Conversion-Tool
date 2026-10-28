@@ -130,6 +130,18 @@ if (-not $SkipSerializerCoverage -and $null -eq $coverage) {
     $issues.Add('Serializer coverage did not produce a report.')
 }
 $typedBlockers=$(if ($null -eq $typed) { @() } else { @($typed.Blockers) })
+$goldenXAnimDelta=$(if ($null -ne $typed -and $null -ne $typed.GoldenExpectedXAnimPromotions) {
+    [int]$typed.GoldenExpectedXAnimPromotions
+} else { $null })
+$goldenXAnimPolicy=$(if ($null -eq $goldenXAnimDelta) {
+    'NO_GOLDEN_XANIM_REFERENCE'
+} elseif ($goldenXAnimDelta -lt 0) {
+    'NET_XANIM_REMOVAL_REQUIRED; do not automatically insert all IWD candidates'
+} elseif ($goldenXAnimDelta -eq 0) {
+    'NO_NET_XANIM_GROWTH; candidate references need reconciliation'
+} else {
+    'NET_XANIM_GROWTH_POSSIBLE; only typed source-backed roots may be inserted'
+})
 $critical=$(if ($null -eq $coverage) { @() } else { @($coverage.CriticalBlockers) })
 $high=$(if ($null -eq $coverage) { @() } else { @($coverage.HighBlockers) })
 $manifest=[ordered]@{
@@ -148,6 +160,8 @@ $manifest=[ordered]@{
     xanimProofAssets=$(if ($null -ne $xanim) { [int]$xanim.SerializedXAnim } else { 0 })
     proposedXAnimPromotions=$(if ($null -ne $typed) { [int]$typed.PromotedXAnimCandidates } else { 0 })
     proposedRawFilePromotions=$(if ($null -ne $typed) { [int]$typed.PromotedRawFileCandidates } else { 0 })
+    goldenXAnimDelta=$goldenXAnimDelta
+    goldenXAnimPolicy=$goldenXAnimPolicy
     xboxDonorSettingsPath=(Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'WaW360Converter\settings.json')
     typedClosureVerified=$(if ($null -ne $typed) { [bool]$typed.Verified } else { $false })
     typedClosureReady=$(if ($null -ne $typed) { [bool]$typed.FullTypedClosureReady } else { $false })
@@ -176,6 +190,14 @@ $summary.Add("Primary graph roots: $($source.PrimaryGraphSourceRoots); IWD sourc
 $summary.Add("Source graph verified: $($source.Verified); selected load: $($source.LoadOutputFastFile)")
 $summary.Add("XAnim source proof verified: $($manifest.xanimProofVerified); XAnim proof assets: $($manifest.xanimProofAssets)")
 $summary.Add("IWD proposed XAnim promotions: $($manifest.proposedXAnimPromotions); RawFile promotions: $($manifest.proposedRawFilePromotions)")
+$summary.Add("Known-working Xbox XAnim net delta: $($manifest.goldenXAnimDelta)")
+$summary.Add("XAnim policy: $($manifest.goldenXAnimPolicy)")
+$summary.Add('PROMOTION CANDIDATES (source references only; no emission authorized)')
+if ($null -ne $typed) {
+    foreach ($candidate in @($typed.Promotions | Select-Object -First 100)) {
+        $summary.Add("  $($candidate.AssetType) $($candidate.Name) <- $($candidate.Entry)")
+    }
+}
 $summary.Add("Xbox game folder configuration: $($manifest.xboxDonorSettingsPath)")
 $summary.Add("Typed closure verified: $($manifest.typedClosureVerified); ready: $($manifest.typedClosureReady); blockers: $($typedBlockers.Count)")
 $summary.Add("Serializer blockers: critical=$($critical.Count), high=$($high.Count)")
@@ -195,6 +217,7 @@ $summary.Add('Hardware-ready remains FALSE. No FF or XMA was emitted.')
 Write-Host '[SECOND-READINESS] ===================== RESULT ============================'
 Write-Host "[SECOND-READINESS] Canonical=$canonical roots=$($source.PrimaryGraphSourceRoots) selectedLoad=$($source.LoadOutputFastFile)"
 Write-Host "[SECOND-READINESS] XAnim proof=$($manifest.xanimProofVerified) assets=$($manifest.xanimProofAssets) | proposed IWD XAnim=$($manifest.proposedXAnimPromotions) RawFile=$($manifest.proposedRawFilePromotions)"
+Write-Host "[SECOND-READINESS] Golden XAnim delta=$($manifest.goldenXAnimDelta); candidate policy: $($manifest.goldenXAnimPolicy)"
 Write-Host "[SECOND-READINESS] Typed-ready=$($manifest.typedClosureReady) blockers=$($typedBlockers.Count)"
 Write-Host "[SECOND-READINESS] Serializer critical=$($critical.Count) high=$($high.Count)"
 Write-Host "[SECOND-READINESS] Report: $txt"
