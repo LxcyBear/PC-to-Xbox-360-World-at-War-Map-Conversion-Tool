@@ -118,7 +118,7 @@ foreach ($item in @($stage4r.nonPortable)) {
 }
 
 $targetByKey = @{}
-foreach ($target in @($targets)) {
+foreach ($target in $targets.ToArray()) {
     $key = [string]$target.Normalized
     if ([string]::IsNullOrWhiteSpace($key)) { continue }
     if (-not $targetByKey.ContainsKey($key)) {
@@ -218,7 +218,7 @@ foreach ($ff in $fastFiles) {
 $matches = New-Object 'System.Collections.Generic.List[object]'
 $notFound = New-Object 'System.Collections.Generic.List[object]'
 
-foreach ($target in @($targets | Sort-Object Index)) {
+foreach ($target in @($targets.ToArray() | Sort-Object Index)) {
     $key = [string]$target.Normalized
     if (-not $stockIndex.ContainsKey($key)) {
         $notFound.Add([pscustomobject]@{
@@ -248,7 +248,7 @@ foreach ($target in @($targets | Sort-Object Index)) {
 }
 
 $classSummary = @(
-    $matches |
+    $matches.ToArray() |
     Group-Object BestClass |
     Sort-Object @{ Expression = { Get-ClassRank -Class $_.Name } }, Name |
     ForEach-Object {
@@ -259,9 +259,9 @@ $classSummary = @(
     }
 )
 
-$coreCandidates = @($matches | Where-Object { $_.BestClass -eq 'core-global-candidate' })
-$zombieCandidates = @($matches | Where-Object { $_.BestClass -in @('zombie-base-candidate','zombie-dlc-candidate') })
-$mapSpecific = @($matches | Where-Object { $_.BestClass -in @('campaign-zone-only','multiplayer-zone-only','other-retail-zone') })
+$coreCandidates = @($matches.ToArray() | Where-Object { $_.BestClass -eq 'core-global-candidate' })
+$zombieCandidates = @($matches.ToArray() | Where-Object { $_.BestClass -in @('zombie-base-candidate','zombie-dlc-candidate') })
+$mapSpecific = @($matches.ToArray() | Where-Object { $_.BestClass -in @('campaign-zone-only','multiplayer-zone-only','other-retail-zone') })
 
 $manifest = [ordered]@{
     format = 'WaW360.Nuclear4R.XboxRetailImageCensus.v1'
@@ -316,13 +316,13 @@ $report.Add('  This report proves stock identity presence only. It does NOT prov
 $report.Add('  No Xbox image payload bytes were copied.')
 $report.Add('')
 $report.Add('FIRST RETAIL MATCHES')
-foreach ($m in @($matches | Select-Object -First 150)) {
+foreach ($m in @($matches.ToArray() | Select-Object -First 150)) {
     $zoneText = ($m.Zones | ForEach-Object { "$($_.Zone)[$($_.ZoneClass)]" }) -join '; '
     $report.Add(("  root #{0,4}: {1} -> {2}" -f $m.Index, $m.Name, $zoneText))
 }
 $report.Add('')
 $report.Add('NOT FOUND IN SUPPLIED RETAIL XBOX FASTFILES')
-foreach ($m in @($notFound | Select-Object -First 250)) {
+foreach ($m in @($notFound.ToArray() | Select-Object -First 250)) {
     $report.Add(("  root #{0,4}: {1} [{2}]" -f $m.Index, $m.Name, $m.SourceClass))
 }
 if ($notFound.Count -gt 250) {
