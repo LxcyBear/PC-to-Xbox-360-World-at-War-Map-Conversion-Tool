@@ -19,6 +19,13 @@ public sealed record T4XenonRendererRootLayout(
     long InsertOffset,
     uint StablePointer);
 
+public sealed record T4XenonRootInsertLayout(
+    int RootIndex,
+    string TypeName,
+    string Name,
+    long InsertOffset,
+    uint StablePointer);
+
 public sealed class T4XenonGraphBlockLayoutResult
 {
     public required int NativeRoots { get; init; }
@@ -26,6 +33,8 @@ public sealed class T4XenonGraphBlockLayoutResult
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
     public required int RealImageRoots { get; init; }
+    public required int RealXModelRoots { get; init; }
+    public required int XModelReferenceRoots { get; init; }
     public required long LargeRuntimeBytes { get; init; }
     public required long LargeBytes { get; init; }
     public required int InsertSlots { get; init; }
@@ -40,6 +49,7 @@ public sealed class T4XenonGraphBlockLayoutResult
     public required long SerializedBlockBytes { get; init; }
     public required long ProjectedUncompressedZoneBytes { get; init; }
     public required IReadOnlyList<T4XenonRendererRootLayout> RendererRoots { get; init; }
+    public required IReadOnlyList<T4XenonRootInsertLayout> RootInsertLayouts { get; init; }
     public required IReadOnlyList<T4XenonLayoutNode> Nodes { get; init; }
     public required IReadOnlyList<string> Blockers { get; init; }
     public required IReadOnlyList<string> Notes { get; init; }
@@ -71,7 +81,9 @@ public static class T4XenonGraphBlockLayoutPlanner
         CancellationToken cancellationToken = default,
         string? imageGraphDumpRoot = null,
         int expectedImages = 0,
-        int imageGraftLimit = 0)
+        int imageGraftLimit = 0,
+        string? xmodelGraphRoot = null,
+        string? xmodelBindingManifest = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -90,6 +102,20 @@ public static class T4XenonGraphBlockLayoutPlanner
                     string.Join(" | ", imageGraph.Errors.Take(20)));
         }
 
+        T4XenonXModelCorpus? xmodelCorpus = null;
+        if (!string.IsNullOrWhiteSpace(xmodelGraphRoot) ||
+            !string.IsNullOrWhiteSpace(xmodelBindingManifest))
+        {
+            if (string.IsNullOrWhiteSpace(xmodelGraphRoot) ||
+                string.IsNullOrWhiteSpace(xmodelBindingManifest))
+                throw new InvalidDataException(
+                    "Stage 4D requires both XModel graph root and XModel binding manifest.");
+
+            xmodelCorpus = T4XenonXModelCorpus.Load(
+                xmodelGraphRoot!,
+                xmodelBindingManifest!);
+        }
+
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         if (native.Platform != WaWPlatform.Xbox360)
             throw new InvalidDataException("Stage 4D requires an Xbox360 native oracle.");
@@ -98,6 +124,9 @@ public static class T4XenonGraphBlockLayoutPlanner
         var bindings = LoadBindings(bindingManifest);
         var blockers = new List<string>();
         var notes = new List<string>();
+
+        if (xmodelCorpus is not null)
+            blockers.AddRange(xmodelCorpus.ValidateDependencies(roots));
 
         if (!bindings.Ready) blockers.Add("Stage 4C root binding is not ready.");
         if (roots.Count != native.Document.AssetCount)
@@ -116,6 +145,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         var state = new CursorState();
         var nodes = new List<T4XenonLayoutNode>();
         var rendererRoots = new List<T4XenonRendererRootLayout>();
+        var rootInsertLayouts = new List<T4XenonRootInsertLayout>(roots.Count);
         var pixelStable = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
         var techniques = new Dictionary<string, long>(StringComparer.Ordinal);
         var decls = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -130,6 +160,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         var rendererTechsets = 0;
         var rendererPixels = 0;
         var realImages = 0;
+        var realXModels = 0;
         var targetImageRoots = imageGraph is null
             ? 0
             : imageGraftLimit > 0
@@ -161,6 +192,13 @@ public static class T4XenonGraphBlockLayoutPlanner
             var insert = state.VirtualAlloc(4, 4, false);
             var stable = SafePointer(T4ZoneBlock.Virtual, insert, blockers);
             state.InsertSlots++;
+            rootInsertLayouts.Add(
+                new T4XenonRootInsertLayout(
+                    root.Index,
+                    root.TypeName,
+                    root.Name,
+                    insert,
+                    stable));
 
             if (pixelByRoot.TryGetValue(root.Index, out var pixelBinding))
             {
@@ -265,6 +303,20 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if (xmodelCorpus is not null &&
+                xmodelCorpus.OwnedByRoot.TryGetValue(root.Index, out var xmodelEntry))
+            {
+                realXModels++;
+                T4XenonXModelGraphCodec.Plan(
+                    xmodelEntry,
+                    (size, align, serialized) =>
+                    {
+                        state.VirtualAlloc(size, align, serialized);
+                    },
+                    state.TempRoot);
+                continue;
+            }
+
             if (imageGraph is not null &&
                 realImages < targetImageRoots &&
                 Normalize(root.TypeName) == "image" &&
@@ -313,6 +365,9 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add($"Upgraded PixelShaders={rendererPixels:N0}; expected {expectedPixelShaders:N0}.");
         if (imageGraph is not null && realImages != targetImageRoots)
             blockers.Add($"Upgraded image roots={realImages:N0}; target={targetImageRoots:N0}; graph contains {imageGraph.Images:N0}.");
+        if (xmodelCorpus is not null && realXModels != xmodelCorpus.OwnedByRoot.Count)
+            blockers.Add(
+                $"Upgraded XModel roots={realXModels:N0}; expected {xmodelCorpus.OwnedByRoot.Count:N0}.");
         if (state.Virtual > 0x20000000L || state.Physical > 0x20000000L ||
             state.LargeRuntime > 0x20000000L || state.Large > 0x20000000L)
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
@@ -323,6 +378,10 @@ public static class T4XenonGraphBlockLayoutPlanner
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
         if (imageGraph is not null)
             notes.Add($"Image graph graft: {realImages:N0}/{imageGraph.Images:N0} real GfxImage roots; limit={(imageGraftLimit > 0 ? imageGraftLimit : imageGraph.Images):N0}; LARGE_RUNTIME={state.LargeRuntime:N0} bytes; LARGE={state.Large:N0} bytes; source graph is validation-only unless independently PC-sourced.");
+        if (xmodelCorpus is not null)
+            notes.Add(
+                $"XModel graph graft: {realXModels:N0}/{xmodelCorpus.OwnedByRoot.Count:N0} owned roots; " +
+                $"{xmodelCorpus.ReferenceRoots:N0} reference roots remain reference shells.");
         notes.Add(ready
             ? "BLOCK LAYOUT CLOSURE: PASS. Stage 4E can write bytes against these exact cursors."
             : "BLOCK LAYOUT CLOSURE: BLOCKED. Stage 4E remains fenced.");
@@ -337,6 +396,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
             RealImageRoots = realImages,
+            RealXModelRoots = realXModels,
+            XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             LargeRuntimeBytes = state.LargeRuntime,
             LargeBytes = state.Large,
             InsertSlots = state.InsertSlots,
@@ -351,6 +412,7 @@ public static class T4XenonGraphBlockLayoutPlanner
             SerializedBlockBytes = state.Serialized,
             ProjectedUncompressedZoneBytes = 36L + 16L + state.Serialized,
             RendererRoots = rendererRoots,
+            RootInsertLayouts = rootInsertLayouts,
             Nodes = nodes,
             Blockers = blockers,
             Notes = notes,
@@ -543,6 +605,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         sb.AppendLine($"Renderer TechniqueSets:  {r.RendererTechniqueSets:N0}");
         sb.AppendLine($"Renderer PixelShaders:   {r.RendererPixelShaders:N0}");
         sb.AppendLine($"Real image roots:        {r.RealImageRoots:N0}");
+        sb.AppendLine($"Real XModel roots:       {r.RealXModelRoots:N0}");
+        sb.AppendLine($"XModel reference roots:  {r.XModelReferenceRoots:N0}");
         sb.AppendLine($"LARGE_RUNTIME:           0x{r.LargeRuntimeBytes:X}");
         sb.AppendLine($"VIRTUAL insert slots:    {r.InsertSlots:N0}");
         sb.AppendLine($"Forward PixelShader refs:{r.ForwardPixelShaderReferences,10:N0}");
