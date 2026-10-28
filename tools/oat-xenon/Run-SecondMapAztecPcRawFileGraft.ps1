@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$ReusePcCorpus)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -53,12 +53,56 @@ foreach($source in $sourceFFs) {
     $originHashes[$src]=(Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash
 }
 New-Item -Path $work -ItemType Directory -Force | Out-Null
-if(Test-Path -LiteralPath $corpus -PathType Container) { Remove-Item -LiteralPath $corpus -Recurse -Force }
-New-Item -Path $corpus -ItemType Directory -Force | Out-Null
+if (-not $ReusePcCorpus -and (Test-Path -LiteralPath $corpus -PathType Container)) {
+    Remove-Item -LiteralPath $corpus -Recurse -Force
+}
+if(-not (Test-Path -LiteralPath $corpus -PathType Container)) {
+    New-Item -Path $corpus -ItemType Directory -Force | Out-Null
+}
 New-Item -Path $emit -ItemType Directory -Force | Out-Null
 Write-Host '[AZTEC-PC-RAW] PC source fastfiles -> REAL RawFile bodies -> Xbox 360 OAT readback'
 Write-Host '[AZTEC-PC-RAW] Original 4E PASS kept intact; Converted Maps untouched.'
 
+if ($ReusePcCorpus) {
+    # Reuse the LAST completed PC OAT extraction, not any unproven corpus.
+    # All source .ff SHA-256 values were recomputed above; pin the previous
+    # manifest, verify every promoted source file's content, and require
+    # successfully completed OAT extraction logs from each input role.
+    $cachePath=Join-Path $work 'pc_rawfile_graft_input.json'
+    if(-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
+        throw 'PC RawFile corpus reuse requires the previous source manifest.'
+    }
+    $cache=Get-Content -LiteralPath $cachePath -Raw | ConvertFrom-Json
+    if([string]$cache.format -ne 'WaW360.AztecPcRawFileGraftInput.v1' -or
+       [int]$cache.nativeRootCount -ne 8509 -or @($cache.entries).Count -eq 0) {
+        throw 'Previously extracted PC RawFile corpus manifest is not verified.'
+    }
+    foreach($ff in $sourceFFs) {
+        $role=[string]$ff.Role
+        $log=Join-Path $work ('pc_rawfile_'+$role+'.log')
+        if(-not (Test-Path -LiteralPath $log -PathType Leaf) -or
+           @(Select-String -LiteralPath $log -Pattern '^\s*ERROR:').Count -ne 0) {
+            throw "Prior PC extraction log missing or contains errors: $log"
+        }
+    }
+    foreach($entry in @($cache.entries)) {
+        $role=[string]$entry.sourceRole
+        $source=[string]$entry.sourceFastFile
+        if($role -notin @('map.ff','map_patch.ff','mod.ff') -or
+           -not $originHashes.ContainsKey($source) -or
+           [string]$entry.sourceFastFileSha256 -ine [string]$originHashes[$source]) {
+            throw "PC input fastfile identity changed since last extraction: $source"
+        }
+        $expected=Join-Path (Join-Path $corpus $role) (([string]$entry.name).Replace('/','\'))
+        if([IO.Path]::GetFullPath($expected) -ine [IO.Path]::GetFullPath([string]$entry.sourcePath) -or
+           -not (Test-Path -LiteralPath $expected -PathType Leaf) -or
+           [long](Get-Item -LiteralPath $expected).Length -ne [long]$entry.bytes -or
+           (Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash -ine [string]$entry.sha256) {
+            throw "Previously extracted PC RawFile changed: $expected"
+        }
+    }
+    Write-Host "[AZTEC-PC-RAW] Reusing verified previous PC corpus: $(@($cache.entries).Count) source-bound roots, no OAT re-extraction."
+} else {
 foreach($source in $sourceFFs) {
     $role=[string]$source.Role
     $src=[string]$source.Path
@@ -100,6 +144,7 @@ foreach($source in $sourceFFs) {
         if(Test-Path -LiteralPath $temp -PathType Container) { Remove-Item -LiteralPath $temp -Recurse -Force }
     }
     Write-Host "[AZTEC-PC-RAW] $($role): $count PC RawFiles with native names"
+}
 }
 $entries=New-Object 'System.Collections.Generic.List[object]'
 $conflicts=New-Object 'System.Collections.Generic.List[string]'
@@ -150,7 +195,7 @@ $manifestOut=Join-Path $emit 'nuclear_xenon_renderer_emit.json'
 if(Test-Path -LiteralPath $manifestOut -PathType Leaf){Remove-Item -LiteralPath $manifestOut -Force}
 $cliArgs=@('run','--no-build','-c','Release','--project',$cli,'--',
     'xenon-graph-emit',[string]$proof.dumpRoot,$native,$identityPath,$bind,$emit,
-    'nazi_zombie_aztec',$xboxOat,'70','436','','0','true','0','','','','',$manifest)
+    'nazi_zombie_aztec',$xboxOat,'70','436','--rawfile-graft',$manifest)
 $emitLog=Join-Path $work 'pc_rawfile_emit.log'
 $saved=$ErrorActionPreference
 try {
