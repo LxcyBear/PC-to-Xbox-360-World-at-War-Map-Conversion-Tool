@@ -26,6 +26,7 @@ $productionCriticalReferenceProofManifest = Join-Path $repo 'output\nazi_zombie_
 $productionImageReferenceProofManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4x_xbox_image_reference_proof\nuclear_4x_xbox_image_reference_proof.json'
 $productionStockWeaponRoundTripManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4y_stock_weapon_roundtrip\nuclear_4y_stock_weapon_roundtrip.json'
 $productionStockFxRoundTripManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4z_stock_fx_roundtrip\nuclear_4z_stock_fx_roundtrip.json'
+$productionRawFileGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_5r_rawfile_production_graft\nuclear_5r_rawfile_production_graft.json'
 
 function Find-MainFastFile {
     param([Parameter(Mandatory=$true)][string]$Directory)
@@ -203,6 +204,21 @@ if (Test-Path -LiteralPath $productionStockFxRoundTripManifest -PathType Leaf) {
     }
 }
 
+$productionRawFileCredit = $null
+if (Test-Path -LiteralPath $productionRawFileGraftManifest -PathType Leaf) {
+    $proof = Get-Content -LiteralPath $productionRawFileGraftManifest -Raw | ConvertFrom-Json
+    if ([string]$proof.format -ne 'WaW360.Nuclear5R.RawFileProductionGraft.v1' -or
+        -not [bool]$proof.productionRawFileGraftPass -or
+        [int]$proof.pcBackedRawFileRoots -ne 8 -or
+        [int]$proof.oatListedRoots -ne 6811 -or
+        -not [bool]$proof.oatZeroWarningsZeroErrors -or
+        -not [bool]$proof.exactIdentitySequence -or
+        -not [bool]$proof.layoutReplayExact) {
+        throw 'Invalid 5R full-graph RawFile proof; 4F credit refused.'
+    }
+    $productionRawFileCredit = $productionRawFileGraftManifest
+}
+
 Write-Host '[NUCLEAR-4F] ================================================================ '
 Write-Host '[NUCLEAR-4F] FULL-CONTENT MASS / PRE-HARDWARE GATE'
 Write-Host '[NUCLEAR-4F] ================================================================'
@@ -219,6 +235,7 @@ Write-Host "[NUCLEAR-4F] 4W retail refs     : $(if ($null -eq $productionCritica
 Write-Host "[NUCLEAR-4F] 4X image refs      : $(if ($null -eq $productionImageReferenceCredit) { '<none>' } else { $productionImageReferenceCredit })"
 Write-Host "[NUCLEAR-4F] Stock Weapon proof : $(if ($null -eq $productionStockWeaponCredit) { '<none>' } else { $productionStockWeaponCredit })"
 Write-Host "[NUCLEAR-4F] Stock FX proof     : $(if ($null -eq $productionStockFxCredit) { '<none>' } else { $productionStockFxCredit })"
+Write-Host "[NUCLEAR-4F] 5R RawFile graft    : $(if ($null -eq $productionRawFileCredit) { '<none>' } else { $productionRawFileCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
 Write-Host ''
 Write-Host '[NUCLEAR-4F] POLICY: no Xbox test candidate until size + critical-content gates both pass.'
@@ -245,51 +262,22 @@ try {
         $minInvariant,
         $maxInvariant
     )
-    if ($null -ne $productionImageCredit -or
-        $null -ne $productionXModelCredit -or
-        $null -ne $productionMaterialCredit -or
-        $null -ne $productionCriticalReferenceCredit -or
-        $null -ne $productionImageReferenceCredit -or
-        $null -ne $productionStockWeaponCredit -or
-        $null -ne $productionStockFxCredit) {
-        # CLI positions keep image -> 4Y -> 4Z-D -> 4W. Preserve empty earlier
-        # slots whenever a later production credit exists.
-        $args += $(if ($null -eq $productionImageCredit) { '' } else { $productionImageCredit })
+    $credits = New-Object 'object[]' 8
+    $credits[0] = $productionImageCredit
+    $credits[1] = $productionXModelCredit
+    $credits[2] = $productionMaterialCredit
+    $credits[3] = $productionCriticalReferenceCredit
+    $credits[4] = $productionImageReferenceCredit
+    $credits[5] = $productionStockWeaponCredit
+    $credits[6] = $productionStockFxCredit
+    $credits[7] = $productionRawFileCredit
+    $lastCredit = -1
+    for ($i=0; $i -lt $credits.Length; $i++) {
+        if ($null -ne $credits[$i]) { $lastCredit = $i }
     }
-    if ($null -ne $productionXModelCredit -or
-        $null -ne $productionMaterialCredit -or
-        $null -ne $productionCriticalReferenceCredit -or
-        $null -ne $productionImageReferenceCredit -or
-        $null -ne $productionStockWeaponCredit -or
-        $null -ne $productionStockFxCredit) {
-        $args += $(if ($null -eq $productionXModelCredit) { '' } else { $productionXModelCredit })
+    for ($i=0; $i -le $lastCredit; $i++) {
+        $args += $(if ($null -eq $credits[$i]) { '' } else { [string]$credits[$i] })
     }
-    if ($null -ne $productionMaterialCredit -or
-        $null -ne $productionCriticalReferenceCredit -or
-        $null -ne $productionImageReferenceCredit -or
-        $null -ne $productionStockWeaponCredit -or
-        $null -ne $productionStockFxCredit) {
-        $args += $(if ($null -eq $productionMaterialCredit) { '' } else { $productionMaterialCredit })
-    }
-    if ($null -ne $productionCriticalReferenceCredit -or
-        $null -ne $productionImageReferenceCredit -or
-        $null -ne $productionStockWeaponCredit -or
-        $null -ne $productionStockFxCredit) {
-        $args += $(if ($null -eq $productionCriticalReferenceCredit) { '' } else { $productionCriticalReferenceCredit })
-    }
-    if ($null -ne $productionImageReferenceCredit -or
-        $null -ne $productionStockWeaponCredit -or
-        $null -ne $productionStockFxCredit) {
-        $args += $(if ($null -eq $productionImageReferenceCredit) { '' } else { $productionImageReferenceCredit })
-    }
-    if ($null -ne $productionStockWeaponCredit -or
-        $null -ne $productionStockFxCredit) {
-        $args += $(if ($null -eq $productionStockWeaponCredit) { '' } else { $productionStockWeaponCredit })
-    }
-    if ($null -ne $productionStockFxCredit) {
-        $args += $productionStockFxCredit
-    }
-
     & dotnet @args
     $code = $LASTEXITCODE
 }

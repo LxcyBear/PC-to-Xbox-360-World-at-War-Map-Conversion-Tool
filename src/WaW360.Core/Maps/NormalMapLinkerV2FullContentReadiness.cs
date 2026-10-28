@@ -39,6 +39,8 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required long RealPromotedBytes { get; init; }
     public required long FallbackBytes { get; init; }
     public required int ProductionImageRoots { get; init; }
+    public required int ProductionRawFileRoots { get; init; }
+    public required long ProductionRawFileSerializedBytes { get; init; }
     public required long ProductionImageSerializedBytes { get; init; }
     public required long ProductionImagePixelBytes { get; init; }
     public required int ProductionXModelRoots { get; init; }
@@ -116,6 +118,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         string? productionImageReferenceProofManifest = null,
         string? productionStockWeaponRoundTripManifest = null,
         string? productionStockFxRoundTripManifest = null,
+        string? productionRawFileGraftManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -171,6 +174,12 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         var productionStockFx = LoadProductionStockFxCredit(
             productionStockFxRoundTripManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
+        // The standalone 5O canary is not sufficient. Require integrated 5R proof.
+        var productionRawFiles = LoadProductionRawFileCredit(
+            productionRawFileGraftManifest,
             nativeIdentity,
             native.Document.AssetCount);
 
@@ -387,6 +396,23 @@ public static class NormalMapLinkerV2FullContentReadiness
             // Consume the legacy type-order source slot if one exists so subsequent
             // source/native pairing remains aligned, but do not charge embedded
             // payload bytes: the production representation is the reference itself.
+            if (type.Equals("rawfile", StringComparison.OrdinalIgnoreCase) &&
+                productionRawFiles.SerializedBytesByNativeIndex.TryGetValue(i, out var rawPayloadBytes))
+            {
+                if (pools.TryGetValue(type, out var rawQueue) && rawQueue.Count != 0)
+                    rawQueue.Dequeue();
+                var produced = checked(shell.Bytes.LongLength + rawPayloadBytes + 1L);
+                sourceMappedRoots++;
+                realPromotedRoots++;
+                sourcePayloadBytes += produced;
+                realPromotedBytes += produced;
+                stat.SourceMappedRoots++;
+                stat.RealPromotedRoots++;
+                stat.SourcePayloadBytes += produced;
+                stat.RealPromotedBytes += produced;
+                continue;
+            }
+
             if (productionCriticalReferences.ReferenceNativeIndices.Contains(i))
             {
                 if (pools.TryGetValue(type, out var referenceQueue) && referenceQueue.Count != 0)
@@ -587,6 +613,16 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (type.Equals("rawfile", StringComparison.OrdinalIgnoreCase) &&
+                productionRawFiles.SerializedBytesByNativeIndex.TryGetValue(i, out var rawPayloadBytes))
+            {
+                if (deltaPools.TryGetValue(type, out var rawQueue) && rawQueue.Count != 0)
+                    rawQueue.Dequeue();
+                // The baseline already contains the name-only RawFile header/string.
+                nonRendererDelta += rawPayloadBytes + 1L;
+                continue;
+            }
+
             if (productionCriticalReferences.ReferenceNativeIndices.Contains(i))
             {
                 if (deltaPools.TryGetValue(type, out var referenceQueue) && referenceQueue.Count != 0)
@@ -674,6 +710,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             "External Xbox SDNS/XMA payloads belong in sounds\\ and are not expected to account for main-FF size. Sound/LoadedSound incompleteness is reported separately from the main-content size gate.",
             $"A proper-size candidate must be between {minimumSizeRatio:P0} and {maximumSizeRatio:P0} of the native oracle before hardware testing is allowed.",
             "Critical families must have zero fallback/synthetic roots before Stage 4F can declare full native emission ready.",
+            productionRawFiles.SerializedBytesByNativeIndex.Count == 0
+                ? "No passing 5R full-graph RawFile graft supplied; legacy RawFile blockers remain."
+                : $"Stage 5R credits {productionRawFiles.SerializedBytesByNativeIndex.Count:N0} native PC-backed RawFiles after full-graph readback; 46 retail references are unchanged.",
             productionImages.SerializedBytesByNativeIndex.Count == 0
                 ? "No production-image graft manifest was supplied; image readiness is still evaluated only from the structural source path."
                 : $"Production image graft credits {productionImages.SerializedBytesByNativeIndex.Count:N0} exact Xenon image roots ({productionImages.TotalPixelBytes:N0} pixel bytes; {productionImages.TotalSerializedBytes:N0} serialized bytes). Unresolved images remain critical blockers.",
@@ -735,6 +774,8 @@ public static class NormalMapLinkerV2FullContentReadiness
             RealPromotedBytes = realPromotedBytes,
             FallbackBytes = fallbackBytes,
             ProductionImageRoots = productionImages.SerializedBytesByNativeIndex.Count,
+            ProductionRawFileRoots = productionRawFiles.SerializedBytesByNativeIndex.Count,
+            ProductionRawFileSerializedBytes = productionRawFiles.SerializedBytesByNativeIndex.Values.Sum(x => x + 1L),
             ProductionImageSerializedBytes = productionImages.TotalSerializedBytes,
             ProductionImagePixelBytes = productionImages.TotalPixelBytes,
             ProductionXModelRoots = productionXModels.SerializedBytesByNativeIndex.Count,
@@ -767,6 +808,67 @@ public static class NormalMapLinkerV2FullContentReadiness
             cancellationToken);
 
         return result;
+    }
+
+    private sealed record ProductionRawFileCredit(
+        IReadOnlyDictionary<int, long> SerializedBytesByNativeIndex);
+
+    private static ProductionRawFileCredit LoadProductionRawFileCredit(
+        string? manifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(manifestPath))
+            return new ProductionRawFileCredit(new Dictionary<int, long>());
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.GetFullPath(manifestPath)));
+        var root = doc.RootElement;
+        if (GetString(root, "format") != "WaW360.Nuclear5R.RawFileProductionGraft.v1" ||
+            !GetBool(root, "productionRawFileGraftPass") ||
+            GetInt(root, "pcBackedRawFileRoots") != 8 ||
+            GetInt(root, "nativeRoots") != 6811 ||
+            GetInt(root, "oatListedRoots") != 6811 ||
+            !GetBool(root, "oatZeroWarningsZeroErrors") ||
+            !GetBool(root, "exactIdentitySequence") ||
+            !GetBool(root, "layoutReplayExact") ||
+            GetBool(root, "hardwareApproved"))
+            throw new InvalidDataException("Stage 5R has not proven a full 6,811-root eight-RawFile graft.");
+
+        if (!File.Exists(GetString(root, "integratedOutputFastFile")))
+            throw new InvalidDataException("Stage 5R integrated fastfile is missing.");
+
+        var expected = new Dictionary<int, string>
+        {
+            [6362] = "maps/frumansion_j_p.gsc",
+            [6363] = "maps/nazi_zombie_frumansion_nozct_fx.gsc",
+            [6364] = "maps/createfx/nazi_zombie_frumansion_nozct_fx.gsc",
+            [6365] = "clientscripts/frumansion_j_p.csc",
+            [6366] = "clientscripts/nazi_zombie_frumansion_nozct_fx.csc",
+            [6367] = "clientscripts/createfx/nazi_zombie_frumansion_nozct_fx.csc",
+            [6808] = "nazi_zombie_frumansion_nozct",
+            [6809] = "shock/zombie_death.shock"
+        };
+        var credits = new Dictionary<int, long>();
+        foreach (var item in GetProperty(root, "productionRawFiles").EnumerateArray())
+        {
+            var index = GetInt(item, "RootIndex");
+            var name = GetString(item, "Name");
+            var bytes = GetLong(item, "Bytes");
+            var sha = GetString(item, "SHA256");
+            if (!expected.TryGetValue(index, out var expectedName) ||
+                !name.Equals(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                index < 0 || index >= nativeRootCount ||
+                !nativeIdentity[index].TypeName.Equals("rawfile", StringComparison.OrdinalIgnoreCase) ||
+                !nativeIdentity[index].Name.Replace('\\', '/').Equals(expectedName, StringComparison.OrdinalIgnoreCase) ||
+                !GetBool(item, "Exact") ||
+                bytes < 0 || sha.Length != 64 ||
+                !sha.Equals(GetString(item, "ReadbackSHA256"), StringComparison.OrdinalIgnoreCase) ||
+                !credits.TryAdd(index, bytes))
+                throw new InvalidDataException($"Stage 5R invalid RawFile credit at root #{index}.");
+        }
+        if (credits.Count != expected.Count)
+            throw new InvalidDataException("Stage 5R RawFile credit is incomplete.");
+        return new ProductionRawFileCredit(credits);
     }
 
     private sealed record ProductionStockFxCredit(
@@ -1717,6 +1819,8 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Real promoted bytes:         {r.RealPromotedBytes:N0}");
         sb.AppendLine($"Fallback bytes:              {r.FallbackBytes:N0}");
         sb.AppendLine($"Production image roots:      {r.ProductionImageRoots:N0}");
+        sb.AppendLine($"Production RawFile roots:    {r.ProductionRawFileRoots:N0}");
+        sb.AppendLine($"Production RawFile bodies:   {r.ProductionRawFileSerializedBytes:N0} bytes");
         sb.AppendLine($"Production image bytes:      {r.ProductionImageSerializedBytes:N0} serialized / {r.ProductionImagePixelBytes:N0} pixels");
         sb.AppendLine($"Production XModel roots:     {r.ProductionXModelRoots:N0}");
         sb.AppendLine($"XModel reference roots:      {r.ProductionXModelReferenceRoots:N0}");

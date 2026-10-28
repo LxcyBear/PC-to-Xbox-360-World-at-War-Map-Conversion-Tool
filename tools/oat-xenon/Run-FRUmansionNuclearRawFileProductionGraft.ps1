@@ -166,7 +166,7 @@ if ($dumpExit -ne 0) { throw "5R integrated rawfile redump failed (exit=$dumpExi
 
 $checks = @()
 foreach ($entry in $entries) {
-    $readFile = Join-Path $dump ([string]$entry.name).Replace('/','\')
+    $readFile = Join-Path $dump (([string]$entry.name).Replace('/','\'))
     $found = Test-Path -LiteralPath $readFile -PathType Leaf
     $readSha = if ($found) { (Get-FileHash -LiteralPath $readFile -Algorithm SHA256).Hash } else { '' }
     $readBytes = if ($found) { (Get-Item -LiteralPath $readFile).Length } else { -1 }
