@@ -103,7 +103,7 @@ foreach($r in @($expanded.results | Sort-Object Key)){
         LooksGenerated=[bool]$r.LooksGenerated
         CandidateCount=$choices.Count
         DistinctSha256Count=$hashes.Count
-        SourceLibraries=[string[]]$origins.ToArray()
+        SourceLibraries=[string[]]@($origins | Sort-Object)
         Candidates=$sourceList.ToArray()
         IsDirectAztecSource=$false
         PermittedForAutomaticProductionGraft=$false
