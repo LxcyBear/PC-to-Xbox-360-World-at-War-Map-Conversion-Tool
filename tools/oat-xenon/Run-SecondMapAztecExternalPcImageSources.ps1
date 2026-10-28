@@ -46,6 +46,12 @@ function Normalize([string]$v){
         if($v.EndsWith($ext,[StringComparison]::OrdinalIgnoreCase)){$v=$v.Substring(0,$v.Length-$ext.Length)}
     }
     if($v.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){$v=$v.Substring(0,$v.Length-3)}
+    # Loose files can be outside an images/ directory, e.g. map-assets
+    # packages containing foo.iwi directly. Do NOT compare an absolute
+    # Windows filesystem path against the plain native identity.
+    if($v.Contains(':') -or $v.Contains('/')){
+        $v=$v.Substring($v.LastIndexOf('/')+1)
+    }
     return $v.ToLowerInvariant()
 }
 $targetIndex=New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::OrdinalIgnoreCase)
@@ -179,7 +185,13 @@ $found=0;$ambiguous=0;$foundNative=0;$missingNative=0;$generatedMissing=0
 $rows=New-Object 'System.Collections.Generic.List[object]'
 foreach($target in $targets){
     $key=Normalize ([string]$target.Key)
-    $choices=if($byTarget.ContainsKey($key)){[object[]]$byTarget[$key].ToArray()}else{[object[]]@()}
+    # Under Windows PowerShell 5.1 an if-expression returning an empty array
+    # may unwrap to $null (and StrictMode .Count throws). Use explicit typed
+    # array assignment for both the 0-hit and 1-hit cases.
+    [object[]]$choices=@()
+    if($byTarget.ContainsKey($key)){
+        $choices=[object[]]$byTarget[$key].ToArray()
+    }
     $shas=@($choices | Select-Object -ExpandProperty SourceSha256 -Unique)
     $conflict=($shas.Count -gt 1)
     if($choices.Count -gt 0){$found++}
