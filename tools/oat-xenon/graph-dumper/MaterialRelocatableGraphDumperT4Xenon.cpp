@@ -94,13 +94,31 @@ namespace
     }
 
     template <typename T>
+    void EncodeForZone(T& value)
+    {
+        EndianSwap(value, EndianOperation::Encode);
+    }
+
+    template <>
+    void EncodeForZone<float>(float& value)
+    {
+        EndianSwap(value);
+    }
+
+    template <>
+    void EncodeForZone<unsigned short>(unsigned short& value)
+    {
+        EndianSwap(value);
+    }
+
+    template <typename T>
     void DumpEncodedStruct(
         AssetDumpingContext& context,
         const std::string& relativePath,
         const T& value)
     {
         auto encoded = value;
-        EndianSwap(encoded, EndianOperation::Encode);
+        EncodeForZone(encoded);
         const auto file = context.OpenAssetFile(relativePath);
         if (file)
             file->write(
@@ -122,7 +140,7 @@ namespace
         for (size_t i = 0; i < count; ++i)
         {
             auto encoded = values[i];
-            EndianSwap(encoded, EndianOperation::Encode);
+            EncodeForZone(encoded);
             file->write(
                 reinterpret_cast<const char*>(&encoded),
                 static_cast<std::streamsize>(sizeof(encoded)));
