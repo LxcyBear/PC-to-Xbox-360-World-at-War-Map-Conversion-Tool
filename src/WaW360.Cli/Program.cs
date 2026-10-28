@@ -716,7 +716,7 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("NUCLEAR STAGE 4Z-D0 Xenon Material root binding");
                 Console.WriteLine($"corpus={result.CorpusMaterials:N0}; nativeMaterialRoots={result.NativeMaterialRoots:N0}");
                 Console.WriteLine($"direct={result.DirectIdentityMatches:N0}; semantic={result.SemanticMatches:N0}; unmatched={result.UnmatchedMaterials:N0}; ambiguous={result.AmbiguousMaterials:N0}");
-                Console.WriteLine($"calibration={result.SharedCalibrationMatches:N0}/{result.SharedCalibrationPairs:N0} ({result.SharedCalibrationAgreement:P2}); mode={result.SemanticFingerprintMode}; semanticEnabled={result.SemanticFallbackEnabled}");
+                Console.WriteLine($"calibrationCorrect={result.SharedCalibrationMatches:N0}/{result.SharedCalibrationPairs:N0}; wrong={result.SharedCalibrationWrong:N0}; ambiguousOrMissing={result.SharedCalibrationAmbiguousOrMissing:N0}; precision={result.SharedCalibrationAgreement:P2}; coverage={result.SharedCalibrationCoverage:P2}; mode={result.SemanticFingerprintMode}; semanticEnabled={result.SemanticFallbackEnabled}");
                 Console.WriteLine($"bindingPass={result.BindingPass}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonManifestFile}");
