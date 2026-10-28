@@ -191,7 +191,7 @@ public static class T4XenonMaterialRootBindingPlanner
                 continue;
             }
 
-            if (!pcMaterials.TryGetValue(graphName, out var pcFile))
+            if (!TryGetMaterialFile(pcMaterials, graphName, out var pcFile))
             {
                 unmatched.Add(graphName);
                 continue;
@@ -477,23 +477,19 @@ public static class T4XenonMaterialRootBindingPlanner
     {
         var result = new Dictionary<string, List<NativeFingerprintCandidate>>(StringComparer.Ordinal);
 
-        foreach (var pair in xboxMaterials)
+        foreach (var root in roots.Where(
+                     x => T4XenonXModelCorpus.NormalizeType(x.OatTypeName) == "material"))
         {
-            var rootMatches = T4XenonXModelCorpus.FindReferenceCandidates(
-                roots,
-                "material",
-                pair.Key);
-            if (rootMatches.Count != 1)
-                continue;
-
-            var root = rootMatches[0];
             // Semantic replacement must target an owned/native slot, not an
             // OAT reference-only root.
             if (root.Name.StartsWith(",", StringComparison.Ordinal))
                 continue;
 
+            if (!TryGetMaterialFile(xboxMaterials, root.Name, out var jsonFile))
+                continue;
+
             var hash = Fingerprint(
-                pair.Value,
+                jsonFile,
                 isPc: false,
                 new Dictionary<string, string>(),
                 mode);
@@ -502,7 +498,7 @@ public static class T4XenonMaterialRootBindingPlanner
                 bucket = new List<NativeFingerprintCandidate>();
                 result.Add(hash, bucket);
             }
-            bucket.Add(new(root, pair.Key));
+            bucket.Add(new(root, root.Name));
         }
 
         return result;
@@ -663,6 +659,33 @@ public static class T4XenonMaterialRootBindingPlanner
         }
 
         return false;
+    }
+
+    private static bool TryGetMaterialFile(
+        IReadOnlyDictionary<string, string> materialsByDumpStem,
+        string assetName,
+        out string file)
+    {
+        if (materialsByDumpStem.TryGetValue(assetName, out file!))
+            return true;
+
+        var dumpStem = OatMaterialDumpStem(assetName);
+        return materialsByDumpStem.TryGetValue(dumpStem, out file!);
+    }
+
+    private static string OatMaterialDumpStem(string assetName)
+    {
+        var value = assetName;
+        if (value.StartsWith("*", StringComparison.Ordinal))
+        {
+            value = value.Replace('*', '_');
+            var parenthesis = value.IndexOf('(');
+            if (parenthesis >= 0)
+                value = value[..parenthesis];
+            value = "generated/" + value;
+        }
+
+        return value.Replace('\\', '/');
     }
 
     private static string NormalizeAssetName(string value)
