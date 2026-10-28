@@ -254,7 +254,10 @@ foreach ($ff in $fastFiles.ToArray()) {
         $ordinal,$fastFiles.Count,[string]$ff.Kind,[string]$ff.Name,$imageRows,$matched.Count,$code)
 }
 
-$dumpLog=[string]$pcBridge.pcFastFileDumpLog
+$dumpLog=''
+if ($pcBridge.PSObject.Properties.Name -contains 'pcFastFileDumpLog') {
+    $dumpLog=[string]$pcBridge.pcFastFileDumpLog
+}
 if ([string]::IsNullOrWhiteSpace($dumpLog)) {
     $dumpLog=Join-Path $repo '.cache\nuclear_4r_pc_fastfile_images.log'
 }
