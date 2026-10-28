@@ -705,6 +705,23 @@ static async Task<int> MainAsync(string[] args)
                     Console.WriteLine("DIAGNOSTIC: " + diagnostic);
                 return result.ReplayPass ? 0 : 4;
             }
+            case "xenon-material-root-bind" when args.Length >= 5:
+            {
+                var result = await T4XenonMaterialRootBindingPlanner.BuildAsync(
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4]);
+
+                Console.WriteLine("NUCLEAR STAGE 4Z-D0 Xenon Material root binding");
+                Console.WriteLine($"corpus={result.CorpusMaterials:N0}; nativeMaterialRoots={result.NativeMaterialRoots:N0}");
+                Console.WriteLine($"direct={result.DirectIdentityMatches:N0}; semantic={result.SemanticMatches:N0}; unmatched={result.UnmatchedMaterials:N0}; ambiguous={result.AmbiguousMaterials:N0}");
+                Console.WriteLine($"calibration={result.SharedCalibrationMatches:N0}/{result.SharedCalibrationPairs:N0} ({result.SharedCalibrationAgreement:P2}); mode={result.SemanticFingerprintMode}; semanticEnabled={result.SemanticFallbackEnabled}");
+                Console.WriteLine($"bindingPass={result.BindingPass}");
+                Console.WriteLine($"report:   {result.TextReportFile}");
+                Console.WriteLine($"manifest: {result.JsonManifestFile}");
+                return result.BindingPass ? 0 : 4;
+            }
             case "xenon-material-replay" when args.Length >= 5:
             {
                 var result = await T4XenonMaterialReplayEmitter.EmitAsync(
