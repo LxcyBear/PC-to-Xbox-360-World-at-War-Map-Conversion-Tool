@@ -20,6 +20,7 @@ $identityManifest = @(Get-ChildItem -LiteralPath $identityDir -Filter '*_native_
     Select-Object -First 1)
 
 $productionImageGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4s_pc_image_graft\nuclear_4s_pc_image_graft.json'
+$productionXModelGraftManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4y_xmodel_production_graft\nuclear_4y_xmodel_production_graft.json'
 
 function Find-MainFastFile {
     param([Parameter(Mandatory=$true)][string]$Directory)
@@ -73,6 +74,25 @@ if (Test-Path -LiteralPath $productionImageGraftManifest -PathType Leaf) {
     }
 }
 
+$productionXModelCredit = $null
+if (Test-Path -LiteralPath $productionXModelGraftManifest -PathType Leaf) {
+    try {
+        $stage4y = Get-Content -LiteralPath $productionXModelGraftManifest -Raw | ConvertFrom-Json
+        if ([string]$stage4y.format -eq 'WaW360.Nuclear4Y.XModelProductionGraft.v1' -and
+            [bool]$stage4y.productionXModelGraftPass -and
+            [int]$stage4y.pcBackedOwnedXModels -eq 280 -and
+            [int]$stage4y.preservedXModelReferenceRoots -eq 9 -and
+            [bool]$stage4y.exactIdentitySequence -and
+            [bool]$stage4y.oatZeroWarningsZeroErrors -and
+            [bool]$stage4y.layoutReplayExact) {
+            $productionXModelCredit = $productionXModelGraftManifest
+        }
+    }
+    catch {
+        throw "Stage 4Y manifest exists but could not be validated: $($_.Exception.Message)"
+    }
+}
+
 Write-Host '[NUCLEAR-4F] ================================================================'
 Write-Host '[NUCLEAR-4F] FULL-CONTENT MASS / PRE-HARDWARE GATE'
 Write-Host '[NUCLEAR-4F] ================================================================'
@@ -83,6 +103,7 @@ Write-Host "[NUCLEAR-4F] Renderer graph     : $graphRoot"
 Write-Host "[NUCLEAR-4F] Native identities  : $($identityManifest[0].FullName)"
 Write-Host "[NUCLEAR-4F] Renderer bindings  : $bindingManifest"
 Write-Host "[NUCLEAR-4F] 4S image credit    : $(if ($null -eq $productionImageCredit) { '<none>' } else { $productionImageCredit })"
+Write-Host "[NUCLEAR-4F] 4Y XModel credit   : $(if ($null -eq $productionXModelCredit) { '<none>' } else { $productionXModelCredit })"
 Write-Host "[NUCLEAR-4F] Size window        : $([math]::Round($MinimumSizeRatio * 100))% .. $([math]::Round($MaximumSizeRatio * 100))% of decompressed native oracle"
 Write-Host ''
 Write-Host '[NUCLEAR-4F] POLICY: no Xbox test candidate until size + critical-content gates both pass.'
@@ -109,8 +130,13 @@ try {
         $minInvariant,
         $maxInvariant
     )
-    if ($null -ne $productionImageCredit) {
-        $args += $productionImageCredit
+    if ($null -ne $productionImageCredit -or $null -ne $productionXModelCredit) {
+        # CLI positions keep 4S before 4Y. Preserve an empty 4S slot if a future
+        # run has XModel credit but no production-image credit.
+        $args += $(if ($null -eq $productionImageCredit) { '' } else { $productionImageCredit })
+    }
+    if ($null -ne $productionXModelCredit) {
+        $args += $productionXModelCredit
     }
 
     & dotnet @args
@@ -133,7 +159,7 @@ if ($code -ne 0) {
     Write-Host ''
     Write-Host '[NUCLEAR-4F] FULL-CONTENT READINESS: BLOCKED' -ForegroundColor Yellow
     Write-Host '[NUCLEAR-4F] This is expected until the large missing families are promoted.'
-    Write-Host '[NUCLEAR-4F] Do NOT hardware-test the 4E renderer-proof candidate.'
+    Write-Host '[NUCLEAR-4F] Do NOT hardware-test the 4Y integrated candidate while this gate is blocked.'
     exit $code
 }
 
