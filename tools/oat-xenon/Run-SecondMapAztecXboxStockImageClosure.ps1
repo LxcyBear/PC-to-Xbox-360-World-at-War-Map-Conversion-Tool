@@ -127,9 +127,9 @@ foreach($ff in $zones){
     # content, and must never be interpreted as asset-equivalence evidence.
     $hasher=[Security.Cryptography.SHA256]::Create()
     try{
-        $pathHash=[BitConverter]::ToString($hasher.ComputeHash(
-            [Text.Encoding]::UTF8.GetBytes($ff.FullName.ToLowerInvariant())))
-            .Replace('-','').Substring(0,16)
+        $hashBytes=$hasher.ComputeHash(
+            [Text.Encoding]::UTF8.GetBytes($ff.FullName.ToLowerInvariant()))
+        $pathHash=([BitConverter]::ToString($hashBytes)).Replace('-','').Substring(0,16)
     }finally{$hasher.Dispose()}
     $cacheName=($safe+'_'+$pathHash+'.list.log')
     $stableLog=Join-Path $logRoot $cacheName
