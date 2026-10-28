@@ -82,15 +82,19 @@ foreach($source in $sourceFFs) {
             Get-Content -LiteralPath $log -Tail 10 | ForEach-Object { Write-Host $_ }
             throw "PC OAT extraction failed for $role; exit=$code errors=$errors"
         }
+        # A short OAT physical temp root prevents writer MAX_PATH issues.
+        # Robocopy (long-path-aware) transfers the corpus back to the single
+        # existing ignored repo workspace, without PowerShell 5.1 Copy-Item
+        # failing on long PC RawFile paths.
+        $robolog=@(& robocopy.exe $temp $dest '/E' '/R:1' '/W:1' '/NP' '/NFL' '/NDL' '/NJH' '/NJS' 2>&1 |
+            ForEach-Object { [string]$_ })
+        $roboCode=[int]$LASTEXITCODE
+        if($roboCode -ge 8) { throw "Long-path PC RawFile copy failed for $($role): robocopy code $roboCode." }
         foreach($root in $roots) {
             $name=([string]$root.Name).Replace('/','\')
             if($name.Contains('..') -or [IO.Path]::IsPathRooted($name)) { throw "Unsafe Root name $name" }
             $from=Join-Path $temp $name
-            if(-not (Test-Path -LiteralPath $from -PathType Leaf)) { continue }
-            $to=Join-Path $dest $name
-            New-Item -Path (Split-Path -Parent $to) -ItemType Directory -Force | Out-Null
-            Copy-Item -LiteralPath $from -Destination $to -Force
-            $count++
+            if(Test-Path -LiteralPath $from -PathType Leaf) { $count++ }
         }
     } finally {
         if(Test-Path -LiteralPath $temp -PathType Container) { Remove-Item -LiteralPath $temp -Recurse -Force }
