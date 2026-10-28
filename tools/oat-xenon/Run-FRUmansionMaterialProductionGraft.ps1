@@ -300,6 +300,8 @@ $summary = [ordered]@{
     materialBindingManifest = $materialBindingManifest
     nativeRoots = [int]$emitter.NativeRoots
     oatListedRoots = [int]$emitter.OatListedRoots
+    oatLoadedAssets = [int]$emitter.OatLoadedAssets
+    oatExternalReferenceAssets = [int]$emitter.OatExternalReferenceAssets
     pcBackedImages = [int]$emitter.RealImageRoots
     pcBackedMaterials = [int]$emitter.RealMaterialRoots
     materialReferenceRoots = [int]$emitter.MaterialReferenceRoots
@@ -322,6 +324,8 @@ Write-Host ''
 Write-Host '[NUCLEAR-4Z-D] ================= MATERIAL GRAFT RESULT ========================'
 Write-Host "[NUCLEAR-4Z-D] Native roots           : $([int]$emitter.NativeRoots)"
 Write-Host "[NUCLEAR-4Z-D] OAT roots              : $([int]$emitter.OatListedRoots) / 6811"
+Write-Host "[NUCLEAR-4Z-D] OAT loaded assets      : $([int]$emitter.OatLoadedAssets)"
+Write-Host "[NUCLEAR-4Z-D] External ref assets     : $([int]$emitter.OatExternalReferenceAssets)"
 Write-Host "[NUCLEAR-4Z-D] Real Material roots    : $([int]$emitter.RealMaterialRoots) / 502"
 Write-Host "[NUCLEAR-4Z-D] Material references    : $([int]$emitter.MaterialReferenceRoots)"
 Write-Host "[NUCLEAR-4Z-D] Real XModel roots      : $([int]$emitter.RealXModelRoots) / 280"
