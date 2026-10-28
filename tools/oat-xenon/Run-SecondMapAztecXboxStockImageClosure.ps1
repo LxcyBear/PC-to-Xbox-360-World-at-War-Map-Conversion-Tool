@@ -85,6 +85,29 @@ $coreNames=@('common.ff','code_post_gfx.ff','ui.ff','patch.ff','common_mp.ff',
 $zones=if($AllRetailZones){@($available)}else{@($available | Where-Object { $_.Name.ToLowerInvariant() -in $coreNames })}
 if($zones.Count -eq 0){throw 'No core/zombie retail fastfiles found; use -AllRetailZones for broader local evidence.'}
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
+
+# Legacy eight-zone scan used ordinal-prefixed cache files. When the scope
+# expands to all retail zones, sorted ordinals change. Index ALL prior good
+# cache metadata by the actual retail FF path, not by its prior ordinal.
+# This preserves the eight fully completed OAT --list scans automatically.
+$cachedBySource=@{}
+foreach($priorMeta in @(Get-ChildItem -LiteralPath $logRoot -Filter '*.meta.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)){
+    try{
+        $m=Get-Content -LiteralPath $priorMeta.FullName -Raw | ConvertFrom-Json
+        $prevLog=$priorMeta.FullName.Substring(0,$priorMeta.FullName.Length - '.meta.json'.Length)
+        if([string]::IsNullOrWhiteSpace([string]$m.file) -or
+           [int]$m.exitCode -ne 0 -or
+           -not (Test-Path -LiteralPath $prevLog -PathType Leaf)){continue}
+        $cachedBySource[[string]$m.file]=[pscustomobject]@{
+            Meta=$m
+            Log=$prevLog
+        }
+    }catch{
+        # Invalid/stale cache entries are never reused. The selected retail
+        # zone will be scanned afresh or fail closed in -CacheOnly mode.
+        continue
+    }
+}
 Write-Host '[AZTEC-STOCK-IMG] ==========================================================='
 Write-Host '[AZTEC-STOCK-IMG] LOCATE EXTERNAL IMAGE ROOTS IN OWNED RETAIL XBOX ZONES'
 Write-Host "[AZTEC-STOCK-IMG] Prior image errors: $totalErrorOccurrences occurrences, $($errors.Count) distinct names"
@@ -99,24 +122,39 @@ $ord=0
 foreach($ff in $zones){
     $ord++
     $safe=([IO.Path]::GetFileNameWithoutExtension($ff.Name) -replace '[^A-Za-z0-9_.-]','_')
-    $cacheName=('{0:D3}_{1}.list.log' -f $ord,$safe)
-    $log=Join-Path $logRoot $cacheName
+    # Stable path-derived key prevents different zones with the same basename
+    # overwriting each other's OAT evidence. The hash is of the PATH, not game
+    # content, and must never be interpreted as asset-equivalence evidence.
+    $hasher=[Security.Cryptography.SHA256]::Create()
+    try{
+        $pathHash=[BitConverter]::ToString($hasher.ComputeHash(
+            [Text.Encoding]::UTF8.GetBytes($ff.FullName.ToLowerInvariant())))
+            .Replace('-','').Substring(0,16)
+    }finally{$hasher.Dispose()}
+    $cacheName=($safe+'_'+$pathHash+'.list.log')
+    $stableLog=Join-Path $logRoot $cacheName
     $meta=Join-Path $logRoot ($cacheName+'.meta.json')
+    $log=$stableLog
     $fileInfo=Get-Item -LiteralPath $ff.FullName
     $reuse=$false
-    if(-not $Rescan -and (Test-Path -LiteralPath $log -PathType Leaf) -and
-        (Test-Path -LiteralPath $meta -PathType Leaf)){
-        $m=Get-Content -LiteralPath $meta -Raw | ConvertFrom-Json
-        $reuse=([string]$m.file -ieq $ff.FullName -and
+    if(-not $Rescan -and $cachedBySource.ContainsKey($ff.FullName)){
+        $old=$cachedBySource[$ff.FullName]
+        $m=$old.Meta
+        if([string]$m.file -ieq $ff.FullName -and
             [long]$m.bytes -eq $fileInfo.Length -and
             [string]$m.modifiedUtc -eq $fileInfo.LastWriteTimeUtc.ToString('o') -and
-            [int]$m.exitCode -eq 0)
+            [int]$m.exitCode -eq 0 -and
+            (Test-Path -LiteralPath ([string]$old.Log) -PathType Leaf)){
+            $reuse=$true
+            $log=[string]$old.Log
+        }
     }
     if($CacheOnly -and -not $reuse){
         throw "Cached retail OAT --list evidence is missing, changed, or failed for $($ff.Name): $log. Refusing to rescan in -CacheOnly mode."
     }
     $exit=0
     if(-not $reuse){
+        $log=$stableLog
         $save=$ErrorActionPreference
         try{
             $ErrorActionPreference='Continue'
@@ -206,8 +244,11 @@ $summary=[ordered]@{
     hardwareReady=$false
     sourcePolicy='Read-only source-name lookup against locally owned retail Xbox zones. No donor bytes are copied or released. Identity matches are NOT graph/value equivalence.'
 }
-$json=Join-Path $outRoot 'pc_external_image_xbox_stock_closure.json'
-$txt=Join-Path $outRoot 'pc_external_image_xbox_stock_closure.txt'
+# Keep the first eight-zone passing proof intact. The wider stock scan is
+# an additional independent identity audit, never a destructive replacement.
+$scopeSuffix=if($AllRetailZones){'_all_zones'}else{''}
+$json=Join-Path $outRoot ('pc_external_image_xbox_stock_closure'+$scopeSuffix+'.json')
+$txt=Join-Path $outRoot ('pc_external_image_xbox_stock_closure'+$scopeSuffix+'.txt')
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $json -Encoding UTF8
 $report=New-Object 'System.Collections.Generic.List[string]'
 $report.Add('AZTEC: MISSING PC IMAGE PIXELS VS XBOX RETAIL IMAGE IDENTITIES')
