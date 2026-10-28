@@ -316,6 +316,26 @@ function Resolve-SteamWaWRoot {
         catch {}
     }
 
+    # Last-resort bounded signature search. A legitimate WaW PC install has
+    # main\iw_00.iwd; derive the install root from that instead of relying on
+    # Steam metadata or the executable name. Depth is capped to keep this from
+    # becoming an unbounded whole-disk crawl.
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        try {
+            $hits = @(
+                Get-ChildItem -LiteralPath $drive.Root -Filter 'iw_00.iwd' -File -Recurse -Depth 6 -ErrorAction SilentlyContinue |
+                Where-Object { $_.Directory.Name -ieq 'main' } |
+                Select-Object -First 20
+            )
+            foreach ($hit in $hits) {
+                $mainDir = $hit.Directory.FullName
+                $candidateRoot = Split-Path -Parent $mainDir
+                Add-UniqueDirectory -List $candidates -Path $candidateRoot
+            }
+        }
+        catch {}
+    }
+
     foreach ($candidate in @($candidates)) {
         $main = Join-Path $candidate 'main'
         if (-not (Test-Path -LiteralPath $main -PathType Container)) { continue }
