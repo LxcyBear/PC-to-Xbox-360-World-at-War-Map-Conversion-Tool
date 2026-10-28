@@ -44,6 +44,9 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required int ProductionXModelRoots { get; init; }
     public required int ProductionXModelReferenceRoots { get; init; }
     public required long ProductionXModelSerializedBytes { get; init; }
+    public required int ProductionMaterialRoots { get; init; }
+    public required int ProductionMaterialReferenceRoots { get; init; }
+    public required long ProductionMaterialSerializedBytes { get; init; }
     public required long ProductionIntegratedBaselineZoneBytes { get; init; }
     public required bool RendererLayoutReady { get; init; }
     public required bool ProperSizeGate { get; init; }
@@ -104,6 +107,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         double maximumSizeRatio = 1.20,
         string? productionImageGraftManifest = null,
         string? productionXModelGraftManifest = null,
+        string? productionMaterialGraftManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -137,11 +141,28 @@ public static class NormalMapLinkerV2FullContentReadiness
             nativeIdentity,
             native.Document.AssetCount);
 
+        var productionMaterials = LoadProductionMaterialCredit(
+            productionMaterialGraftManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
         if (productionXModels.SerializedBytesByNativeIndex.Count != 0 &&
             productionXModels.IntegratedImageRoots != productionImages.SerializedBytesByNativeIndex.Count)
             throw new InvalidDataException(
                 $"Stage 4Y integrated image roots={productionXModels.IntegratedImageRoots:N0} " +
                 $"but Stage 4S credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
+
+        if (productionMaterials.SerializedBytesByNativeIndex.Count != 0)
+        {
+            if (productionMaterials.IntegratedImageRoots != productionImages.SerializedBytesByNativeIndex.Count)
+                throw new InvalidDataException(
+                    $"Stage 4Z-D integrated image roots={productionMaterials.IntegratedImageRoots:N0} " +
+                    $"but Stage 4S credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
+            if (productionMaterials.IntegratedXModelRoots != productionXModels.SerializedBytesByNativeIndex.Count)
+                throw new InvalidDataException(
+                    $"Stage 4Z-D integrated XModel roots={productionMaterials.IntegratedXModelRoots:N0} " +
+                    $"but Stage 4Y credit roots={productionXModels.SerializedBytesByNativeIndex.Count:N0}.");
+        }
 
         var rendererLayout = await T4XenonGraphBlockLayoutPlanner.BuildAsync(
             graphRoot,
@@ -251,9 +272,54 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            // Stage 4Z-D production Materials are exact native-root credits from
+            // legitimate PC semantic JSON reconstructed into Xenon Material graphs.
+            // The remaining native Material roots are intentional OAT reference/name shells.
+            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
+                productionMaterials.ReferenceNativeIndices.Contains(i))
+            {
+                realPromotedRoots++;
+                stat.RealPromotedRoots++;
+                continue;
+            }
+
+            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
+                productionMaterials.SerializedBytesByNativeIndex.TryGetValue(i, out var productionMaterialBytes))
+            {
+                if (pools.TryGetValue(type, out var materialQueue) && materialQueue.Count != 0)
+                    materialQueue.Dequeue();
+
+                sourceMappedRoots++;
+                realPromotedRoots++;
+                sourcePayloadBytes += productionMaterialBytes;
+                realPromotedBytes += productionMaterialBytes;
+                stat.SourceMappedRoots++;
+                stat.RealPromotedRoots++;
+                stat.SourcePayloadBytes += productionMaterialBytes;
+                stat.RealPromotedBytes += productionMaterialBytes;
+                continue;
+            }
+
             // The 9 native XModel reference roots are intentional reference assets,
             // not missing payloads. Stage 4Y preserved and OAT validated them. Mark
             // them resolved without consuming one of the 280 PC-owned model payloads.
+            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
+                productionMaterials.ReferenceNativeIndices.Contains(i))
+            {
+                // Stage 4Z-D baseline already contains this validated Material reference root.
+                continue;
+            }
+
+            if (type.Equals("material", StringComparison.OrdinalIgnoreCase) &&
+                productionMaterials.SerializedBytesByNativeIndex.ContainsKey(i))
+            {
+                if (deltaPools.TryGetValue(type, out var materialQueue) && materialQueue.Count != 0)
+                    materialQueue.Dequeue();
+
+                // Stage 4Z-D baseline already contains this exact production Material.
+                continue;
+            }
+
             if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
                 productionXModels.ReferenceNativeIndices.Contains(i))
             {
@@ -453,9 +519,11 @@ public static class NormalMapLinkerV2FullContentReadiness
         }
 
         var provenIntegratedBaseZoneBytes =
-            productionXModels.IntegratedZoneBytes != 0
-                ? productionXModels.IntegratedZoneBytes
-                : rendererLayout.ProjectedUncompressedZoneBytes;
+            productionMaterials.IntegratedZoneBytes != 0
+                ? productionMaterials.IntegratedZoneBytes
+                : productionXModels.IntegratedZoneBytes != 0
+                    ? productionXModels.IntegratedZoneBytes
+                    : rendererLayout.ProjectedUncompressedZoneBytes;
 
         var estimatedFullContent =
             checked(provenIntegratedBaseZoneBytes + nonRendererDelta);
@@ -476,9 +544,11 @@ public static class NormalMapLinkerV2FullContentReadiness
         var notes = new List<string>
         {
             "4F does not emit a hardware candidate. It is a mandatory pre-hardware mass/fidelity gate.",
-            productionXModels.IntegratedZoneBytes != 0
-                ? "EstimatedFullContentZoneBytes starts from the exact OAT-clean Stage 4Y integrated renderer + production-image + 280-XModel zone, then replaces only the remaining shell families with current source-owned structural payloads."
-                : "EstimatedFullContentZoneBytes starts from the exact 4E renderer-layout zone and replaces each mapped non-renderer name shell with the current source-owned structural payload.",
+            productionMaterials.IntegratedZoneBytes != 0
+                ? "EstimatedFullContentZoneBytes starts from the exact OAT-clean Stage 4Z-D integrated renderer + production-image + 280-XModel + 502-Material zone, then replaces only the remaining shell families with current source-owned structural payloads."
+                : productionXModels.IntegratedZoneBytes != 0
+                    ? "EstimatedFullContentZoneBytes starts from the exact OAT-clean Stage 4Y integrated renderer + production-image + 280-XModel zone, then replaces only the remaining shell families with current source-owned structural payloads."
+                    : "EstimatedFullContentZoneBytes starts from the exact 4E renderer-layout zone and replaces each mapped non-renderer name shell with the current source-owned structural payload.",
             $"Known-working main FF on disk is {nativeFastFileBytes:N0} bytes; decompressed zone is {nativeZoneBytes:N0} bytes. Pre-emission mass estimates compare decompressed zone bytes because compression ratio is not known until a candidate is actually emitted.",
             "External Xbox SDNS/XMA payloads belong in sounds\\ and are not expected to account for main-FF size. Sound/LoadedSound incompleteness is reported separately from the main-content size gate.",
             $"A proper-size candidate must be between {minimumSizeRatio:P0} and {maximumSizeRatio:P0} of the native oracle before hardware testing is allowed.",
@@ -488,7 +558,10 @@ public static class NormalMapLinkerV2FullContentReadiness
                 : $"Stage 4S credits {productionImages.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon image roots ({productionImages.TotalPixelBytes:N0} pixel bytes; {productionImages.TotalSerializedBytes:N0} serialized bytes). Unresolved images remain critical blockers.",
             productionXModels.SerializedBytesByNativeIndex.Count == 0
                 ? "No passing Stage 4Y XModel production graft was supplied; XModel readiness is still evaluated from the legacy structural source path."
-                : $"Stage 4Y resolves all {productionXModels.SerializedBytesByNativeIndex.Count + productionXModels.ReferenceRoots:N0} native XModel roots: {productionXModels.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon payloads + {productionXModels.ReferenceRoots:N0} OAT-validated reference roots, and supplies an OAT-clean {productionXModels.IntegratedZoneBytes:N0}-byte integrated baseline.",
+                : $"Stage 4Y resolves all {productionXModels.SerializedBytesByNativeIndex.Count + productionXModels.ReferenceRoots:N0} native XModel roots: {productionXModels.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon payloads + {productionXModels.ReferenceRoots:N0} OAT-validated reference roots.",
+            productionMaterials.SerializedBytesByNativeIndex.Count == 0
+                ? "No passing Stage 4Z-D Material production graft was supplied; Material readiness is still evaluated from the legacy structural source path."
+                : $"Stage 4Z-D resolves all {productionMaterials.SerializedBytesByNativeIndex.Count + productionMaterials.ReferenceRoots:N0} native Material roots: {productionMaterials.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon payloads + {productionMaterials.ReferenceRoots:N0} OAT-validated reference roots, and supplies an OAT-clean {productionMaterials.IntegratedZoneBytes:N0}-byte integrated baseline.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -534,7 +607,10 @@ public static class NormalMapLinkerV2FullContentReadiness
             ProductionXModelRoots = productionXModels.SerializedBytesByNativeIndex.Count,
             ProductionXModelReferenceRoots = productionXModels.ReferenceRoots,
             ProductionXModelSerializedBytes = productionXModels.TotalSerializedBytes,
-            ProductionIntegratedBaselineZoneBytes = productionXModels.IntegratedZoneBytes,
+            ProductionMaterialRoots = productionMaterials.SerializedBytesByNativeIndex.Count,
+            ProductionMaterialReferenceRoots = productionMaterials.ReferenceRoots,
+            ProductionMaterialSerializedBytes = productionMaterials.TotalSerializedBytes,
+            ProductionIntegratedBaselineZoneBytes = provenIntegratedBaseZoneBytes,
             RendererLayoutReady = rendererLayout.LayoutReady,
             ProperSizeGate = properSizeGate,
             CriticalContentGate = criticalContentGate,
@@ -554,6 +630,178 @@ public static class NormalMapLinkerV2FullContentReadiness
             cancellationToken);
 
         return result;
+    }
+
+    private sealed record ProductionMaterialCredit(
+        IReadOnlyDictionary<int, long> SerializedBytesByNativeIndex,
+        IReadOnlySet<int> ReferenceNativeIndices,
+        long TotalSerializedBytes,
+        int ReferenceRoots,
+        int IntegratedImageRoots,
+        int IntegratedXModelRoots,
+        long IntegratedZoneBytes);
+
+    private static ProductionMaterialCredit LoadProductionMaterialCredit(
+        string? graftManifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(graftManifestPath))
+            return new ProductionMaterialCredit(
+                new Dictionary<int, long>(),
+                new HashSet<int>(),
+                0,
+                0,
+                0,
+                0,
+                0);
+
+        graftManifestPath = Path.GetFullPath(graftManifestPath);
+        if (!File.Exists(graftManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4F production-Material graft manifest was not found.",
+                graftManifestPath);
+
+        using var graftDoc = JsonDocument.Parse(File.ReadAllText(graftManifestPath));
+        var graft = graftDoc.RootElement;
+
+        if (GetString(graft, "format") != "WaW360.Nuclear4ZD.MaterialProductionGraft.v1" ||
+            !GetBool(graft, "productionMaterialGraftPass"))
+            throw new InvalidDataException(
+                "Stage 4F requires a passing WaW360.Nuclear4ZD.MaterialProductionGraft.v1 manifest.");
+
+        if (GetInt(graft, "nativeRoots") != nativeRootCount ||
+            GetInt(graft, "oatListedRoots") != nativeRootCount ||
+            GetInt(graft, "pcBackedMaterials") != 502 ||
+            GetInt(graft, "materialReferenceRoots") != 88 ||
+            GetInt(graft, "pcBackedOwnedXModels") != 280 ||
+            !GetBool(graft, "exactIdentitySequence") ||
+            !GetBool(graft, "oatZeroWarningsZeroErrors") ||
+            !GetBool(graft, "layoutReplayExact"))
+            throw new InvalidDataException(
+                "Stage 4Z-D manifest does not prove an exact clean 502-Material / full native-root replay.");
+
+        var emitterManifestPath = GetString(graft, "emitterManifest");
+        var materialGraphManifestPath = GetString(graft, "materialGraphManifest");
+        var bindingManifestPath = GetString(graft, "materialBindingManifest");
+
+        if (string.IsNullOrWhiteSpace(emitterManifestPath) ||
+            string.IsNullOrWhiteSpace(materialGraphManifestPath) ||
+            string.IsNullOrWhiteSpace(bindingManifestPath))
+            throw new InvalidDataException(
+                "Stage 4Z-D manifest is missing Material/emitter provenance.");
+
+        string ResolvePath(string path) =>
+            Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(graftManifestPath)!, path));
+
+        emitterManifestPath = ResolvePath(emitterManifestPath);
+        materialGraphManifestPath = ResolvePath(materialGraphManifestPath);
+        bindingManifestPath = ResolvePath(bindingManifestPath);
+
+        if (!File.Exists(emitterManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4Z-D emitter manifest was not found.",
+                emitterManifestPath);
+        if (!File.Exists(materialGraphManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4Z-D Material graph manifest was not found.",
+                materialGraphManifestPath);
+        if (!File.Exists(bindingManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4Z-D Material binding manifest was not found.",
+                bindingManifestPath);
+
+        using var emitterDoc = JsonDocument.Parse(File.ReadAllText(emitterManifestPath));
+        var emitter = emitterDoc.RootElement;
+        if (GetInt(emitter, "NativeRoots") != nativeRootCount ||
+            GetInt(emitter, "OatListedRoots") != nativeRootCount ||
+            GetInt(emitter, "RealMaterialRoots") != 502 ||
+            GetInt(emitter, "MaterialReferenceRoots") != 88 ||
+            GetInt(emitter, "RealXModelRoots") != 280 ||
+            !GetBool(emitter, "ExactIdentitySequence") ||
+            !GetBool(emitter, "OatZeroWarningsZeroErrors") ||
+            !GetBool(emitter, "LayoutReplayExact") ||
+            !GetBool(emitter, "ValidationPass"))
+            throw new InvalidDataException(
+                "Stage 4Z-D emitter manifest no longer proves a clean full-root OAT replay.");
+
+        var integratedZoneBytes = GetLong(emitter, "ZoneBytes");
+        var integratedImageRoots = GetInt(emitter, "RealImageRoots");
+        var integratedXModelRoots = GetInt(emitter, "RealXModelRoots");
+        if (integratedZoneBytes <= 0)
+            throw new InvalidDataException(
+                "Stage 4Z-D emitter reports a non-positive integrated zone size.");
+
+        var graphRoot = Path.GetDirectoryName(materialGraphManifestPath)
+            ?? throw new InvalidDataException(
+                "Stage 4Z-D Material graph manifest has no parent directory.");
+
+        var corpus = T4XenonMaterialCorpus.Load(
+            graphRoot,
+            bindingManifestPath,
+            nativeIdentity,
+            expectedOwned: 502);
+
+        var dependencyErrors = corpus.ValidateDependencies(nativeIdentity);
+        if (dependencyErrors.Count != 0)
+            throw new InvalidDataException(
+                "Stage 4Z-D Material dependency provenance no longer resolves against the native sequence: " +
+                string.Join(" | ", dependencyErrors.Take(20)));
+
+        var byIndex = new Dictionary<int, long>();
+        long totalSerialized = 0;
+
+        foreach (var pair in corpus.OwnedByRoot.OrderBy(x => x.Key))
+        {
+            var rootIndex = pair.Key;
+            var entry = pair.Value;
+            long serialized = 0;
+
+            T4XenonMaterialGraphCodec.Plan(
+                entry,
+                nativeIdentity,
+                (size, _, isSerialized) =>
+                {
+                    if (isSerialized)
+                        serialized = checked(serialized + size);
+                },
+                size => serialized = checked(serialized + size));
+
+            if (serialized <= 0)
+                throw new InvalidDataException(
+                    $"Stage 4Z-D Material root #{rootIndex} computed non-positive serialized mass.");
+
+            if (!byIndex.TryAdd(rootIndex, serialized))
+                throw new InvalidDataException(
+                    $"Stage 4Z-D repeats Material native root #{rootIndex}.");
+
+            totalSerialized = checked(totalSerialized + serialized);
+        }
+
+        if (byIndex.Count != 502)
+            throw new InvalidDataException(
+                $"Stage 4Z-D resolved {byIndex.Count:N0} owned Material roots; expected 502.");
+
+        var referenceIndices = nativeIdentity
+            .Where(x => T4XenonXModelCorpus.NormalizeType(x.OatTypeName) == "material" &&
+                        !byIndex.ContainsKey(x.Index))
+            .Select(x => x.Index)
+            .ToHashSet();
+
+        if (referenceIndices.Count != 88 || corpus.ReferenceRoots != 88)
+            throw new InvalidDataException(
+                $"Stage 4Z-D resolved {referenceIndices.Count:N0} Material reference roots; expected 88.");
+
+        return new ProductionMaterialCredit(
+            byIndex,
+            referenceIndices,
+            totalSerialized,
+            corpus.ReferenceRoots,
+            integratedImageRoots,
+            integratedXModelRoots,
+            integratedZoneBytes);
     }
 
     private sealed record ProductionImageCredit(
@@ -939,7 +1187,10 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Production XModel roots:     {r.ProductionXModelRoots:N0}");
         sb.AppendLine($"XModel reference roots:      {r.ProductionXModelReferenceRoots:N0}");
         sb.AppendLine($"Production XModel bytes:     {r.ProductionXModelSerializedBytes:N0} serialized");
-        sb.AppendLine($"Integrated 4Y baseline zone: {r.ProductionIntegratedBaselineZoneBytes:N0} B");
+        sb.AppendLine($"Production Material roots:   {r.ProductionMaterialRoots:N0}");
+        sb.AppendLine($"Material reference roots:    {r.ProductionMaterialReferenceRoots:N0}");
+        sb.AppendLine($"Production Material bytes:   {r.ProductionMaterialSerializedBytes:N0} serialized");
+        sb.AppendLine($"Integrated production zone:  {r.ProductionIntegratedBaselineZoneBytes:N0} B");
         sb.AppendLine();
         sb.AppendLine($"Renderer layout ready:       {r.RendererLayoutReady}");
         sb.AppendLine($"Proper-size gate:            {r.ProperSizeGate}");
