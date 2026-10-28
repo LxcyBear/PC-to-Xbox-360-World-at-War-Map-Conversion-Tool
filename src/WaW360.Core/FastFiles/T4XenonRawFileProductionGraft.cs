@@ -134,9 +134,12 @@ public static class T4XenonRawFileProductionGraft
             // as a "PC" source. The only supported corpus is the explicit
             // pc_rawfile_corpus output created from input PC .ff files.
             var normalizedSource = sourcePath.Replace('\\', '/');
-            if (!normalizedSource.Contains("/pc_rawfile_corpus/", StringComparison.OrdinalIgnoreCase) ||
-                normalizedSource.Contains("/native_", StringComparison.OrdinalIgnoreCase) ||
-                normalizedSource.Contains("/oracle/", StringComparison.OrdinalIgnoreCase) ||
+            var corpusMarker = "/pc_rawfile_corpus/";
+            var corpusStart = normalizedSource.IndexOf(corpusMarker, StringComparison.OrdinalIgnoreCase);
+            var corpusChild = corpusStart < 0 ? "" : normalizedSource[(corpusStart + corpusMarker.Length)..];
+            if (corpusStart < 0 || corpusChild.Contains("../", StringComparison.Ordinal) ||
+                corpusChild.Contains("/native_", StringComparison.OrdinalIgnoreCase) ||
+                corpusChild.Contains("/oracle/", StringComparison.OrdinalIgnoreCase) ||
                 sourceFastFile.Replace('\\', '/').Contains("/native_", StringComparison.OrdinalIgnoreCase) ||
                 sourceFastFile.Replace('\\', '/').Contains("/oracle/", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException($"Unsafe PC RawFile provenance path: {sourcePath}.");
