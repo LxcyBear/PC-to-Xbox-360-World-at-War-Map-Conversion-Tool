@@ -7,6 +7,16 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Get-OatReferenceSourceName {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
+    $v = $Value.Trim()
+    while ($v.StartsWith(',', [StringComparison]::Ordinal)) {
+        $v = $v.Substring(1)
+    }
+    return $v
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $linker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Linker.exe'
 
@@ -75,7 +85,7 @@ function Invoke-FxCase {
     $zoneLines.Add('')
 
     foreach ($target in $Targets) {
-        $name = [string]$target.Name
+        $name = Get-OatReferenceSourceName -Value ([string]$target.Name)
         $escaped = $name.Replace('"', '""')
         $zoneLines.Add(('fx,,"{0}"' -f $escaped))
     }
