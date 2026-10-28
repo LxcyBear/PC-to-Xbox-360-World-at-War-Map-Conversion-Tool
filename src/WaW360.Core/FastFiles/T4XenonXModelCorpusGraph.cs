@@ -148,9 +148,19 @@ internal sealed class T4XenonXModelCorpus
 
     internal static string NormalizeReferenceName(string value)
     {
-        var result = value.Trim();
+        var result = value.Trim().Replace('\\', '/');
+
+        // OAT reference assets are prefixed with one or more commas. Native
+        // World at War Xbox identities may additionally carry the _wj suffix
+        // even when the canonical dependency name does not. These are identity
+        // decorations, not different assets. Normalize both while keeping the
+        // full path prefix (mc/, wc/, gfx_, etc.) significant.
         while (result.StartsWith(",", StringComparison.Ordinal))
             result = result[1..];
+
+        if (result.EndsWith("_wj", StringComparison.OrdinalIgnoreCase))
+            result = result[..^3];
+
         return result;
     }
 
