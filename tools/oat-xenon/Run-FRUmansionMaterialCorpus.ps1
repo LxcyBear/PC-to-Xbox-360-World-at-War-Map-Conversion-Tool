@@ -17,7 +17,8 @@ function Get-RelativePathCompat {
         [Parameter(Mandatory=$true)][string]$TargetPath
     )
 
-    $baseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd([char[]]@('\\','/')) +
+    $trimChars = [char[]]@([char]92, [char]47)
+    $baseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd($trimChars) +
         [IO.Path]::DirectorySeparatorChar
     $targetFull = [IO.Path]::GetFullPath($TargetPath)
 
