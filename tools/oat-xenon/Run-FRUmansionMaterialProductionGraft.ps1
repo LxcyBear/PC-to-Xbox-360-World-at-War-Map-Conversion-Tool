@@ -270,7 +270,7 @@ $summaryPath = Join-Path $OutputRoot 'nuclear_4zd_material_production_graft.json
 $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
 
 Write-Host ''
-Write-Host '[NUCLEAR-4Z-D] ================= XMODEL GRAFT RESULT =========================='
+Write-Host '[NUCLEAR-4Z-D] ================= MATERIAL GRAFT RESULT ========================'
 Write-Host "[NUCLEAR-4Z-D] Native roots           : $([int]$emitter.NativeRoots)"
 Write-Host "[NUCLEAR-4Z-D] OAT roots              : $([int]$emitter.OatListedRoots) / 6811"
 Write-Host "[NUCLEAR-4Z-D] Real Material roots    : $([int]$emitter.RealMaterialRoots) / 502"
