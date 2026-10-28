@@ -330,6 +330,7 @@ public static class T4XenonGraphBlockLayoutPlanner
                 realMaterials++;
                 T4XenonMaterialGraphCodec.Plan(
                     materialEntry,
+                    roots,
                     (size, align, serialized) =>
                     {
                         state.VirtualAlloc(size, align, serialized);
