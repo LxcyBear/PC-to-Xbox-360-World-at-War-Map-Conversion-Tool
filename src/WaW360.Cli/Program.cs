@@ -835,11 +835,19 @@ static async Task<int> MainAsync(string[] args)
             }
             case "xenon-graph-emit" when args.Length >= 6:
             {
+                // Windows PowerShell 5.1 drops empty-string native-process args.
+                // Accept an explicit RawFile-only option after the 10 required
+                // positional args; avoid phantom image/model/material paths.
+                var rawFileOnlyMode = args.Length >= 11 &&
+                    args[10].Equals("--rawfile-graft", StringComparison.Ordinal);
+                if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
+                    throw new ArgumentException(
+                        "RawFile-only syntax: xenon-graph-emit <graph> <native> <identity> <binding> <output> <map> <oat> <techsets> <pixelshaders> --rawfile-graft <pc-owned-manifest.json>");
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
                 var expectedPixelShaders = args.Length >= 10 && int.TryParse(args[9], out var ep) ? ep : 897;
-                var imageGraphRoot = args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
+                var imageGraphRoot = !rawFileOnlyMode && args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
                 var expectedImages = args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
                 var imageValidationOnly = args.Length < 13 || !bool.TryParse(args[12], out var ivo) || ivo;
                 var imageGraftLimit = args.Length >= 14 && int.TryParse(args[13], out var igl) ? igl : 0;
@@ -847,7 +855,8 @@ static async Task<int> MainAsync(string[] args)
                 var xmodelBindingManifest = args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
                 var materialGraphRoot = args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
                 var materialBindingManifest = args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
-                var rawFileGraftManifest = args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
+                var rawFileGraftManifest = rawFileOnlyMode ? args[11] :
+                    args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
