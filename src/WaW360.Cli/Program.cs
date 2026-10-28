@@ -499,6 +499,9 @@ static async Task<int> MainAsync(string[] args)
                 var productionXModelGraftManifest = args.Length >= 12 && !string.IsNullOrWhiteSpace(args[11])
                     ? args[11]
                     : null;
+                var productionMaterialGraftManifest = args.Length >= 13 && !string.IsNullOrWhiteSpace(args[12])
+                    ? args[12]
+                    : null;
 
                 var map = MapDiscovery.DiscoverSourceFolder(root)
                     .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
@@ -515,14 +518,16 @@ static async Task<int> MainAsync(string[] args)
                     minRatio,
                     maxRatio,
                     productionImageGraftManifest,
-                    productionXModelGraftManifest);
+                    productionXModelGraftManifest,
+                    productionMaterialGraftManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4F full-content pre-hardware gate");
                 Console.WriteLine($"nativeFF={result.NativeOracleFastFileBytes:N0}; nativeZone={result.NativeOracleZoneBytes:N0}; shellBaseline={result.AllShellBaselineZoneBytes:N0}; rendererGain={result.ProvenRendererGainBytes:N0}");
                 Console.WriteLine($"estimatedFullContent={result.EstimatedFullContentZoneBytes:N0}; nativeSizeRatio={result.NativeSizeRatio:P2}");
                 Console.WriteLine($"sourceMapped={result.SourceMappedRoots:N0}; realPromoted={result.RealPromotedRoots:N0}; fallback={result.FallbackRoots:N0}; synthetic={result.SyntheticDependencyRoots:N0}; criticalFallback={result.CriticalFallbackRoots:N0}; externalAudioPending={result.ExternalAudioPendingRoots:N0}");
                 Console.WriteLine($"productionImages={result.ProductionImageRoots:N0}; productionImageSerializedBytes={result.ProductionImageSerializedBytes:N0}; productionImagePixelBytes={result.ProductionImagePixelBytes:N0}");
-                Console.WriteLine($"productionXModels={result.ProductionXModelRoots:N0}; xmodelRefs={result.ProductionXModelReferenceRoots:N0}; productionXModelSerializedBytes={result.ProductionXModelSerializedBytes:N0}; integrated4YBaseline={result.ProductionIntegratedBaselineZoneBytes:N0}");
+                Console.WriteLine($"productionXModels={result.ProductionXModelRoots:N0}; xmodelRefs={result.ProductionXModelReferenceRoots:N0}; productionXModelSerializedBytes={result.ProductionXModelSerializedBytes:N0}");
+                Console.WriteLine($"productionMaterials={result.ProductionMaterialRoots:N0}; materialRefs={result.ProductionMaterialReferenceRoots:N0}; productionMaterialSerializedBytes={result.ProductionMaterialSerializedBytes:N0}; integratedProductionBaseline={result.ProductionIntegratedBaselineZoneBytes:N0}");
                 Console.WriteLine($"properSizeGate={result.ProperSizeGate}; criticalContentGate={result.CriticalContentGate}; readyForFullNativeEmission={result.ReadyForFullNativeEmission}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
@@ -1199,7 +1204,7 @@ static void PrintHelp()
     Console.WriteLine("  xmodel-partclassification-per-model <pc.ff> <pc-dump-root> <pc-oat-list.log> <output-dir> <manifest.json> [xanim-proof] [weapon-proof]  Recover model-specific PC hit-location CSVs using OAT canonical GLTF bone order");
     Console.WriteLine("  xmodel-partclassification <pc.ff> <partclassification.csv> <manifest.json> [xanim-proof] [weapon-proof]  Recover original PC XModel bone hit-location mapping for OAT Xenon import");
     Console.WriteLine("  xenon-native-xmodel-layout <native.ff> <native-identity.json> <output>  Prove native Xbox XModel 0xD4 fixed-body/name boundary against 0xE4 control");
-    Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio] [4s-manifest]  Gate full-content emission on real payload mass and zero critical shells, crediting exact 4S PC-backed images when supplied");
+    Console.WriteLine("  linker-v2-full-content-readiness <root> <map> <output> <native.ff> <graph-root> <native-identity.json> <binding.json> <min-ratio> [max-ratio] [4s-manifest] [4y-manifest] [4zd-manifest]  Gate full-content emission on real payload mass and zero critical shells, crediting exact production images, XModels and Materials when supplied");
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
     Console.WriteLine("  oat-root-bisect <candidate.ff> <Unlinker.exe> <output-dir>  Binary-search first top-level root that makes OAT fail");
