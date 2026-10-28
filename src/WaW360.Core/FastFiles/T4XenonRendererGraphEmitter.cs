@@ -215,7 +215,12 @@ public static class T4XenonRendererGraphEmitter
         foreach (var root in roots.OrderBy(x => x.Index))
         {
             WriteU32(zone, checked((uint)root.TypeId));
-            WriteU32(zone, T4ZonePointer.Insert);
+            // T4 Xenon StringTable's generated OAT loader lacks a TEMP
+            // block declaration and therefore accepts FOLLOWING, not
+            // INSERT. INSERT (-2) would be decoded as invalid block 7.
+            WriteU32(zone, Normalize(root.TypeName) == "stringtable"
+                ? T4ZonePointer.Following
+                : T4ZonePointer.Insert);
         }
 
         var rendererTechsets = 0;
@@ -234,7 +239,12 @@ public static class T4XenonRendererGraphEmitter
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var insertOffset = state.VirtualAlloc(4, 4, serialized: false);
+            var directVirtualRoot = Normalize(root.TypeName) == "stringtable";
+            // OAT loads non-TEMP StringTable roots in VIRTUAL, unlike
+            // TEMP assets that require a nonserialized INSERT alias slot.
+            var insertOffset = directVirtualRoot
+                ? state.VirtualAlloc(16, 4, serialized: true)
+                : state.VirtualAlloc(4, 4, serialized: false);
             if (!plannedRootInsert.TryGetValue(root.Index, out var plannedRoot))
                 throw new InvalidDataException(
                     $"Missing planned root insert for #{root.Index} {root.TypeName}:{root.Name}.");
@@ -369,7 +379,10 @@ public static class T4XenonRendererGraphEmitter
             }
 
             var shell = BuildShell(root.TypeName, root.Name, canonicalBaseName);
-            state.TempRoot(shell.Body.Length);
+            if (!directVirtualRoot)
+                state.TempRoot(shell.Body.Length);
+            else if (shell.Body.Length != 16)
+                throw new InvalidDataException("Non-TEMP StringTable must serialize exactly 16 VIRTUAL bytes.");
             zone.Write(shell.Body);
             foreach (var child in shell.Children)
                 EmitString(zone, state, child);
