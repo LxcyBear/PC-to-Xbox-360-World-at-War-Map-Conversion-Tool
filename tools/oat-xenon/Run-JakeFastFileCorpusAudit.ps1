@@ -186,7 +186,7 @@ function Record-Hit([string]$type,[string]$listed,[string]$zone,[string]$lane,[s
 }
 
 $allFiles = @(Get-ChildItem -LiteralPath $corpus -File -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension.ToLowerInvariant() -in @('.ff','.iwd','.zip','.iwi','.dds') } |
+    Where-Object { $_.Extension.ToLowerInvariant() -in @('.ff','.iwd','.zip','.iwi','.dds','.7z','.rar') } |
     Sort-Object FullName)
 foreach ($file in $allFiles) {
     $lane=Folder-Lane $file.FullName
@@ -198,6 +198,8 @@ foreach ($file in $allFiles) {
             ArchivePath=''; EntryName='' })
     } elseif ($ext -eq '.iwi' -or $ext -eq '.dds') {
         Record-Hit 'image' $file.FullName $file.FullName $lane 'loose-image-file' 'unknown' '' $false $true
+    } elseif ($ext -in @('.7z','.rar')) {
+        $failures.Add([pscustomobject]@{ SourceFile=$file.FullName; Error='Compressed RAR/7z not indexed; extract into the corpus folder first.' })
     } elseif ($ext -in @('.zip','.iwd')) {
         try {
             $zip=[IO.Compression.ZipFile]::OpenRead($file.FullName)
@@ -222,6 +224,11 @@ foreach ($file in $allFiles) {
     }
 }
 Write-Host "[NUCLEAR-5T-JAKE] Files inventoried: $($allFiles.Count); physical FF: $(@($ffJobs.ToArray() | Where-Object { -not $_.ArchivePath }).Count); FF entries in archives: $($archiveFfs.Count)"
+foreach ($laneGroup in @($inventory.ToArray() | Group-Object Lane | Sort-Object Name)) {
+    $ffCount=@($laneGroup.Group | Where-Object Kind -eq '.ff').Count
+    $compressed=@($laneGroup.Group | Where-Object Kind -in @('.zip','.iwd','.7z','.rar')).Count
+    Write-Host "[NUCLEAR-5T-JAKE] Folder '$($laneGroup.Name)' files=$($laneGroup.Count) FF=$ffCount archives=$compressed"
+}
 Write-Host "[NUCLEAR-5T-JAKE] Image file hits from loose/IWD/ZIP: $($hits.Count)"
 
 $listResults=New-Object 'System.Collections.Generic.List[object]'
