@@ -3,6 +3,7 @@ param(
     [string]$ImageClosureManifest = '',
     [string]$MaterialBindingManifest = '',
     [string]$ProductionImageGraphManifest = '',
+    [string]$PcOwnedImageBridgeManifest = '',
     [string]$MapAssetsRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\map assets',
     [string]$UgxRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\UGX',
     [string]$ZctRoot = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\ZCT',
@@ -17,8 +18,9 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ([string]::IsNullOrWhiteSpace($ImageClosureManifest)) { $ImageClosureManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_5a_image_source_closure\nuclear_5a_image_source_closure.json' }
 if ([string]::IsNullOrWhiteSpace($MaterialBindingManifest)) { $MaterialBindingManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4zd_material_root_binding\nuclear_4zd_material_root_binding.json' }
 if ([string]::IsNullOrWhiteSpace($ProductionImageGraphManifest)) { $ProductionImageGraphManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4t_production_image_graph\nuclear_4t_production_image_graph.json' }
+if ([string]::IsNullOrWhiteSpace($PcOwnedImageBridgeManifest)) { $PcOwnedImageBridgeManifest = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_4r_pc_image_bridge\nuclear_4r_pc_image_bridge.json' }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_5b_material_slot_image_closure' }
-foreach ($required in @($ImageClosureManifest,$MaterialBindingManifest,$ProductionImageGraphManifest)) { if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Required manifest not found: $required" } }
+foreach ($required in @($ImageClosureManifest,$MaterialBindingManifest,$ProductionImageGraphManifest,$PcOwnedImageBridgeManifest)) { if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Required manifest not found: $required" } }
 
 function Normalize-AssetName {
     param([string]$Value)
@@ -108,9 +110,15 @@ function Find-ExactImageSources {
 $closure=Get-Content -LiteralPath $ImageClosureManifest -Raw | ConvertFrom-Json
 $binding=Get-Content -LiteralPath $MaterialBindingManifest -Raw | ConvertFrom-Json
 $production=Get-Content -LiteralPath $ProductionImageGraphManifest -Raw | ConvertFrom-Json
+$pcBridge=Get-Content -LiteralPath $PcOwnedImageBridgeManifest -Raw | ConvertFrom-Json
 if ([string]$closure.format -ne 'WaW360.Nuclear5A.ImageSourceClosure.v1' -or [int]$closure.targetImages -ne 43) { throw 'Stage 5B requires the 43-image Stage 5A closure manifest.' }
 if (-not [bool]$binding.BindingPass -or [int]$binding.CorpusMaterials -ne 502) { throw 'Stage 5B requires the passing 502-material root binding.' }
 if ([string]$production.format -ne 'WaW360.Nuclear4T.ProductionImageGraph.v1' -or -not [bool]$production.mergePass -or [int]$production.imageGraphs -ne 878) { throw 'Stage 5B requires the passing 878-image production graph.' }
+if ([string]$pcBridge.format -ne 'WaW360.Nuclear4R.PcOwnedImageBridge.v1') { throw 'Stage 5B requires the Stage 4R PC-owned image bridge manifest.' }
+$pcFastFileDumpRoot=[string]$pcBridge.pcFastFileDumpRoot
+if ([string]::IsNullOrWhiteSpace($pcFastFileDumpRoot) -or -not (Test-Path -LiteralPath $pcFastFileDumpRoot -PathType Container)) {
+    throw "Stage 5B requires the preserved PC fastfile image dump: $pcFastFileDumpRoot"
+}
 
 $bridgePath=[string]$binding.BridgeManifest
 if (-not (Test-Path -LiteralPath $bridgePath -PathType Leaf)) { throw "Material bridge not found: $bridgePath" }
@@ -167,6 +175,7 @@ foreach ($row in @($binding.OwnedBindings)) {
 }
 
 $sourceRoots=@(
+    [pscustomobject]@{ Area='pc-fastfile-dump'; Root=$pcFastFileDumpRoot },
     [pscustomobject]@{ Area='map-assets'; Root=$MapAssetsRoot },
     [pscustomobject]@{ Area='ugx'; Root=$UgxRoot },
     [pscustomobject]@{ Area='zct'; Root=$ZctRoot },
@@ -197,7 +206,7 @@ $resolvedTotal=$productionAlias + $sourceResolved
 if (Test-Path -LiteralPath $OutputRoot) { Remove-Item -LiteralPath $OutputRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $manifest=[ordered]@{
-    format='WaW360.Nuclear5B.MaterialSlotImageClosure.v1'; imageClosureManifest=(Resolve-Path -LiteralPath $ImageClosureManifest).Path; materialBindingManifest=(Resolve-Path -LiteralPath $MaterialBindingManifest).Path; productionImageGraphManifest=(Resolve-Path -LiteralPath $ProductionImageGraphManifest).Path;
+    format='WaW360.Nuclear5B.MaterialSlotImageClosure.v1'; imageClosureManifest=(Resolve-Path -LiteralPath $ImageClosureManifest).Path; materialBindingManifest=(Resolve-Path -LiteralPath $MaterialBindingManifest).Path; productionImageGraphManifest=(Resolve-Path -LiteralPath $ProductionImageGraphManifest).Path; pcOwnedImageBridgeManifest=(Resolve-Path -LiteralPath $PcOwnedImageBridgeManifest).Path; pcFastFileDumpRoot=$pcFastFileDumpRoot;
     targetImages=43; materialBindingsProcessed=$bindingsProcessed; slotCountMismatches=$slotCountMismatches; semanticMismatches=$semanticMismatches;
     productionImageAliases=$productionAlias; pcImageSourceResolved=$sourceResolved; pcImageMappedSourceMissing=$sourceMissing; ambiguousMappings=$ambiguous; unreferencedByBoundMaterials=$unreferenced; resolvedByMaterialSlots=$resolvedTotal;
     images=[object[]]$results.ToArray();
