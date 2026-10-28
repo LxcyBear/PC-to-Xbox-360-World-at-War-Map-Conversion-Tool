@@ -289,6 +289,33 @@ function Resolve-SteamWaWRoot {
         catch {}
     }
 
+    # Last bounded fallback: some Steam/Plutonium-compatible installs live in
+    # custom game-library folders that are not registered with Steam anymore.
+    # Probe only common library parents, to avoid an unbounded whole-disk crawl.
+    $probeRoots = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        foreach ($relative in @(
+            'Games',
+            'SteamLibrary\steamapps\common',
+            'Steam\steamapps\common',
+            'Program Files (x86)\Steam\steamapps\common',
+            'Program Files\Steam\steamapps\common',
+            'Program Files (x86)\Activision',
+            'Program Files\Activision'
+        )) {
+            Add-UniqueDirectory -List $probeRoots -Path (Join-Path $drive.Root $relative)
+        }
+    }
+
+    foreach ($probeRoot in @($probeRoots)) {
+        try {
+            foreach ($exe in @(Get-ChildItem -LiteralPath $probeRoot -Filter 'CoDWaW.exe' -File -Recurse -Depth 4 -ErrorAction SilentlyContinue | Select-Object -First 20)) {
+                Add-UniqueDirectory -List $candidates -Path (Split-Path -Parent $exe.FullName)
+            }
+        }
+        catch {}
+    }
+
     foreach ($candidate in @($candidates)) {
         $main = Join-Path $candidate 'main'
         if (-not (Test-Path -LiteralPath $main -PathType Container)) { continue }
@@ -413,6 +440,12 @@ if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
     if (-not [string]::IsNullOrWhiteSpace($envRoot)) { $WaWInstallRoot = $envRoot }
 }
 if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) { $WaWInstallRoot = Resolve-SteamWaWRoot }
+
+if ([string]::IsNullOrWhiteSpace($WaWInstallRoot)) {
+    Write-Host '[NUCLEAR-4R] WARN: PC World at War install root could not be resolved.' -ForegroundColor Yellow
+    Write-Host '[NUCLEAR-4R] Stock/external image pixels will remain unavailable without retail main\\*.iwd search paths.' -ForegroundColor Yellow
+    Write-Host '[NUCLEAR-4R] Re-run with -WaWInstallRoot "<folder containing CoDWaW.exe and main>" to bypass discovery.' -ForegroundColor Yellow
+}
 
 $resolvedWaWRoot = $null
 $retailMain = $null
