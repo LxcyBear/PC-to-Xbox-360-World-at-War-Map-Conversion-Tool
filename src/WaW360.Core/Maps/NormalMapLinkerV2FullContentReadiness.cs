@@ -41,6 +41,10 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required int ProductionImageRoots { get; init; }
     public required long ProductionImageSerializedBytes { get; init; }
     public required long ProductionImagePixelBytes { get; init; }
+    public required int ProductionXModelRoots { get; init; }
+    public required int ProductionXModelReferenceRoots { get; init; }
+    public required long ProductionXModelSerializedBytes { get; init; }
+    public required long ProductionIntegratedBaselineZoneBytes { get; init; }
     public required bool RendererLayoutReady { get; init; }
     public required bool ProperSizeGate { get; init; }
     public required bool CriticalContentGate { get; init; }
@@ -99,6 +103,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         double minimumSizeRatio = 0.80,
         double maximumSizeRatio = 1.20,
         string? productionImageGraftManifest = null,
+        string? productionXModelGraftManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -126,6 +131,17 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionImageGraftManifest,
             nativeIdentity,
             native.Document.AssetCount);
+
+        var productionXModels = LoadProductionXModelCredit(
+            productionXModelGraftManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
+        if (productionXModels.SerializedBytesByNativeIndex.Count != 0 &&
+            productionXModels.IntegratedImageRoots != productionImages.SerializedBytesByNativeIndex.Count)
+            throw new InvalidDataException(
+                $"Stage 4Y integrated image roots={productionXModels.IntegratedImageRoots:N0} " +
+                $"but Stage 4S credit roots={productionImages.SerializedBytesByNativeIndex.Count:N0}.");
 
         var rendererLayout = await T4XenonGraphBlockLayoutPlanner.BuildAsync(
             graphRoot,
@@ -235,10 +251,42 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            // Stage 4Y production XModels are exact native-root credits backed by
+            // PC XModels reconstructed by the T4 Xenon loader and replayed through
+            // our serializer. Credit only the 280 owned roots proven by the clean
+            // integrated 6,811-root OAT hard gate; the 9 reference roots remain
+            // reference/shell identities and continue through ordinary accounting.
+            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
+                productionXModels.SerializedBytesByNativeIndex.TryGetValue(i, out var productionXModelBytes))
+            {
+                if (pools.TryGetValue(type, out var xmodelQueue) && xmodelQueue.Count != 0)
+                    xmodelQueue.Dequeue();
+
+                sourceMappedRoots++;
+                realPromotedRoots++;
+                sourcePayloadBytes += productionXModelBytes;
+                realPromotedBytes += productionXModelBytes;
+                stat.SourceMappedRoots++;
+                stat.RealPromotedRoots++;
+                stat.SourcePayloadBytes += productionXModelBytes;
+                stat.RealPromotedBytes += productionXModelBytes;
+                continue;
+            }
+
             // Stage 4S production images are exact native-root credits backed by PC-owned
             // pixels passed through OAT's real T4 Xenon image encoder. Credit only roots
             // whose 4R identity and graph both validate; unresolved image roots continue
             // through the ordinary fallback/synthetic accounting below.
+            if (type.Equals("xmodel", StringComparison.OrdinalIgnoreCase) &&
+                productionXModels.SerializedBytesByNativeIndex.ContainsKey(i))
+            {
+                if (deltaPools.TryGetValue(type, out var xmodelQueue) && xmodelQueue.Count != 0)
+                    xmodelQueue.Dequeue();
+
+                // Stage 4Y baseline already contains this exact production XModel.
+                continue;
+            }
+
             if (type.Equals("image", StringComparison.OrdinalIgnoreCase) &&
                 productionImages.SerializedBytesByNativeIndex.TryGetValue(i, out var productionImageBytes))
             {
@@ -374,7 +422,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             {
                 if (deltaPools.TryGetValue(type, out var imageQueue) && imageQueue.Count != 0)
                     imageQueue.Dequeue();
-                nonRendererDelta += productionImageBytes - shell.Bytes.LongLength;
+                if (productionXModels.IntegratedZoneBytes == 0)
+                    nonRendererDelta += productionImageBytes - shell.Bytes.LongLength;
+                // A passing 4Y baseline already includes the exact 4S/4R image roots.
                 continue;
             }
 
@@ -385,8 +435,13 @@ public static class NormalMapLinkerV2FullContentReadiness
             }
         }
 
+        var provenIntegratedBaseZoneBytes =
+            productionXModels.IntegratedZoneBytes != 0
+                ? productionXModels.IntegratedZoneBytes
+                : rendererLayout.ProjectedUncompressedZoneBytes;
+
         var estimatedFullContent =
-            checked(rendererLayout.ProjectedUncompressedZoneBytes + nonRendererDelta);
+            checked(provenIntegratedBaseZoneBytes + nonRendererDelta);
 
         var nativeFastFileBytes = new FileInfo(nativeFastFile).Length;
         var nativeZoneBytes = native.Bytes.LongLength;
@@ -404,7 +459,9 @@ public static class NormalMapLinkerV2FullContentReadiness
         var notes = new List<string>
         {
             "4F does not emit a hardware candidate. It is a mandatory pre-hardware mass/fidelity gate.",
-            "EstimatedFullContentZoneBytes starts from the exact 4E renderer-layout zone and replaces each mapped non-renderer name shell with the current source-owned structural payload.",
+            productionXModels.IntegratedZoneBytes != 0
+                ? "EstimatedFullContentZoneBytes starts from the exact OAT-clean Stage 4Y integrated renderer + production-image + 280-XModel zone, then replaces only the remaining shell families with current source-owned structural payloads."
+                : "EstimatedFullContentZoneBytes starts from the exact 4E renderer-layout zone and replaces each mapped non-renderer name shell with the current source-owned structural payload.",
             $"Known-working main FF on disk is {nativeFastFileBytes:N0} bytes; decompressed zone is {nativeZoneBytes:N0} bytes. Pre-emission mass estimates compare decompressed zone bytes because compression ratio is not known until a candidate is actually emitted.",
             "External Xbox SDNS/XMA payloads belong in sounds\\ and are not expected to account for main-FF size. Sound/LoadedSound incompleteness is reported separately from the main-content size gate.",
             $"A proper-size candidate must be between {minimumSizeRatio:P0} and {maximumSizeRatio:P0} of the native oracle before hardware testing is allowed.",
@@ -412,6 +469,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionImages.SerializedBytesByNativeIndex.Count == 0
                 ? "No Stage 4S production-image manifest was supplied; image readiness is still evaluated only from the structural source path."
                 : $"Stage 4S credits {productionImages.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon image roots ({productionImages.TotalPixelBytes:N0} pixel bytes; {productionImages.TotalSerializedBytes:N0} serialized bytes). Unresolved images remain critical blockers.",
+            productionXModels.SerializedBytesByNativeIndex.Count == 0
+                ? "No passing Stage 4Y XModel production graft was supplied; XModel readiness is still evaluated from the legacy structural source path."
+                : $"Stage 4Y credits {productionXModels.SerializedBytesByNativeIndex.Count:N0} exact PC-backed Xenon XModel roots, preserves {productionXModels.ReferenceRoots:N0} XModel reference roots, and supplies an OAT-clean {productionXModels.IntegratedZoneBytes:N0}-byte integrated baseline.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -454,6 +514,10 @@ public static class NormalMapLinkerV2FullContentReadiness
             ProductionImageRoots = productionImages.SerializedBytesByNativeIndex.Count,
             ProductionImageSerializedBytes = productionImages.TotalSerializedBytes,
             ProductionImagePixelBytes = productionImages.TotalPixelBytes,
+            ProductionXModelRoots = productionXModels.SerializedBytesByNativeIndex.Count,
+            ProductionXModelReferenceRoots = productionXModels.ReferenceRoots,
+            ProductionXModelSerializedBytes = productionXModels.TotalSerializedBytes,
+            ProductionIntegratedBaselineZoneBytes = productionXModels.IntegratedZoneBytes,
             RendererLayoutReady = rendererLayout.LayoutReady,
             ProperSizeGate = properSizeGate,
             CriticalContentGate = criticalContentGate,
@@ -658,6 +722,10 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Fallback bytes:              {r.FallbackBytes:N0}");
         sb.AppendLine($"Production image roots:      {r.ProductionImageRoots:N0}");
         sb.AppendLine($"Production image bytes:      {r.ProductionImageSerializedBytes:N0} serialized / {r.ProductionImagePixelBytes:N0} pixels");
+        sb.AppendLine($"Production XModel roots:     {r.ProductionXModelRoots:N0}");
+        sb.AppendLine($"XModel reference roots:      {r.ProductionXModelReferenceRoots:N0}");
+        sb.AppendLine($"Production XModel bytes:     {r.ProductionXModelSerializedBytes:N0} serialized");
+        sb.AppendLine($"Integrated 4Y baseline zone: {r.ProductionIntegratedBaselineZoneBytes:N0} B");
         sb.AppendLine();
         sb.AppendLine($"Renderer layout ready:       {r.RendererLayoutReady}");
         sb.AppendLine($"Proper-size gate:            {r.ProperSizeGate}");
