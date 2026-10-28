@@ -11,6 +11,23 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-RelativePathCompat {
+    param(
+        [Parameter(Mandatory=$true)][string]$BasePath,
+        [Parameter(Mandatory=$true)][string]$TargetPath
+    )
+
+    $baseFull = [IO.Path]::GetFullPath($BasePath).TrimEnd([char[]]@('\\','/')) +
+        [IO.Path]::DirectorySeparatorChar
+    $targetFull = [IO.Path]::GetFullPath($TargetPath)
+
+    if (-not $targetFull.StartsWith($baseFull, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Target path is outside base path: base='$baseFull' target='$targetFull'"
+    }
+
+    return $targetFull.Substring($baseFull.Length)
+}
+
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $linker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Linker.exe'
 $unlinker = Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Unlinker.exe'
@@ -78,7 +95,7 @@ $totalConstants = 0
 $totalStateBits = 0
 
 foreach ($file in $materialFiles) {
-    $relative = [IO.Path]::GetRelativePath($materialsRoot.FullName, $file.FullName).Replace('\','/')
+    $relative = Get-RelativePathCompat -BasePath $materialsRoot.FullName -TargetPath $file.FullName.Replace('\','/')
     if (-not $relative.EndsWith('.json', [StringComparison]::OrdinalIgnoreCase)) {
         continue
     }
@@ -322,7 +339,7 @@ if ($null -eq $redumpMaterialsRoot) {
 $redumpFiles = @(Get-ChildItem -LiteralPath $redumpMaterialsRoot.FullName -Filter '*.json' -File -Recurse)
 $redumpNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($file in $redumpFiles) {
-    $relative = [IO.Path]::GetRelativePath($redumpMaterialsRoot.FullName, $file.FullName).Replace('\','/')
+    $relative = Get-RelativePathCompat -BasePath $redumpMaterialsRoot.FullName -TargetPath $file.FullName.Replace('\','/')
     [void]$redumpNames.Add($relative.Substring(0, $relative.Length - 5))
 }
 
