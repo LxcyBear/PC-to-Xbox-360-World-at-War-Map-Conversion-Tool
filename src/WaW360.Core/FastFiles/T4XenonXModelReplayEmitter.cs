@@ -481,9 +481,11 @@ public static class T4XenonXModelReplayEmitter
 
         EmitString(zone, state, graph.Name);
 
-        if (graph.BoneNames.Count != 0)
+        if (graph.Presence.BoneNames)
         {
-            state.VirtualAlloc(checked(graph.BoneNames.Count * 2L), 2);
+            state.VirtualAlloc(
+                checked(graph.BoneNames.Count * 2L),
+                graph.Alignments.ScriptString);
             foreach (var bone in graph.BoneNames.OrderBy(x => x.Index))
             {
                 if (bone.SourceScriptString < 0 ||
@@ -501,72 +503,82 @@ public static class T4XenonXModelReplayEmitter
             }
         }
 
-        EmitOptionalBlob(zone, state, graphRoot, graph.ParentListFile, graph.Counts.NonRootBones, 1, "parentList");
-        EmitOptionalBlob(zone, state, graphRoot, graph.QuatsFile, checked((long)graph.Counts.NonRootBones * graph.Abi.XModelQuat), 2, "quats");
-        EmitOptionalBlob(zone, state, graphRoot, graph.TransFile, checked((long)graph.Counts.NonRootBones * 16L), 4, "trans");
-        EmitOptionalBlob(zone, state, graphRoot, graph.PartClassificationFile, graph.Counts.NumBones, 1, "partClassification");
-        EmitOptionalBlob(zone, state, graphRoot, graph.BaseMatFile, checked((long)graph.Counts.NumBones * graph.Abi.DObjAnimMat), 4, "baseMat");
+        EmitOptionalBlob(zone, state, graphRoot, graph.ParentListFile, graph.Presence.ParentList, graph.Counts.NonRootBones, graph.Alignments.ParentList, "parentList");
+        EmitOptionalBlob(zone, state, graphRoot, graph.QuatsFile, graph.Presence.Quats, checked((long)graph.Counts.NonRootBones * graph.Abi.XModelQuat), graph.Alignments.XModelQuat, "quats");
+        EmitOptionalBlob(zone, state, graphRoot, graph.TransFile, graph.Presence.Trans, checked((long)graph.Counts.NonRootBones * 16L), graph.Alignments.Trans, "trans");
+        EmitOptionalBlob(zone, state, graphRoot, graph.PartClassificationFile, graph.Presence.PartClassification, graph.Counts.NumBones, graph.Alignments.PartClassification, "partClassification");
+        EmitOptionalBlob(zone, state, graphRoot, graph.BaseMatFile, graph.Presence.BaseMat, checked((long)graph.Counts.NumBones * graph.Abi.DObjAnimMat), graph.Alignments.DObjAnimMat, "baseMat");
 
         EmitOptionalBlob(
             zone,
             state,
             graphRoot,
             graph.SurfacesFile,
+            graph.Presence.Surfs,
             checked((long)graph.Counts.NumSurfs * graph.Abi.XSurface),
-            4,
+            graph.Alignments.XSurface,
             "surfaces");
 
         foreach (var surface in graph.Surfaces.OrderBy(x => x.Index))
         {
             EmitOptionalBlob(
                 zone, state, graphRoot, surface.VertsBlendFile,
+                surface.Presence.VertsBlend,
                 checked((long)surface.VertsBlendCount * 2L),
-                2,
+                graph.Alignments.VertsBlend,
                 $"surface[{surface.Index}].vertsBlend");
 
             EmitOptionalBlob(
                 zone, state, graphRoot, surface.Verts0File,
+                surface.Presence.Verts0,
                 checked((long)surface.VertCount * graph.Abi.PackedVertex),
-                16,
+                graph.Alignments.Verts0,
                 $"surface[{surface.Index}].verts0");
 
             EmitOptionalBlob(
                 zone, state, graphRoot, surface.VertListFile,
+                surface.Presence.VertList,
                 checked((long)surface.VertListCount * graph.Abi.RigidVertList),
-                4,
+                graph.Alignments.RigidVertList,
                 $"surface[{surface.Index}].vertList");
 
             foreach (var tree in surface.CollisionTrees.OrderBy(x => x.VertListIndex))
             {
                 EmitOptionalBlob(
                     zone, state, graphRoot, tree.TreeFile,
+                    true,
                     graph.Abi.CollisionTree,
-                    4,
+                    graph.Alignments.CollisionTree,
                     $"surface[{surface.Index}].tree[{tree.VertListIndex}]");
 
                 EmitOptionalBlob(
                     zone, state, graphRoot, tree.NodesFile,
+                    tree.Presence.Nodes,
                     checked((long)tree.NodeCount * graph.Abi.CollisionNode),
-                    16,
+                    graph.Alignments.CollisionNodes,
                     $"surface[{surface.Index}].tree[{tree.VertListIndex}].nodes");
 
                 EmitOptionalBlob(
                     zone, state, graphRoot, tree.LeafsFile,
+                    tree.Presence.Leafs,
                     checked((long)tree.LeafCount * graph.Abi.CollisionLeaf),
-                    2,
+                    graph.Alignments.CollisionLeafs,
                     $"surface[{surface.Index}].tree[{tree.VertListIndex}].leafs");
             }
 
             EmitOptionalBlob(
                 zone, state, graphRoot, surface.TriIndicesFile,
+                surface.Presence.TriIndices,
                 checked((long)surface.TriCount * graph.Abi.TriIndex),
-                16,
+                graph.Alignments.TriIndices,
                 $"surface[{surface.Index}].triIndices");
         }
 
-        if (graph.Materials.Count != 0)
+        if (graph.Presence.MaterialHandles)
         {
-            state.VirtualAlloc(checked(graph.Materials.Count * 4L), 4);
+            state.VirtualAlloc(
+                checked(graph.Materials.Count * 4L),
+                graph.Alignments.MaterialHandle);
             foreach (var material in graph.Materials)
             {
                 if (string.IsNullOrWhiteSpace(material))
@@ -651,10 +663,30 @@ public static class T4XenonXModelReplayEmitter
         ReplayState state,
         string graphRoot,
         string? relative,
+        bool pointerPresent,
         long expectedBytes,
         int alignment,
         string label)
     {
+        if (!pointerPresent)
+        {
+            if (expectedBytes != 0)
+                throw new InvalidDataException(
+                    $"{label}: pointer is null but count requires {expectedBytes:N0} bytes.");
+            if (!string.IsNullOrWhiteSpace(relative))
+                throw new InvalidDataException(
+                    $"{label}: pointer is null but graph contains blob path '{relative}'.");
+            return;
+        }
+
+        if (alignment <= 0)
+            throw new InvalidDataException(
+                $"{label}: invalid ABI alignment {alignment}.");
+
+        // OAT aligns non-null pointers even when their element count is zero.
+        // Alignment changes the logical XBlock size without serializing bytes.
+        state.VirtualAlloc(expectedBytes, alignment);
+
         if (expectedBytes == 0)
         {
             if (!string.IsNullOrWhiteSpace(relative))
@@ -671,7 +703,6 @@ public static class T4XenonXModelReplayEmitter
             throw new InvalidDataException($"{label}: graph blob path is missing.");
 
         var blob = ReadBlob(graphRoot, relative!, expectedBytes, label);
-        state.VirtualAlloc(expectedBytes, alignment);
         zone.Write(blob);
     }
 
@@ -1020,10 +1051,12 @@ public static class T4XenonXModelReplayEmitter
         public string Format { get; set; } = "";
         public string Name { get; set; } = "";
         public AbiData Abi { get; set; } = new();
+        public AlignmentData Alignments { get; set; } = new();
         public OffsetData Offsets { get; set; } = new();
         public CountData Counts { get; set; } = new();
         public UnsupportedData Unsupported { get; set; } = new();
         public ReusableData Reusable { get; set; } = new();
+        public RootPresenceData Presence { get; set; } = new();
         public string RootFile { get; set; } = "";
         public List<BoneData> BoneNames { get; set; } = new();
         public List<string?> Materials { get; set; } = new();
@@ -1053,6 +1086,41 @@ public static class T4XenonXModelReplayEmitter
         public int TriIndex { get; set; }
         public int BoneInfo { get; set; }
         public int HighMipBounds { get; set; }
+    }
+
+    private sealed class AlignmentData
+    {
+        public int ScriptString { get; set; }
+        public int ParentList { get; set; }
+        public int XModelQuat { get; set; }
+        public int Trans { get; set; }
+        public int PartClassification { get; set; }
+        public int DObjAnimMat { get; set; }
+        public int XSurface { get; set; }
+        public int MaterialHandle { get; set; }
+        public int BoneInfo { get; set; }
+        public int HighMipBounds { get; set; }
+        public int VertsBlend { get; set; }
+        public int Verts0 { get; set; }
+        public int RigidVertList { get; set; }
+        public int TriIndices { get; set; }
+        public int CollisionTree { get; set; }
+        public int CollisionNodes { get; set; }
+        public int CollisionLeafs { get; set; }
+    }
+
+    private sealed class RootPresenceData
+    {
+        public bool BoneNames { get; set; }
+        public bool ParentList { get; set; }
+        public bool Quats { get; set; }
+        public bool Trans { get; set; }
+        public bool PartClassification { get; set; }
+        public bool BaseMat { get; set; }
+        public bool Surfs { get; set; }
+        public bool MaterialHandles { get; set; }
+        public bool BoneInfo { get; set; }
+        public bool HighMipBounds { get; set; }
     }
 
     private sealed class OffsetData
@@ -1094,6 +1162,7 @@ public static class T4XenonXModelReplayEmitter
         public int TriCount { get; set; }
         public int VertListCount { get; set; }
         public int VertsBlendCount { get; set; }
+        public SurfacePresenceData Presence { get; set; } = new();
         public string? VertsBlendFile { get; set; }
         public string? Verts0File { get; set; }
         public string? VertListFile { get; set; }
@@ -1101,11 +1170,26 @@ public static class T4XenonXModelReplayEmitter
         public List<CollisionTreeData> CollisionTrees { get; set; } = new();
     }
 
+    private sealed class SurfacePresenceData
+    {
+        public bool VertsBlend { get; set; }
+        public bool Verts0 { get; set; }
+        public bool VertList { get; set; }
+        public bool TriIndices { get; set; }
+    }
+
+    private sealed class CollisionTreePresenceData
+    {
+        public bool Nodes { get; set; }
+        public bool Leafs { get; set; }
+    }
+
     private sealed class CollisionTreeData
     {
         public int VertListIndex { get; set; }
         public int NodeCount { get; set; }
         public int LeafCount { get; set; }
+        public CollisionTreePresenceData Presence { get; set; } = new();
         public string TreeFile { get; set; } = "";
         public string? NodesFile { get; set; }
         public string? LeafsFile { get; set; }
