@@ -50,6 +50,7 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required int ProductionCriticalReferenceRoots { get; init; }
     public required int ProductionImageReferenceRoots { get; init; }
     public required int ProductionStockWeaponRoots { get; init; }
+    public required int ProductionStockFxRoots { get; init; }
     public required long ProductionIntegratedBaselineZoneBytes { get; init; }
     public required bool RendererLayoutReady { get; init; }
     public required bool ProperSizeGate { get; init; }
@@ -114,6 +115,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         string? productionCriticalReferenceProofManifest = null,
         string? productionImageReferenceProofManifest = null,
         string? productionStockWeaponRoundTripManifest = null,
+        string? productionStockFxRoundTripManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -164,6 +166,11 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         var productionStockWeapons = LoadProductionStockWeaponCredit(
             productionStockWeaponRoundTripManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
+        var productionStockFx = LoadProductionStockFxCredit(
+            productionStockFxRoundTripManifest,
             nativeIdentity,
             native.Document.AssetCount);
 
@@ -413,6 +420,16 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (productionStockFx.FxNativeIndices.Contains(i))
+            {
+                if (pools.TryGetValue(type, out var fxQueue) && fxQueue.Count != 0)
+                    fxQueue.Dequeue();
+
+                realPromotedRoots++;
+                stat.RealPromotedRoots++;
+                continue;
+            }
+
             if (pools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var pair = queue.Dequeue();
@@ -604,6 +621,17 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (productionStockFx.FxNativeIndices.Contains(i))
+            {
+                if (deltaPools.TryGetValue(type, out var fxQueue) && fxQueue.Count != 0)
+                    fxQueue.Dequeue();
+
+                // The standalone 2-FX FF proves OAT can reserialize these exact
+                // FxEffectDefs from a clean donor and reload them without that donor.
+                // Keep conservative shell mass until final integrated emission.
+                continue;
+            }
+
             if (deltaPools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var payload = queue.Dequeue().Payload;
@@ -664,6 +692,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionStockWeapons.WeaponNativeIndices.Count == 0
                 ? "No passing stock Weapon round-trip proof was supplied; nonresident retail Weapon roots remain critical blockers."
                 : $"Stock Weapon batch credits {productionStockWeapons.WeaponNativeIndices.Count:N0} exact retail WeaponDefs reconstructed from disk and read back 3/3 with exact info-string hashes.",
+            productionStockFx.FxNativeIndices.Count == 0
+                ? "No passing stock FX round-trip proof was supplied; nonresident retail FX roots remain critical blockers."
+                : $"Stock FX batch credits {productionStockFx.FxNativeIndices.Count:N0} exact retail FxEffectDefs rebuilt into a standalone FF and reloaded without the donor.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -715,6 +746,7 @@ public static class NormalMapLinkerV2FullContentReadiness
             ProductionCriticalReferenceRoots = productionCriticalReferences.ReferenceNativeIndices.Count,
             ProductionImageReferenceRoots = productionImageReferences.ReferenceNativeIndices.Count,
             ProductionStockWeaponRoots = productionStockWeapons.WeaponNativeIndices.Count,
+            ProductionStockFxRoots = productionStockFx.FxNativeIndices.Count,
             ProductionIntegratedBaselineZoneBytes = provenIntegratedBaseZoneBytes,
             RendererLayoutReady = rendererLayout.LayoutReady,
             ProperSizeGate = properSizeGate,
@@ -735,6 +767,73 @@ public static class NormalMapLinkerV2FullContentReadiness
             cancellationToken);
 
         return result;
+    }
+
+    private sealed record ProductionStockFxCredit(
+        IReadOnlySet<int> FxNativeIndices);
+
+    private static ProductionStockFxCredit LoadProductionStockFxCredit(
+        string? proofManifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(proofManifestPath))
+            return new ProductionStockFxCredit(new HashSet<int>());
+
+        proofManifestPath = Path.GetFullPath(proofManifestPath);
+        if (!File.Exists(proofManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4F stock FX round-trip manifest was not found.",
+                proofManifestPath);
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(proofManifestPath));
+        var root = doc.RootElement;
+
+        if (GetString(root, "format") != "WaW360.Nuclear4Z.StockFxRoundTrip.v1" ||
+            !GetBool(root, "roundTripPass") ||
+            GetInt(root, "targetFx") != 2 ||
+            GetInt(root, "linkerExitCode") != 0 ||
+            GetInt(root, "readbackExitCode") != 0 ||
+            GetInt(root, "resolvedFx") != 2 ||
+            GetProperty(root, "missingFx").GetArrayLength() != 0)
+            throw new InvalidDataException(
+                "Stock FX manifest does not prove a clean 2/2 standalone retail FX round-trip.");
+
+        var indices = new HashSet<int>();
+        foreach (var item in GetProperty(root, "fx").EnumerateArray())
+        {
+            var index = GetInt(item, "Index");
+            var name = GetString(item, "Name");
+            var present = GetBool(item, "ListedAfterStandaloneReload");
+
+            if (!present)
+                throw new InvalidDataException(
+                    $"Stock FX root #{index} '{name}' did not survive standalone reload.");
+
+            if ((uint)index >= (uint)nativeRootCount)
+                throw new InvalidDataException(
+                    $"Stock FX root #{index} is outside the native sequence.");
+
+            var nativeRoot = nativeIdentity[index];
+            var nativeType = nativeRoot.OatTypeName.Trim().ToLowerInvariant();
+            if (nativeType.Length == 0)
+                nativeType = nativeRoot.TypeName.Trim().ToLowerInvariant();
+
+            if (!nativeType.Equals("fx", StringComparison.OrdinalIgnoreCase) ||
+                !nativeRoot.Name.Equals(name, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Stock FX root #{index} no longer matches native FX identity.");
+
+            if (!indices.Add(index))
+                throw new InvalidDataException(
+                    $"Stock FX proof repeats native root #{index}.");
+        }
+
+        if (indices.Count != 2)
+            throw new InvalidDataException(
+                $"Stock FX proof count changed: {indices.Count:N0}; expected 2.");
+
+        return new ProductionStockFxCredit(indices);
     }
 
     private sealed record ProductionStockWeaponCredit(
@@ -1628,6 +1727,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Critical retail references:  {r.ProductionCriticalReferenceRoots:N0}");
         sb.AppendLine($"Retail image references:     {r.ProductionImageReferenceRoots:N0}");
         sb.AppendLine($"Stock Weapon round-trips:    {r.ProductionStockWeaponRoots:N0}");
+        sb.AppendLine($"Stock FX round-trips:        {r.ProductionStockFxRoots:N0}");
         sb.AppendLine($"Integrated production zone:  {r.ProductionIntegratedBaselineZoneBytes:N0} B");
         sb.AppendLine();
         sb.AppendLine($"Renderer layout ready:       {r.RendererLayoutReady}");
