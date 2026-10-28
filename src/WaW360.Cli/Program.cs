@@ -508,6 +508,9 @@ static async Task<int> MainAsync(string[] args)
                 var productionImageReferenceProofManifest = args.Length >= 15 && !string.IsNullOrWhiteSpace(args[14])
                     ? args[14]
                     : null;
+                var productionStockWeaponRoundTripManifest = args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15])
+                    ? args[15]
+                    : null;
 
                 var map = MapDiscovery.DiscoverSourceFolder(root)
                     .FirstOrDefault(m => m.Name.Equals(mapName, StringComparison.OrdinalIgnoreCase));
@@ -527,7 +530,8 @@ static async Task<int> MainAsync(string[] args)
                     productionXModelGraftManifest,
                     productionMaterialGraftManifest,
                     productionCriticalReferenceProofManifest,
-                    productionImageReferenceProofManifest);
+                    productionImageReferenceProofManifest,
+                    productionStockWeaponRoundTripManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4F full-content pre-hardware gate");
                 Console.WriteLine($"nativeFF={result.NativeOracleFastFileBytes:N0}; nativeZone={result.NativeOracleZoneBytes:N0}; shellBaseline={result.AllShellBaselineZoneBytes:N0}; rendererGain={result.ProvenRendererGainBytes:N0}");
@@ -535,7 +539,7 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"sourceMapped={result.SourceMappedRoots:N0}; realPromoted={result.RealPromotedRoots:N0}; fallback={result.FallbackRoots:N0}; synthetic={result.SyntheticDependencyRoots:N0}; criticalFallback={result.CriticalFallbackRoots:N0}; externalAudioPending={result.ExternalAudioPendingRoots:N0}");
                 Console.WriteLine($"productionImages={result.ProductionImageRoots:N0}; productionImageSerializedBytes={result.ProductionImageSerializedBytes:N0}; productionImagePixelBytes={result.ProductionImagePixelBytes:N0}");
                 Console.WriteLine($"productionXModels={result.ProductionXModelRoots:N0}; xmodelRefs={result.ProductionXModelReferenceRoots:N0}; productionXModelSerializedBytes={result.ProductionXModelSerializedBytes:N0}");
-                Console.WriteLine($"productionMaterials={result.ProductionMaterialRoots:N0}; materialRefs={result.ProductionMaterialReferenceRoots:N0}; productionMaterialSerializedBytes={result.ProductionMaterialSerializedBytes:N0}; criticalRetailRefs={result.ProductionCriticalReferenceRoots:N0}; imageRetailRefs={result.ProductionImageReferenceRoots:N0}; integratedProductionBaseline={result.ProductionIntegratedBaselineZoneBytes:N0}");
+                Console.WriteLine($"productionMaterials={result.ProductionMaterialRoots:N0}; materialRefs={result.ProductionMaterialReferenceRoots:N0}; productionMaterialSerializedBytes={result.ProductionMaterialSerializedBytes:N0}; criticalRetailRefs={result.ProductionCriticalReferenceRoots:N0}; imageRetailRefs={result.ProductionImageReferenceRoots:N0}; stockWeaponRoots={result.ProductionStockWeaponRoots:N0}; integratedProductionBaseline={result.ProductionIntegratedBaselineZoneBytes:N0}");
                 Console.WriteLine($"properSizeGate={result.ProperSizeGate}; criticalContentGate={result.CriticalContentGate}; readyForFullNativeEmission={result.ReadyForFullNativeEmission}");
                 Console.WriteLine($"report:   {result.TextReportFile}");
                 Console.WriteLine($"manifest: {result.JsonReportFile}");
