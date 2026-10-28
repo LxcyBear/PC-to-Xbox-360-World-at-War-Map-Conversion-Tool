@@ -87,7 +87,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         string? xmodelGraphRoot = null,
         string? xmodelBindingManifest = null,
         string? materialGraphRoot = null,
-        string? materialBindingManifest = null)
+        string? materialBindingManifest = null,
+        string? rawFileGraftManifest = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -125,6 +126,7 @@ public static class T4XenonGraphBlockLayoutPlanner
             throw new InvalidDataException("Stage 4D requires an Xbox360 native oracle.");
 
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
         var bindings = LoadBindings(bindingManifest);
         var blockers = new List<string>();
         var notes = new List<string>();
@@ -383,6 +385,14 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if (rawFileGraft.TryGetValue(root.Index, out var graftedRaw))
+            {
+                state.TempRoot(12);
+                state.VirtualAlloc(Utf8Z(root.Name), 1, true);
+                state.VirtualAlloc(graftedRaw.Bytes.Length + 1L, 1, true);
+                continue;
+            }
+
             var shellSize = ShellSize(root.TypeName);
             if (shellSize == 0)
             {
@@ -412,6 +422,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
+        if (rawFileGraft.Count != 0)
+            notes.Add($"PC-backed RawFile graft: {rawFileGraft.Count:N0} native roots with verified source SHA-256 and explicit logical buffer lengths.");
         notes.Add("TEMP is modeled as scratch: every top-level asset starts at TEMP+0; header TEMP size is the maximum root scope.");
         notes.Add("Each first top-level root reserves one 4-byte VIRTUAL insert slot; insert slots and alignment holes consume block address space but no serialized bytes.");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");

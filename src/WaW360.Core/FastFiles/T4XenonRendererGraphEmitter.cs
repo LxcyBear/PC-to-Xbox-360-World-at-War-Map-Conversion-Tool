@@ -13,6 +13,7 @@ public sealed class T4XenonRendererEmitResult
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
     public required int RealImageRoots { get; init; }
+    public required int RealRawFileRoots { get; init; }
     public required int RealMaterialRoots { get; init; }
     public required int MaterialReferenceRoots { get; init; }
     public required int RealXModelRoots { get; init; }
@@ -67,7 +68,8 @@ public static class T4XenonRendererGraphEmitter
         string? xmodelGraphRoot = null,
         string? xmodelBindingManifest = null,
         string? materialGraphRoot = null,
-        string? materialBindingManifest = null)
+        string? materialBindingManifest = null,
+        string? rawFileGraftManifest = null)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -125,13 +127,15 @@ public static class T4XenonRendererGraphEmitter
             xmodelGraphRoot,
             xmodelBindingManifest,
             materialGraphRoot,
-            materialBindingManifest);
+            materialBindingManifest,
+            rawFileGraftManifest);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
 
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
         var bindings = LoadBindings(bindingManifest);
 
         T4XenonMaterialCorpus? materialCorpus = null;
@@ -219,6 +223,7 @@ public static class T4XenonRendererGraphEmitter
         var realImages = 0;
         var realMaterials = 0;
         var realXModels = 0;
+        var realRawFiles = 0;
         var targetImageRoots = imageGraph is null
             ? 0
             : imageGraftLimit > 0
@@ -345,6 +350,24 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            // Production RawFiles use exact PC-derived bodies, never oracle payloads.
+            // T4 RawFile = name* / logical length / buffer*; buffer has an extra NUL.
+            if (rawFileGraft.TryGetValue(root.Index, out var graftedRaw))
+            {
+                realRawFiles++;
+                var body = new byte[12];
+                PutU32(body, 0, T4ZonePointer.Following);
+                PutU32(body, 4, checked((uint)graftedRaw.Bytes.Length));
+                PutU32(body, 8, T4ZonePointer.Following);
+                state.TempRoot(body.Length);
+                zone.Write(body);
+                EmitString(zone, state, root.Name);
+                state.VirtualAlloc(graftedRaw.Bytes.Length + 1L, 1, serialized: true);
+                zone.Write(graftedRaw.Bytes);
+                zone.WriteByte(0);
+                continue;
+            }
+
             var shell = BuildShell(root.TypeName, root.Name, canonicalBaseName);
             state.TempRoot(shell.Body.Length);
             zone.Write(shell.Body);
@@ -367,6 +390,9 @@ public static class T4XenonRendererGraphEmitter
         if (xmodelCorpus is not null && realXModels != xmodelCorpus.OwnedByRoot.Count)
             throw new InvalidDataException(
                 $"XModel root upgrade mismatch: upgraded={realXModels:N0}, expected={xmodelCorpus.OwnedByRoot.Count:N0}.");
+
+        if (realRawFiles != rawFileGraft.Count)
+            throw new InvalidDataException($"RawFile graft count mismatch: emitted={realRawFiles}, expected={rawFileGraft.Count}.");
 
         var layoutReplayExact =
             state.TempMax == layout.TempBytes &&
@@ -490,6 +516,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Renderer TechniqueSets:     {rendererTechsets:N0}");
         report.AppendLine($"Renderer PixelShaders:      {rendererPixels:N0}");
         report.AppendLine($"Real Material roots:        {realMaterials:N0}");
+        report.AppendLine($"PC-backed RawFile roots:    {realRawFiles:N0}");
         report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
@@ -522,6 +549,7 @@ public static class T4XenonRendererGraphEmitter
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
             RealImageRoots = realImages,
+            RealRawFileRoots = realRawFiles,
             RealMaterialRoots = realMaterials,
             MaterialReferenceRoots = materialCorpus?.ReferenceRoots ?? 0,
             RealXModelRoots = realXModels,

@@ -805,6 +805,7 @@ static async Task<int> MainAsync(string[] args)
                 var xmodelBindingManifest = args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
                 var materialGraphRoot = args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
                 var materialBindingManifest = args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
+                var rawFileGraftManifest = args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
@@ -817,10 +818,11 @@ static async Task<int> MainAsync(string[] args)
                     xmodelGraphRoot,
                     xmodelBindingManifest,
                     materialGraphRoot,
-                    materialBindingManifest);
+                    materialBindingManifest,
+                    rawFileGraftManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4E/4Y real Xenon renderer + image + XModel byte emission");
-                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
                 Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; mainZoneBytes={result.MainZoneBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}; LARGE={result.LargeBytes:N0}");
                 Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
                 Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; oatLoadedAssets={result.OatLoadedAssets:N0}; oatExternalRefs={result.OatExternalReferenceAssets:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
