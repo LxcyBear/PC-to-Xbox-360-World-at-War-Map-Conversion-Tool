@@ -100,7 +100,7 @@ $typeSummary = @(
 $zoneSummary = @(
     $payloadRequired |
     Group-Object PreferredZone |
-    Sort-Object Count -Descending, Name |
+    Sort-Object @{ Expression = { $_.Count }; Descending = $true }, @{ Expression = { $_.Name }; Descending = $false } |
     ForEach-Object {
         [pscustomobject]@{
             Zone = $_.Name
