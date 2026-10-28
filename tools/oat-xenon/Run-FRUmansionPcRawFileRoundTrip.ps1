@@ -4,6 +4,7 @@ param(
     [string]$MapName = 'nazi_zombie_FRUmansion',
     [string]$NativeIdentityManifest = '',
     [string]$CriticalReferenceManifest = '',
+    [string]$NativeOracleFastFile = 'C:\Users\jorda\OneDrive\Desktop\working frumansion\nazi_zombie_FRUmansion.ff',
     [string]$OutputRoot = ''
 )
 
@@ -24,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $repo 'output\nazi_zombie_FRUmansion\nuclear_5i_pc_rawfile_roundtrip'
 }
 
-foreach ($required in @($linker,$unlinker,$NativeIdentityManifest,$CriticalReferenceManifest)) {
+foreach ($required in @($linker,$unlinker,$NativeIdentityManifest,$CriticalReferenceManifest,$NativeOracleFastFile)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Required Stage 5I input not found: $required"
     }
@@ -159,13 +160,14 @@ if (Test-Path -LiteralPath $OutputRoot) {
     Remove-Item -LiteralPath $OutputRoot -Recurse -Force
 }
 $pcDumpRoot=Join-Path $OutputRoot 'pc_rawfile_dumps'
+$nativeDumpRoot=Join-Path $OutputRoot 'native_rawfile_validation_dump'
 $logRoot=Join-Path $OutputRoot 'logs'
 $workspace=Join-Path $OutputRoot 'workspace'
 $sourceRoot=Join-Path $workspace 'zone_source'
 $assetRoot=Join-Path $workspace 'raw'
 $linkOut=Join-Path $OutputRoot 'linked'
 $readbackRoot=Join-Path $OutputRoot 'readback'
-foreach ($p in @($OutputRoot,$pcDumpRoot,$logRoot,$workspace,$sourceRoot,$assetRoot,$linkOut,$readbackRoot)) {
+foreach ($p in @($OutputRoot,$pcDumpRoot,$nativeDumpRoot,$logRoot,$workspace,$sourceRoot,$assetRoot,$linkOut,$readbackRoot)) {
     New-Item -ItemType Directory -Force -Path $p | Out-Null
 }
 
@@ -179,6 +181,7 @@ if ($pcFastFiles.Count -eq 0) {
 
 $pcRows=New-Object 'System.Collections.Generic.List[object]'
 $pcByName=@{}
+$pcByHash=@{}
 $listFailures=0
 $dumpFailures=0
 
@@ -245,14 +248,52 @@ foreach ($ff in $pcFastFiles) {
             $pcByName[$key]=New-Object 'System.Collections.Generic.List[object]'
         }
         $pcByName[$key].Add($row)
+
+        if ($exists -and -not [string]::IsNullOrWhiteSpace($hash)) {
+            if (-not $pcByHash.ContainsKey($hash)) {
+                $pcByHash[$hash]=New-Object 'System.Collections.Generic.List[object]'
+            }
+            $pcByHash[$hash].Add($row)
+        }
     }
 
     Write-Host ("[NUCLEAR-5I-RAW] {0,-34} listed={1,3} bodies={2,3} listExit={3} dumpExit={4}" -f
         $ff.Name,$names.Count,$resolvedBodies,[int]$listed.Code,[int]$dumped.Code)
 }
 
+
+$nativeDumpLog=Join-Path $logRoot 'native_rawfile_validation.dump.log'
+$nativeDump=Invoke-NativeCapture -FilePath $unlinker -Arguments @(
+    '--no-color','--include-assets','rawfile','--output-folder',$nativeDumpRoot,$NativeOracleFastFile
+) -LogPath $nativeDumpLog
+
+$nativeDumpExit=[int]$nativeDump.Code
+$nativeBodyByIndex=@{}
+$nativeValidationBodies=0
+foreach ($native in $unresolvedNative) {
+    $path=Resolve-DumpedRawFile -DumpRoot $nativeDumpRoot -AssetName ([string]$native.Name)
+    $present=-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -LiteralPath $path -PathType Leaf)
+    $hash=''
+    $bytes=0L
+    if ($present) {
+        $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        $bytes=[int64](Get-Item -LiteralPath $path).Length
+        $nativeValidationBodies++
+    }
+
+    $nativeBodyByIndex[[int]$native.Index]=[pscustomobject]@{
+        Index=[int]$native.Index
+        Name=[string]$native.Name
+        DumpPath=$path
+        BodyPresent=$present
+        Bytes=$bytes
+        Sha256=$hash
+    }
+}
+
 $mapping=New-Object 'System.Collections.Generic.List[object]'
 $exactMapped=0
+$hashMapped=0
 $missingNative=0
 $ambiguousSource=0
 
@@ -263,20 +304,38 @@ foreach ($native in $unresolvedNative) {
         $sources=@($pcByName[$key].ToArray() | Where-Object { [bool]$_.BodyPresent })
     }
 
+    $nativeValidation=$nativeBodyByIndex[[int]$native.Index]
     $status='missing-pc-body'
+
     if ($sources.Count -eq 1) {
-        $status='exact-pc-body'
+        $status='exact-name-pc-body'
         $exactMapped++
     }
     elseif ($sources.Count -gt 1) {
         $hashes=@($sources | Select-Object -ExpandProperty Sha256 -Unique)
         if ($hashes.Count -eq 1) {
-            $status='duplicate-identical-pc-body'
+            $status='duplicate-identical-name-pc-body'
             $exactMapped++
             $sources=@($sources | Select-Object -First 1)
         }
         else {
-            $status='ambiguous-pc-body'
+            $status='ambiguous-name-pc-body'
+            $ambiguousSource++
+        }
+    }
+    elseif ($null -ne $nativeValidation -and
+            [bool]$nativeValidation.BodyPresent -and
+            -not [string]::IsNullOrWhiteSpace([string]$nativeValidation.Sha256) -and
+            $pcByHash.ContainsKey([string]$nativeValidation.Sha256)) {
+        $sources=@($pcByHash[[string]$nativeValidation.Sha256].ToArray() | Where-Object { [bool]$_.BodyPresent })
+        $hashes=@($sources | Select-Object -ExpandProperty Sha256 -Unique)
+        if ($hashes.Count -eq 1 -and $sources.Count -ge 1) {
+            $status='exact-body-hash-pc-source'
+            $hashMapped++
+            $sources=@($sources | Select-Object -First 1)
+        }
+        else {
+            $status='ambiguous-body-hash-pc-source'
             $ambiguousSource++
         }
     }
@@ -288,13 +347,14 @@ foreach ($native in $unresolvedNative) {
         Index=[int]$native.Index
         Name=[string]$native.Name
         Status=$status
+        NativeValidation=$nativeValidation
         Sources=[object[]]$sources
     })
 }
 
 $linkTargets=@(
     $mapping.ToArray() |
-    Where-Object { $_.Status -in @('exact-pc-body','duplicate-identical-pc-body') } |
+    Where-Object { $_.Status -in @('exact-name-pc-body','duplicate-identical-name-pc-body','exact-body-hash-pc-source') } |
     Sort-Object Index
 )
 
@@ -380,6 +440,9 @@ $manifest=[ordered]@{
     retailReferenceRawFiles=$retailRawIndices.Count
     nonRetailNativeRawFiles=$unresolvedNative.Count
     exactPcBodyMappings=$exactMapped
+    exactBodyHashMappings=$hashMapped
+    nativeValidationDumpExitCode=$nativeDumpExit
+    nativeValidationBodies=$nativeValidationBodies
     missingPcBodyMappings=$missingNative
     ambiguousPcBodyMappings=$ambiguousSource
     standaloneTargets=$linkTargets.Count
@@ -393,8 +456,9 @@ $manifest=[ordered]@{
     policy=@(
         'Stage 5I uses OAT asset loading/dumping to obtain authoritative PC RawFile identities and bodies, bypassing global raw-byte signature ambiguity.',
         'The 46 Stage 4W retail RawFile roots remain runtime references and are not copied from PC.',
-        'Only exact native identity matches with an OAT-dumped PC body are eligible for standalone Xenon RawFile serialization.',
-        'Production credit requires exact source/readback SHA-256 equality after standalone Xbox360 link and reload.',
+        'Exact native-name matches are preferred. When names differ, native/oracle RawFile bodies are used only as SHA-256 validation fingerprints to bind an identical OAT-dumped PC body.',
+        'Any hash-bound production payload is copied from the PC dump and emitted under the native Xbox identity; native/oracle body bytes are never copied.',
+        'Production credit requires exact PC-source/readback SHA-256 equality after standalone Xbox360 link and reload.',
         'No native/oracle RawFile payload bytes are copied.'
     )
 }
@@ -412,7 +476,10 @@ $report.Add(("PC RawFile bodies dumped:         {0:N0}" -f @($pcRows.ToArray() |
 $report.Add(("Native RawFiles:                  {0:N0}" -f $nativeRaw.Count))
 $report.Add(("Retail-reference RawFiles:        {0:N0}" -f $retailRawIndices.Count))
 $report.Add(("Non-retail native RawFiles:       {0:N0}" -f $unresolvedNative.Count))
-$report.Add(("Exact PC body mappings:           {0:N0}" -f $exactMapped))
+$report.Add(("Exact-name PC body mappings:      {0:N0}" -f $exactMapped))
+$report.Add(("Exact body-hash mappings:         {0:N0}" -f $hashMapped))
+$report.Add(("Native validation bodies:         {0:N0}/8" -f $nativeValidationBodies))
+$report.Add(("Native validation dump exit:      {0}" -f $nativeDumpExit))
 $report.Add(("Missing PC body mappings:         {0:N0}" -f $missingNative))
 $report.Add(("Ambiguous PC body mappings:       {0:N0}" -f $ambiguousSource))
 $report.Add(("Standalone Xenon targets:         {0:N0}" -f $linkTargets.Count))
@@ -438,7 +505,10 @@ Write-Host '[NUCLEAR-5I-RAW] ====================== RESULT =====================
 Write-Host "[NUCLEAR-5I-RAW] PC RawFile identities        : $($pcRows.Count)"
 Write-Host "[NUCLEAR-5I-RAW] PC RawFile bodies dumped     : $(@($pcRows.ToArray() | Where-Object BodyPresent).Count)"
 Write-Host "[NUCLEAR-5I-RAW] Non-retail native RawFiles   : $($unresolvedNative.Count)"
-Write-Host "[NUCLEAR-5I-RAW] Exact PC body mappings       : $exactMapped"
+Write-Host "[NUCLEAR-5I-RAW] Exact-name PC body mappings  : $exactMapped"
+Write-Host "[NUCLEAR-5I-RAW] Exact body-hash mappings     : $hashMapped"
+Write-Host "[NUCLEAR-5I-RAW] Native validation bodies     : $nativeValidationBodies/8"
+Write-Host "[NUCLEAR-5I-RAW] Native validation dump exit  : $nativeDumpExit"
 Write-Host "[NUCLEAR-5I-RAW] Missing PC body mappings     : $missingNative"
 Write-Host "[NUCLEAR-5I-RAW] Ambiguous PC body mappings   : $ambiguousSource"
 Write-Host "[NUCLEAR-5I-RAW] Standalone Xenon targets     : $($linkTargets.Count)"
