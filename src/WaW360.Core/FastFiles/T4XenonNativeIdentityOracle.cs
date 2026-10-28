@@ -12,6 +12,10 @@ public sealed record T4XenonNativeIdentityEntry(
     string OatTypeName,
     string Name);
 
+public sealed record T4XenonOatExternalReference(
+    string OatTypeName,
+    string Name);
+
 public sealed record T4XenonNativeIdentityTypeSummary(
     int TypeId,
     string TypeName,
@@ -25,6 +29,8 @@ public sealed class T4XenonNativeIdentityOracleResult
     public required string NativeFastFile { get; init; }
     public required string UnlinkerExe { get; init; }
     public required int Assets { get; init; }
+    public required int LoadedAssets { get; init; }
+    public required int ExternalReferenceAssets { get; init; }
     public required int ScriptStrings { get; init; }
     public required string IdentitySequenceSha256 { get; init; }
     public required bool TypeSequenceVerified { get; init; }
@@ -91,7 +97,9 @@ public static class T4XenonNativeIdentityOracle
         string nativeFastFile,
         string outputDirectory,
         string? explicitUnlinkerExe = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<T4XenonNativeIdentityEntry>? expectedRootIdentity = null,
+        IReadOnlyCollection<T4XenonOatExternalReference>? allowedExternalReferences = null)
     {
         if (!File.Exists(nativeFastFile))
             throw new FileNotFoundException("Native Xbox fastfile not found.", nativeFastFile);
@@ -159,31 +167,55 @@ public static class T4XenonNativeIdentityOracle
                 (string.IsNullOrWhiteSpace(tail) ? "" : " Tail: " + tail));
         }
 
-        var listed = ParseAssetList(stdout.ToString())
-            .Concat(ParseAssetList(stderr.ToString()))
-            .ToList();
-
-        // Some logging backends can duplicate lines across stdout/stderr only if redirected
-        // unusually. Prefer the stream whose count matches the native XAsset table exactly.
         var stdoutList = ParseAssetList(stdout.ToString()).ToList();
         var stderrList = ParseAssetList(stderr.ToString()).ToList();
-        if (stdoutList.Count == native.Document.AssetCount)
-            listed = stdoutList;
-        else if (stderrList.Count == native.Document.AssetCount)
-            listed = stderrList;
+        var listed = SelectPrimaryAssetList(
+            stdoutList,
+            stderrList,
+            native.Document.AssetCount);
 
-        if (listed.Count != native.Document.AssetCount)
-            throw new InvalidDataException(
-                $"OAT Xenon listed {listed.Count:N0} assets but the native XAsset table declares " +
-                $"{native.Document.AssetCount:N0}. See {rawLog}");
+        var externalRows = new List<(string Type, string Name)>();
+        List<(string Type, string Name)> rootRows;
 
-        var entries = new List<T4XenonNativeIdentityEntry>(listed.Count);
+        if (expectedRootIdentity is not null)
+        {
+            if (expectedRootIdentity.Count != native.Document.AssetCount)
+                throw new InvalidDataException(
+                    $"Expected root identity count {expectedRootIdentity.Count:N0} != candidate XAsset table {native.Document.AssetCount:N0}.");
+
+            var allowed = (allowedExternalReferences ?? Array.Empty<T4XenonOatExternalReference>())
+                .Select(x => (Type: x.OatTypeName, x.Name))
+                .ToList();
+
+            if (!TryReconcileExpectedRoots(
+                    listed,
+                    expectedRootIdentity,
+                    allowed,
+                    out rootRows,
+                    out externalRows,
+                    out var reconciliationError))
+            {
+                throw new InvalidDataException(
+                    $"OAT Xenon root/reference reconciliation failed: {reconciliationError}. " +
+                    $"OAT listed {listed.Count:N0} loaded assets for {native.Document.AssetCount:N0} top-level XAsset roots. See {rawLog}");
+            }
+        }
+        else
+        {
+            if (listed.Count != native.Document.AssetCount)
+                throw new InvalidDataException(
+                    $"OAT Xenon listed {listed.Count:N0} assets but the native XAsset table declares " +
+                    $"{native.Document.AssetCount:N0}. See {rawLog}");
+            rootRows = listed;
+        }
+
+        var entries = new List<T4XenonNativeIdentityEntry>(rootRows.Count);
         var typeSequenceVerified = true;
-        for (var i = 0; i < listed.Count; i++)
+        for (var i = 0; i < rootRows.Count; i++)
         {
             var expected = native.Document.Assets[i];
             var expectedOat = OatTypeName(expected.TypeId);
-            var row = listed[i];
+            var row = rootRows[i];
 
             if (!row.Type.Equals(expectedOat, StringComparison.OrdinalIgnoreCase))
             {
@@ -192,6 +224,19 @@ public static class T4XenonNativeIdentityOracle
                     $"OAT/native root type mismatch at index {i:N0}: OAT='{row.Type}', " +
                     $"native typeId={expected.TypeId} expectedOAT='{expectedOat}' " +
                     $"converter='{expected.TypeName}'. See {rawLog}");
+            }
+
+            if (expectedRootIdentity is not null)
+            {
+                var expectedIdentity = expectedRootIdentity[i];
+                if (expectedIdentity.TypeId != expected.TypeId ||
+                    !row.Name.Equals(expectedIdentity.Name, StringComparison.Ordinal))
+                {
+                    typeSequenceVerified = false;
+                    throw new InvalidDataException(
+                        $"OAT/native root identity mismatch at index {i:N0}: " +
+                        $"OAT='{row.Type}:{row.Name}', expected='{expectedIdentity.OatTypeName}:{expectedIdentity.Name}'. See {rawLog}");
+                }
             }
 
             entries.Add(new T4XenonNativeIdentityEntry(
@@ -226,6 +271,8 @@ public static class T4XenonNativeIdentityOracle
             nativeFastFile = Path.GetFullPath(nativeFastFile),
             unlinkerExe = unlinker,
             assets = entries.Count,
+            loadedAssets = listed.Count,
+            externalReferenceAssets = externalRows.Count,
             scriptStrings = native.Document.ScriptStringCount,
             typeSequenceVerified,
             duplicateIdentityCount = duplicateIdentities,
@@ -244,7 +291,9 @@ public static class T4XenonNativeIdentityOracle
         sb.AppendLine(new string('=', 92));
         sb.AppendLine($"Native FF: {Path.GetFullPath(nativeFastFile)}");
         sb.AppendLine($"OAT Unlinker: {unlinker}");
-        sb.AppendLine($"Assets: {entries.Count:N0}");
+        sb.AppendLine($"Top-level roots: {entries.Count:N0}");
+        sb.AppendLine($"OAT loaded assets: {listed.Count:N0}");
+        sb.AppendLine($"External reference assets: {externalRows.Count:N0}");
         sb.AppendLine($"ScriptStrings: {native.Document.ScriptStringCount:N0}");
         sb.AppendLine($"Type sequence verified root-for-root: {typeSequenceVerified}");
         sb.AppendLine($"Duplicate (type,name) identities: {duplicateIdentities:N0}");
@@ -267,6 +316,8 @@ public static class T4XenonNativeIdentityOracle
             NativeFastFile = Path.GetFullPath(nativeFastFile),
             UnlinkerExe = unlinker,
             Assets = entries.Count,
+            LoadedAssets = listed.Count,
+            ExternalReferenceAssets = externalRows.Count,
             ScriptStrings = native.Document.ScriptStringCount,
             IdentitySequenceSha256 = identityHash,
             TypeSequenceVerified = typeSequenceVerified,
@@ -278,6 +329,110 @@ public static class T4XenonNativeIdentityOracle
             RawUnlinkerLogFile = rawLog
         };
     }
+
+    private static List<(string Type, string Name)> SelectPrimaryAssetList(
+        IReadOnlyList<(string Type, string Name)> stdout,
+        IReadOnlyList<(string Type, string Name)> stderr,
+        int rootCount)
+    {
+        if (stdout.Count >= rootCount && stderr.Count < rootCount)
+            return stdout.ToList();
+        if (stderr.Count >= rootCount && stdout.Count < rootCount)
+            return stderr.ToList();
+        if (stdout.Count == rootCount)
+            return stdout.ToList();
+        if (stderr.Count == rootCount)
+            return stderr.ToList();
+
+        // OAT normally emits asset listings on one stream. If both streams have
+        // asset rows, prefer the larger stream rather than concatenating and
+        // accidentally duplicating identities.
+        return stdout.Count >= stderr.Count
+            ? stdout.ToList()
+            : stderr.ToList();
+    }
+
+    private static bool TryReconcileExpectedRoots(
+        IReadOnlyList<(string Type, string Name)> listed,
+        IReadOnlyList<T4XenonNativeIdentityEntry> expectedRoots,
+        IReadOnlyList<(string Type, string Name)> allowedExternalReferences,
+        out List<(string Type, string Name)> rootRows,
+        out List<(string Type, string Name)> externalRows,
+        out string error)
+    {
+        rootRows = new List<(string Type, string Name)>(expectedRoots.Count);
+        externalRows = new List<(string Type, string Name)>();
+
+        var allowed = allowedExternalReferences
+            .GroupBy(
+                x => NormalizeIdentityKey(x.Type, x.Name),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.First(),
+                StringComparer.OrdinalIgnoreCase);
+        var seenExternal = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var expectedIndex = 0;
+        foreach (var row in listed)
+        {
+            if (expectedIndex < expectedRoots.Count)
+            {
+                var expected = expectedRoots[expectedIndex];
+                if (row.Type.Equals(expected.OatTypeName, StringComparison.OrdinalIgnoreCase) &&
+                    row.Name.Equals(expected.Name, StringComparison.Ordinal))
+                {
+                    rootRows.Add(row);
+                    expectedIndex++;
+                    continue;
+                }
+            }
+
+            var key = NormalizeIdentityKey(row.Type, row.Name);
+            if (allowed.ContainsKey(key))
+            {
+                if (!seenExternal.Add(key))
+                {
+                    error = $"duplicate external reference asset '{row.Type}:{row.Name}'";
+                    return false;
+                }
+
+                externalRows.Add(row);
+                continue;
+            }
+
+            var expectedText = expectedIndex < expectedRoots.Count
+                ? $"{expectedRoots[expectedIndex].OatTypeName}:{expectedRoots[expectedIndex].Name}"
+                : "<end-of-roots>";
+            error =
+                $"unexpected loaded asset '{row.Type}:{row.Name}' while expecting root #{expectedIndex:N0} '{expectedText}'";
+            return false;
+        }
+
+        if (expectedIndex != expectedRoots.Count)
+        {
+            error =
+                $"missing root identities: reconciled {expectedIndex:N0}/{expectedRoots.Count:N0}";
+            return false;
+        }
+
+        if (seenExternal.Count != allowed.Count)
+        {
+            var missing = allowed.Keys
+                .Where(x => !seenExternal.Contains(x))
+                .Take(16)
+                .ToArray();
+            error =
+                $"external reference set mismatch: OAT={seenExternal.Count:N0}, expected={allowed.Count:N0}, missing=[{string.Join(" | ", missing)}]";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
+    }
+
+    private static string NormalizeIdentityKey(string type, string name) =>
+        type.Trim().ToLowerInvariant() + "\n" + name.Trim();
 
     private static IEnumerable<(string Type, string Name)> ParseAssetList(string text)
     {
