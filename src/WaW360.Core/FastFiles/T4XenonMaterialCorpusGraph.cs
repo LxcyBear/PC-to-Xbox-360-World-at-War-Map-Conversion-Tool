@@ -184,10 +184,12 @@ internal sealed class T4XenonMaterialCorpus
     public IReadOnlyList<T4XenonOatExternalReference> CollectExternalReferences(
         IReadOnlyList<T4XenonNativeIdentityEntry> roots)
     {
-        var result = new Dictionary<string, T4XenonOatExternalReference>(
-            StringComparer.OrdinalIgnoreCase);
+        // Preserve occurrences, not just unique identities. OAT's loaded-asset
+        // listing can contain the same external reference more than once when
+        // multiple Material fields serialize independent reference shells.
+        var result = new List<T4XenonOatExternalReference>();
 
-        foreach (var entry in OwnedByRoot.Values)
+        foreach (var entry in OwnedByRoot.Values.OrderBy(x => x.NativeRootIndex))
         {
             if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
             {
@@ -198,12 +200,9 @@ internal sealed class T4XenonMaterialCorpus
                     name);
                 if (matches.Count == 0 && IsExplicitReference(name))
                 {
-                    var reference = new T4XenonOatExternalReference(
+                    result.Add(new T4XenonOatExternalReference(
                         "techniqueset",
-                        ReferenceAssetName(name));
-                    result.TryAdd(
-                        reference.OatTypeName + "\n" + reference.Name,
-                        reference);
+                        ReferenceAssetName(name)));
                 }
             }
 
@@ -219,20 +218,14 @@ internal sealed class T4XenonMaterialCorpus
                     name);
                 if (matches.Count == 0 && IsExplicitReference(name))
                 {
-                    var reference = new T4XenonOatExternalReference(
+                    result.Add(new T4XenonOatExternalReference(
                         "image",
-                        ReferenceAssetName(name));
-                    result.TryAdd(
-                        reference.OatTypeName + "\n" + reference.Name,
-                        reference);
+                        ReferenceAssetName(name)));
                 }
             }
         }
 
-        return result.Values
-            .OrderBy(x => x.OatTypeName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return result;
     }
 
     internal static uint ResolveStablePointer(
