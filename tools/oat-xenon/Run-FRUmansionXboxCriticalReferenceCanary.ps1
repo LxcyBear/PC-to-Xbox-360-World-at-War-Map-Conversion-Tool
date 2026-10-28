@@ -49,7 +49,7 @@ function Invoke-NativeCapture {
 function New-ReferenceProject {
     param(
         [Parameter(Mandatory=$true)][string]$CaseName,
-        [Parameter(Mandatory=$true)][object[]]$Targets,
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][object[]]$Targets,
         [Parameter(Mandatory=$true)][bool]$UseLoads,
         [Parameter(Mandatory=$true)][string]$CaseRoot,
         [Parameter(Mandatory=$true)][string[]]$BaseZones
