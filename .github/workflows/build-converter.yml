@@ -22,6 +22,30 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Path tools -Filter *.ps1 -File -Recurse | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Host "::error file=$($_.FullName)::PowerShell parse failed"
+              foreach ($error in $errors) {
+                Write-Host "::error file=$($_.FullName),line=$($error.Extent.StartLineNumber),col=$($error.Extent.StartColumnNumber)::$($error.Message)"
+              }
+            }
+          }
+          if ($failed) {
+            throw 'One or more PowerShell scripts failed parser validation.'
+          }
+
       - name: Restore
         run: dotnet restore WaW360Converter.sln
 
