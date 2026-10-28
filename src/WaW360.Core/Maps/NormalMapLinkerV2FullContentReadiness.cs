@@ -48,6 +48,7 @@ public sealed class NormalMapLinkerV2FullContentReadinessResult
     public required int ProductionMaterialReferenceRoots { get; init; }
     public required long ProductionMaterialSerializedBytes { get; init; }
     public required int ProductionCriticalReferenceRoots { get; init; }
+    public required int ProductionImageReferenceRoots { get; init; }
     public required long ProductionIntegratedBaselineZoneBytes { get; init; }
     public required bool RendererLayoutReady { get; init; }
     public required bool ProperSizeGate { get; init; }
@@ -110,6 +111,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         string? productionXModelGraftManifest = null,
         string? productionMaterialGraftManifest = null,
         string? productionCriticalReferenceProofManifest = null,
+        string? productionImageReferenceProofManifest = null,
         CancellationToken cancellationToken = default)
     {
         if (minimumSizeRatio <= 0 || maximumSizeRatio <= minimumSizeRatio)
@@ -150,6 +152,11 @@ public static class NormalMapLinkerV2FullContentReadiness
 
         var productionCriticalReferences = LoadProductionCriticalReferenceCredit(
             productionCriticalReferenceProofManifest,
+            nativeIdentity,
+            native.Document.AssetCount);
+
+        var productionImageReferences = LoadProductionImageReferenceCredit(
+            productionImageReferenceProofManifest,
             nativeIdentity,
             native.Document.AssetCount);
 
@@ -376,6 +383,19 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            // Stage 4X proves these unresolved stock image identities are resident
+            // in retail Xbox common/base-Zombies pools and survive exact OAT
+            // reference replay. They are resolved references, not missing payloads.
+            if (productionImageReferences.ReferenceNativeIndices.Contains(i))
+            {
+                if (pools.TryGetValue(type, out var imageReferenceQueue) && imageReferenceQueue.Count != 0)
+                    imageReferenceQueue.Dequeue();
+
+                realPromotedRoots++;
+                stat.RealPromotedRoots++;
+                continue;
+            }
+
             if (pools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var pair = queue.Dequeue();
@@ -544,6 +564,16 @@ public static class NormalMapLinkerV2FullContentReadiness
                 continue;
             }
 
+            if (productionImageReferences.ReferenceNativeIndices.Contains(i))
+            {
+                if (deltaPools.TryGetValue(type, out var imageReferenceQueue) && imageReferenceQueue.Count != 0)
+                    imageReferenceQueue.Dequeue();
+
+                // Stage 4X proves this image root can remain a retail runtime
+                // reference. The existing integrated shell/reference mass is kept.
+                continue;
+            }
+
             if (deltaPools.TryGetValue(type, out var queue) && queue.Count != 0)
             {
                 var payload = queue.Dequeue().Payload;
@@ -598,6 +628,9 @@ public static class NormalMapLinkerV2FullContentReadiness
             productionCriticalReferences.ReferenceNativeIndices.Count == 0
                 ? "No passing Stage 4W retail critical-reference proof was supplied; FX/Weapon/RawFile readiness still follows the legacy structural source path."
                 : $"Stage 4W credits {productionCriticalReferences.ReferenceNativeIndices.Count:N0} exact retail-Xbox runtime references: {productionCriticalReferences.FxRoots:N0} FX + {productionCriticalReferences.WeaponRoots:N0} Weapon + {productionCriticalReferences.RawFileRoots:N0} RawFile.",
+            productionImageReferences.ReferenceNativeIndices.Count == 0
+                ? "No passing Stage 4X retail image-reference proof was supplied; unresolved stock image identities remain critical blockers."
+                : $"Stage 4X credits {productionImageReferences.ReferenceNativeIndices.Count:N0} exact retail-Xbox image runtime references from common/base-Zombies pools.",
             ready
                 ? "FULL-CONTENT READINESS: PASS. The next stage may emit the integrated full-size candidate."
                 : "FULL-CONTENT READINESS: BLOCKED. Promote the largest/critical fallback families before emitting a hardware test."
@@ -647,6 +680,7 @@ public static class NormalMapLinkerV2FullContentReadiness
             ProductionMaterialReferenceRoots = productionMaterials.ReferenceRoots,
             ProductionMaterialSerializedBytes = productionMaterials.TotalSerializedBytes,
             ProductionCriticalReferenceRoots = productionCriticalReferences.ReferenceNativeIndices.Count,
+            ProductionImageReferenceRoots = productionImageReferences.ReferenceNativeIndices.Count,
             ProductionIntegratedBaselineZoneBytes = provenIntegratedBaseZoneBytes,
             RendererLayoutReady = rendererLayout.LayoutReady,
             ProperSizeGate = properSizeGate,
@@ -667,6 +701,69 @@ public static class NormalMapLinkerV2FullContentReadiness
             cancellationToken);
 
         return result;
+    }
+
+    private sealed record ProductionImageReferenceCredit(
+        IReadOnlySet<int> ReferenceNativeIndices);
+
+    private static ProductionImageReferenceCredit LoadProductionImageReferenceCredit(
+        string? proofManifestPath,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeIdentity,
+        int nativeRootCount)
+    {
+        if (string.IsNullOrWhiteSpace(proofManifestPath))
+            return new ProductionImageReferenceCredit(new HashSet<int>());
+
+        proofManifestPath = Path.GetFullPath(proofManifestPath);
+        if (!File.Exists(proofManifestPath))
+            throw new FileNotFoundException(
+                "Stage 4F image-reference proof manifest was not found.",
+                proofManifestPath);
+
+        using var proofDoc = JsonDocument.Parse(File.ReadAllText(proofManifestPath));
+        var proof = proofDoc.RootElement;
+
+        if (GetString(proof, "format") != "WaW360.Nuclear4X.XboxImageRuntimeReferenceProof.v1" ||
+            !GetBool(proof, "referenceProofPass") ||
+            GetInt(proof, "runtimeReferenceCandidates") != 7 ||
+            GetInt(proof, "payloadRequiredStockImages") != 0 ||
+            GetInt(proof, "resolvedReferences") != 7 ||
+            GetInt(proof, "missingReferences") != 0 ||
+            GetInt(proof, "linkerExitCode") != 0 ||
+            GetInt(proof, "unlinkerExitCode") != 0)
+            throw new InvalidDataException(
+                "Stage 4X manifest does not prove a clean 7-root retail Xbox image-reference replay.");
+
+        var indices = new HashSet<int>();
+        foreach (var item in GetProperty(proof, "resolved").EnumerateArray())
+        {
+            var index = GetInt(item, "Index");
+            var name = GetString(item, "Name");
+
+            if ((uint)index >= (uint)nativeRootCount)
+                throw new InvalidDataException(
+                    $"Stage 4X image reference root #{index} is outside the native sequence.");
+
+            var nativeRoot = nativeIdentity[index];
+            var nativeType = nativeRoot.OatTypeName.Trim().ToLowerInvariant();
+            if (nativeType.Length == 0)
+                nativeType = nativeRoot.TypeName.Trim().ToLowerInvariant();
+
+            if (!nativeType.Equals("image", StringComparison.OrdinalIgnoreCase) ||
+                !nativeRoot.Name.Equals(name, StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    $"Stage 4X image reference root #{index} no longer matches native image identity.");
+
+            if (!indices.Add(index))
+                throw new InvalidDataException(
+                    $"Stage 4X repeats native image reference root #{index}.");
+        }
+
+        if (indices.Count != 7)
+            throw new InvalidDataException(
+                $"Stage 4X reference count changed: {indices.Count:N0}; expected 7.");
+
+        return new ProductionImageReferenceCredit(indices);
     }
 
     private sealed record ProductionCriticalReferenceCredit(
@@ -1428,6 +1525,7 @@ public static class NormalMapLinkerV2FullContentReadiness
         sb.AppendLine($"Material reference roots:    {r.ProductionMaterialReferenceRoots:N0}");
         sb.AppendLine($"Production Material bytes:   {r.ProductionMaterialSerializedBytes:N0} serialized");
         sb.AppendLine($"Critical retail references:  {r.ProductionCriticalReferenceRoots:N0}");
+        sb.AppendLine($"Retail image references:     {r.ProductionImageReferenceRoots:N0}");
         sb.AppendLine($"Integrated production zone:  {r.ProductionIntegratedBaselineZoneBytes:N0} B");
         sb.AppendLine();
         sb.AppendLine($"Renderer layout ready:       {r.RendererLayoutReady}");
