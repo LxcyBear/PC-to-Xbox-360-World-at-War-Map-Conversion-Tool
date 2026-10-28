@@ -181,6 +181,60 @@ internal sealed class T4XenonMaterialCorpus
         return errors;
     }
 
+    public IReadOnlyList<T4XenonOatExternalReference> CollectExternalReferences(
+        IReadOnlyList<T4XenonNativeIdentityEntry> roots)
+    {
+        var result = new Dictionary<string, T4XenonOatExternalReference>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in OwnedByRoot.Values)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.ProductionTechniqueSet))
+            {
+                var name = entry.ProductionTechniqueSet!;
+                var matches = FindDependencyCandidates(
+                    roots,
+                    new[] { "techset", "techniqueset" },
+                    name);
+                if (matches.Count == 0 && IsExplicitReference(name))
+                {
+                    var reference = new T4XenonOatExternalReference(
+                        "techniqueset",
+                        ReferenceAssetName(name));
+                    result.TryAdd(
+                        reference.OatTypeName + "\n" + reference.Name,
+                        reference);
+                }
+            }
+
+            foreach (var texture in entry.Graph.Textures)
+            {
+                if (string.IsNullOrWhiteSpace(texture.Image))
+                    continue;
+
+                var name = texture.Image!;
+                var matches = FindDependencyCandidates(
+                    roots,
+                    new[] { "image" },
+                    name);
+                if (matches.Count == 0 && IsExplicitReference(name))
+                {
+                    var reference = new T4XenonOatExternalReference(
+                        "image",
+                        ReferenceAssetName(name));
+                    result.TryAdd(
+                        reference.OatTypeName + "\n" + reference.Name,
+                        reference);
+                }
+            }
+        }
+
+        return result.Values
+            .OrderBy(x => x.OatTypeName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     internal static uint ResolveStablePointer(
         IReadOnlyList<T4XenonNativeIdentityEntry> roots,
         IReadOnlyDictionary<int, uint> stableByRoot,
