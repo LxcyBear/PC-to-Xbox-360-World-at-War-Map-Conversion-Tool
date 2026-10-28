@@ -1,7 +1,11 @@
 [CmdletBinding()]
-param([switch]$InventoryOnly)
+param(
+    [switch]$InventoryOnly,
+    [switch]$ReusePartialDump
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+if($InventoryOnly -and $ReusePartialDump){throw 'Use either -InventoryOnly or -ReusePartialDump, not both.'}
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $map='nazi_zombie_aztec_V2.2'
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2'
@@ -114,11 +118,51 @@ if(-not $InventoryOnly) {
     # Extract into short PHYSICAL paths because pinned OAT resolves real path
     # before writing. Copies are transferred with Robocopy to the single
     # ignored Aztec corpus; original PC FFs and native golden FF are read-only.
-    if(Test-Path -LiteralPath $corpus -PathType Container){Remove-Item -LiteralPath $corpus -Recurse -Force}
-    New-Item -Path $corpus -ItemType Directory -Force | Out-Null
+    if(-not $ReusePartialDump) {
+        if(Test-Path -LiteralPath $corpus -PathType Container){Remove-Item -LiteralPath $corpus -Recurse -Force}
+        New-Item -Path $corpus -ItemType Directory -Force | Out-Null
+    } elseif(-not (Test-Path -LiteralPath $corpus -PathType Container)) {
+        throw "Previous partial OAT image corpus is absent: $corpus"
+    }
     foreach($source in $sourceFFs) {
         $role=[string]$source.Role
         $src=[string]$source.Path
+        if($ReusePartialDump) {
+            # Previous OAT run already copied its IWIs out of the short-path
+            # scratch directory. It crashed in PowerShell reporting, AFTER
+            # the files and OAT logs had been preserved. Never rerun OAT merely
+            # to retry report construction. Re-check all current source FF hashes
+            # (done above) and rehash each cached IWI for diagnostic provenance.
+            $log=Join-Path $logRoot ('extract_'+$role+'.log')
+            $dest=Join-Path $corpus $role
+            if(-not (Test-Path -LiteralPath $log -PathType Leaf) -or
+               -not (Test-Path -LiteralPath $dest -PathType Container)) {
+                throw "Missing previous OAT extraction log/corpus for role $($role). Run without -ReusePartialDump only if a fresh extraction is required."
+            }
+            $files=@(Get-ChildItem -LiteralPath $dest -Filter '*.iwi' -File -Recurse -ErrorAction Stop)
+            $warnings=@(Select-String -LiteralPath $log -Pattern '^\s*WARNING:').Count
+            $errors=@(Select-String -LiteralPath $log -Pattern '^\s*ERROR:').Count
+            $roleStats.Add([pscustomobject]@{
+                Role=$role; OatExitCode=$null; OatWarnings=$warnings
+                OatErrors=$errors; DumpedIwiFiles=$files.Count; Log=$log
+                Source='CACHED_PARTIAL_FROM_PREVIOUS_RUN'; ExitCodeRecovered=$false
+            })
+            $allErrors.Add("$($role): prior OAT image dump retained $($files.Count) IWI file(s); $errors errors in log. Original process exit cannot be authenticated from cache.")
+            foreach($file in $files) {
+                $relative=$file.FullName.Substring($dest.Length).TrimStart([char]'\')
+                $key=Normalize-Image $relative
+                if(-not $key){continue}
+                $extracted.Add([pscustomobject]@{
+                    Role=$role; Name=$key; RelativePath=$relative
+                    SourceFF=$src; SourceFFSHA256=$sourceHashes[$src]
+                    Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+                    Bytes=[long]$file.Length; MatchesNative=$nativeKeys.Contains($key)
+                    Provenance='CACHED_PC_OAT_OUTPUT_NEEDS_REPRODUCIBLE_EXTRACTION_FOR_PRODUCTION'
+                })
+            }
+            Write-Host "[AZTEC-PC-FF-IMAGE] $($role) cached: $($files.Count) IWI(s), prior errors=$errors; OAT not rerun"
+            continue
+        }
         $temp=Join-Path ([IO.Path]::GetTempPath()) ('wawAzImg_'+[guid]::NewGuid().ToString('N').Substring(0,10))
         if($temp.Length -gt 115){throw "OAT physical temp path too long: $temp"}
         New-Item -Path $temp -ItemType Directory -Force | Out-Null
@@ -185,7 +229,7 @@ $matchedNative=0
 foreach($root in $nativeImages) {
     $key=Normalize-Image ([string]$root.Name)
     if(-not $grouped.ContainsKey($key)){continue}
-    $variants=@($grouped[$key])
+    $variants=[object[]]$grouped[$key].ToArray()
     if(@($variants | Select-Object -ExpandProperty Sha256 -Unique).Count -gt 1) {
         if(-not $conflictKeys.Contains($key)){$conflictKeys.Add($key)}
         continue
@@ -204,15 +248,40 @@ foreach($root in $nativeImages) {
     $pcAvailable=$grouped.ContainsKey($key)
     $pcSafe=$false
     if($pcAvailable) {
-        $v=@($grouped[$key])
+        $v=[object[]]$grouped[$key].ToArray()
         $pcSafe=(@($v | Select-Object -ExpandProperty Sha256 -Unique).Count -eq 1)
     }
     if($pcSafe -or $iwdKeys.Contains($key)){$union++}
 }
 $status=if($InventoryOnly){'AZTEC_PC_FF_IMAGE_NAME_INVENTORY_PASS'}
+elseif($ReusePartialDump -and $extracted.Count -gt 0){'AZTEC_PC_FF_IMAGE_SOURCE_DUMP_PARTIAL_RECOVERED'}
+elseif($ReusePartialDump){'AZTEC_PC_FF_IMAGE_SOURCE_DUMP_BLOCKED'}
 elseif($allErrors.Count -eq 0 -and $extracted.Count -gt 0){'AZTEC_PC_FF_IMAGE_SOURCE_DUMP_PASS'}
 elseif($extracted.Count -gt 0){'AZTEC_PC_FF_IMAGE_SOURCE_DUMP_PARTIAL'}
 else{'AZTEC_PC_FF_IMAGE_SOURCE_DUMP_BLOCKED'}
+# Preserve useful failure signatures without another expensive OAT redump.
+# OAT sometimes exits 0 after hundreds of per-image ERROR lines; the loader
+# status is incomplete regardless of native process exit code.
+$errorSamples=New-Object 'System.Collections.Generic.List[object]'
+$errorCategories=@{}
+foreach($stat in $roleStats) {
+    $examples=0
+    if(-not (Test-Path -LiteralPath $stat.Log -PathType Leaf)){continue}
+    foreach($line in [IO.File]::ReadLines([string]$stat.Log)) {
+        if($line -notmatch '(?i)(ERROR:|Could not find data for image|unsupported|failed to load)'){continue}
+        $kind=if($line -match '(?i)Could not find data for image'){ 'MISSING_EXTERNAL_IMAGE_DATA' }
+              elseif($line -match '(?i)unsupported|not supported'){ 'UNSUPPORTED_IMAGE_FORMAT' }
+              elseif($line -match '(?i)Failed to load'){ 'IMAGE_LOADING_ERROR' }
+              else { 'OTHER_OAT_IMAGE_ERROR' }
+        $id=([string]$stat.Role)+'/'+$kind
+        if(-not $errorCategories.ContainsKey($id)){$errorCategories[$id]=0}
+        $errorCategories[$id]++
+        if($examples -lt 8){
+            $errorSamples.Add([pscustomobject]@{Role=[string]$stat.Role;Category=$kind;Message=[string]$line})
+            $examples++
+        }
+    }
+}
 $json=Join-Path $work 'pc_fastfile_image_sources.json'
 $txt=Join-Path $work 'pc_fastfile_image_sources.txt'
 $summary=[ordered]@{
@@ -226,19 +295,24 @@ $summary=[ordered]@{
     extractedPcIwiFiles=$extracted.Count
     distinctExtractedPcIwiNames=$grouped.Count
     sourceByteUnambiguousNativeImageRoots=$matchedNative
-    sourceByteConflictImageNames=@($conflictKeys.ToArray())
+    sourceByteConflictImageNames=[string[]]$conflictKeys.ToArray()
     combinedIwdAndExtractedPcIwiCoverage=$union
     nativeImageRootsStillWithoutMatchedSource=(666-$union)
-    sourceFastfiles=[object[]]$inventory.ToArray()
-    extractionStages=[object[]]$roleStats.ToArray()
-    extractedSourceImages=[object[]]$extracted.ToArray()
-    warnings=[string[]]$allErrors.ToArray()
+    sourceFastfiles=$inventory.ToArray()
+    extractionStages=$roleStats.ToArray()
+    extractedSourceImages=$extracted.ToArray()
+    warnings=$allErrors.ToArray()
+    errorCategoryCounts=$errorCategories
+    firstErrorSamples=$errorSamples.ToArray()
+    reusedPreviousPartialOatDump=[bool]$ReusePartialDump
+    cachedIwiProvenanceFullyRevalidated=$false
+    priorOatProcessExitRecovered=$false
     convertedXboxImagePayloads=0
     pcPixelConversionComplete=$false
     hardwareReady=$false
     convertedMapsPromotionApproved=$false
     provenance='PC source .ff and IWD-derived IWI only. Native Xbox manifest contributes identities; no Xbox image payloads copied.'
-    note='OAT-exported IWI is evidence of PC origin, but source-name/payload matching is NOT Xenon card-memory conversion or materials dependency proof.'
+    note='OAT-exported IWI is PC source candidate evidence only. Cached files from an interrupted reporting run are not independently proven reproducible. Source-name matching is NOT Xenon pixel conversion or materials dependency proof.'
 }
 $summary | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $json -Encoding UTF8
 $lines=New-Object 'System.Collections.Generic.List[string]'
@@ -248,10 +322,13 @@ $lines.Add("status=$status")
 $lines.Add("PC FF --list unique names=$($byName.Count); native identity hits=$listedMatch/666")
 $lines.Add("Shared PC FF image names=$($crossNames.Count)")
 $lines.Add("PC OAT-exported IWI files=$($extracted.Count); matched native roots with unambiguous payload hashes=$matchedNative")
+$lines.Add("Reused prior partial extraction=$([bool]$ReusePartialDump); only hashes of cached IWI files were rechecked, not OAT extraction reproducibility")
 $lines.Add("Duplicate-name PC FF source conflicts=$($conflictKeys.Count)")
 $lines.Add("Combined source image matches (PC FF + 2 IWD)=$union/666; no-match=$($summary.nativeImageRootsStillWithoutMatchedSource)")
 foreach($stat in $roleStats){$lines.Add("  $($stat.Role): IWI=$($stat.DumpedIwiFiles) OAT=$($stat.OatExitCode) errors=$($stat.OatErrors) log=$($stat.Log)")}
 foreach($err in $allErrors){$lines.Add("  WARNING: $err")}
+foreach($key in @($errorCategories.Keys | Sort-Object)){$lines.Add("  ERROR CATEGORY $($key)=$($errorCategories[$key])")}
+foreach($example in @($errorSamples | Select-Object -First 12)){$lines.Add("  SAMPLE [$($example.Role)/$($example.Category)] $($example.Message)")}
 foreach($name in @($conflictKeys | Select-Object -First 30)){$lines.Add("  CONFLICT $name")}
 $lines.Add('PC source classification only: ZERO native Xbox image bytes converted or emitted.')
 $lines.Add('NOT FOR XBOX; Converted Maps untouched.')
