@@ -105,33 +105,11 @@ if ([string]$imageBridge.format -ne 'WaW360.Nuclear4R.PcOwnedImageBridge.v1' -or
     throw 'Stage 4Y requires a passing PC-owned Stage 4R image bridge.'
 }
 
-if ([string]$xmodelCorpus.format -notlike 'WaW360.Nuclear4XB.XModelRelocatableGraph.v*' -and
-    [string]$xmodelCorpus.Format -notlike 'WaW360.Nuclear4XB.XModelRelocatableGraph.v*') {
-    # Older runner manifests may not expose a format field; the hard counts below
-    # remain authoritative if the file is otherwise parseable.
-    Write-Host '[NUCLEAR-4Y] NOTE: 4X-B manifest has no recognized format tag; validating pass/count fields.'
-}
-
-$corpusPass = $false
-if ($null -ne $xmodelCorpus.PSObject.Properties['corpusGraphPass']) {
-    $corpusPass = [bool]$xmodelCorpus.corpusGraphPass
-}
-elseif ($null -ne $xmodelCorpus.PSObject.Properties['CorpusPass']) {
-    $corpusPass = [bool]$xmodelCorpus.CorpusPass
-}
-elseif ($null -ne $xmodelCorpus.PSObject.Properties['corpusPass']) {
-    $corpusPass = [bool]$xmodelCorpus.corpusPass
-}
-else {
-    # The runner's terminal pass is also represented by exactly 280 passing rows.
-    $rows = @()
-    if ($null -ne $xmodelCorpus.PSObject.Properties['results']) { $rows = @($xmodelCorpus.results) }
-    elseif ($null -ne $xmodelCorpus.PSObject.Properties['Results']) { $rows = @($xmodelCorpus.Results) }
-    if ($rows.Count -eq 280) {
-        $corpusPass = (@($rows | Where-Object { -not [bool]$_.Pass }).Count -eq 0)
-    }
-}
-if (-not $corpusPass) {
+if ([string]$xmodelCorpus.format -ne 'WaW360.Nuclear4XB.XModelRelocatableGraph.v1' -or
+    -not [bool]$xmodelCorpus.corpusGraphPass -or
+    [int]$xmodelCorpus.resultRows -ne 280 -or
+    [int]$xmodelCorpus.passedModels -ne 280 -or
+    [int]$xmodelCorpus.failedModels -ne 0) {
     throw 'Stage 4Y requires the refreshed 280/280 passing 4X-B relocatable graph corpus.'
 }
 
