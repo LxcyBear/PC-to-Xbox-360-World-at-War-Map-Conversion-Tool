@@ -149,10 +149,13 @@ finally {
 $report = Join-Path $outputRoot "$MapName\nuclear_4f_full_content_readiness\nuclear_4f_full_content_readiness.txt"
 
 Write-Host ''
-if (Test-Path -LiteralPath $report -PathType Leaf) {
+if (($code -eq 0 -or $code -eq 4) -and (Test-Path -LiteralPath $report -PathType Leaf)) {
     Write-Host '[NUCLEAR-4F] ================= FULL CONTENT REPORT =========================='
     Get-Content -LiteralPath $report
     Write-Host '[NUCLEAR-4F] ================================================================='
+}
+elseif (Test-Path -LiteralPath $report -PathType Leaf) {
+    Write-Host '[NUCLEAR-4F] Previous readiness report exists, but this run failed before producing a trustworthy fresh result.' -ForegroundColor Yellow
 }
 
 if ($code -ne 0) {
