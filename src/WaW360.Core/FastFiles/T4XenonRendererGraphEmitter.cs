@@ -13,6 +13,8 @@ public sealed class T4XenonRendererEmitResult
     public required int RendererTechniqueSets { get; init; }
     public required int RendererPixelShaders { get; init; }
     public required int RealImageRoots { get; init; }
+    public required int RealMaterialRoots { get; init; }
+    public required int MaterialReferenceRoots { get; init; }
     public required int RealXModelRoots { get; init; }
     public required int XModelReferenceRoots { get; init; }
     public required long ZoneBytes { get; init; }
@@ -61,7 +63,8 @@ public static class T4XenonRendererGraphEmitter
         bool imageGraphValidationOnly = true,
         int imageGraftLimit = 0,
         string? xmodelGraphRoot = null,
-        string? xmodelBindingManifest = null)
+        string? xmodelBindingManifest = null,
+        string? materialGraphRoot = null)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -117,7 +120,8 @@ public static class T4XenonRendererGraphEmitter
             expectedImages,
             imageGraftLimit,
             xmodelGraphRoot,
-            xmodelBindingManifest);
+            xmodelBindingManifest,
+            materialGraphRoot);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -125,6 +129,20 @@ public static class T4XenonRendererGraphEmitter
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         var roots = LoadNativeIdentity(nativeIdentityManifest);
         var bindings = LoadBindings(bindingManifest);
+
+        T4XenonMaterialCorpus? materialCorpus = null;
+        if (!string.IsNullOrWhiteSpace(materialGraphRoot))
+        {
+            materialCorpus = T4XenonMaterialCorpus.Load(
+                materialGraphRoot!,
+                roots);
+            var materialDependencyErrors = materialCorpus.ValidateDependencies(roots);
+            if (materialDependencyErrors.Count != 0)
+                throw new InvalidDataException(
+                    "Stage 4E Material dependency validation failed: " +
+                    string.Join(" | ", materialDependencyErrors.Take(20)));
+        }
+
         if (xmodelCorpus is not null)
         {
             var dependencyErrors = xmodelCorpus.ValidateDependencies(roots);
@@ -188,6 +206,7 @@ public static class T4XenonRendererGraphEmitter
         var rendererTechsets = 0;
         var rendererPixels = 0;
         var realImages = 0;
+        var realMaterials = 0;
         var realXModels = 0;
         var targetImageRoots = imageGraph is null
             ? 0
@@ -265,6 +284,23 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            if (materialCorpus is not null &&
+                materialCorpus.OwnedByRoot.TryGetValue(root.Index, out var materialEntry))
+            {
+                realMaterials++;
+                T4XenonMaterialGraphCodec.Emit(
+                    materialEntry,
+                    zone,
+                    (size, align, serialized) =>
+                    {
+                        state.VirtualAlloc(size, align, serialized);
+                    },
+                    state.TempRoot,
+                    roots,
+                    stableByRoot);
+                continue;
+            }
+
             if (xmodelCorpus is not null &&
                 xmodelCorpus.OwnedByRoot.TryGetValue(root.Index, out var xmodelEntry))
             {
@@ -314,6 +350,9 @@ public static class T4XenonRendererGraphEmitter
             throw new InvalidDataException(
                 $"Image root upgrade mismatch: upgraded={realImages:N0}, target={targetImageRoots:N0}, graph={imageGraph.Images:N0}.");
 
+        if (materialCorpus is not null && realMaterials != materialCorpus.OwnedByRoot.Count)
+            throw new InvalidDataException(
+                $"Material root upgrade mismatch: upgraded={realMaterials:N0}, expected={materialCorpus.OwnedByRoot.Count:N0}.");
         if (xmodelCorpus is not null && realXModels != xmodelCorpus.OwnedByRoot.Count)
             throw new InvalidDataException(
                 $"XModel root upgrade mismatch: upgraded={realXModels:N0}, expected={xmodelCorpus.OwnedByRoot.Count:N0}.");
@@ -423,6 +462,8 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Native roots:               {roots.Count:N0}");
         report.AppendLine($"Renderer TechniqueSets:     {rendererTechsets:N0}");
         report.AppendLine($"Renderer PixelShaders:      {rendererPixels:N0}");
+        report.AppendLine($"Real Material roots:        {realMaterials:N0}");
+        report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
@@ -452,6 +493,8 @@ public static class T4XenonRendererGraphEmitter
             RendererTechniqueSets = rendererTechsets,
             RendererPixelShaders = rendererPixels,
             RealImageRoots = realImages,
+            RealMaterialRoots = realMaterials,
+            MaterialReferenceRoots = materialCorpus?.ReferenceRoots ?? 0,
             RealXModelRoots = realXModels,
             XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             ZoneBytes = zoneBytes.LongLength,
