@@ -48,11 +48,11 @@ function Material-Stem([string]$name){
     }
     return $v.Replace('\','/')
 }
-function Invoke-Oat([string]$exe,[object[]]$args,[string]$log){
+function Invoke-Oat([string]$exe,[object[]]$arguments,[string]$log){
     $prev=$ErrorActionPreference
     try{
         $ErrorActionPreference='Continue'
-        & $exe @args 2>&1 | ForEach-Object {[string]$_} | Set-Content -LiteralPath $log -Encoding UTF8
+        & $exe @arguments 2>&1 | ForEach-Object {[string]$_} | Set-Content -LiteralPath $log -Encoding UTF8
         $exitCode=[int]$LASTEXITCODE
     }finally{$ErrorActionPreference=$prev}
     if($exitCode -ne 0 -or
@@ -173,9 +173,9 @@ try{
     [IO.File]::WriteAllLines($zoneFile,[string[]]$zoneLines.ToArray(),[Text.UTF8Encoding]::new($false))
     Write-Host "[AZTEC-PC-MATERIAL-XENON] original PC Material JSON SHA PASS: 2/2; TechniqueSets=$($techNames.Count); distinct image references=$($imageNames.Count)"
     $linkLog=Join-Path $logRoot 'two_material_xenon_link.log'
-    $args=@('--no-color','--base-folder',$workspace,'--source-search-path',$zoneSource,
+    $linkArguments=@('--no-color','--base-folder',$workspace,'--source-search-path',$zoneSource,
             '--asset-search-path',$pcDump,'--output-folder',$linked,$project)
-    Invoke-Oat $pcLinker $args $linkLog
+    Invoke-Oat $pcLinker $linkArguments $linkLog
     $ffs=@(Get-ChildItem -LiteralPath $linked -Filter '*.ff' -File -Recurse)
     if($ffs.Count -ne 1){throw "Xenon Linker created $($ffs.Count) standalone material FFs; expected 1."}
     $ff=[string]$ffs[0].FullName
