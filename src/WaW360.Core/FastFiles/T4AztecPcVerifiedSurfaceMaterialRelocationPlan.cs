@@ -266,8 +266,8 @@ public static class T4AztecPcVerifiedSurfaceMaterialRelocationPlan
             "and the loaded name matches a unique golden Xbox Material root NAME/INDEX. " +
             "The endian-only 52-byte PC-layout diagnostic buffer remains SHA-identical " +
             "with 735 NULL Material fields; this records exact 4-byte relocation " +
-            "SITES in PC layout (+20), NOT native Xbox 76B layout (+44). The Xenon
-            "serializer must derive six additional topMip floats per surface; only
+            "SITES in PC layout (+20), NOT native Xbox 76B layout (+44). The Xenon " +
+            "serializer must derive six additional topMip floats per surface; only " +
             "root IDENTITIES are known. An XAsset root index is NOT a " +
             "valid Xenon pointer. NO pointer encoded, NO FF produced, NO runtime " +
             "Material graph/DPVS closure confirmed, NO Gate 7 or hardware approval.");
