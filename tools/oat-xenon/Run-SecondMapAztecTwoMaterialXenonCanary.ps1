@@ -114,19 +114,19 @@ try{
         if($doc.PSObject.Properties.Name -contains 'stateBitsEntry' -and $null -ne $doc.stateBitsEntry){
             $state=@($doc.stateBitsEntry)
         }
-        if($state.Count -ne 59){throw "$name: invalid T4 stateBitsEntry width $($state.Count)"}
+        if($state.Count -ne 59){throw "${name}: invalid T4 stateBitsEntry width $($state.Count)"}
         $textures=@()
         if($doc.PSObject.Properties.Name -contains 'textures' -and $null -ne $doc.textures){
             $textures=@($doc.textures)
         }
         if($textures.Count -ne [int]$row.textures){
-            throw "$name: texture count changed after source extraction."
+            throw "${name}: texture count changed after source extraction."
         }
         $imageRefs=New-Object 'System.Collections.Generic.List[string]'
         foreach($tex in $textures){
             if($null -eq $tex){continue}
             if($tex.PSObject.Properties.Name -contains 'water' -and $null -ne $tex.water){
-                throw "$name: water texture branch is not supported by the simple material canary."
+                throw "${name}: water texture branch is not supported by the simple material canary."
             }
             if($tex.PSObject.Properties.Name -contains 'image' -and
                -not [string]::IsNullOrWhiteSpace([string]$tex.image)){
@@ -142,13 +142,13 @@ try{
         }
         if($technique -ine [string]$row.techniqueSet -or
            (@(SortedRefs $imageRefs.ToArray()) -join '|') -ine (@(SortedRefs @($row.imageReferences)) -join '|')){
-            throw "$name: original PC TechniqueSet or image references changed since material body proof."
+            throw "${name}: original PC TechniqueSet or image references changed since material body proof."
         }
         $target=Join-Path (Join-Path $pcDump 'materials') ((Material-Stem $name).Replace('/','\')+'.json')
         New-Item -Path (Split-Path -Parent $target) -ItemType Directory -Force | Out-Null
         Copy-Item -LiteralPath $src -Destination $target -Force
         if((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ine [string]$row.materialJsonSha256){
-            throw "$name: copied original-PC material JSON does not match SHA."
+            throw "${name}: copied original-PC material JSON does not match SHA."
         }
         $sourceRows.Add([pscustomobject]@{
             name=$name;nameNormalized=$normalized;sourceFastFile=[string]$row.sourceFastFile
