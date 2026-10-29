@@ -56,6 +56,18 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-export-obj" when args.Length == 5:
+            {
+                var result = await T4AztecPcGfxWorldMeshExporter.ExportAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-PC-OBJ] status={result.Status}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] source-PC vertices={result.VertexCount:N0} indexedTriangles={result.TriangleCount:N0} surfaces={result.SurfaceCount:N0}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] unique referenced vertices={result.ReferencedVertexCount:N0} source packed material pointers={result.DistinctPackedMaterialPointers:N0} degenerate triples={result.DegenerateFaceIndexTriples:N0}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] neutral geometry preview={result.ObjPath}; bytes={result.ObjBytes:N0}; sha256={result.ObjSha256}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] validation manifest={args[4]}");
+                Console.WriteLine("[AZTEC-PC-OBJ] NOT a FastFile, Xbox render/world serialization is still pending.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-surfaces" when args.Length == 4:
             {
                 var result = await T4AztecPcGfxWorldSurfaceSourceProbe.ScanAsync(
