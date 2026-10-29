@@ -119,7 +119,7 @@ public static class T4AztecPcFirstImageLoadDefBoundaryProbe
                 "0x" + namePtr.ToString("X8")));
         }
 
-        var lookAhead = b.AsSpan(after, LookAheadBytes);
+        var lookAhead = b.AsSpan(after, LookAheadBytes).ToArray();
         var output = new AztecFirstImageLoadDefBoundaryReport(
             "WaW360.AztecPcFirstImageLoadDefBoundary.v1",
             "AZTEC_PC_FIRST_IMAGE_DXT5_ZERO_PAYLOAD_BOUNDARY_CANDIDATE",
