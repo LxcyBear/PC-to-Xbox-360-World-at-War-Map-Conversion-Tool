@@ -56,6 +56,19 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-material-memory-probe" when args.Length == 5:
+            {
+                var result = await T4AztecPcGfxWorldMaterialMemorySourceProbe.ScanAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-MEM] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] original source materialMemoryCount={result.MaterialMemoryCount}, FOLLOWING=0xFFFFFFFF, arrayBytes={result.MaterialMemoryArrayBytes}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] 3-record signatures={result.ThreeRecordSignatures:N0}, full39={result.Full39RecordSignatures:N0}, directPreVertex={result.ExactArrayImmediatelyBeforeVertexBuffer}");
+                foreach (var c in result.Candidates.Take(12))
+                    Console.WriteLine($"[AZTEC-MAT-MEM] CANDIDATE {c.SourceOffsetHex} distanceToVertex={c.BytesBeforeVertexBuffer} ptrs: following={c.FollowingMaterialFields}, insert={c.InsertMaterialFields}, packed={c.PackedMaterialFields}, distinct={c.DistinctMaterialPointerFields}, positiveMemory={c.PositiveMemoryEntries}/39, sumMemory={c.TotalMemoryBytes:N0}, SHA={c.SourceArraySha256}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] report={args[4]}");
+                Console.WriteLine("[AZTEC-MAT-MEM] Not physical ownership proof, no Material names, no Xbox FF.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-material-alias-trace" when args.Length == 5:
             {
                 var result = await T4AztecPcGfxWorldMaterialAliasTrace.ScanAsync(
