@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$IntegrateWorld)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -18,16 +18,25 @@ $map=Join-Path $base 'pc_mapents_xenon_canary\aztec_pc_mapents_xenon_canary.json
 $com=Join-Path $base 'pc_comworld_burnable_source\aztec_pc_comworld_burnable_source.json'
 $cli=Join-Path $repo 'src\WaW360.Cli\WaW360.Cli.csproj'
 $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
-$work=Join-Path $base 'pc_39_world_material_real_ff_scratch_integration'
+$worldSeed=Join-Path $base 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
+$worldSurface76=Join-Path $base 'pc_xenon_76byte_gfxsurface_canary\aztec_735_gfxsurfaces_76byte_source_canary.json'
+$work=Join-Path $base $(if($IntegrateWorld){'pc_735_39_gfxworld_integrated_ff_oat_run'}else{'pc_39_world_material_real_ff_scratch_integration'})
 $out=Join-Path $work 'scratch_emit'
 $log=Join-Path $work 'integrated_emitter.log'
 $buildLog=Join-Path $work 'build.log'
-$report=Join-Path $work 'aztec_39_source_world_material_scratch_ff_gate.json'
+$report=Join-Path $work $(if($IntegrateWorld){'aztec_pc_world_core_integrated_oat_run.json'}else{'aztec_39_source_world_material_scratch_ff_gate.json'})
 $emitManifest=Join-Path $out 'nuclear_xenon_renderer_emit.json'
 
 foreach($p in @($source,$codec,$proof,$nativeIdentity,$renderBinding,$raw,$modelBinding,$map,$com,$cli,$oat)){
     if(-not(Test-Path -LiteralPath $p -PathType Leaf)){
         throw "39-source Material fullgraph scratch FF prerequisite missing: $p"
+    }
+}
+if($IntegrateWorld){
+    foreach($p in @($worldSeed,$worldSurface76)){
+        if(-not(Test-Path -LiteralPath $p -PathType Leaf)){
+            throw "Integrated GfxWorld requires already-proven original-PC world seed and 735 Xbox GfxSurface source: $p"
+        }
     }
 }
 foreach($p in @($images,$models)){
@@ -119,6 +128,7 @@ try{
         $out,'nazi_zombie_aztec',$oat,'70','436',
         '--aztec-pc-world-39-material-source-scratch-graft',
         $images,'2',$raw,$models,$modelBinding,$matGraph,$binding,$map,$com)
+    if($IntegrateWorld){$argsList+=@($worldSeed,$worldSurface76,$source)}
     & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
         Set-Content -LiteralPath $log -Encoding UTF8
     $code=[int]$LASTEXITCODE
@@ -128,6 +138,46 @@ if(-not(Test-Path -LiteralPath $emitManifest -PathType Leaf)){
     throw "Full OAT scratch FF emitter did not produce its status manifest (exit=$code): $log"
 }
 $e=Get-Content -LiteralPath $emitManifest -Raw | ConvertFrom-Json
+if($IntegrateWorld){
+    $core=([bool]$e.OriginalPcGfxWorldCoreEmitted) -and
+        [int]$e.RealMaterialRoots -eq 39 -and
+        [int]$e.NativeRoots -eq 8509
+    $candidateOatPass=([bool]$e.ValidationPass) -and
+        [bool]$e.OatZeroWarningsZeroErrors -and
+        [bool]$e.ExactIdentitySequence -and
+        [bool]$e.LayoutReplayExact
+    $result=[ordered]@{
+        schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
+        status=if($core -and $candidateOatPass){'AZTEC_ORIGINAL_PC_GFXWORLD_CORE_IN_REAL_FF_OAT_LOAD_PASS_REMAINING_CHILDREN'}else{'AZTEC_ORIGINAL_PC_GFXWORLD_INTEGRATION_OAT_BLOCKED'}
+        realOriginalPcGfxWorldCoreEmitted=$core
+        allOriginalPcGfxWorldDpvsChildrenComplete=[bool]$e.OriginalPcGfxWorldFullDpvsGraphComplete
+        realPcGfxSurfaceCount=735
+        realPcGfxWorldMaterialRoots=39
+        finalMaterialReferencesRebasedDuringCurrentFfEmit=$core
+        OatPass=$candidateOatPass
+        OatError=[string]$e.OatGateError
+        onlyRealGameDataUsed=$true
+        fullNativeWorldSourceClosurePass=$false
+        bothMainAndLoadFfsCompleted=$false
+        hardwareReady=$false
+        outputFastFile=[string]$e.OutputFastFile
+        emitterReport=$emitManifest
+        emitterLog=$log
+        note='Actual original-PC GfxWorld root, all 735 real Xbox GfxSurface material refs, 39 material owners, 32713 vertices, 58653 indices emitted by Stage4E after final Stage4D allocation. Other PC-derived DPVS/cell/scene/lightmap children are still incomplete in the initial integrated core path. Do not package for native hardware until loader, full required world and both FFs pass.'
+    }
+    $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $report -Encoding UTF8
+    Write-Host "[AZTEC-WORLD-INTEGRATED] coreWorld=$core realMaterials=$($e.RealMaterialRoots)/39"
+    Write-Host "[AZTEC-WORLD-INTEGRATED] OAT PASS=$candidateOatPass originalPcWorldFF=$($e.OutputFastFile)"
+    Write-Host "[AZTEC-WORLD-INTEGRATED] status=$($result.status)"
+    Write-Host "[AZTEC-WORLD-INTEGRATED] report=$report"
+    if(-not $core -or -not $candidateOatPass){
+        Get-Content -LiteralPath $log -Tail 45 | ForEach-Object {Write-Host "[AZTEC-WORLD-INTEGRATED] TRACE $_"}
+        throw "Direct integrated world OAT failure; fix this real FF loader evidence next: $log"
+    }
+    Write-Host '[AZTEC-WORLD-INTEGRATED] Actual FF core world loaded; complete required original PC DPVS children next, then main/_load paired FF and native test.'
+    & (Join-Path $PSScriptRoot 'Show-AztecFirstXboxFFProgress.ps1')
+    return
+}
 $pass=$code -eq 0 -and
     [bool]$e.ValidationPass -and [bool]$e.LayoutReplayExact -and
     [bool]$e.ExactIdentitySequence -and [bool]$e.OatZeroWarningsZeroErrors -and
