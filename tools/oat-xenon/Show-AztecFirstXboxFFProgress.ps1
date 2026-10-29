@@ -35,6 +35,7 @@ $pcGfxWorldRootAbi=Read-Report 'xenon_native_gfxworld_root_dpvs_abi\native_xenon
 $pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
 $pcIntegratedWorldCore=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run\aztec_pc_world_core_integrated_oat_run.json'
 $pcStaticDpvsProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static\aztec_pc_world_core_integrated_oat_run.json'
+$pcGate8ChildProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_planes_nodes_layer\aztec_pc_world_core_integrated_oat_run.json'
 $nativeTestReleaseReport=Join-Path $repo 'output\native_smoke_test_release\nazi_zombie_aztec\native_smoke_test_package_release.json'
 $nativeTestRelease=$null
 if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
@@ -285,6 +286,18 @@ $staticDpvsOatPass=$null -ne $pcStaticDpvsProbe -and
     (Test-Path -LiteralPath ([string]$pcStaticDpvsProbe.outputFastFile) -PathType Leaf)
 if($staticDpvsOatPass){
     Write-Host '[AZTEC-FF-PROGRESS] GATE 8 INCREMENTAL OAT PASS: 613 original-PC sorted static surfaces + source-derived static-model instances integrated ahead of 735 GfxSurfaces. Full DPVS/cells/lightmaps still PENDING.'
+}
+$gate8ChildOatPass=$null -ne $pcGate8ChildProbe -and
+    [string]$pcGate8ChildProbe.status -eq 'AZTEC_GFXWORLD_PC_GATE8_PLANES_NODES_LAYER_OAT_PASS' -and
+    [bool]$pcGate8ChildProbe.sourceBackedGate8PlaneNodeLayerProbe -and
+    [bool]$pcGate8ChildProbe.OatPass -and
+    [int]$pcGate8ChildProbe.realPcGfxSurfaceCount -eq 735 -and
+    [int]$pcGate8ChildProbe.realPcGfxWorldMaterialRoots -eq 39 -and
+    -not [bool]$pcGate8ChildProbe.allOriginalPcGfxWorldDpvsChildrenComplete -and
+    -not [bool]$pcGate8ChildProbe.hardwareReady -and
+    (Test-Path -LiteralPath ([string]$pcGate8ChildProbe.outputFastFile) -PathType Leaf)
+if($gate8ChildOatPass){
+    Write-Host '[AZTEC-FF-PROGRESS] GATE8 NEXT PARTIAL OAT PASS: ORIGINAL-PC 3447 planes + 24511 nodes + vertex-layer source bytes, layered on previous static DPVS+735 surfaces. Full child closure/hardware STILL PENDING.'
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
