@@ -75,6 +75,8 @@ internal sealed class T4XenonMaterialCorpus
         {
             var expectedNames = new[] { "mc/lambert1", "mc/mtl_x2icon_gold" };
             var seenRoots = new HashSet<int>();
+            var approvedNames = binding.GetProperty("NativeMaterialNames").EnumerateArray()
+                .Select(x => x.GetString() ?? "").ToArray();
             for (var i = 0; i < expectedNames.Length; i++)
             {
                 var row = bindingRows[i];
@@ -84,7 +86,7 @@ internal sealed class T4XenonMaterialCorpus
                     !T4XenonXModelCorpus.NormalizeReferenceName(nativeName)
                         .Equals(expectedNames[i], StringComparison.OrdinalIgnoreCase) ||
                     !seenRoots.Add(row.GetProperty("NativeRootIndex").GetInt32()) ||
-                    !(binding.GetProperty("NativeMaterialNames")[i].GetString() ?? "")
+                    !approvedNames[i]
                         .Equals(expectedNames[i], StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException(
                         $"Aztec two-Material binding #{i} must be the unique PC-owned {expectedNames[i]}.");
