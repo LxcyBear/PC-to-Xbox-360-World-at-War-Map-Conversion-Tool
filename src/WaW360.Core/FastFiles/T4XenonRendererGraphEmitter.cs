@@ -15,6 +15,7 @@ public sealed class T4XenonRendererEmitResult
     public required int RealImageRoots { get; init; }
     public required int RealRawFileRoots { get; init; }
     public required int RealMapEntsRoots { get; init; }
+    public required int RealComWorldRoots { get; init; }
     public required int RealMaterialRoots { get; init; }
     public required int MaterialReferenceRoots { get; init; }
     public required int RealXModelRoots { get; init; }
@@ -71,7 +72,8 @@ public static class T4XenonRendererGraphEmitter
         string? materialGraphRoot = null,
         string? materialBindingManifest = null,
         string? rawFileGraftManifest = null,
-        string? mapEntsCanaryManifest = null)
+        string? mapEntsCanaryManifest = null,
+        string? comWorldProofManifest = null)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -131,7 +133,8 @@ public static class T4XenonRendererGraphEmitter
             materialGraphRoot,
             materialBindingManifest,
             rawFileGraftManifest,
-            mapEntsCanaryManifest);
+            mapEntsCanaryManifest,
+            comWorldProofManifest);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -140,6 +143,7 @@ public static class T4XenonRendererGraphEmitter
         var roots = LoadNativeIdentity(nativeIdentityManifest);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
         var pcMapEnts = T4XenonAztecMapEntsGraft.Load(mapEntsCanaryManifest, roots);
+        var pcComWorld = await T4XenonAztecComWorldGraft.LoadAsync(comWorldProofManifest, roots, cancellationToken);
         var bindings = LoadBindings(bindingManifest);
 
         T4XenonMaterialCorpus? materialCorpus = null;
@@ -234,6 +238,7 @@ public static class T4XenonRendererGraphEmitter
         var realXModels = 0;
         var realRawFiles = 0;
         var realMapEnts = 0;
+        var realComWorlds = 0;
         var targetImageRoots = imageGraph is null
             ? 0
             : imageGraftLimit > 0
@@ -365,6 +370,31 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            if (pcComWorld is not null && root.Index == pcComWorld.NativeRootIndex)
+            {
+                // Source-owned original PC ComWorld, endian-transformed to
+                // 32-bit T4 Xenon. The streamed children are: inline name,
+                // two fixed ComPrimaryLight records (no defName children),
+                // 88 ComBurnableCell headers, then 88 * 32 source sample bytes.
+                state.TempRoot(pcComWorld.ParentXenon.Length);
+                zone.Write(pcComWorld.ParentXenon);
+                EmitString(zone, state, pcComWorld.Name);
+
+                state.VirtualAlloc(pcComWorld.LightsXenon.Length, 4, serialized: true);
+                zone.Write(pcComWorld.LightsXenon);
+
+                state.VirtualAlloc(pcComWorld.BurnableCellsXenon.Length, 4, serialized: true);
+                zone.Write(pcComWorld.BurnableCellsXenon);
+
+                for (var i = 0; i < 88; i++)
+                {
+                    state.VirtualAlloc(32, 1, serialized: true);
+                    zone.Write(pcComWorld.BurnableSamples, i * 32, 32);
+                }
+                realComWorlds++;
+                continue;
+            }
+
             // Production RawFiles use exact PC-derived bodies, never oracle payloads.
             // T4 RawFile = name* / logical length / buffer*; buffer has an extra NUL.
             if (pcMapEnts is not null && root.Index == pcMapEnts.NativeRootIndex)
@@ -428,6 +458,8 @@ public static class T4XenonRendererGraphEmitter
             throw new InvalidDataException(
                 $"XModel root upgrade mismatch: upgraded={realXModels:N0}, expected={xmodelCorpus.OwnedByRoot.Count:N0}.");
 
+        if (realComWorlds != (pcComWorld is null ? 0 : 1))
+            throw new InvalidDataException("Aztec PC ComWorld source-graft root count drift.");
         if (realMapEnts != (pcMapEnts is null ? 0 : 1))
             throw new InvalidDataException("Aztec original-PC MapEnts root emission count drift.");
         if (realRawFiles != rawFileGraft.Count)
@@ -563,6 +595,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Real Material roots:        {realMaterials:N0}");
         report.AppendLine($"PC-backed RawFile roots:    {realRawFiles:N0}");
         report.AppendLine($"Original-PC MapEnts roots:   {realMapEnts:N0} (scratch-only)");
+        report.AppendLine($"Original-PC ComWorld roots:  {realComWorlds:N0} (source-derived; scratch-only)");
         report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
@@ -598,6 +631,7 @@ public static class T4XenonRendererGraphEmitter
             RealImageRoots = realImages,
             RealRawFileRoots = realRawFiles,
             RealMapEntsRoots = realMapEnts,
+            RealComWorldRoots = realComWorlds,
             RealMaterialRoots = realMaterials,
             MaterialReferenceRoots = materialCorpus?.ReferenceRoots ?? 0,
             RealXModelRoots = realXModels,
