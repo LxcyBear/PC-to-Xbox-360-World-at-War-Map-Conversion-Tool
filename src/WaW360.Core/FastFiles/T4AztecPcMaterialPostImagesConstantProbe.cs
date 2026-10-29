@@ -78,12 +78,12 @@ public static class T4AztecPcMaterialPostImagesConstantProbe
             {
                 var off = start + i * ConstantStride;
                 var hash = U32(b, off);
-                var nameSpan = b.AsSpan(off + 4, 12);
+                var nameBytes = b.AsSpan(off + 4, 12).ToArray();
                 var isAscii = true;
                 var printable = false;
-                for (var j = 0; j < nameSpan.Length; j++)
+                for (var j = 0; j < nameBytes.Length; j++)
                 {
-                    var c = nameSpan[j];
+                    var c = nameBytes[j];
                     if (c != 0 && (c < 32 || c > 126)) isAscii = false;
                     if (c >= 33 && c <= 126) printable = true;
                 }
@@ -101,7 +101,7 @@ public static class T4AztecPcMaterialPostImagesConstantProbe
                 if (hash != 0 && isAscii && printable && floatsOk) good++;
                 // Only diagnostic raw ASCII; do not promote to a Material name.
                 names[i] = isAscii && printable
-                    ? Encoding.ASCII.GetString(nameSpan).TrimEnd('\0')
+                    ? Encoding.ASCII.GetString(nameBytes).TrimEnd('\0')
                     : "";
             }
             var stateAt = start + ConstantCount * ConstantStride;
