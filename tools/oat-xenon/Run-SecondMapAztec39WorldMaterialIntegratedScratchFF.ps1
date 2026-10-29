@@ -204,7 +204,7 @@ if($IntegrateWorld){
         throw "Direct integrated world OAT failure; fix this real FF loader evidence next: $log"
     }
     if($diagnosticProbe){
-        Write-Host "[AZTEC-WORLD-INTEGRATED] PROBE PASS $ProbeLevel: OAT accepted this partial world graph. Continue to the next child level. NO XBOX."
+        Write-Host "[AZTEC-WORLD-INTEGRATED] PROBE PASS ${ProbeLevel}: OAT accepted this partial world graph. Continue to the next child level. NO XBOX."
         return
     }
     Write-Host '[AZTEC-WORLD-INTEGRATED] Actual FF core world loaded; complete required original PC DPVS children next, then main/_load paired FF and native test.'
