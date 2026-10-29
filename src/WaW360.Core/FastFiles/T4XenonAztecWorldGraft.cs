@@ -45,6 +45,20 @@ public sealed class T4XenonAztecWorldGraft
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
+    // Scratch-only child bisection: default is the unchanged complete emitter.
+    // The integrated diagnostic script sets this environment variable for probes.
+    private static int ProbeStage => (Environment.GetEnvironmentVariable(
+        "WAW360_AZTEC_WORLD_CHILD_PROBE")?.Trim().ToLowerInvariant()) switch
+    {
+        null or "" or "full" => 4,
+        "root" => 0,
+        "indices" => 1,
+        "surfaces" => 2,
+        "materialmemory" => 3,
+        var value => throw new InvalidDataException(
+            $"Unknown GfxWorld child probe '{value}'.")
+    };
+
     public bool FullDpvsChildGraphComplete => false;
     public int SourceSurfaces => _surfaceOwners.Count;
     public int RealMaterialOwners => _materialOwners.Count;
@@ -196,53 +210,67 @@ public sealed class T4XenonAztecWorldGraft
     // absolute FF pointers from a previous scratch build survive rebasing.
     public void Plan(Action<long,int,bool> virtualAlloc,Action<int> tempRoot)
     {
+        int stage=ProbeStage;
         tempRoot(XboxRootSize);
         virtualAlloc(Encoding.UTF8.GetByteCount(NativeRootName)+1L,1,true);
         virtualAlloc(Encoding.UTF8.GetByteCount("nazi_zombie_aztec")+1L,1,true);
-        virtualAlloc(_indices.Length,2,true);
-        virtualAlloc(_surfaces.Length,4,true);
-        virtualAlloc(MaterialCount*8L,4,true);
-        virtualAlloc(_vertices.Length,4,true);
+        if(stage>=1)virtualAlloc(_indices.Length,2,true);
+        if(stage>=2)virtualAlloc(_surfaces.Length,4,true);
+        if(stage>=3)virtualAlloc(MaterialCount*8L,4,true);
+        if(stage>=4)virtualAlloc(_vertices.Length,4,true);
     }
 
     public void Emit(Stream zone,Action<long,int,bool> virtualAlloc,
         Action<int> tempRoot,
         IReadOnlyDictionary<int,uint> finalRootPointers)
     {
-        if(_surfaceOwners.Any(x=>!finalRootPointers.ContainsKey(x)) ||
-           _materialOwners.Any(x=>!finalRootPointers.ContainsKey(x)))
+        int stage=ProbeStage;
+        if(stage>=2 && (_surfaceOwners.Any(x=>!finalRootPointers.ContainsKey(x)) ||
+           _materialOwners.Any(x=>!finalRootPointers.ContainsKey(x))))
             throw new InvalidDataException("World FF layout has missing final stable real Material insert slots.");
         var body=(byte[])_root.Clone();
         Put(body,0,T4ZonePointer.Following);
         Put(body,4,T4ZonePointer.Following);
-        Put(body,_indicesAt,T4ZonePointer.Following);
-        Put(body,_verticesAt,T4ZonePointer.Following);
-        Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
-        Put(body,_materialMemoryAt,T4ZonePointer.Following);
+        if(stage>=1)Put(body,_indicesAt,T4ZonePointer.Following);
+        if(stage>=4)Put(body,_verticesAt,T4ZonePointer.Following);
+        if(stage>=2)Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
+        if(stage>=3)Put(body,_materialMemoryAt,T4ZonePointer.Following);
         Put(body,_materialMemoryCountAt,MaterialCount);
         tempRoot(XboxRootSize);
         zone.Write(body);
         EmitString(zone,virtualAlloc,NativeRootName);
         EmitString(zone,virtualAlloc,"nazi_zombie_aztec");
-        virtualAlloc(_indices.Length,2,true);
-        zone.Write(_indices);
-        var linkedSurfaces=(byte[])_surfaces.Clone();
-        for(int i=0;i<SurfaceCount;i++)
-            Put(linkedSurfaces,i*XboxSurfaceSize+44,
-                finalRootPointers[_surfaceOwners[i]]);
-        virtualAlloc(linkedSurfaces.Length,4,true);
-        zone.Write(linkedSurfaces);
-        var materialMemory=new byte[MaterialCount*8];
-        for(int i=0;i<MaterialCount;i++)
+        if(stage>=1)
         {
-            Put(materialMemory,i*8,finalRootPointers[_materialOwners[i]]);
-            // MaterialMemory.memory requires a real source-owned conversion;
-            // 0 is an explicit placeholder, not fabricated donor data.
+            virtualAlloc(_indices.Length,2,true);
+            zone.Write(_indices);
         }
-        virtualAlloc(materialMemory.Length,4,true);
-        zone.Write(materialMemory);
-        virtualAlloc(_vertices.Length,4,true);
-        zone.Write(_vertices);
+        if(stage>=2)
+        {
+            var linkedSurfaces=(byte[])_surfaces.Clone();
+            for(int i=0;i<SurfaceCount;i++)
+                Put(linkedSurfaces,i*XboxSurfaceSize+44,
+                    finalRootPointers[_surfaceOwners[i]]);
+            virtualAlloc(linkedSurfaces.Length,4,true);
+            zone.Write(linkedSurfaces);
+        }
+        if(stage>=3)
+        {
+            var materialMemory=new byte[MaterialCount*8];
+            for(int i=0;i<MaterialCount;i++)
+            {
+                Put(materialMemory,i*8,finalRootPointers[_materialOwners[i]]);
+                // MaterialMemory.memory requires source-owned conversion;
+                // 0 is an explicit diagnostic placeholder, not donor data.
+            }
+            virtualAlloc(materialMemory.Length,4,true);
+            zone.Write(materialMemory);
+        }
+        if(stage>=4)
+        {
+            virtualAlloc(_vertices.Length,4,true);
+            zone.Write(_vertices);
+        }
     }
 
     private static void EmitString(Stream zone,Action<long,int,bool> alloc,string s)
