@@ -90,7 +90,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         string? materialBindingManifest = null,
         string? rawFileGraftManifest = null,
         string? mapEntsCanaryManifest = null,
-        string? comWorldProofManifest = null)
+        string? comWorldProofManifest = null,
+        bool aztecSourceOnly39MaterialFfScratch = false)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -147,7 +148,9 @@ public static class T4XenonGraphBlockLayoutPlanner
             materialCorpus = T4XenonMaterialCorpus.Load(
                 materialGraphRoot!,
                 materialBindingManifest!,
-                roots);
+                roots,
+                expectedOwned: aztecSourceOnly39MaterialFfScratch ? 39 : 502,
+                allowSourceOnlyDiagnostic: aztecSourceOnly39MaterialFfScratch);
             blockers.AddRange(materialCorpus.ValidateDependencies(roots));
         }
 
