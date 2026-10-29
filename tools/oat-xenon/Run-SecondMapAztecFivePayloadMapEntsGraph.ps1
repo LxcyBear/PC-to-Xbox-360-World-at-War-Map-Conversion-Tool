@@ -104,7 +104,7 @@ $reportText=Join-Path $work 'aztec_pc_five_payload_mapents_graph.txt'
 $status='AZTEC_PC_FIVE_PAYLOAD_MAPENTS_GRAPH_BLOCKED'
 $blocker=''
 $mapExact=0;$modelListed=0;$materialListed=0;$rawExact=0;$imgExact=0
-$emit=$null;$outputFF=''
+$emit=$null;$outputFF='';$emitFile=''
 Write-Host '[AZTEC-PC-5PAYLOAD] ==================================================='
 Write-Host '[AZTEC-PC-5PAYLOAD] MAPENTS + 2 XMODELS + 2 MATERIALS + 2 IMAGES + 114 RAWFILES'
 Write-Host '[AZTEC-PC-5PAYLOAD] ALL ORIGINAL-PC BODIES (ORIGINAL RENDERER ORACLE STRUCTURE)'
