@@ -151,7 +151,9 @@ try{
             $type=[int]$bytes[$p]
             $shadow=[int]$bytes[$p+1]
             $exponent=[int]$bytes[$p+2]
-            $priority=[int][sbyte]$bytes[$p+3]
+            # Avoid Windows PowerShell 5.1 checked Byte -> SByte cast overflow.
+            $priorityRaw=[int]$bytes[$p+3]
+            $priority=if($priorityRaw -ge 128){$priorityRaw-256}else{$priorityRaw}
             $cullDist=[BitConverter]::ToInt16($bytes,$p+4)
             $floatValues=New-Object 'System.Collections.Generic.List[single]'
             $finite=$true
