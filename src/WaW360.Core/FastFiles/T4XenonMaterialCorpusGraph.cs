@@ -33,6 +33,21 @@ internal sealed class T4XenonMaterialCorpus
             throw new InvalidDataException(
                 "Material root-binding manifest is not passing.");
 
+        // Production FRUmansion remains strictly 502 owned materials.
+        // This single narrow Aztec diagnostic exception only accepts the
+        // proven two-material canary pair and zero other partial corpora.
+        var aztecTwoMaterial = binding.TryGetProperty("Format", out var bindingFormat) &&
+            bindingFormat.GetString() == "WaW360.AztecPcTwoMaterialBinding.v1";
+        if (aztecTwoMaterial)
+        {
+            if (binding.GetProperty("NativeRoots").GetInt32() != 8509 ||
+                binding.GetProperty("NativeMaterialNames").GetArrayLength() != 2 ||
+                !binding.GetProperty("ValidationOnly").GetBoolean() ||
+                binding.GetProperty("SourceMaterialGraphSha256").GetArrayLength() != 2)
+                throw new InvalidDataException("Aztec two-Material source/identity/validation gate failed.");
+            expectedOwned = 2;
+        }
+
         var bindingRows = binding.GetProperty("OwnedBindings")
             .EnumerateArray()
             .ToArray();
@@ -56,6 +71,25 @@ internal sealed class T4XenonMaterialCorpus
         if (bindingRows.Length != expectedOwned)
             throw new InvalidDataException(
                 $"Material binding count {bindingRows.Length:N0} != expected {expectedOwned:N0}.");
+        if (aztecTwoMaterial)
+        {
+            var expectedNames = new[] { "mc/lambert1", "mc/mtl_x2icon_gold" };
+            var seenRoots = new HashSet<int>();
+            for (var i = 0; i < expectedNames.Length; i++)
+            {
+                var row = bindingRows[i];
+                var nativeName = row.GetProperty("NativeName").GetString() ?? "";
+                var corpusName = row.GetProperty("CorpusName").GetString() ?? "";
+                if (!corpusName.Equals(expectedNames[i], StringComparison.OrdinalIgnoreCase) ||
+                    !T4XenonXModelCorpus.NormalizeReferenceName(nativeName)
+                        .Equals(expectedNames[i], StringComparison.OrdinalIgnoreCase) ||
+                    !seenRoots.Add(row.GetProperty("NativeRootIndex").GetInt32()) ||
+                    !(binding.GetProperty("NativeMaterialNames")[i].GetString() ?? "")
+                        .Equals(expectedNames[i], StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"Aztec two-Material binding #{i} must be the unique PC-owned {expectedNames[i]}.");
+            }
+        }
 
         var graphDirectory = Path.Combine(graphRoot, "xenon_material_graphs");
         if (!Directory.Exists(graphDirectory))
