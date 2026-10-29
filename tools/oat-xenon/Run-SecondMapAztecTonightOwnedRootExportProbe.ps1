@@ -131,6 +131,12 @@ foreach($family in $selected){
                 log=$log
             })
             Write-Host "[AZTEC-PC-CRITICAL] $family from $($role): $outcome, files=$($fileRows.Count), exit=$exit, OAT 0/0=$zero"
+            foreach($sample in @($fileRows.ToArray() | Select-Object -First 4)){
+                Write-Host "[AZTEC-PC-CRITICAL]   EXPORTED: $($sample.relativePath) ($($sample.bytes) bytes)"
+            }
+            foreach($err in $errorLines){
+                Write-Host "[AZTEC-PC-CRITICAL]   OAT: $err"
+            }
         }catch{
             $problem=$_.Exception.Message
             $failed.Add("$family/$($role) $problem")
