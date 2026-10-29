@@ -88,7 +88,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         string? xmodelBindingManifest = null,
         string? materialGraphRoot = null,
         string? materialBindingManifest = null,
-        string? rawFileGraftManifest = null)
+        string? rawFileGraftManifest = null,
+        string? mapEntsCanaryManifest = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -127,6 +128,7 @@ public static class T4XenonGraphBlockLayoutPlanner
 
         var roots = LoadNativeIdentity(nativeIdentityManifest);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
+        var pcMapEnts = T4XenonAztecMapEntsGraft.Load(mapEntsCanaryManifest, roots);
         var bindings = LoadBindings(bindingManifest);
         var blockers = new List<string>();
         var notes = new List<string>();
@@ -393,6 +395,16 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if (pcMapEnts is not null && root.Index == pcMapEnts.NativeRootIndex)
+            {
+                // T4 MapEnts = name*, entityString*, numEntityChars (12 bytes).
+                // ZoneCode processes both pointed child strings in order.
+                state.TempRoot(12);
+                state.VirtualAlloc(Utf8Z(pcMapEnts.AssetName), 1, true);
+                state.VirtualAlloc(checked(pcMapEnts.SourceBytes.Length + 1L), 1, true);
+                continue;
+            }
+
             if (rawFileGraft.TryGetValue(root.Index, out var graftedRaw))
             {
                 state.TempRoot(12);
@@ -435,6 +447,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
+        if (pcMapEnts is not null)
+            notes.Add("One genuine original-PC 571011-byte MapEnts source with pinned Xenon readback, diagnostics only.");
         if (rawFileGraft.Count != 0)
             notes.Add($"PC-backed RawFile graft: {rawFileGraft.Count:N0} native roots with verified source SHA-256 and explicit logical buffer lengths.");
         notes.Add("TEMP is modeled as scratch: every top-level asset starts at TEMP+0; header TEMP size is the maximum root scope.");
