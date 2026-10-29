@@ -151,7 +151,7 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
                 var inlineMarkers = 0;
                 var virtualRefs = 0;
                 var distinct = new HashSet<uint>();
-                var totalMemory = 0L;
+                var windowMemoryTotal = 0L;
                 for (var j = 0; j < ArrayCount; j++)
                 {
                     var at = start + j * EntrySize;
@@ -164,13 +164,13 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
                     if (worldSurfaceMaterialPointers.Contains(raw))
                         overlapPtrs++;
                     distinct.Add(raw);
-                    totalMemory += I32(b, at + 4);
+                    windowMemoryTotal += I32(b, at + 4);
                 }
                 fullWindowEvidence.Add(new AztecMaterialMemoryWindowBoundaryEvidence(
                     start, $"0x{start:X8}", start - startMin,
                     start >= startMin + EntrySize && StrongEntry(start - EntrySize),
                     start + ArrayBytes <= VertexOffset - EntrySize && StrongEntry(start + ArrayBytes),
-                    overlapPtrs, inlineMarkers, virtualRefs, distinct.Count, totalMemory,
+                    overlapPtrs, inlineMarkers, virtualRefs, distinct.Count, windowMemoryTotal,
                     $"0x{U32(b, start):X8}", $"0x{U32(b, start + 38 * EntrySize):X8}",
                     Sha(b.AsSpan(start, ArrayBytes))));
             }
