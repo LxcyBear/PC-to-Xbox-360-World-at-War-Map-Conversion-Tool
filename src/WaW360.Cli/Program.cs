@@ -56,6 +56,19 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-xenon-components" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldXenonGeometryCodec.ConvertAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-GFX-XENON] status={result.Status}; 58,653 indices + 32,713 vertices + 735 surfaces");
+                Console.WriteLine($"[AZTEC-GFX-XENON] BE indices SHA={result.XenonIndicesSha256}");
+                Console.WriteLine($"[AZTEC-GFX-XENON] BE vertices SHA={result.XenonVerticesSha256}");
+                Console.WriteLine($"[AZTEC-GFX-XENON] BE surfaces SHA={result.XenonSurfacesSha256}");
+                Console.WriteLine($"[AZTEC-GFX-XENON] Source-PC material slots={result.SurfacesRequiringMaterialBinding}, distinct={result.DistinctPcMaterialPointers}; not bound for Xbox");
+                Console.WriteLine($"[AZTEC-GFX-XENON] output={args[3]}");
+                Console.WriteLine("[AZTEC-GFX-XENON] Verified endian components, NOT a Xenon GfxWorld root or a hardware FF.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-export-obj" when args.Length == 5:
             {
                 var result = await T4AztecPcGfxWorldMeshExporter.ExportAsync(
