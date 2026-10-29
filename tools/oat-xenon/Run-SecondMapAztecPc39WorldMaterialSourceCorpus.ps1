@@ -109,6 +109,9 @@ if([string]$c.format -ne 'WaW360.T4PcGfxWorld39MaterialSourceCorpus.v1' -or
    [int]$c.surfaceCount -ne 735 -or
    @($c.materials).Count -ne 39 -or
    [int]$c.exportedMaterialHeaders -ne 39 -or
+   [int]$c.totalTextureDescriptors -ne 87 -or
+   [int]$c.totalConstantRecords -ne 93 -or
+   [int]$c.totalStateBitsRecords -ne 192 -or
    [int]$c.missingMaterials -ne 0 -or
    [int]$c.failedMaterialTables -ne 0 -or
    [int]$c.xenonMaterialGraphBodiesEmitted -ne 0 -or
@@ -128,7 +131,7 @@ for($i=0;$i -lt 39;$i++){
         @{name='textureTableFile';bytes=([int]$row.counts.textures*16)},
         @{name='constantTableFile';bytes=([int]$row.counts.constants*32)},
         @{name='stateBitsTableFile';bytes=([int]$row.counts.stateBits*8)})){
-        $rel=[string]$row.($spec.name)
+        $rel=[string]$row.PSObject.Properties[[string]$spec.name].Value
         if(-not $rel.StartsWith('pc_gfxworld_39_material_source_corpus/',[StringComparison]::Ordinal)){
             throw "Untrusted source corpus blob path: $rel"
         }
