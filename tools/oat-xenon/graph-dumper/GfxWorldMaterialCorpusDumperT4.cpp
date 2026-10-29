@@ -110,6 +110,55 @@ namespace gfxworld
             << ",\"constantDef\":" << sizeof(MaterialConstantDef)
             << ",\"stateBits\":" << sizeof(GfxStateBits) << '}';
         out << ",\"abiVerified\":" << (abiPass?"true":"false");
+        // Proven original PC source world/root counts and internal DPVS
+        // positions. This complements the independently measured Xenon ABI.
+        // No original Xbox world child payloads are copied or inferred.
+        out << ",\"pcWorldRootAbi\":{";
+        out << "\"gfxWorldSize\":" << sizeof(GfxWorld);
+        out << ",\"dpvsStaticSize\":" << sizeof(GfxWorldDpvsStatic);
+        out << ",\"dpvsPlanesSize\":" << sizeof(GfxWorldDpvsPlanes);
+        out << ",\"materialMemorySize\":" << sizeof(MaterialMemory);
+        out << ",\"nameAt\":" << offsetof(GfxWorld, name);
+        out << ",\"baseNameAt\":" << offsetof(GfxWorld, baseName);
+        out << ",\"indexCountAt\":" << offsetof(GfxWorld, indexCount);
+        out << ",\"indicesAt\":" << offsetof(GfxWorld, indices);
+        out << ",\"surfaceCountAt\":" << offsetof(GfxWorld, surfaceCount);
+        out << ",\"vertexCountAt\":" << offsetof(GfxWorld, vertexCount);
+        out << ",\"vertexDataAt\":" << offsetof(GfxWorld, vd);
+        out << ",\"vertexLayerDataAt\":" << offsetof(GfxWorld, vld);
+        out << ",\"dpvsPlanesAt\":" << offsetof(GfxWorld, dpvsPlanes);
+        out << ",\"materialMemoryAt\":" << offsetof(GfxWorld, materialMemory);
+        out << ",\"dpvsStaticAt\":" << offsetof(GfxWorld, dpvs);
+        out << ",\"dpvsStaticSurfaceCountAt\":"
+            << offsetof(GfxWorldDpvsStatic, staticSurfaceCount);
+        out << ",\"dpvsStaticSurfacesAt\":"
+            << offsetof(GfxWorldDpvsStatic, surfaces);
+        out << "}";
+        out << ",\"pcLoadedWorldRootShape\":{";
+        out << "\"planeCount\":" << world.planeCount;
+        out << ",\"nodeCount\":" << world.nodeCount;
+        out << ",\"cellCount\":" << world.dpvsPlanes.cellCount;
+        out << ",\"indexCount\":" << world.indexCount;
+        out << ",\"surfaceCount\":" << world.surfaceCount;
+        out << ",\"vertexCount\":" << world.vertexCount;
+        out << ",\"vertexLayerDataSize\":" << world.vertexLayerDataSize;
+        out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
+        out << ",\"smodelCount\":" << world.dpvs.smodelCount;
+        out << ",\"staticSurfaceCount\":" << world.dpvs.staticSurfaceCount;
+        out << ",\"smodelVisDataCount\":" << world.dpvs.smodelVisDataCount;
+        out << ",\"surfaceVisDataCount\":" << world.dpvs.surfaceVisDataCount;
+        out << ",\"sortedSurfIndexPresent\":"
+            << (world.dpvs.sortedSurfIndex ? "true":"false");
+        out << ",\"surfacesPresent\":"
+            << (world.dpvs.surfaces ? "true":"false");
+        out << ",\"materialMemoryPresent\":"
+            << (world.materialMemory ? "true":"false");
+        out << ",\"indicesPresent\":"
+            << (world.indices ? "true":"false");
+        out << ",\"verticesPresent\":"
+            << (world.vd.vertices ? "true":"false");
+        out << "}";
+
         int exported=0,missing=0,totalTextures=0,totalConstants=0,
             totalState=0,unresolvedWater=0,errors=0;
         out << ",\"materials\":[";
