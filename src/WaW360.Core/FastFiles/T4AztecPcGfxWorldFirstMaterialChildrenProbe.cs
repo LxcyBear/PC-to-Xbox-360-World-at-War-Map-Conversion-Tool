@@ -16,7 +16,11 @@ public static class T4AztecPcGfxWorldFirstMaterialChildrenProbe
     private const int World = 0x049122C0;
     private const int MaterialAt = 0x05731803;
     private const int MaterialBytes = 112;
-    private const int TextureStride = 12;
+    // T4_Assets.h: uint32 nameHash, nameStart/end/sampler/semantic/mature
+    // at +4..+8, 3 bytes padding, MaterialTextureDefInfo u at +12.
+    // On 32-bit T4 this is 16 bytes, NOT the previously assumed 12.
+    private const int TextureStride = 16;
+    private const int TextureImagePointerOffset = 12;
     private const int ConstantStride = 32;
     private const int StateBitsStride = 8;
     private const string ZoneHash =
@@ -105,15 +109,18 @@ public static class T4AztecPcGfxWorldFirstMaterialChildrenProbe
                 var off = texAt + i * TextureStride;
                 var hash = U32(b, off);
                 var semantic = b[off + 7];
-                var rawImage = U32(b, off + 8);
-                var valid = hash != 0 && semantic <= 11 &&
+                var mature = b[off + 8];
+                var rawImage = U32(b, off + TextureImagePointerOffset);
+                var valid = hash != 0 && semantic <= 11 && mature <= 1 &&
                     (rawImage == 0 || ValidPointer(rawImage, z.ZoneHeader));
                 if (valid) validTextures++;
                 tex.Add(new AztecFirstMaterialTextureSample(
                     i, $"0x{off:X8}", $"0x{hash:X8}", semantic,
-                    $"0x{rawImage:X8}", valid));
+                    $"0x{rawImage:X8}", valid, mature));
             }
-            foreach (var conAt in AlignOptions(texAt + textureCount * TextureStride))
+            // MaterialConstantDef is explicitly 16-byte-aligned in T4.
+            foreach (var conAt in AlignOptions(texAt + textureCount * TextureStride)
+                         .Where(x => (x & 15) == 0))
             {
                 var validConstants = 0;
                 for (var i = 0; i < constantCount; i++)
@@ -135,7 +142,8 @@ public static class T4AztecPcGfxWorldFirstMaterialChildrenProbe
                     }
                     if (hash != 0 && ascii && floats) validConstants++;
                 }
-                foreach (var bitsAt in AlignOptions(conAt + constantCount * ConstantStride))
+                foreach (var bitsAt in AlignOptions(conAt + constantCount * ConstantStride)
+                             .Where(x => (x & 3) == 0))
                 {
                     var nextAt = bitsAt + stateCount * StateBitsStride;
                     var nextHasNameMarker = U32(b, nextAt) == 0xFFFFFFFFu;
@@ -158,6 +166,15 @@ public static class T4AztecPcGfxWorldFirstMaterialChildrenProbe
         var fullyCompatible = layouts.Count(x =>
             x.ValidTextureDescriptors == 6 && x.PlausibleConstantRecords == 6 &&
             x.NextMaterialHeaderNameFollowing && x.NextMaterialHeaderCountsPlausible);
+        // Judge the direct six-texture descriptor table independently.
+        // Inline image/water bodies can interrupt later child arrays, so
+        // failure of the full 6+6+4 contiguous hypothesis does not erase
+        // a valid 6x16 descriptor array.
+        var fullTextureStartOffsets = layouts
+            .Where(x => x.ValidTextureDescriptors == textureCount)
+            .Select(x => x.TextureTableAt).Distinct().ToArray();
+        var bestTextureCount = layouts.Count == 0 ? 0 :
+            layouts.Max(x => x.ValidTextureDescriptors);
         var ordered = layouts
             .OrderByDescending(x => x.ValidTextureDescriptors)
             .ThenByDescending(x => x.PlausibleConstantRecords)
@@ -168,17 +185,23 @@ public static class T4AztecPcGfxWorldFirstMaterialChildrenProbe
             ? "AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_ONE_DIRECT_CANDIDATE"
             : fullyCompatible > 1
                 ? "AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_MULTIPLE_CANDIDATES"
-                : "AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_NOT_PROVEN";
+                : fullTextureStartOffsets.Length == 1
+                    ? "AZTEC_PC_GFXWORLD_FIRST_MATERIAL_6X16_TEXTURE_TABLE_CANDIDATE"
+                    : "AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_NOT_PROVEN";
         var report = new AztecFirstMaterialChildrenReport(
-            "WaW360.AztecPcGfxWorldFirstMaterialChildren.v1", status,
+            "WaW360.AztecPcGfxWorldFirstMaterialChildren.v2", status,
             Path.GetFullPath(pcFastFile), z.SourceSha256, ZoneHash,
             $"0x{MaterialAt:X8}", MaterialBytes, $"0x{nameAt:X8}",
             unprovenName, $"0x{afterName:X8}", 6, 6, 4,
-            layouts.Count, fullyCompatible, ordered,
+            layouts.Count, fullyCompatible, TextureStride, TextureImagePointerOffset,
+            bestTextureCount, fullTextureStartOffsets, ordered,
             false, false, false, false,
-            "Source-only exact-array candidate assessment: 6x12B MaterialTextureDef, " +
-            "6x32B MaterialConstantDef and 4x8B GfxStateBits, with 0/4/16-byte " +
-            "alignment choices. Does not assume non-inline image or water child data " +
+            "Corrected original-PC T4 MaterialTextureDef layout: 16 bytes, " +
+            "semantic at +7, isMatureContent at +8, and image/water pointer +12. " +
+            "Prior 12-byte stride misread later textures, so v1 4/6 is invalid. " +
+            "Tests 6x16B textures, 16-aligned 6x32B MaterialConstantDef and " +
+            "4-aligned 4x8B GfxStateBits. Counted children can have inline " +
+            "image/water payloads; only direct candidates were tested. " +
             "or infer a GfxWorld materialMemory pointer from serialized physical " +
             "positions. The readable name is UNVERIFIED and no Material/Xbox root " +
             "bindings or GfxWorld FF are produced.");
@@ -207,7 +230,7 @@ public static class T4AztecPcGfxWorldFirstMaterialChildrenProbe
 }
 public sealed record AztecFirstMaterialTextureSample(
     int Index, string Offset, string NameHash, byte Semantic, string ImagePointer,
-    bool Plausible);
+    bool Plausible, int IsMatureContent);
 public sealed record AztecFirstMaterialChildLayoutCandidate(
     string TextureTableAt, string ConstantTableAt, string StateBitsTableAt,
     string NextExpectedMaterialHeaderAt,
@@ -222,6 +245,9 @@ public sealed record AztecFirstMaterialChildrenReport(
     string UnverifiedNameStart, string UnverifiedName,
     string ExactPostNameOffset, int TextureCount, int ConstantCount,
     int StateBitsCount, int TestedAlignedChildLayouts, int FullyCompatibleDirectLayouts,
+    int TextureDescriptorStride, int TextureImagePointerOffset,
+    int BestValidTextureDescriptorCount,
+    IReadOnlyList<string> FullyValidTextureTableSourceOffsets,
     IReadOnlyList<AztecFirstMaterialChildLayoutCandidate> BestCandidates,
     bool OriginalMaterialOwnershipProven, bool All39SourceNamesProven,
     bool XboxMaterialBindingsProven, bool XboxHardwareReady, string Note);
