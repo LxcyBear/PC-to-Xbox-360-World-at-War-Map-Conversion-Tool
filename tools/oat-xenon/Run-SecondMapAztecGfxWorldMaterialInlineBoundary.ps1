@@ -95,6 +95,7 @@ foreach($w in @($r.Windows)){
     foreach($shape in @($w.PossibleMaterialHeaders)){
         Write-Host "[AZTEC-MAT-BOUNDARY]   MaterialLayout=$($shape.CandidateMaterialBytes)B plausibleCounts=$($shape.PlausibleMaterialCountFields) textures=$($shape.TextureCount) constants=$($shape.ConstantCount) states=$($shape.StateBitsCount) camera=$($shape.CameraRegion) technique=$($shape.TechniqueSetPointer)"
         Write-Host "[AZTEC-MAT-BOUNDARY]     name=$($shape.MaterialNamePointer), following=$($shape.NamePointerIsFollowing), techniqueOK=$($shape.TechniqueSetPointerCompatible), textureOK=$($shape.TextureTablePointerCompatible), constantOK=$($shape.ConstantTablePointerCompatible), statebitsOK=$($shape.StateBitsTablePointerCompatible), allPtrsOK=$($shape.AllDependencyPointerFieldsCompatible), nameDirectlyAfterHeader=$($shape.ExactPostHeaderReadableString)"
+        Write-Host "[AZTEC-MAT-BOUNDARY]     rawPtrs texture=$($shape.TextureTablePointer) constant=$($shape.ConstantTablePointer) stateBits=$($shape.StateBitsTablePointer)"
         foreach($name in @($shape.NameCandidates)){
             Write-Host "[AZTEC-MAT-BOUNDARY]     NAME-CANDIDATE $($name.SourceOffset)=$($name.UnverifiedName) (unproven)"
         }
