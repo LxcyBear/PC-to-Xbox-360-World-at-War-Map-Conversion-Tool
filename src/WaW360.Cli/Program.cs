@@ -95,6 +95,24 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-material-world-boundary-bridge" when args.Length == 7:
+            {
+                var result = await T4AztecPcMaterialWorldBoundaryBridge.ProbeAsync(
+                    args[1], args[2], args[3], args[4], args[5], args[6], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-BRIDGE] status=" + result.Status +
+                    " contiguous=" + result.ContiguousPhysicalChainValidated +
+                    " materialMemory=" + result.MaterialMemoryEntries +
+                    " physicalMaterials=" + result.ConsecutiveMaterialCandidates +
+                    " virtualAliasGroups=" + result.VirtualAliasGroups +
+                    " 735surfaces=" + result.SourceSurfaceCount);
+                Console.WriteLine("[AZTEC-MAT-BRIDGE] memoryEnd=" + result.PreferredMemoryWindowEnd +
+                    " firstMaterial=" + result.FirstMaterialHeaderAt +
+                    " vertexAt=" + result.VertexBufferAt +
+                    " shiftedWindowEnd=" + result.ShiftedMemoryWindowEnd);
+                Console.WriteLine("[AZTEC-MAT-BRIDGE] report=" + args[6] +
+                    " -- ordinal pairings are HYPOTHESES; zero Xbox bindings.");
+                return 0;
+            }
             case "aztec-pc-material-stream-walker-null-replay" when args.Length == 5:
             {
                 var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
