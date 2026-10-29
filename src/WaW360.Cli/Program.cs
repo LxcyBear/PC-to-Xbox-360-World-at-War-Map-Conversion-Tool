@@ -95,6 +95,20 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-xenon-surface-topmip-calibration" when args.Length == 5:
+            {
+                var result = await T4AztecPcXenonSurfaceTopMipCalibration.ProbeAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-TOPMIP] status=" + result.Status +
+                    " sourceBoundsExact=" + result.NativeTopMipEqualsPcSurfaceBoundsExact +
+                    " vertexSpanExact=" + result.NativeTopMipEqualsPcVertexSpanAabbExact +
+                    " triangleUsedExact=" + result.NativeTopMipEqualsPcTriangleVertexAabbExact +
+                    " derived=" + result.CompleteVerifiedTopMipDerivation +
+                    " Xenon76BReady=" + result.SourceOnlyTopMipCandidateReadyFor76ByteSerialization);
+                Console.WriteLine("[AZTEC-TOPMIP] report=" + args[4] +
+                    " -- diagnostic only; no 76B payload or FF.");
+                return 0;
+            }
             case "aztec-pc-verified-material-relocation-worklist" when args.Length == 6:
             {
                 var result = await T4AztecPcVerifiedSurfaceMaterialRelocationPlan.BuildAsync(
