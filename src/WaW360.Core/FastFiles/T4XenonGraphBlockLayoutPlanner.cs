@@ -91,7 +91,10 @@ public static class T4XenonGraphBlockLayoutPlanner
         string? rawFileGraftManifest = null,
         string? mapEntsCanaryManifest = null,
         string? comWorldProofManifest = null,
-        bool aztecSourceOnly39MaterialFfScratch = false)
+        bool aztecSourceOnly39MaterialFfScratch = false,
+        string? aztecSourceWorldSeedReport = null,
+        string? aztecSource76SurfaceManifest = null,
+        string? aztecSourceWorldMaterialCandidates = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -154,6 +157,22 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.AddRange(materialCorpus.ValidateDependencies(roots));
         }
 
+
+        T4XenonAztecWorldGraft? sourceWorld=null;
+        if(aztecSourceWorldSeedReport is not null ||
+           aztecSource76SurfaceManifest is not null ||
+           aztecSourceWorldMaterialCandidates is not null)
+        {
+            if(!aztecSourceOnly39MaterialFfScratch ||
+               string.IsNullOrWhiteSpace(aztecSourceWorldSeedReport) ||
+               string.IsNullOrWhiteSpace(aztecSource76SurfaceManifest) ||
+               string.IsNullOrWhiteSpace(aztecSourceWorldMaterialCandidates) ||
+               materialCorpus is null || materialCorpus.OwnedByRoot.Count != 39)
+                throw new InvalidDataException("Original PC world requires all 3 manifests and the 39 native Material corpus.");
+            sourceWorld=await T4XenonAztecWorldGraft.LoadAsync(
+                aztecSourceWorldSeedReport,aztecSource76SurfaceManifest,
+                aztecSourceWorldMaterialCandidates,roots,cancellationToken);
+        }
         if (xmodelCorpus is not null)
             blockers.AddRange(xmodelCorpus.ValidateDependencies(roots));
 
@@ -400,6 +419,14 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if(sourceWorld is not null && root.Index == sourceWorld.NativeRootIndex)
+            {
+                sourceWorld.Plan(
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot);
+                continue;
+            }
+
             if (pcComWorld is not null && root.Index == pcComWorld.NativeRootIndex)
             {
                 // T4 ComWorld: fixed 64-byte TEMP root; name string,
@@ -466,6 +493,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
+        if(sourceWorld is not null)
+            notes.Add("Source-owned GfxWorld: 900-byte Xenon root, all 735/39 live surface Material refs, 58653 PC indices and 32713 vertices integrated in FF traversal. Full DPVS/other child closure still incomplete; no Xbox approval.");
         if (pcComWorld is not null)
             notes.Add("One genuine PC-derived ComWorld #7178 parent, two primary lights, 88 burnable cells and 2816 source sample bytes; validation only.");
         if (pcMapEnts is not null)
