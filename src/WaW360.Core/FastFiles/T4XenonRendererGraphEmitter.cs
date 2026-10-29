@@ -78,7 +78,8 @@ public static class T4XenonRendererGraphEmitter
         string? materialBindingManifest = null,
         string? rawFileGraftManifest = null,
         string? mapEntsCanaryManifest = null,
-        string? comWorldProofManifest = null)
+        string? comWorldProofManifest = null,
+        bool aztecSourceOnly39MaterialFfScratch = false)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -139,7 +140,8 @@ public static class T4XenonRendererGraphEmitter
             materialBindingManifest,
             rawFileGraftManifest,
             mapEntsCanaryManifest,
-            comWorldProofManifest);
+            comWorldProofManifest,
+            aztecSourceOnly39MaterialFfScratch);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -163,7 +165,9 @@ public static class T4XenonRendererGraphEmitter
             materialCorpus = T4XenonMaterialCorpus.Load(
                 materialGraphRoot!,
                 materialBindingManifest!,
-                roots);
+                roots,
+                expectedOwned: aztecSourceOnly39MaterialFfScratch ? 39 : 502,
+                allowSourceOnlyDiagnostic: aztecSourceOnly39MaterialFfScratch);
             var materialDependencyErrors = materialCorpus.ValidateDependencies(roots);
             if (materialDependencyErrors.Count != 0)
                 throw new InvalidDataException(
