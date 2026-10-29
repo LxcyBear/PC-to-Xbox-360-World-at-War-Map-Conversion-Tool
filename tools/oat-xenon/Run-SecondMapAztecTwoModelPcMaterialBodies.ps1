@@ -46,6 +46,10 @@ function Normalize-Name([string]$value){
 }
 function Material-Stem([string]$value){
     $s=$value.Trim()
+    if([string]::IsNullOrWhiteSpace($s) -or [IO.Path]::IsPathRooted($s) -or
+       $s.Contains('..') -or $s.Contains(':')){
+        throw "Unsafe original PC Material identity path: $value"
+    }
     if($s.StartsWith('*',[StringComparison]::Ordinal)){
         $s=$s.Replace('*','_')
         $paren=$s.IndexOf('(')
@@ -96,6 +100,10 @@ foreach($dep in @($audit.dependencies)){
         $name=[string]$hit.name
         if(-not $roles.ContainsKey($role) -or (Normalize-Name $name) -ne $key){
             throw "Material $key source role/name evidence mismatch."
+        }
+        if($wanted[$key].Sources.ContainsKey($role) -and
+           [string]$wanted[$key].Sources[$role] -ine $name){
+            throw "Ambiguous original PC Material identities within role $role for $key."
         }
         $wanted[$key].Sources[$role]=$name
     }
@@ -176,12 +184,16 @@ try{
                 $hash=(Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash
                 $originalHash=(Get-FileHash -LiteralPath $hits[0].FullName -Algorithm SHA256).Hash
                 if($hash -ine $originalHash){throw "PC material JSON staging SHA mismatch for $name"}
+                $technique=''
+                if($doc.PSObject.Properties.Name -contains 'techniqueSet' -and $null -ne $doc.techniqueSet){
+                    $technique=[string]$doc.techniqueSet
+                }
                 $bodyRows.Add([pscustomobject]@{
                     material=$name;normalized=(Normalize-Name $name)
                     sourceRole=$role;sourceFastFile=[string]$roles[$role].Path
                     sourceFastFileSha256=[string]$roles[$role].SHA256
                     materialJson=$dest;materialJsonSha256=$hash
-                    techniqueSet=[string]$doc.techniqueSet
+                    techniqueSet=$technique
                     textures=$textures.Count;imageReferences=@($textureRefs.ToArray())
                     constants=$constants.Count;stateBits=$bits.Count;stateBitsEntry=$state.Count
                 })
