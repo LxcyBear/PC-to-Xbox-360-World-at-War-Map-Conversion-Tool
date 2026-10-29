@@ -144,8 +144,10 @@ public static class T4AztecPcNullImageBoundaryProbe
             var st = b[nextAt + 93];
             var camera = b[nextAt + 95];
             var counts = tx <= 64 && co <= 64 && st <= 64 && camera <= 4;
+            string nextName = "";
+            int unusedNameEnd = 0;
             var nameValid = pointer == 0xFFFFFFFFu &&
-                TryReadName(b, nextAt + MaterialBytes, out var nextName, out _);
+                TryReadName(b, nextAt + MaterialBytes, out nextName, out unusedNameEnd);
             candidates.Add(new AztecPcNullImagePostNameLayout(
                 Hex(at), at - afterName, good, constantNames,
                 Hex(statesAt), Sha(b.AsSpan(statesAt, StateBitsCount * StateBitsBytes)),
