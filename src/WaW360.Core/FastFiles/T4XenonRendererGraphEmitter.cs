@@ -79,7 +79,10 @@ public static class T4XenonRendererGraphEmitter
         string? rawFileGraftManifest = null,
         string? mapEntsCanaryManifest = null,
         string? comWorldProofManifest = null,
-        bool aztecSourceOnly39MaterialFfScratch = false)
+        bool aztecSourceOnly39MaterialFfScratch = false,
+        string? aztecSourceWorldSeedReport = null,
+        string? aztecSource76SurfaceManifest = null,
+        string? aztecSourceWorldMaterialCandidates = null)
     {
         dumpRoot = Path.GetFullPath(dumpRoot);
         nativeFastFile = Path.GetFullPath(nativeFastFile);
@@ -141,7 +144,10 @@ public static class T4XenonRendererGraphEmitter
             rawFileGraftManifest,
             mapEntsCanaryManifest,
             comWorldProofManifest,
-            aztecSourceOnly39MaterialFfScratch);
+            aztecSourceOnly39MaterialFfScratch,
+            aztecSourceWorldSeedReport,
+            aztecSource76SurfaceManifest,
+            aztecSourceWorldMaterialCandidates);
         if (!layout.LayoutReady)
             throw new InvalidDataException(
                 "Stage 4E layout recheck failed: " + string.Join(" | ", layout.Blockers));
@@ -173,6 +179,23 @@ public static class T4XenonRendererGraphEmitter
                 throw new InvalidDataException(
                     "Stage 4E Material dependency validation failed: " +
                     string.Join(" | ", materialDependencyErrors.Take(20)));
+        }
+
+
+        T4XenonAztecWorldGraft? sourceWorld = null;
+        if(aztecSourceWorldSeedReport is not null ||
+           aztecSource76SurfaceManifest is not null ||
+           aztecSourceWorldMaterialCandidates is not null)
+        {
+            if(!aztecSourceOnly39MaterialFfScratch ||
+               string.IsNullOrWhiteSpace(aztecSourceWorldSeedReport) ||
+               string.IsNullOrWhiteSpace(aztecSource76SurfaceManifest) ||
+               string.IsNullOrWhiteSpace(aztecSourceWorldMaterialCandidates) ||
+               materialCorpus is null || materialCorpus.OwnedByRoot.Count != 39)
+                throw new InvalidDataException("Live PC GfxWorld requires all 3 original PC source manifests and 39 real FF Material owners.");
+            sourceWorld=await T4XenonAztecWorldGraft.LoadAsync(
+                aztecSourceWorldSeedReport,aztecSource76SurfaceManifest,
+                aztecSourceWorldMaterialCandidates,roots,cancellationToken);
         }
 
         if (xmodelCorpus is not null)
@@ -377,6 +400,14 @@ public static class T4XenonRendererGraphEmitter
                     state,
                     image,
                     cancellationToken);
+                continue;
+            }
+
+            if(sourceWorld is not null && root.Index == sourceWorld.NativeRootIndex)
+            {
+                sourceWorld.Emit(zone,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,stableByRoot);
                 continue;
             }
 
@@ -608,6 +639,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"PC-backed RawFile roots:    {realRawFiles:N0}");
         report.AppendLine($"Original-PC MapEnts roots:   {realMapEnts:N0} (scratch-only)");
         report.AppendLine($"Original-PC ComWorld roots:  {realComWorlds:N0} (source-derived; scratch-only)");
+        report.AppendLine($"Original-PC GfxWorld core:    {(sourceWorld is null ? "NOT EMITTED" : "EMITTED (735 live surfaces; incomplete DPVS children; OAT probe)") }");
         report.AppendLine($"PC ComWorld zone offset:     0x{comWorldZoneOffset:X}");
         report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
