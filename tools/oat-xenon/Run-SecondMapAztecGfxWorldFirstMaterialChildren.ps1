@@ -37,7 +37,7 @@ if(-not (Test-Path -LiteralPath $pc -PathType Leaf) -or
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 Write-Host '[AZTEC-MAT-CHILD] ====================================================='
 Write-Host '[AZTEC-MAT-CHILD] ORIGINAL PC FIRST MATERIAL EXACT SOURCE CHILD LAYOUT'
-Write-Host '[AZTEC-MAT-CHILD] 6 x 12B textures, 6 x 32B constants, 4 x 8B statebits.'
+Write-Host '[AZTEC-MAT-CHILD] Correct T4 ABI: 6 x 16B textures (image pointer +12), 6 x 32B constants (16-align), 4 x 8B statebits.'
 Write-Host '[AZTEC-MAT-CHILD] Small alignment choices, next-header check. NO FF/XBOX.'
 $old=$ErrorActionPreference
 try{
@@ -72,16 +72,19 @@ if($code -ne 0 -or -not(Test-Path -LiteralPath $json -PathType Leaf)){
 }
 $r=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $json -Raw)
 $statuses=@(
+    'AZTEC_PC_GFXWORLD_FIRST_MATERIAL_6X16_TEXTURE_TABLE_CANDIDATE',
     'AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_ONE_DIRECT_CANDIDATE',
     'AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_MULTIPLE_CANDIDATES',
     'AZTEC_PC_GFXWORLD_FIRST_MATERIAL_CHILD_LAYOUT_NOT_PROVEN'
 )
-if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldFirstMaterialChildren.v1' -or
+if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldFirstMaterialChildren.v2' -or
     [string]$r.Status -notin $statuses -or
     [int]$r.MaterialHeaderBytes -ne 112 -or
     [int]$r.TextureCount -ne 6 -or
     [int]$r.ConstantCount -ne 6 -or
     [int]$r.StateBitsCount -ne 4 -or
+    [int]$r.TextureDescriptorStride -ne 16 -or
+    [int]$r.TextureImagePointerOffset -ne 12 -or
     [bool]$r.OriginalMaterialOwnershipProven -or
     [bool]$r.All39SourceNamesProven -or
     [bool]$r.XboxMaterialBindingsProven -or
@@ -90,11 +93,12 @@ if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldFirstMaterialChildren.v1' -or
 }
 Write-Host "[AZTEC-MAT-CHILD] candidate header=$($r.FirstMaterialHeaderAt), ASCII=$($r.UnverifiedName) (UNPROVEN), afterName=$($r.ExactPostNameOffset)"
 Write-Host "[AZTEC-MAT-CHILD] checkedAlignedLayouts=$($r.TestedAlignedChildLayouts), completeDirectCandidates=$($r.FullyCompatibleDirectLayouts)"
+Write-Host "[AZTEC-MAT-CHILD] bestTextureDescriptors=$($r.BestValidTextureDescriptorCount)/6, valid6TextureTableStarts=$(@($r.FullyValidTextureTableSourceOffsets) -join ',')"
 foreach($c in @($r.BestCandidates | Select-Object -First 8)){
     Write-Host "[AZTEC-MAT-CHILD] child texture=$($c.TextureTableAt), constant=$($c.ConstantTableAt), statebits=$($c.StateBitsTableAt), nextHeader=$($c.NextExpectedMaterialHeaderAt)"
     Write-Host "[AZTEC-MAT-CHILD]   validTexture=$($c.ValidTextureDescriptors)/6, plausibleConstants=$($c.PlausibleConstantRecords)/6, nextNameFollowing=$($c.NextMaterialHeaderNameFollowing), nextCounts=$($c.NextMaterialHeaderCountsPlausible)"
     foreach($t in @($c.TextureSamples)){
-        Write-Host "[AZTEC-MAT-CHILD]   texture#$($t.Index) semantic=$($t.Semantic) image=$($t.ImagePointer) plausible=$($t.Plausible)"
+        Write-Host "[AZTEC-MAT-CHILD]   texture#$($t.Index) semantic=$($t.Semantic) mature=$($t.IsMatureContent) image=$($t.ImagePointer) plausible=$($t.Plausible)"
     }
 }
 Write-Host '[AZTEC-MAT-CHILD] ================= RESULT ==========================='
