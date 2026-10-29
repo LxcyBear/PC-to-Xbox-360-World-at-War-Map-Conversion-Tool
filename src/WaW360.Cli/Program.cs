@@ -56,6 +56,25 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-first-material-state-next-header" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstMaterialStateAndNextHeaderProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-NEXT] status=" + result.Status +
+                    " secondHeader=" + result.SecondMaterialHeaderAt +
+                    " shape=" + result.SecondHeaderShapePlausible +
+                    " secondNameCandidate=" + result.SecondUnverifiedName);
+                foreach (var s in result.StateBits)
+                    Console.WriteLine("[AZTEC-MAT-NEXT] state#" + s.Index +
+                        " offset=" + s.Offset +
+                        " words=" + s.StateBits0 + "," + s.StateBits1);
+                foreach (var t in result.SecondTextureCandidates)
+                    Console.WriteLine("[AZTEC-MAT-NEXT] textureTable=" + t.SourceOffset +
+                        " valid=" + t.PlausibleDescriptors + "/" + t.TextureCount);
+                Console.WriteLine("[AZTEC-MAT-NEXT] report=" + args[3] +
+                    " -- source-only candidate, NO FF/XBOX or ownership proof.");
+                return 0;
+            }
             case "aztec-pc-post-images-constants" when args.Length == 4:
             {
                 var result = await T4AztecPcMaterialPostImagesConstantProbe.ProbeAsync(
