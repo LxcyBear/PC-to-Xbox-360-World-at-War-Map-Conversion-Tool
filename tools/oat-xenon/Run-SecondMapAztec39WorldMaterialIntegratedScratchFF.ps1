@@ -1,11 +1,15 @@
 [CmdletBinding()]
 param([switch]$IntegrateWorld,
       [ValidateSet('Root','Indices','Surfaces','MaterialMemory','Full')]
-      [string]$ProbeLevel='Full')
+      [string]$ProbeLevel='Full',
+      [switch]$DpvsStaticProbe)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if(-not $IntegrateWorld -and $ProbeLevel -ne 'Full'){
     throw 'World child probe levels require -IntegrateWorld.'
+}
+if($DpvsStaticProbe -and (-not $IntegrateWorld -or $ProbeLevel -ne 'Full')){
+    throw 'Source-backed static DPVS probe requires -IntegrateWorld -ProbeLevel Full.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -26,7 +30,8 @@ $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlink
 $worldSeed=Join-Path $base 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
 $worldSurface76=Join-Path $base 'pc_xenon_76byte_gfxsurface_canary\aztec_735_gfxsurfaces_76byte_source_canary.json'
 $work=Join-Path $base $(if($IntegrateWorld){
-    if($ProbeLevel -eq 'Full'){'pc_735_39_gfxworld_integrated_ff_oat_run'}
+    if($DpvsStaticProbe){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static'}
+    elseif($ProbeLevel -eq 'Full'){'pc_735_39_gfxworld_integrated_ff_oat_run'}
     else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_'+$ProbeLevel.ToLowerInvariant()}
 }else{'pc_39_world_material_real_ff_scratch_integration'})
 $out=Join-Path $work 'scratch_emit'
@@ -109,6 +114,9 @@ Write-Host '[AZTEC-WORLD39-FF] Existing six-family renderer+2 images+114 RawFile
 Write-Host '[AZTEC-WORLD39-FF] Unlike old canary: all 39 GfxWorld Material roots upgrade from identity shells'
 if($IntegrateWorld){
     Write-Host "[AZTEC-WORLD39-FF] REAL SOURCE GFXWORLD CORE: 735 surfaces, 39 Materials, vertex/index buffers (probe=$ProbeLevel)"
+    if($DpvsStaticProbe){
+        Write-Host '[AZTEC-WORLD39-FF] STATIC DPVS PROBE: source 613 sorted surface indices + original PC static model instances, OAT scratch gate only'
+    }
     Write-Host '[AZTEC-WORLD39-FF] Only partial DPVS scalar+surface graph: other DPVS/cell/lightmap/runtime children remain incomplete'
 }else{
     Write-Host '[AZTEC-WORLD39-FF] BASELINE: no FF-resident GfxWorld or 735-surface world linkage in this mode'
@@ -143,8 +151,14 @@ try{
         $images,'2',$raw,$models,$modelBinding,$matGraph,$binding,$map,$com)
     if($IntegrateWorld){$argsList+=@($worldSeed,$worldSurface76,$source)}
     $priorProbe=$env:WAW360_AZTEC_WORLD_CHILD_PROBE
+    $priorDpvs=$env:WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
+        if($DpvsStaticProbe){
+            $env:WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE='sorted-smodel'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE -ErrorAction SilentlyContinue
+        }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
         $code=[int]$LASTEXITCODE
@@ -153,6 +167,11 @@ try{
             Remove-Item Env:\WAW360_AZTEC_WORLD_CHILD_PROBE -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$priorProbe
+        }
+        if($null -eq $priorDpvs){
+            Remove-Item Env:\WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE=$priorDpvs
         }
     }
 }finally{$ErrorActionPreference=$save}
@@ -165,20 +184,24 @@ if($IntegrateWorld){
     $core=([bool]$e.OriginalPcGfxWorldCoreEmitted) -and
         [int]$e.RealMaterialRoots -eq 39 -and
         [int]$e.NativeRoots -eq 8509
-    $diagnosticProbe=$ProbeLevel -ne 'Full'
+    $diagnosticProbe=($ProbeLevel -ne 'Full') -or $DpvsStaticProbe
     $candidateOatPass=([bool]$e.ValidationPass) -and
         [bool]$e.OatZeroWarningsZeroErrors -and
         [bool]$e.ExactIdentitySequence -and
         [bool]$e.LayoutReplayExact
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($diagnosticProbe){
+        status=if($DpvsStaticProbe){
+            if($core -and $candidateOatPass){'AZTEC_GFXWORLD_SOURCE_STATIC_DPVS_CHILD_PROBE_OAT_PASS'}
+            else{'AZTEC_GFXWORLD_SOURCE_STATIC_DPVS_CHILD_PROBE_OAT_BLOCKED'}
+        }elseif($diagnosticProbe){
             if($core -and $candidateOatPass){'AZTEC_GFXWORLD_CHILD_PROBE_OAT_LOAD_PASS'}
             else{'AZTEC_GFXWORLD_CHILD_PROBE_OAT_BLOCKED'}
         }elseif($core -and $candidateOatPass){
             'AZTEC_ORIGINAL_PC_GFXWORLD_CORE_IN_REAL_FF_OAT_LOAD_PASS_REMAINING_CHILDREN'
         }else{'AZTEC_ORIGINAL_PC_GFXWORLD_INTEGRATION_OAT_BLOCKED'}
         probeLevel=$ProbeLevel
+        sourceBackedStaticDpvsProbe=[bool]$DpvsStaticProbe
         realOriginalPcGfxWorldCoreEmitted=($core -and -not $diagnosticProbe)
         allOriginalPcGfxWorldDpvsChildrenComplete=[bool]$e.OriginalPcGfxWorldFullDpvsGraphComplete
         realPcGfxSurfaceCount=if($ProbeLevel -in @('Surfaces','MaterialMemory','Full')){735}else{0}
@@ -193,14 +216,16 @@ if($IntegrateWorld){
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
-        note=if($diagnosticProbe){
+        note=if($DpvsStaticProbe){
+            'SCRATCH-ONLY STATIC DPVS PROBE: 613 sortedSurface indices and original-PC static model instances are source-derived and placed before the 735 surfaces. Even with OAT pass, this does NOT complete other static/dynamic DPVS, cell/lightmap, full runtime dependencies or hardware release.'
+        }elseif($diagnosticProbe){
             'SCRATCH-ONLY CHILD PROBE: requested child level is a deliberately incomplete world graph for OAT loader bisection. Even if OAT passes, it is not the complete core, not a deployable Xbox FF, and not evidence of correct runtime materials.'
         }else{
             'Actual original-PC GfxWorld root, all 735 real Xbox GfxSurface material refs, 39 material owners, 32713 vertices, 58653 indices emitted by Stage4E after final Stage4D allocation. Other PC-derived DPVS/cell/scene/lightmap children are still incomplete in the initial integrated core path. Do not package for native hardware until loader, full required world and both FFs pass.'
         }
     }
     $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $report -Encoding UTF8
-    Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
+    Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel sourceDpvsProbe=$DpvsStaticProbe fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
     Write-Host "[AZTEC-WORLD-INTEGRATED] OAT PASS=$candidateOatPass originalPcWorldFF=$($e.OutputFastFile)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] status=$($result.status)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] report=$report"
@@ -209,7 +234,7 @@ if($IntegrateWorld){
         throw "Direct integrated world OAT failure; fix this real FF loader evidence next: $log"
     }
     if($diagnosticProbe){
-        Write-Host "[AZTEC-WORLD-INTEGRATED] PROBE PASS ${ProbeLevel}: OAT accepted this partial world graph. Continue to the next child level. NO XBOX."
+        Write-Host "[AZTEC-WORLD-INTEGRATED] DIAGNOSTIC PROBE PASS ${ProbeLevel} DPVS=$DpvsStaticProbe; partial world OAT loaded. NO XBOX."
         return
     }
     Write-Host '[AZTEC-WORLD-INTEGRATED] Actual FF core world loaded; complete required original PC DPVS children next, then main/_load paired FF and native test.'
