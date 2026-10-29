@@ -110,7 +110,7 @@ foreach($row in @($families.ToArray() | Where-Object {$_.family -in $critical -a
 foreach($family in @('xmodel','material','image')){
     $row=@($families.ToArray() | Where-Object {$_.family -eq $family})[0]
     if($row.ownedRootsWithoutPromotedPcBodies -gt 0){
-        $blockers.Add("$family: $($row.ownedRootsWithoutPromotedPcBodies) owned native root(s) have no promoted original-PC payload; determine whether each is required before a loading test.")
+        $blockers.Add("${family}: $($row.ownedRootsWithoutPromotedPcBodies) owned native root(s) have no promoted original-PC payload; determine whether each is required before a loading test.")
     }
 }
 $canReview=($blockers.Count -eq 0 -and [bool]$emit.ReadyForHardware)
