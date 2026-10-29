@@ -33,6 +33,7 @@ $pc39WorldFfScratch=Read-Report 'pc_39_world_material_real_ff_scratch_integratio
 $pc735LiveWorldLink=Read-Report 'pc_xenon_735_world_surface_live_39_material_ff_link\aztec_735_world_surfaces_linked_to_39_ff_material_roots.json'
 $pcGfxWorldRootAbi=Read-Report 'xenon_native_gfxworld_root_dpvs_abi\native_xenon_gfxworld_root_dpvs_abi.json'
 $pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
+$pcIntegratedWorldCore=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run\aztec_pc_world_core_integrated_oat_run.json'
 $nativeTestReleaseReport=Join-Path $repo 'output\native_smoke_test_release\nazi_zombie_aztec\native_smoke_test_package_release.json'
 $nativeTestRelease=$null
 if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
@@ -247,6 +248,10 @@ $pcRootSeedPass=$null -ne $pcGfxWorldRootSeed -and
     -not [bool]$pcGfxWorldRootSeed.XboxHardwareReady
 if($pcRootSeedPass){
     Write-Host '[AZTEC-FF-PROGRESS] GFXWORLD ROOT CONVERTER STARTED: source 800B PC root -> 900B Xbox ABI scalars, embedded 100B DPVS counters verified. All world children + FF insertion still PENDING.'
+}
+if($null -ne $pcIntegratedWorldCore -and
+   [string]$pcIntegratedWorldCore.schema -eq 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'){
+    Write-Host "[AZTEC-FF-PROGRESS] FIRST REAL GFXWORLD FF EMIT: core=$($pcIntegratedWorldCore.realOriginalPcGfxWorldCoreEmitted), OAT_PASS=$($pcIntegratedWorldCore.OatPass), 735 source surfaces/39 Material roots; full DPVS=$($pcIntegratedWorldCore.allOriginalPcGfxWorldDpvsChildrenComplete), paired _load still pending."
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
