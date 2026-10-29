@@ -100,6 +100,29 @@ if([string]$priorTwo.status -ne 'AZTEC_PC_TWO_XMODEL_IMAGE_RAWFILE_GRAPH_PASS' -
    [bool]$materialCanary.nativeRootGraphIntegrated){
     throw 'Prior 2-XModel full-graph and source-backed 2-Material canary PASS required.'
 }
+$sourceBodyPath=Join-Path $base 'pc_two_model_material_source_bodies\aztec_two_model_pc_material_bodies.json'
+if(-not (Test-Path -LiteralPath $sourceBodyPath -PathType Leaf)){
+    throw "PC Material body provenance manifest missing: $sourceBodyPath"
+}
+$sourceBodies=Get-Content -LiteralPath $sourceBodyPath -Raw | ConvertFrom-Json
+if([string]$sourceBodies.status -ne 'AZTEC_PC_TWO_MODEL_MATERIAL_BODIES_PASS' -or
+   [int]$sourceBodies.materialsRequested -ne 2 -or
+   [int]$sourceBodies.pcMaterialBodiesExtracted -ne 2){
+    throw 'Original PC two-Material body provenance must remain passing.'
+}
+foreach($m in @($sourceBodies.originalPcMaterialBodies)){
+    $sourceMatches=@($materialCanary.sourcePcMaterials | Where-Object {
+        [string]$_.name -ieq [string]$m.material -and
+        [string]$_.sourceJsonSha256 -ieq [string]$m.materialJsonSha256
+    })
+    if($sourceMatches.Count -ne 1 -or
+       -not (Test-Path -LiteralPath ([string]$m.materialJson) -PathType Leaf) -or
+       (Get-FileHash -LiteralPath ([string]$m.materialJson) -Algorithm SHA256).Hash -ine [string]$m.materialJsonSha256 -or
+       -not (Test-Path -LiteralPath ([string]$m.sourceFastFile) -PathType Leaf) -or
+       (Get-FileHash -LiteralPath ([string]$m.sourceFastFile) -Algorithm SHA256).Hash -ine [string]$m.sourceFastFileSha256){
+        throw "Original PC Material source JSON or FF provenance changed: $($m.material)"
+    }
+}
 $materialGraphRoot=[string]$materialCanary.xenonGraphRoot
 if(-not (Test-Path -LiteralPath (Join-Path $materialGraphRoot 'xenon_material_graphs') -PathType Container)){
     throw 'Source-backed 2-Material Xenon graph directory missing.'
