@@ -21,7 +21,7 @@ public static class T4AztecPcGfxWorldVertexSourceProbe
     private const int VertexCount = 32713;
     private const int VertexStride = 44;
     private const int VertexArrayBytes = VertexCount * VertexStride;
-    private const int[] Samples =
+    private static readonly int[] Samples =
     [
         0, 1, 2, 3, 4, 5, 7, 13, 31, 97, 211, 517, 2048, 9984, 20000, 32712
     ];
