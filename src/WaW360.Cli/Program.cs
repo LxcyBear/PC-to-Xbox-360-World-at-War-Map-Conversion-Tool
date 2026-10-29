@@ -56,6 +56,21 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gameworldsp-hunt" when args.Length == 3:
+            {
+                var result = await T4AztecPcGameWorldSpHeaderHunt.ScanAsync(
+                    args[1], args[2], CancellationToken.None);
+                Console.WriteLine("AZTEC-PC-GAMEWORLDSP 44-byte PathData structure scan");
+                Console.WriteLine($"status={result.Status}; PC roots={result.PcWorldAssetRoots.Count}; PC XAssets={result.PcAssetCount}");
+                foreach (var root in result.PcWorldAssetRoots)
+                    Console.WriteLine($"PC XAsset #{root.PcAssetIndex} {root.PcTypeName} header={root.RawHeader} kind={root.ReferenceKind}");
+                Console.WriteLine($"node-array marker windows={result.RawNodesArrayPointerMarkerHits:N0}; structural header candidates={result.StructurallyPlausibleHeaderHits:N0}");
+                foreach (var item in result.TopCandidates.Take(8))
+                    Console.WriteLine($"CANDIDATE {item.OffsetHex}: score={item.Score} nodes={item.NodeCount} chain={item.ChainNodeCount} vis={item.VisBytes} trees={item.NodeTreeCount} name={item.NamePtr} baseNodes={item.BaseNodesPtr}");
+                Console.WriteLine($"report: {args[2]}");
+                Console.WriteLine("These are structure candidates, not decoded world payloads or Xbox hardware candidates.");
+                return 0;
+            }
             case "resolve" when args.Length >= 2:
             {
                 var result = await T4PayloadScanner.ScanFastFileAsync(args[1]);
@@ -1333,6 +1348,7 @@ static void PrintHelp()
     Console.WriteLine("WaW360Converter Linker V2 / legacy proof CLI");
     Console.WriteLine("  inspect <file.ff>                       Probe PC/Xbox wrapper + XFile header");
     Console.WriteLine("  decompress <file.ff> <out.zone>        Decompress to raw zone");
+    Console.WriteLine("  aztec-pc-gameworldsp-hunt <PC map.ff> <report.json>  Find source 44-byte path-header candidates");
     Console.WriteLine("  compare <left.ff> <right.ff>            Compare fastfile metadata/block sizes");
     Console.WriteLine("  assets <file.ff>                        Parse T4 script strings + XAssetList");
     Console.WriteLine("  manifest <file.ff> <out.json>           Export Stage 2 asset manifest");
