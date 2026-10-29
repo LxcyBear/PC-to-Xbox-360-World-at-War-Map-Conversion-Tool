@@ -116,7 +116,7 @@ public static class T4AztecPcGfxWorldMeshExporter
             materials[material] = materialUses + 1;
             for (var k = 0; k < faces * 3; k += 3)
             {
-                Span<int> verts = stackalloc int[3];
+                var verts = new int[3];
                 for (var c = 0; c < 3; c++)
                 {
                     var idx = baseIndex + k + c;
