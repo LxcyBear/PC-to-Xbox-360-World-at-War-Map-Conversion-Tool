@@ -139,7 +139,7 @@ $pc39CorpusPass=$null -ne $pcWorldMaterialCorpus -and
     [int]$pcWorldMaterialCorpus.realXenonWorldMaterialGraphBodies -eq 0 -and
     -not [bool]$pcWorldMaterialCorpus.hardwareReady
 if($pc39CorpusPass){
-    Write-Host "[AZTEC-FF-PROGRESS] PC MATERIAL GRAPH SOURCE: 39/39 original PC Material headers and child tables EXPORTED; 0/39 real Xenon world Material graphs integrated yet."
+    Write-Host "[AZTEC-FF-PROGRESS] PC MATERIAL GRAPH SOURCE STAGE: 39/39 original PC headers/child tables extracted (historical source proof; actual FF integration shown below)."
 }
 $pc39XenonCandidatesPass=$null -ne $pcXenonMaterialCandidates -and
     [string]$pcXenonMaterialCandidates.Status -eq 'AZTEC_39_PC_MATERIALS_TO_XENON_96B_SOURCE_GRAPH_CANDIDATES_ONLY' -and
@@ -152,7 +152,7 @@ $pc39XenonCandidatesPass=$null -ne $pcXenonMaterialCandidates -and
     -not [bool]$pcXenonMaterialCandidates.IntegratedOatFfValidated -and
     -not [bool]$pcXenonMaterialCandidates.XboxHardwareReady
 if($pc39XenonCandidatesPass){
-    Write-Host "[AZTEC-FF-PROGRESS] 39/39 PC WORLD MATERIALS -> 96B XENON ABI CANDIDATE BLOBS BUILT; dependencies unresolved=$($pcXenonMaterialCandidates.MissingNativeDependencies), no FF roots/OAT yet."
+    Write-Host "[AZTEC-FF-PROGRESS] MATERIAL CONVERSION STAGE: 39/39 PC -> 96B Xenon candidates. Initial exact-name heuristic misses=$($pcXenonMaterialCandidates.MissingNativeDependencies); authoritative codec check appears below."
 }
 $pc39CodecPass=$null -ne $pc39CodecPreflight -and
     [string]$pc39CodecPreflight.Status -eq 'AZTEC_39_SOURCE_XENON_MATERIAL_GRAPHS_EXISTING_CODEC_LOAD_PASS_DEPENDENCY_AUDIT' -and
@@ -174,7 +174,7 @@ $pc39WorldFfPass=$null -ne $pc39WorldFfScratch -and
     -not [bool]$pc39WorldFfScratch.xenonGfxWorldRootEmitted -and
     -not [bool]$pc39WorldFfScratch.hardwareReady
 if($pc39WorldFfPass){
-    Write-Host '[AZTEC-FF-PROGRESS] 39/39 SOURCE WORLD MATERIAL ROOTS serialized in SCRATCH FF; 8509 Xbox root identity + OAT ZERO ERROR LOAD PASS. 735 GfxSurface links and GfxWorld still PENDING.'
+    Write-Host '[AZTEC-FF-PROGRESS] 39/39 WORLD MATERIAL ROOTS serialized in OAT-PASS SCRATCH FF; 8509 Xbox root identity exact. Actual FF-resident GfxSurface/GfxWorld still PENDING.'
 }
 $pc735LiveLinkPass=$null -ne $pc735LiveWorldLink -and
     [string]$pc735LiveWorldLink.Status -eq 'AZTEC_735_SURFACE_MATERIAL_REFS_TO_39_REAL_XBOX_FF_MATERIAL_ROOTS_REBASED_STANDALONE_PASS' -and
