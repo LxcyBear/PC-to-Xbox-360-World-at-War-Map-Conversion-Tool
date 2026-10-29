@@ -69,10 +69,34 @@ if([string]$prior.schema -ne 'WaW360.AztecPcTwoXModelTwoMaterialMixedGraph.v1' -
    [string]$proof.status -ne 'IDENTITY_AND_TYPED_GRAPH_IMPORT_PASS'){
     throw 'Source-backed 4-payload fullgraph, MapEnts canary, and remaining source proofs must all pass.'
 }
-$mapRoot=@($identity.Entries | Where-Object {[string]$_.TypeName -ieq 'mapents' -and [string]$_.Name -ieq [string]$canary.asset})
-if($mapRoot.Count -ne 1 -or [int]$mapRoot[0].Index -ne [int]$canary.nativeRootIndex){
-    throw 'Native MapEnts identity/index changed.'
+# Resolve by explicit native index and separately compare the exact
+# identity. Do not rely on a compound PowerShell pipeline equality/cast;
+# the standalone canary already pins this index through the PC census.
+$expectedIndex=[int]$canary.nativeRootIndex
+$expectedName=([string]$canary.asset).Replace('\','/')
+$allMapEnts=@($identity.Entries | Where-Object {
+    [string]::Equals([string]$_.TypeName,'mapents',[StringComparison]::OrdinalIgnoreCase)
+})
+Write-Host "[AZTEC-PC-5PAYLOAD] MapEnts gate: canary root=$expectedIndex identity=$expectedName, native mapents roots=$($allMapEnts.Count)"
+foreach($item in $allMapEnts){
+    Write-Host "[AZTEC-PC-5PAYLOAD] native MapEnts root=$([int]$item.Index) identity=$([string]$item.Name)"
 }
+if($expectedIndex -lt 0 -or $expectedIndex -ge @($identity.Entries).Count){
+    throw "MapEnts canary native root index out of range: $expectedIndex."
+}
+$nativeAtIndex=$identity.Entries[$expectedIndex]
+$identityMatches=[string]::Equals(
+    ([string]$nativeAtIndex.Name).Replace('\','/'),
+    $expectedName,[StringComparison]::OrdinalIgnoreCase)
+$typeMatches=[string]::Equals(
+    [string]$nativeAtIndex.TypeName,'mapents',
+    [StringComparison]::OrdinalIgnoreCase)
+$rootIndexMatches=([int]$nativeAtIndex.Index -eq $expectedIndex)
+if($allMapEnts.Count -ne 1 -or -not $typeMatches -or
+   -not $identityMatches -or -not $rootIndexMatches){
+    throw "MapEnts identity mismatch: canary index=$expectedIndex name='$expectedName'; native[$expectedIndex] index=$([int]$nativeAtIndex.Index) type='$([string]$nativeAtIndex.TypeName)' name='$([string]$nativeAtIndex.Name)' (mapents count=$($allMapEnts.Count))."
+}
+Write-Host '[AZTEC-PC-5PAYLOAD] MapEnts exact native index/name PASS'
 $native=[string]$proof.verifiedGoldenXboxFastFile
 if(-not (Test-Path -LiteralPath $native -PathType Leaf) -or
    (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash -ine [string]$proof.nativeSha256){
