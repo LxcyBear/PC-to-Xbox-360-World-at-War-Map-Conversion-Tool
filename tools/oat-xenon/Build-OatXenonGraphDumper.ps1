@@ -31,11 +31,13 @@ try {
     $imageSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Image'
     $materialSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Material'
     $pcXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\XModel'
+    $pcWorldSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\GfxWorld'
     $xenonXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\XModel'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $materialSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $pcXModelSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $pcWorldSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $xenonXModelSrcDir | Out-Null
 
     $graphSrc = Join-Path $PSScriptRoot 'graph-dumper'
@@ -74,6 +76,17 @@ try {
     $pcClassCppDst = Join-Path $pcXModelSrcDir 'XModelClassificationDumperT4.cpp'
     Copy-Item -LiteralPath $pcClassHeaderSrc -Destination $pcClassHeaderDst -Force
     Copy-Item -LiteralPath $pcClassCppSrc -Destination $pcClassCppDst -Force
+
+    # Independent post-OAT-LOAD original-PC GfxWorld Material* witness.
+    # A new asset dumper, not a byte scanner or a binding writer.
+    $pcWorldHeaderSrc = Join-Path $graphSrc 'GfxWorldMaterialPointerWitnessT4.h'
+    $pcWorldCppSrc = Join-Path $graphSrc 'GfxWorldMaterialPointerWitnessT4.cpp'
+    if (-not (Test-Path -LiteralPath $pcWorldHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $pcWorldCppSrc -PathType Leaf)) {
+        throw 'Required PC OAT loaded GfxWorld Material* witness dumper sources missing.'
+    }
+    Copy-Item -LiteralPath $pcWorldHeaderSrc -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialPointerWitnessT4.h') -Force
+    Copy-Item -LiteralPath $pcWorldCppSrc -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialPointerWitnessT4.cpp') -Force
 
     $xmodelInventoryHeaderSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.h'
     $xmodelInventoryCppSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.cpp'
@@ -185,11 +198,27 @@ try {
         $pcText = $pcText.Replace($pcIncludeNeedle, $pcIncludeNeedle + [Environment]::NewLine + $pcIncludeLine)
     }
 
+    $worldPcInclude = '#include "Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.h"'
+    if ($pcText -notmatch [regex]::Escape($worldPcInclude)) {
+        if ($pcText -notmatch [regex]::Escape($pcIncludeNeedle)) {
+            throw 'Pinned OAT PC ObjWriter XModel include anchor missing before GfxWorld registration.'
+        }
+        $pcText = $pcText.Replace($pcIncludeNeedle, $pcIncludeNeedle + [Environment]::NewLine + $worldPcInclude)
+    }
+
     $pcRegisterNeedle = 'RegisterAssetDumper(std::make_unique<xmodel::DumperT4>());'
     $pcRegisterLine = 'RegisterAssetDumper(std::make_unique<xmodel::ClassificationDumperT4>());'
     if ($pcText -notmatch [regex]::Escape($pcRegisterLine)) {
         if ($pcText -notmatch [regex]::Escape($pcRegisterNeedle)) { throw 'Could not find T4 XModel dumper registration anchor.' }
         $pcText = $pcText.Replace($pcRegisterNeedle, $pcRegisterNeedle + [Environment]::NewLine + '    ' + $pcRegisterLine)
+    }
+
+    $worldPcRegister = 'RegisterAssetDumper(std::make_unique<gfxworld::MaterialPointerWitnessT4>());'
+    if ($pcText -notmatch [regex]::Escape($worldPcRegister)) {
+        if ($pcText -notmatch [regex]::Escape($pcRegisterLine)) {
+            throw 'Pinned OAT PC ObjWriter XModel registration anchor missing before GfxWorld witness.'
+        }
+        $pcText = $pcText.Replace($pcRegisterLine, $pcRegisterLine + [Environment]::NewLine + '    ' + $worldPcRegister)
     }
 
     $normalizedPcText = $pcText.TrimEnd([char]13, [char]10) + [char]10
@@ -324,6 +353,7 @@ try {
             't4xenon-material-relocatable-graph-v1',
             't4-xmodel-classification-v1',
             't4xenon-xmodel-graph-inventory-v1',
+            't4-pc-gfxworld-loaded-material-pointer-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
         )
     }
@@ -357,6 +387,8 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelRelocatableGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
     }
     Pop-Location
