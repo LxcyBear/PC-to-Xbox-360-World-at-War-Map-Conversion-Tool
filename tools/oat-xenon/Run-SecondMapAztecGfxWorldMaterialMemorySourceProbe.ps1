@@ -82,11 +82,12 @@ if($code -ne 0 -or -not (Test-Path -LiteralPath $json -PathType Leaf)){
 }
 $r=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $json -Raw)
 $validStatus=@(
+    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_TWO_OVERLAPPING_WINDOWS_40_RECORD_RUN',
     'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_ISOLATED_CANDIDATE',
     'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_AMBIGUOUS',
     'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_NOT_LOCATED'
 )
-if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v2' -or
+if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v3' -or
    [string]$r.Status -notin $validStatus -or
    [int]$r.MaterialMemoryCount -ne 39 -or
    [int]$r.MaterialMemoryArrayBytes -ne 312 -or
@@ -99,7 +100,11 @@ if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v2' -o
    [bool]$r.XboxHardwareReady){
     throw 'MaterialMemory source probe output or scratch-only hardware gate failed.'
 }
-Write-Host "[AZTEC-MAT-MEM] STRICT 3-row signatures=$($r.ThreeRecordSignatures), full39=$($r.Full39RecordSignatures), isolated39=$($r.Isolated39RecordSignatures)"
+Write-Host "[AZTEC-MAT-MEM] STRICT 3-row=$($r.ThreeRecordSignatures), full39=$($r.Full39RecordSignatures), isolated39=$($r.Isolated39RecordSignatures), overlapping40=$($r.TwoFullWindowsOverlapIntoFortyRecordRun)"
+foreach($w in @($r.FullWindowBoundaryEvidence)){
+    Write-Host "[AZTEC-MAT-MEM] FULL-WINDOW $($w.SourceOffsetHex) priorValid=$($w.PreviousEightByteRecordPlausible) nextValid=$($w.NextEightByteRecordPlausible) sharedSourceSurfacePtrFields=$($w.FieldMatchesWithSourceGfxSurfaceMaterialPointers)/39 virtualPtrs=$($w.PackedVirtualPointerFields) inlineDirectives=$($w.FollowingOrInsertDirectiveFields) distinct=$($w.DistinctMaterialPointerFields)"
+    Write-Host "[AZTEC-MAT-MEM]   first=$($w.FirstMaterialWord) last=$($w.LastMaterialWord) SHA=$($w.Source39WindowSha256)"
+}
 Write-Host "[AZTEC-MAT-MEM] Immediately preceding original vertices=$($r.ExactArrayImmediatelyBeforeVertexBuffer)"
 foreach($candidate in @($r.Candidates | Select-Object -First 12)){
     Write-Host "[AZTEC-MAT-MEM] CANDIDATE $($candidate.SourceOffsetHex) beforeVertices=$($candidate.BytesBeforeVertexBuffer) following=$($candidate.FollowingMaterialFields) insert=$($candidate.InsertMaterialFields) offsets=$($candidate.PackedMaterialFields) distinct=$($candidate.DistinctMaterialPointerFields) positiveMemory=$($candidate.PositiveMemoryEntries)/39 totalMemoryBytes=$($candidate.TotalMemoryBytes)"
@@ -110,10 +115,11 @@ foreach($candidate in @($r.Candidates | Select-Object -First 12)){
     "Source PC GfxWorld parent MaterialMemory count=39, pointer=FOLLOWING",
     "39 GfxSurface Material references form independent 8-byte Virtual lattice, no gaps",
     "bounded search start=$($r.ScanStart) end=$($r.ScanEnd) bytesBeforeVertexMax=$($r.MaximumScanBackBytes)",
-    "strict 3-row signatures=$($r.ThreeRecordSignatures), full39=$($r.Full39RecordSignatures), isolated39=$($r.Isolated39RecordSignatures)",
+    "strict 3-row signatures=$($r.ThreeRecordSignatures), full39=$($r.Full39RecordSignatures), isolated39=$($r.Isolated39RecordSignatures), 40-record overlapping run=$($r.TwoFullWindowsOverlapIntoFortyRecordRun)",
     "immediately-before-vertex match=$($r.ExactArrayImmediatelyBeforeVertexBuffer)",
     'Rejects any low-number Temp-block pointer (v1 false positives); only Virtual/sentinel fields are accepted.',
-    'A strict isolated candidate is STILL NOT ownership proof; no-match is NOT absence proof. Material names unresolved.',
+    'Version 3 reports exact full 39-window physical offsets, adjacent-record validity, source surface pointer overlap, and window SHA pins.',
+    'Even if 2 windows form one 40-record run it is NOT a 39-entry MaterialMemory ownership proof. Material names unresolved.',
     'Gate 7 still pending. No Xbox FF or hardware authorization.',
     "Full JSON=$json"
 ) | Set-Content -LiteralPath $txt -Encoding UTF8
