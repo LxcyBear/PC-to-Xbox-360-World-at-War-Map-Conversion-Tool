@@ -40,25 +40,36 @@ if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
     catch{$nativeTestRelease=$null}
 }
 $nativeReady=$false
+$realMainWorldOatReady=$false
+$pairedFastFilesOatReady=$false
 if($null -ne $nativeTestRelease -and
    [string]$nativeTestRelease.schema -eq 'WaW360.AztecNativeSmokeTestReleaseGate.v1' -and
-   [string]$nativeTestRelease.status -eq 'HARDWARE_TEST_READY' -and
-   [bool]$nativeTestRelease.bothFinalFastfilesOatPass -and
-   [bool]$nativeTestRelease.realMainGfxWorldAnd735MaterialReferencesOatPass -and
-   [bool]$nativeTestRelease.completeCodxePackage -and
-   [bool]$nativeTestRelease.readyForFirstControlledHardwareSmokeTest -and
-   -not [bool]$nativeTestRelease.runtimeGameplayGuaranteed -and
    @($nativeTestRelease.finalFastfiles).Count -eq 2){
-    $nativeReady=$true
-    foreach($f in @($nativeTestRelease.finalFastfiles)){
-        if(-not [bool]$f.oatNativeLoadPass -or
-           -not(Test-Path -LiteralPath ([string]$f.path) -PathType Leaf) -or
-           (Get-FileHash -LiteralPath ([string]$f.path) -Algorithm SHA256).Hash -ine [string]$f.sha256){
-            $nativeReady=$false
+    $main=$nativeTestRelease.finalFastfiles | Where-Object {
+        [string]$_.filename -eq 'nazi_zombie_aztec.ff'
+    } | Select-Object -First 1
+    $load=$nativeTestRelease.finalFastfiles | Where-Object {
+        [string]$_.filename -eq 'nazi_zombie_aztec_load.ff'
+    } | Select-Object -First 1
+    function Test-FfReleaseProof($asset){
+        if($null -eq $asset -or -not [bool]$asset.oatNativeLoadPass -or
+           -not(Test-Path -LiteralPath ([string]$asset.path) -PathType Leaf)){
+            return $false
         }
+        return ((Get-FileHash -LiteralPath ([string]$asset.path) -Algorithm SHA256).Hash -ieq [string]$asset.sha256)
     }
+    $mainFfVerified=Test-FfReleaseProof $main
+    $loadFfVerified=Test-FfReleaseProof $load
+    $realMainWorldOatReady=$mainFfVerified -and
+        [bool]$nativeTestRelease.realMainGfxWorldAnd735MaterialReferencesOatPass
+    $pairedFastFilesOatReady=$realMainWorldOatReady -and $loadFfVerified -and
+        [bool]$nativeTestRelease.bothFinalFastfilesOatPass
+    $nativeReady=$pairedFastFilesOatReady -and
+        [string]$nativeTestRelease.status -eq 'HARDWARE_TEST_READY' -and
+        [bool]$nativeTestRelease.completeCodxePackage -and
+        [bool]$nativeTestRelease.readyForFirstControlledHardwareSmokeTest -and
+        -not [bool]$nativeTestRelease.runtimeGameplayGuaranteed
 }
-
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -118,10 +129,10 @@ Add-Gate 'PC geometry -> endian-converted source-layout 3-buffer readback' (
 # Do not silently treat OAT identity or an empty GfxWorld shell as a
 # converted runtime world. These later gates are fail-closed until a
 # documented new proof/report is explicitly wired into this tracker.
-Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $nativeReady 'OAT-loaded real GfxWorld 735/735 + 39 real Material references in final FF'
-Add-Gate 'Emit real GfxWorld root, DPVS and required children' $nativeReady 'Actual original-PC-derived world OAT-loaded inside final Xbox FF'
-Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $nativeReady 'BOTH final paired FFs passed native T4Xenon OAT 0 warnings/0 errors'
-Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $nativeReady 'Complete CoD Xe native package and two final OAT PASS FFs authorize FIRST Xbox smoke-test'
+Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $realMainWorldOatReady 'Real 735-surface GfxWorld/39 material owners verified INSIDE final main FF via OAT'
+Add-Gate 'Emit real GfxWorld root, DPVS and required children' $realMainWorldOatReady 'Original-PC-derived GfxWorld/DPVS OAT loaded from final main FF'
+Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $pairedFastFilesOatReady 'Both final paired FFs individually passed T4Xenon OAT 0 warnings/errors'
+Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $nativeReady 'Complete CoD Xe package plus two final OAT PASS FFs: START native Xbox test'
 
 $passed=@($gates.ToArray() | Where-Object {$_.Passed}).Count
 $total=$gates.Count
