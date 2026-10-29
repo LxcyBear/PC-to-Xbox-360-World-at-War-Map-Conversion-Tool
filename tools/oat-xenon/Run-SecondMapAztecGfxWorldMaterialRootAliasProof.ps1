@@ -60,7 +60,7 @@ if($exitCode -ne 0 -or -not (Test-Path -LiteralPath $manifest -PathType Leaf)){
     if(Test-Path -LiteralPath $runLog -PathType Leaf){
         Get-Content -LiteralPath $runLog -Tail 18 | ForEach-Object {Write-Host "[AZTEC-MAT-ROOT] MANIFEST: $_"}
     }
-    throw "Original PC XAsset table CLI manifest failed exit=$exitCode: $runLog"
+    throw "Original PC XAsset table CLI manifest failed exit=$($exitCode): $runLog"
 }
 $pcRoot=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $manifest -Raw)
 if([string]$pcRoot.platform -ne 'PC' -or
