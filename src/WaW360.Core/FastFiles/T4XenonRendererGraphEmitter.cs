@@ -41,6 +41,8 @@ public sealed class T4XenonRendererEmitResult
     public required bool ValidationOnly { get; init; }
     public required bool ValidationPass { get; init; }
     public required bool ReadyForHardware { get; init; }
+    public required bool OriginalPcGfxWorldCoreEmitted { get; init; }
+    public required bool OriginalPcGfxWorldFullDpvsGraphComplete { get; init; }
     public required string? OatGateError { get; init; }
     public required string TextReportFile { get; init; }
     public required string JsonReportFile { get; init; }
@@ -702,6 +704,8 @@ public static class T4XenonRendererGraphEmitter
             ValidationOnly = validationOnly,
             ValidationPass = validationPass,
             ReadyForHardware = ready,
+            OriginalPcGfxWorldCoreEmitted = sourceWorld is not null,
+            OriginalPcGfxWorldFullDpvsGraphComplete = sourceWorld?.FullDpvsChildGraphComplete ?? false,
             OatGateError = oatError,
             TextReportFile = txt,
             JsonReportFile = json
