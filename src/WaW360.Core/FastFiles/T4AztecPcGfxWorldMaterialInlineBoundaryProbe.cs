@@ -107,6 +107,14 @@ public static class T4AztecPcGfxWorldMaterialInlineBoundaryProbe
                 var texture = U32(b, after + pointerAt + 4);
                 var constant = U32(b, after + pointerAt + 8);
                 var bits = U32(b, after + pointerAt + 12);
+                var namePointer = U32(b, after);
+                var namePointerIsFollowing = namePointer == T4ZonePointer.Following;
+                var techsetValid = ValidMaterialPointer(technique, original.ZoneHeader);
+                var textureTableValid = ValidCountedTablePointer(texture, textureCount, original.ZoneHeader);
+                var constantTableValid = ValidCountedTablePointer(constant, constantCount, original.ZoneHeader);
+                var stateBitsTableValid = ValidCountedTablePointer(bits, stateBitsCount, original.ZoneHeader);
+                var pointerFieldsCompatible = techsetValid && textureTableValid &&
+                    constantTableValid && stateBitsTableValid;
 
                 var plausibleCounts = textureCount <= 64 &&
                     constantCount <= 64 && stateBitsCount <= 64 &&
@@ -127,7 +135,11 @@ public static class T4AztecPcGfxWorldMaterialInlineBoundaryProbe
                     $"0x{technique:X8}", $"0x{texture:X8}",
                     $"0x{constant:X8}", $"0x{bits:X8}",
                     plausibleCounts,
-                    stringHits.ToArray()));
+                    stringHits.ToArray(),
+                    $"0x{namePointer:X8}", namePointerIsFollowing,
+                    techsetValid, textureTableValid, constantTableValid,
+                    stateBitsTableValid, pointerFieldsCompatible,
+                    stringHits.Any(n => n.AlignmentAfterMaterialHeader == 0)));
             }
 
             windows.Add(new AztecMaterialInlineBoundaryWindow(
@@ -140,30 +152,59 @@ public static class T4AztecPcGfxWorldMaterialInlineBoundaryProbe
                 shapes.ToArray()));
         }
 
-        var atLeastOneNameShape = windows.Any(w => w.PossibleMaterialHeaders.Any(h =>
-            h.NameCandidates.Count > 0 && h.PlausibleMaterialCountFields));
+        // 112-byte Material layout is grounded in upstream T4
+        // 32-bit MaterialInfo (32 bytes with aligned GfxDrawSurf) +
+        // stateBitsEntry[59], 5 one-byte flags/counters, 4 pointer
+        // fields. Smaller 108-byte interpretation is retained only as
+        // a counterexample; NEVER use a nice-looking string alone as
+        // a material name or assign it to an Xbox root.
+        var coherent112 = windows.Any(w => w.PossibleMaterialHeaders.Any(h =>
+            h.CandidateMaterialBytes == 112 &&
+            h.PlausibleMaterialCountFields &&
+            h.NamePointerIsFollowing &&
+            h.AllDependencyPointerFieldsCompatible &&
+            h.ExactPostHeaderReadableString));
         var result = new AztecMaterialInlineBoundaryReport(
-            "WaW360.AztecPcGfxWorldMaterialInlineBoundary.v1",
-            atLeastOneNameShape
-                ? "AZTEC_PC_GFXWORLD_39_MEMORY_INLINE_MATERIAL_NAME_CANDIDATE"
-                : "AZTEC_PC_GFXWORLD_39_MEMORY_INLINE_MATERIAL_BOUNDARY_UNRESOLVED",
+            "WaW360.AztecPcGfxWorldMaterialInlineBoundary.v2",
+            coherent112
+                ? "AZTEC_PC_GFXWORLD_FIRST_INLINE_MATERIAL_112_ABI_STRUCTURAL_CANDIDATE"
+                : "AZTEC_PC_GFXWORLD_FIRST_INLINE_MATERIAL_ABI_UNRESOLVED",
             Path.GetFullPath(pcFastFile), original.SourceSha256, ZoneSha,
             RootOffset, 39, "0xFFFFFFFF", MaterialMemoryBytes,
             expectedOffsets.Select(v => $"0x{v:X8}").ToArray(),
             windows.ToArray(),
             false, false, false, false,
             "Read-only comparison of TWO original-PC SHA-pinned 39x8 windows. " +
-            "Their 40th FOLLOWING word can be either the next array record or " +
-            "the name pointer in an inline T4 Material body. Counts/strings are " +
-            "hypotheses and do NOT establish GfxWorld materialMemory ownership, " +
-            "the PC Material* virtual-to-physical mapping, the complete 39 names, " +
-            "Xbox Material bindings or a testable GfxWorld FF.");
+            "T4 PC 32-bit Material layout: aligned 32-byte MaterialInfo, " +
+            "59 state-bit entry bytes, 5 count/flag bytes and 4 pointers = 112 bytes. " +
+            "Checks name FOLLOWING, exact immediate post-header readable string " +
+            "and ALL counted pointer fields against zone block bounds/loader sentinels. " +
+            "The first source material header is still only a STRUCTURAL CANDIDATE. " +
+            "Its readable string is UNVERIFIED; a consistent header is not proof " +
+            "of GfxWorld memory-array ownership, 39 source material identities, " +
+            "Virtual-to-physical relocations, Xbox bindings or a working FF.");
         var output = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         await File.WriteAllTextAsync(output,
             JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }),
             cancellationToken);
         return result;
+    }
+
+    private static bool ValidMaterialPointer(uint raw, ZoneHeaderSummary header)
+    {
+        var decoded = T4ZonePointer.Decode(raw);
+        if (decoded.Kind is T4ZonePointerKind.Following or T4ZonePointerKind.Insert)
+            return true;
+        return decoded.Kind == T4ZonePointerKind.Offset &&
+            decoded.Block is not null && T4ZonePointer.IsWithinBlock(raw, header);
+    }
+
+    private static bool ValidCountedTablePointer(uint raw, int count, ZoneHeaderSummary header)
+    {
+        if (count == 0)
+            return raw == 0 || ValidMaterialPointer(raw, header);
+        return raw != 0 && ValidMaterialPointer(raw, header);
     }
 
     private static bool TryReadName(byte[] b, int start, out string name)
@@ -208,7 +249,11 @@ public sealed record AztecInlineMaterialHeaderShape(
     string TechniqueSetPointer, string TextureTablePointer,
     string ConstantTablePointer, string StateBitsTablePointer,
     bool PlausibleMaterialCountFields,
-    IReadOnlyList<AztecInlineMaterialNameCandidate> NameCandidates);
+    IReadOnlyList<AztecInlineMaterialNameCandidate> NameCandidates,
+    string MaterialNamePointer, bool NamePointerIsFollowing,
+    bool TechniqueSetPointerCompatible, bool TextureTablePointerCompatible,
+    bool ConstantTablePointerCompatible, bool StateBitsTablePointerCompatible,
+    bool AllDependencyPointerFieldsCompatible, bool ExactPostHeaderReadableString);
 public sealed record AztecMaterialInlineBoundaryWindow(
     string WindowStart, string SourceWindowSha256, int FollowingPointerFields,
     int SmallestMemoryField, int LargestMemoryField, long SumMemoryFields,
