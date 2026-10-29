@@ -27,18 +27,38 @@ internal sealed class T4XenonXModelCorpus
 
         using var bindingDoc = JsonDocument.Parse(File.ReadAllText(bindingManifest));
         var root = bindingDoc.RootElement;
-        if (!root.TryGetProperty("format", out var format) ||
-            format.GetString() != "WaW360.Nuclear4W.XModelRootBinding.v3")
+        if (!root.TryGetProperty("format", out var format))
+            throw new InvalidDataException("XModel binding manifest has no format.");
+        var bindingFormat = format.GetString();
+        var aztecCanary = bindingFormat == "WaW360.AztecPcSingleXModelBinding.v1";
+        if (!aztecCanary && bindingFormat != "WaW360.Nuclear4W.XModelRootBinding.v3")
             throw new InvalidDataException("Unexpected XModel root-binding manifest format.");
         if (!root.GetProperty("bindingPass").GetBoolean())
             throw new InvalidDataException("XModel root-binding manifest is not passing.");
 
+        // The original 280 + 9 production corpus gate remains unchanged.
+        // Only an explicitly marked, single-root Aztec diagnostic binding
+        // may bypass those FRUmansion-specific counts. Never generalize to an
+        // arbitrary partial corpus: the runner SHA-pins the source model,
+        // checks every graph blob, and keeps hardware readiness false.
+        var requiredOwned = aztecCanary ? 1 : expectedOwned;
+        var requiredRefs = aztecCanary ? 0 : expectedReferences;
         var ownedRows = root.GetProperty("ownedBindings").EnumerateArray().ToArray();
         var referenceRows = root.GetProperty("referenceBindings").EnumerateArray().ToArray();
-        if (ownedRows.Length != expectedOwned)
-            throw new InvalidDataException($"XModel owned binding count {ownedRows.Length} != {expectedOwned}.");
-        if (referenceRows.Length != expectedReferences)
-            throw new InvalidDataException($"XModel reference binding count {referenceRows.Length} != {expectedReferences}.");
+        if (ownedRows.Length != requiredOwned)
+            throw new InvalidDataException($"XModel owned binding count {ownedRows.Length} != {requiredOwned}.");
+        if (referenceRows.Length != requiredRefs)
+            throw new InvalidDataException($"XModel reference binding count {referenceRows.Length} != {requiredRefs}.");
+        if (aztecCanary)
+        {
+            if (root.GetProperty("nativeRoots").GetInt32() != 8509 ||
+                root.GetProperty("nativeXModelRoots").GetInt32() != 284 ||
+                root.GetProperty("model").GetString() != "zombie_x2_icon" ||
+                ownedRows[0].GetProperty("CorpusOrdinal").GetInt32() != 0 ||
+                ownedRows[0].GetProperty("CorpusName").GetString() != "zombie_x2_icon" ||
+                ownedRows[0].GetProperty("NativeName").GetString() != "zombie_x2_icon")
+                throw new InvalidDataException("Aztec single-XModel diagnostic binding identity/count gate failed.");
+        }
 
         var entries = new Dictionary<int, T4XenonXModelCorpusEntry>();
         foreach (var row in ownedRows)
