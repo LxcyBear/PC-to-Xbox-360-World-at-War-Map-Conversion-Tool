@@ -95,6 +95,22 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-xenon-surface-alias-link-canary" when args.Length == 7:
+            {
+                var result = await T4AztecPcXenonSurfaceAliasLinkCanary.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5], args[6], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-LINK] status=" + result.Status +
+                    " packed=" + result.TotalSurfaceMaterialReferences +
+                    " worldRealRoots=" + result.WorldRootsWithRealMaterialGraph +
+                    " worldShellRoots=" + result.WorldRootsWithIdentityShellOnly +
+                    " realWorldSurfaces=" + result.SurfaceReferencesToRealMaterialGraphs +
+                    " pointerBytesForThisLayoutOnly=" + result.PseudoLinkedBinaryFile);
+                Console.WriteLine("[AZTEC-MAT-LINK] GfxWorldEmitted=" +
+                    result.RealXboxGfxWorldRootEmitted +
+                    " OatIntegrated=" + result.IntegratedOatGfxWorldLoaded +
+                    " XboxReady=" + result.XboxHardwareReady);
+                return 0;
+            }
             case "aztec-pc-xenon-76byte-surface-canary" when args.Length == 5:
             {
                 var result = await T4AztecPcXenonGfxSurface76Canary.BuildAsync(
