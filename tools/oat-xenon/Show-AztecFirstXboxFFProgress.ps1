@@ -25,6 +25,7 @@ $surfaces=Read-Report 'pc_gfxworld_surface_source_probe\aztec_pc_gfxworld_surfac
 $mesh=Read-Report 'pc_gfxworld_source_mesh_export\aztec_pc_gfxworld_obj_export.json'
 $converted=Read-Report 'pc_gfxworld_xenon_geometry_components\gfxworld_source_to_xenon_geometry_components.json'
 $pcMaterialWitness=Read-Report 'pc_oat_loaded_gfxworld_material_pointer_witness\pc_oat_gfxworld_material_pointer_reconciliation.json'
+$pcSurface76=Read-Report 'pc_xenon_76byte_gfxsurface_canary\aztec_735_gfxsurfaces_76byte_source_canary.json'
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -112,6 +113,18 @@ $pcWitnessPassed=$null -ne $pcMaterialWitness -and
     -not [bool]$pcMaterialWitness.xboxHardwareReady
 if($pcWitnessPassed){
     Write-Host '[AZTEC-FF-PROGRESS] PC MATERIAL IDENTITIES: 735/735 INDEPENDENT OAT TYPED POINTER PASS; Xbox 76B surface ABI and Material root relocations NOT written.'
+}
+$pc76Proof=$null -ne $pcSurface76 -and
+    [string]$pcSurface76.Schema -eq 'WaW360.AztecPcXenonGfxSurface76Canary.v1' -and
+    [int]$pcSurface76.Surfaces -eq 735 -and
+    [int]$pcSurface76.SurfaceStride -eq 76 -and
+    [int]$pcSurface76.MaterialOffset -eq 44 -and
+    [int]$pcSurface76.WrittenMaterialPointerFields -eq 0 -and
+    -not [bool]$pcSurface76.XenonGfxWorldSerialized -and
+    -not [bool]$pcSurface76.OatIntegratedFastFileValidated -and
+    -not [bool]$pcSurface76.XboxHardwareReady
+if($pc76Proof){
+    Write-Host "[AZTEC-FF-PROGRESS] REAL XBOX 76B SURFACE CANARY: 735 source-based structural records, topMip source-verified=$($pcSurface76.SourceDerivedNativeExactTopMipSurfaces)/735, null Material* fields=735; NOT A GFXWORLD FF."
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
