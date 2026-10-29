@@ -317,9 +317,13 @@ try{
         # Check critical 32-bit values at their actual Xenon positions,
         # not just a self-declared hash from the emitter.
         function ReadBE([byte[]]$data,[int]$at){
-            return [uint32](([uint32]$data[$at] -shl 24) -bor
-                ([uint32]$data[$at+1] -shl 16) -bor
-                ([uint32]$data[$at+2] -shl 8) -bor [uint32]$data[$at+3])
+            # PowerShell 5.1 signed-bitwise casts can turn FFFFFFFF
+            # into -1 and throw when converted back to UInt32.
+            $val=[uint64]$data[$at]*16777216L +
+                 [uint64]$data[$at+1]*65536L +
+                 [uint64]$data[$at+2]*256L +
+                 [uint64]$data[$at+3]
+            return [uint32]$val
         }
         if((ReadBE $uncompressed $parentAt) -ne [uint32]::MaxValue -or
            (ReadBE $uncompressed ($parentAt+4)) -ne 1 -or
