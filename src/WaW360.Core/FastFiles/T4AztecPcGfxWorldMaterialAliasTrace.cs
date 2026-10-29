@@ -159,8 +159,11 @@ public static class T4AztecPcGfxWorldMaterialAliasTrace
         var candidateMaterialMemoryCount = U32(bytes, RootAt + candidateMaterialCountOffset);
         var candidateMaterialMemoryPointer = U32(bytes, RootAt + candidateMaterialPointerOffset);
         var decodedMaterialMemoryPointer = T4ZonePointer.Decode(candidateMaterialMemoryPointer);
+        // Following/Insert markers are valid loader directives, not
+        // already-allocated virtual-block addresses. Do not count them
+        // as a concrete in-block target.
         var candidateMaterialPointerInBounds =
-            candidateMaterialMemoryPointer != 0 &&
+            decodedMaterialMemoryPointer.Kind == T4ZonePointerKind.Offset &&
             T4ZonePointer.IsWithinBlock(candidateMaterialMemoryPointer, source.ZoneHeader);
         var candidateMaterialPointerMatchesFirstSlot =
             candidateMaterialMemoryPointer == pointers[0];
