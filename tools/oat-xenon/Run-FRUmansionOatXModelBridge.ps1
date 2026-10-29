@@ -204,12 +204,18 @@ if ($MinimumMeshVertices -gt 0 -or $MinimumTriangleIndices -gt 0) {
         foreach ($lod in @($model.lods)) {
             $gltfPath=Join-Path $pcDump (([string]$lod.file).Replace('/','\'))
             $gltf=Get-Content -LiteralPath $gltfPath -Raw | ConvertFrom-Json
+            # Valid locator helpers can have no triangle meshes or accessors.
+            # Under StrictMode, skip those rather than abort the entire scan.
+            if(-not $gltf.PSObject.Properties['meshes'] -or
+               -not $gltf.PSObject.Properties['accessors']){continue}
             $accessors=@($gltf.accessors)
             $vertices=0; $indices=0; $primitiveCount=0
             foreach ($mesh in @($gltf.meshes)) {
-                if ($null -eq $mesh) { continue }
+                if ($null -eq $mesh -or -not $mesh.PSObject.Properties['primitives']) { continue }
                 foreach ($primitive in @($mesh.primitives)) {
-                    if ($null -eq $primitive -or $null -eq $primitive.attributes) { continue }
+                    if ($null -eq $primitive -or
+                        -not $primitive.PSObject.Properties['attributes'] -or
+                        $null -eq $primitive.attributes) { continue }
                     if ($primitive.PSObject.Properties['mode'] -and [int]$primitive.mode -ne 4) { continue }
                     if (-not $primitive.attributes.PSObject.Properties['POSITION']) { continue }
                     $position=[int]$primitive.attributes.POSITION
