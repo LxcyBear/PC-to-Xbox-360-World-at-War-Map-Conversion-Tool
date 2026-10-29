@@ -56,6 +56,30 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-first-material-image-cursor" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstMaterialInlineImageProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] first Material={result.FirstMaterialHeaderAt} 6x16 texture table={result.FirstMaterialTextureTableAt} next physical={result.PhysicalCursorAfterTextureTable}");
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] source pointers FOLLOWING={result.FollowingImageReferences}/6 packed={result.PackedImageReferences}/6");
+                foreach (var t in result.TextureReferences)
+                    Console.WriteLine($"[AZTEC-MAT-IMAGE] texture#{t.Index} semantic={t.Semantic} image={t.SourceImagePointer} ({t.DecodedImagePointer})");
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] image 36B header plausible={result.PlausibleHeaderCandidates}; with name={result.HeaderWithInlineNameCandidates}; with loadDef={result.HeaderWithInlineLoadDefCandidates}");
+                foreach (var h in result.CandidateImageHeaders)
+                {
+                    Console.WriteLine($"[AZTEC-MAT-IMAGE] BOUNDARY {h.PhysicalOffset} plausible={h.StructurePlausible} mapType={h.MapType} semantic={h.Semantic} dimensions={h.Width}x{h.Height}x{h.Depth} category={h.Category} namePtr={h.NamePointer} texPtr={h.TexturePointer}");
+                    foreach (var n in h.InlineNameCandidates)
+                    {
+                        Console.WriteLine($"[AZTEC-MAT-IMAGE]   NAME CANDIDATE {n.PhysicalOffset}={n.UnverifiedName} end={n.AfterName} (NOT PROVEN)");
+                        foreach (var d in n.LoadDefCandidates)
+                            Console.WriteLine($"[AZTEC-MAT-IMAGE]   LOADDEF {d.PhysicalOffset} fits={d.FitsImageDimensionsAndSourceBounds} dims={d.Width}x{d.Height}x{d.Depth} resourceBytes={d.ResourceSize} format={d.Format} end={d.EndOfPayload}");
+                    }
+                }
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] report={args[3]}");
+                Console.WriteLine("[AZTEC-MAT-IMAGE] Source-only diagnostic, NO material/image root mapping and NO FF.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-first-material-children" when args.Length == 4:
             {
                 var result = await T4AztecPcGfxWorldFirstMaterialChildrenProbe.ProbeAsync(
