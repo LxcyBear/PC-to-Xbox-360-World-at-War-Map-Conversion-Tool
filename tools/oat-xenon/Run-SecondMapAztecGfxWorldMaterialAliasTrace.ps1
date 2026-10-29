@@ -92,6 +92,8 @@ if([string]$got.Schema -ne 'WaW360.AztecPcGfxWorldMaterialAliasTrace.v1' -or
 }
 Write-Host "[AZTEC-MAT-ALIAS] block=$($got.SourcePointerBlock), eightByteLattice=$($got.SharedEightByteVirtualOffsetLattice), spanSlots=$($got.VirtualSpanEightByteSlots), unreferencedSlots=$($got.UnreferencedSlotsWithinSpan)"
 Write-Host "[AZTEC-MAT-ALIAS] Other serialized pointer appearances outside 735 surfaces=$($got.AdditionalNonSurfaceSerializedPointerHits)"
+Write-Host "[AZTEC-MAT-ALIAS] GfxWorld header +0x18C count=$($got.HeaderMaterialMemoryCountCandidateAt0x18C), +0x190 pointer=$($got.HeaderFollowingMaterialMemoryPointerCandidateAt0x190) ($($got.HeaderFollowingMaterialMemoryPointerDecoded))"
+Write-Host "[AZTEC-MAT-ALIAS] Adjacent pointer in source block=$($got.HeaderMaterialMemoryPointerInSourceBlockBounds), equalsFirstSlot=$($got.HeaderPointerEqualsFirstOf39VirtualSlots), equalsAnySlot=$($got.HeaderPointerEqualsAnyOf39VirtualSlots)"
 Write-Host "[AZTEC-MAT-ALIAS] Fixed parent header count=39 candidate offsets: $(@($got.FixedWorldHeader39CountCandidateOffsets) -join ', ')"
 foreach($distance in @($got.PointerDistances)){
     Write-Host "[AZTEC-MAT-ALIAS] Adjacent sorted virtual offset delta=$($distance.OffsetDelta) occurrences=$($distance.PairCount)"
