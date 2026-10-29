@@ -95,6 +95,20 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-to-xenon-39-world-material-graphs" when args.Length == 5:
+            {
+                var result = await T4AztecPcXenonMaterial39SourceBridge.BuildAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT39-XENON] status=" + result.Status +
+                    " candidate96ByteBodies=" + result.SourceMaterialChildrenConverted +
+                    " worldSurfaces=" + result.CoveredWorldSurfaces +
+                    " missingNativeDependencies=" + result.MissingNativeDependencies +
+                    " ambiguousNativeDependencies=" + result.AmbiguousNativeDependencies +
+                    " originalPCStateTailNeedsReview=" + result.MaterialsWithPotentiallyActiveTruncatedStateBitsEntries);
+                Console.WriteLine("[AZTEC-MAT39-XENON] root=" + result.CandidateGraphRoot +
+                    " -- candidate graphs only; no FF/GfxWorld/hardware.");
+                return 0;
+            }
             case "aztec-pc-xenon-surface-alias-link-canary" when args.Length == 7:
             {
                 var result = await T4AztecPcXenonSurfaceAliasLinkCanary.BuildAsync(
