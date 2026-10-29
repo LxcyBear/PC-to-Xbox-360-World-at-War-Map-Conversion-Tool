@@ -42,7 +42,7 @@ if([string]$w.schema -ne 'WaW360.AztecPcOatLoadedGfxWorldMaterialWitnessReconcil
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 Write-Host '[AZTEC-MAT-FIXUPS] ==================================================='
 Write-Host '[AZTEC-MAT-FIXUPS] 735 OAT-TYPED PC MATERIAL IDENTITIES -> XBOX ROOT NAMES'
-Write-Host '[AZTEC-MAT-FIXUPS] 735 exact 4B Xenon GfxSurface relocation INTENT sites.'
+Write-Host '[AZTEC-MAT-FIXUPS] 735 endian-only PC 52B material sites (+20); real Xbox 76B sites are +44.'
 Write-Host '[AZTEC-MAT-FIXUPS] Root INDICES are identities, NOT Xbox pointers. No byte writes.'
 $prior=$ErrorActionPreference
 try{
@@ -103,12 +103,12 @@ if([string]$r.Schema -ne 'WaW360.AztecPcVerifiedSurfaceMaterialRelocationPlan.v1
     throw 'Verified 735 surface material worklist failed non-writing/hardware safety contract.'
 }
 Write-Host "[AZTEC-MAT-FIXUPS] originalPcTypedPointers=$($r.VerifiedTypedPcSurfaceIdentities)/735 goldenXboxRootNames=$($r.UniqueGoldenXboxNativeMaterialRootNames)/39"
-Write-Host "[AZTEC-MAT-FIXUPS] xenonMaterialFieldSites=$($r.ExactRelocationSites)/735 unmodifiedSurfaceSHA=$($r.XenonSurfaceBufferSha256)"
+Write-Host "[AZTEC-MAT-FIXUPS] pcLayoutBeMaterialSites=$($r.ExactRelocationSites)/735 unmodifiedSurfaceSHA=$($r.XenonSurfaceBufferSha256)"
 foreach($row in @($r.RelocationIntents | Select-Object -First 8)){
     Write-Host "[AZTEC-MAT-FIXUPS] site=+$($row.XenonSurfaceBufferByteOffset) surface#$($row.SurfaceIndex) pcName=$($row.VerifiedPcMaterialName) xboxRootIndex=$($row.UniqueMatchingXboxNativeRootIndex) pointerWritten=False"
 }
 Write-Host '[AZTEC-MAT-FIXUPS] ================= RESULT ==========================='
 Write-Host "[AZTEC-MAT-FIXUPS] status=$($r.Status)"
 Write-Host "[AZTEC-MAT-FIXUPS] report=$json"
-Write-Host '[AZTEC-MAT-FIXUPS] Source binding IDENTIFIED. Xenon runtime material graph / FF pointer relocations PENDING. Gate 7 PENDING.'
+Write-Host '[AZTEC-MAT-FIXUPS] PC identity PROVEN. True Xbox 76B surface ABI, topMip and runtime pointer relocations PENDING. Gate 7 PENDING.'
 & (Join-Path $PSScriptRoot 'Show-AztecFirstXboxFFProgress.ps1')
