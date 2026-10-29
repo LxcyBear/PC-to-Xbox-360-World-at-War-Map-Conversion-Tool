@@ -413,6 +413,7 @@ try {
             't4xenon-xmodel-graph-inventory-v1',
             't4-pc-gfxworld-loaded-material-pointer-witness-v1',
             't4-pc-gfxworld-39-material-source-graph-corpus-v1',
+            't4-pc-gfxworld-gate8-child-source-v1',
             't4xenon-gfxworld-surface-abi-loaded-pointer-witness-v1',
             't4xenon-gfxworld-root-dpvs-layout-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
