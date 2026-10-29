@@ -1,5 +1,6 @@
 #include "GfxWorldSurfaceAbiWitnessT4Xenon.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -62,7 +63,14 @@ namespace
 
     void WriteTriple(std::ostream& out, const float* v)
     {
-        // Use finite decimal with enough digits for round-trip comparison.
+        // Invalid floats must not corrupt the JSON witness; downstream
+        // calibration treats null as unresolved rather than guessed.
+        if (!std::isfinite(v[0]) || !std::isfinite(v[1]) ||
+            !std::isfinite(v[2]))
+        {
+            out << "null";
+            return;
+        }
         out << '[' << std::setprecision(9) << v[0] << ','
             << v[1] << ',' << v[2] << ']';
     }
