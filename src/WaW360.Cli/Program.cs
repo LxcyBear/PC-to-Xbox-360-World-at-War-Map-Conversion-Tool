@@ -56,6 +56,26 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-null-image-boundary" when args.Length == 4:
+            {
+                var result = await T4AztecPcNullImageBoundaryProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-NULL] status=" + result.Status +
+                    " image=" + result.NullImageHeaderAt +
+                    " nameCandidate=" + result.NullImageName +
+                    " afterName=" + result.CandidateAfterInlineName +
+                    " continuation=" + result.ExactPostNameMaterialContinuationPlausible);
+                foreach (var c in result.Candidates)
+                    Console.WriteLine("[AZTEC-MAT-NULL] constants=" + c.ConstantTableAt +
+                        " plausible=" + c.PlausibleConstants + "/2" +
+                        " statebits=" + c.StateBitsAt +
+                        " nextHeader=" + c.NextHeaderAt +
+                        " nextName=" + c.NextNameCandidate +
+                        " nextCounts=" + c.NextCountsPlausible);
+                Console.WriteLine("[AZTEC-MAT-NULL] report=" + args[3] +
+                    " -- SOURCE ONLY; no walker changes or FF.");
+                return 0;
+            }
             case "aztec-pc-material-stop-microscope" when args.Length == 4:
             {
                 var result = await T4AztecPcMaterialStopMicroscope.ProbeAsync(
