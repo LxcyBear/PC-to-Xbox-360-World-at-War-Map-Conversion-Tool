@@ -94,7 +94,6 @@ public static class T4AztecPcGfxWorldRootDpvsSeed
            PcRootOffset+PcRootBytes>zone.Bytes.Length)
             throw new InvalidDataException("Original PC world source root/zone identity mismatch.");
         var raw=zone.Bytes.AsSpan(PcRootOffset,PcRootBytes).ToArray();
-        var originalRoot=raw.AsSpan();
         int pDpvs=pc.GetProperty("dpvsStaticAt").GetInt32();
         int xDpvs=xb.GetProperty("dpvsStaticAt").GetInt32();
         if(pDpvs<0 || pDpvs+DpvsBytes>PcRootBytes ||
@@ -108,25 +107,21 @@ public static class T4AztecPcGfxWorldRootDpvsSeed
         foreach(var (sourceOffset,nativeOffset,field) in new[]{
             ("indexCountAt","indexCountAt","indexCount"),
             ("surfaceCountAt","surfaceCountAt","surfaceCount"),
-            ("vertexCountAt","vertexCountAt","vertexCount"),
-            ("materialMemoryCountAt","materialMemoryCountAt","materialMemoryCount")})
+            ("vertexCountAt","vertexCountAt","vertexCount")})
         {
-            // Older original-PC OAT metadata explicitly provides the first
-            // three offsets but materialMemoryCount needs a new witness
-            // position; don't silently derive it as materialMemoryAt-4.
             if(!pc.TryGetProperty(sourceOffset,out var pcOffsetValue) ||
                !xb.TryGetProperty(nativeOffset,out var nativeOffsetValue))
                 throw new InvalidDataException($"Measured dual ABI does not expose {field} field offset.");
             int so=pcOffsetValue.GetInt32(),xo=nativeOffsetValue.GetInt32();
             if(so<0 || so+4>raw.Length || xo<0 || xo+4>xenon.Length)
                 throw new InvalidDataException($"Measured {field} offset exceeds source/native root.");
-            uint val=BinaryPrimitives.ReadUInt32LittleEndian(originalRoot.Slice(so,4));
+            uint val=BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(so,4));
             if(val!=(uint)pcs.GetProperty(field).GetInt32())
                 throw new InvalidDataException($"Original PC root {field} bytes disagree with typed OAT loaded world.");
             BinaryPrimitives.WriteUInt32BigEndian(xenon.AsSpan(xo,4),val);
             validatedRoot.Add(new(field,so,xo,val));
         }
-        var dpvs=raw.AsSpan(pDpvs,DpvsBytes);
+        byte[] dpvs=raw.AsSpan(pDpvs,DpvsBytes).ToArray();
         // The beginning of both native 100-byte DPVS structs is a shared,
         // explicitly measured prefix of ten 32-bit scalar counters/ranges.
         // Its pointer-bearing remainder is all zero until real child
@@ -139,7 +134,7 @@ public static class T4AztecPcGfxWorldRootDpvsSeed
         for(int i=0;i<keys.Length;i++)
         {
             int offset=i*4;
-            uint val=BinaryPrimitives.ReadUInt32LittleEndian(dpvs.Slice(offset,4));
+            uint val=BinaryPrimitives.ReadUInt32LittleEndian(dpvs.AsSpan(offset,4));
             if(keys[i] is "smodelCount" or "staticSurfaceCount" or
                           "smodelVisDataCount" or "surfaceVisDataCount")
             {
@@ -170,7 +165,7 @@ public static class T4AztecPcGfxWorldRootDpvsSeed
         var pcDpvs=Path.Combine(output,"pc_original_world_dpvs_100B_readonly.bin");
         var xboxRoot=Path.Combine(output,"xenon_world_root_900B_SCALARS_ONLY_NOT_FF.bin");
         await File.WriteAllBytesAsync(pcRoot,raw,ct);
-        await File.WriteAllBytesAsync(pcDpvs,dpvs.ToArray(),ct);
+        await File.WriteAllBytesAsync(pcDpvs,dpvs,ct);
         await File.WriteAllBytesAsync(xboxRoot,xenon,ct);
 
         var result=new AztecPcGfxWorldRootDpvsSeedReport(
@@ -184,7 +179,7 @@ public static class T4AztecPcGfxWorldRootDpvsSeed
             validatedRoot.ToArray(),dpvsFields.ToArray(),
             false,false,false,false,
             "Built from original-PC world root bytes and independently measured " +
-            "PC/Xbox OAT ABI. Only four full root scalar fields and ten DPVS " +
+            "PC/Xbox OAT ABI. Only three full root scalar fields and ten DPVS " +
             "static scalar fields are endianness-converted. Actual world " +
             "names, indices, vertices, 39 MaterialMemory child entries, " +
             "735 GfxSurface entries, 613 static sortedSurfaces, " +
