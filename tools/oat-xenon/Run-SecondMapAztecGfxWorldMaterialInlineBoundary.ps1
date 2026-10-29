@@ -74,10 +74,10 @@ if($code -ne 0 -or -not(Test-Path -LiteralPath $json -PathType Leaf)){
 }
 $r=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $json -Raw)
 $goodStatuses=@(
-    'AZTEC_PC_GFXWORLD_39_MEMORY_INLINE_MATERIAL_NAME_CANDIDATE',
-    'AZTEC_PC_GFXWORLD_39_MEMORY_INLINE_MATERIAL_BOUNDARY_UNRESOLVED'
+    'AZTEC_PC_GFXWORLD_FIRST_INLINE_MATERIAL_112_ABI_STRUCTURAL_CANDIDATE',
+    'AZTEC_PC_GFXWORLD_FIRST_INLINE_MATERIAL_ABI_UNRESOLVED'
 )
-if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialInlineBoundary.v1' -or
+if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialInlineBoundary.v2' -or
     [string]$r.Status -notin $goodStatuses -or
     [int]$r.MaterialMemoryCount -ne 39 -or
     [int]$r.CandidateMaterialMemoryBytes -ne 312 -or
@@ -94,6 +94,7 @@ foreach($w in @($r.Windows)){
     Write-Host "[AZTEC-MAT-BOUNDARY]   memory min=$($w.SmallestMemoryField) max=$($w.LargestMemoryField) total=$($w.SumMemoryFields)"
     foreach($shape in @($w.PossibleMaterialHeaders)){
         Write-Host "[AZTEC-MAT-BOUNDARY]   MaterialLayout=$($shape.CandidateMaterialBytes)B plausibleCounts=$($shape.PlausibleMaterialCountFields) textures=$($shape.TextureCount) constants=$($shape.ConstantCount) states=$($shape.StateBitsCount) camera=$($shape.CameraRegion) technique=$($shape.TechniqueSetPointer)"
+        Write-Host "[AZTEC-MAT-BOUNDARY]     name=$($shape.MaterialNamePointer), following=$($shape.NamePointerIsFollowing), techniqueOK=$($shape.TechniqueSetPointerCompatible), textureOK=$($shape.TextureTablePointerCompatible), constantOK=$($shape.ConstantTablePointerCompatible), statebitsOK=$($shape.StateBitsTablePointerCompatible), allPtrsOK=$($shape.AllDependencyPointerFieldsCompatible), nameDirectlyAfterHeader=$($shape.ExactPostHeaderReadableString)"
         foreach($name in @($shape.NameCandidates)){
             Write-Host "[AZTEC-MAT-BOUNDARY]     NAME-CANDIDATE $($name.SourceOffset)=$($name.UnverifiedName) (unproven)"
         }
