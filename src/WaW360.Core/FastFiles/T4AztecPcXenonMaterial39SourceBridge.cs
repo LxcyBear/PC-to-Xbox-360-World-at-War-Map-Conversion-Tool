@@ -296,7 +296,7 @@ public static class T4AztecPcXenonMaterial39SourceBridge
         string type,string name,JsonElement[] roots)
     {
         var matches=roots.Where(x=>
-            (type=="image"?x.GetProperty("TypeId").GetInt32()==13:
+            (type=="image"?x.GetProperty("OatTypeName").GetString() == "image":
                 x.GetProperty("OatTypeName").GetString() is "techset" or "techniqueset") &&
             string.Equals(x.GetProperty("Name").GetString(),name,StringComparison.OrdinalIgnoreCase)
             ).ToArray();
