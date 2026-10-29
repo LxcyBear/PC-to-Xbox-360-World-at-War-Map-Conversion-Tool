@@ -114,3 +114,4 @@ Write-Host '[AZTEC-MAT-ALIAS] ================= RESULT =========================
 Write-Host "[AZTEC-MAT-ALIAS] status=$($got.Status)"
 Write-Host "[AZTEC-MAT-ALIAS] report=$txt"
 Write-Host '[AZTEC-MAT-ALIAS] NO FF / NOT FOR XBOX / Gate 7 pending'
+& (Join-Path $PSScriptRoot 'Show-AztecFirstXboxFFProgress.ps1')
