@@ -95,6 +95,24 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-material-stream-walker-null-replay" when args.Length == 5:
+            {
+                var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None, args[4]);
+                var nameOnly = result.Materials
+                    .SelectMany(m => m.Images).Count(i => i.NameOnlyNullImageCandidate);
+                Console.WriteLine("[AZTEC-MAT-REPLAY] status=" + result.Status +
+                    " decoded=" + result.DecodedMaterialCandidates +
+                    " nullNameOnlyImages=" + nameOnly +
+                    " stopReason=" + result.StopReason + " stopAt=" + result.StopAt);
+                foreach (var m in result.Materials)
+                    Console.WriteLine("[AZTEC-MAT-REPLAY] material#" + m.Ordinal +
+                        " header=" + m.HeaderAt + " nameCandidate=" + m.CandidateName +
+                        " inlineImages=" + m.InlineImages + " next=" + m.NextCursor);
+                Console.WriteLine("[AZTEC-MAT-REPLAY] report=" + args[3] +
+                    " -- diagnostic replay ONLY, no FF or Xbox bindings.");
+                return 0;
+            }
             case "aztec-pc-material-stream-walker" when args.Length == 4:
             {
                 var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
