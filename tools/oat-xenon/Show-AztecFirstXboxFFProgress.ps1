@@ -33,6 +33,32 @@ $pc39WorldFfScratch=Read-Report 'pc_39_world_material_real_ff_scratch_integratio
 $pc735LiveWorldLink=Read-Report 'pc_xenon_735_world_surface_live_39_material_ff_link\aztec_735_world_surfaces_linked_to_39_ff_material_roots.json'
 $pcGfxWorldRootAbi=Read-Report 'xenon_native_gfxworld_root_dpvs_abi\native_xenon_gfxworld_root_dpvs_abi.json'
 $pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
+$nativeTestReleaseReport=Join-Path $repo 'output\native_smoke_test_release\nazi_zombie_aztec\native_smoke_test_package_release.json'
+$nativeTestRelease=$null
+if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
+    try{$nativeTestRelease=Get-Content -LiteralPath $nativeTestReleaseReport -Raw | ConvertFrom-Json}
+    catch{$nativeTestRelease=$null}
+}
+$nativeReady=$false
+if($null -ne $nativeTestRelease -and
+   [string]$nativeTestRelease.schema -eq 'WaW360.AztecNativeSmokeTestReleaseGate.v1' -and
+   [string]$nativeTestRelease.status -eq 'HARDWARE_TEST_READY' -and
+   [bool]$nativeTestRelease.bothFinalFastfilesOatPass -and
+   [bool]$nativeTestRelease.realMainGfxWorldAnd735MaterialReferencesOatPass -and
+   [bool]$nativeTestRelease.completeCodxePackage -and
+   [bool]$nativeTestRelease.readyForFirstControlledHardwareSmokeTest -and
+   -not [bool]$nativeTestRelease.runtimeGameplayGuaranteed -and
+   @($nativeTestRelease.finalFastfiles).Count -eq 2){
+    $nativeReady=$true
+    foreach($f in @($nativeTestRelease.finalFastfiles)){
+        if(-not [bool]$f.oatNativeLoadPass -or
+           -not(Test-Path -LiteralPath ([string]$f.path) -PathType Leaf) -or
+           (Get-FileHash -LiteralPath ([string]$f.path) -Algorithm SHA256).Hash -ine [string]$f.sha256){
+            $nativeReady=$false
+        }
+    }
+}
+
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -92,10 +118,10 @@ Add-Gate 'PC geometry -> endian-converted source-layout 3-buffer readback' (
 # Do not silently treat OAT identity or an empty GfxWorld shell as a
 # converted runtime world. These later gates are fail-closed until a
 # documented new proof/report is explicitly wired into this tracker.
-Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $false 'PENDING actual Xenon root relocations and runtime graph closure'
-Add-Gate 'Emit real GfxWorld root, DPVS and required children' $false 'PENDING source-backed Xbox world layout'
-Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $false 'PENDING first seven-family OAT validation'
-Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $false 'PENDING safe-to-copy audit and load plan'
+Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $nativeReady 'OAT-loaded real GfxWorld 735/735 + 39 real Material references in final FF'
+Add-Gate 'Emit real GfxWorld root, DPVS and required children' $nativeReady 'Actual original-PC-derived world OAT-loaded inside final Xbox FF'
+Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $nativeReady 'BOTH final paired FFs passed native T4Xenon OAT 0 warnings/0 errors'
+Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $nativeReady 'Complete CoD Xe native package and two final OAT PASS FFs authorize FIRST Xbox smoke-test'
 
 $passed=@($gates.ToArray() | Where-Object {$_.Passed}).Count
 $total=$gates.Count
