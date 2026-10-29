@@ -147,6 +147,26 @@ public static class T4AztecPcGfxWorldMaterialAliasTrace
         }
         var offSurfaceTotals = externalCounts.Values.Sum();
 
+        // T4_Assets.h puts materialMemoryCount followed immediately by
+        // MaterialMemory* materialMemory in the 32-bit GfxWorld parent.
+        // The source header previously yielded 39 at +0x18C; collect
+        // the adjacent +0x190 pointer and compare it to the exact
+        // 39-reference virtual lattice. This is evidence of structural
+        // adjacency, never proof that a GfxSurface Material* is a
+        // MaterialMemory object or an Xbox material identity.
+        const int candidateMaterialCountOffset = 0x18C;
+        const int candidateMaterialPointerOffset = 0x190;
+        var candidateMaterialMemoryCount = U32(bytes, RootAt + candidateMaterialCountOffset);
+        var candidateMaterialMemoryPointer = U32(bytes, RootAt + candidateMaterialPointerOffset);
+        var decodedMaterialMemoryPointer = T4ZonePointer.Decode(candidateMaterialMemoryPointer);
+        var candidateMaterialPointerInBounds =
+            candidateMaterialMemoryPointer != 0 &&
+            T4ZonePointer.IsWithinBlock(candidateMaterialMemoryPointer, source.ZoneHeader);
+        var candidateMaterialPointerMatchesFirstSlot =
+            candidateMaterialMemoryPointer == pointers[0];
+        var candidateMaterialPointerWithin39Slots =
+            expected.ContainsKey(candidateMaterialMemoryPointer);
+
         // Search only the fixed source GfxWorld header for numerically
         // interesting material-memory-count candidates. We deliberately
         // avoid labeling offsets as true T4 ABI members until independently
@@ -184,6 +204,12 @@ public static class T4AztecPcGfxWorldMaterialAliasTrace
             onEightByteLattice, slotSpan, candidateSlotsAbsent,
             distances.Select(d => new AztecPcGfxWorldAliasDistance(d.Key, d.Value)).ToArray(),
             offSurfaceTotals,
+            candidateMaterialMemoryCount,
+            $"0x{candidateMaterialMemoryPointer:X8}",
+            decodedMaterialMemoryPointer.ToString(),
+            candidateMaterialPointerInBounds,
+            candidateMaterialPointerMatchesFirstSlot,
+            candidateMaterialPointerWithin39Slots,
             matchingHeaderCountWords.Select(o => $"0x{o:X3}").ToArray(),
             candidates.ToArray(), entries,
             false, false, false,
@@ -229,6 +255,12 @@ public sealed record AztecPcGfxWorldMaterialAliasTraceReport(
     bool SharedEightByteVirtualOffsetLattice, int VirtualSpanEightByteSlots,
     int UnreferencedSlotsWithinSpan, IReadOnlyList<AztecPcGfxWorldAliasDistance> PointerDistances,
     int AdditionalNonSurfaceSerializedPointerHits,
+    uint HeaderMaterialMemoryCountCandidateAt0x18C,
+    string HeaderFollowingMaterialMemoryPointerCandidateAt0x190,
+    string HeaderFollowingMaterialMemoryPointerDecoded,
+    bool HeaderMaterialMemoryPointerInSourceBlockBounds,
+    bool HeaderPointerEqualsFirstOf39VirtualSlots,
+    bool HeaderPointerEqualsAnyOf39VirtualSlots,
     IReadOnlyList<string> FixedWorldHeader39CountCandidateOffsets,
     IReadOnlyList<AztecPcGfxWorldMaterialHeaderCandidate> FixedWorldHeaderCountPointerCandidates,
     IReadOnlyList<AztecPcGfxWorldMaterialAliasGroup> Groups,
