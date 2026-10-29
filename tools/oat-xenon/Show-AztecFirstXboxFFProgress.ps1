@@ -127,11 +127,28 @@ $convertedOk=$null -ne $converted -and
 Add-Gate 'PC geometry -> endian-converted source-layout 3-buffer readback' (
     $convertedOk -and $markerOk) 'Three-buffer SHA/735-slot ledger runner PASS'
 
-# Do not silently treat OAT identity or an empty GfxWorld shell as a
-# converted runtime world. These later gates are fail-closed until a
-# documented new proof/report is explicitly wired into this tracker.
-Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $realMainWorldOatReady 'Real 735-surface GfxWorld/39 material owners verified INSIDE final main FF via OAT'
-Add-Gate 'Emit real GfxWorld root, DPVS and required children' $realMainWorldOatReady 'Original-PC-derived GfxWorld/DPVS OAT loaded from final main FF'
+# Gate 7 is now a scratch-level proof: source-owned geometry, 735 material
+# pointers to 39 actual Xenon Material bodies, and the real 900-byte world
+# core all load under OAT with the exact 8,509-root sequence. This is NOT
+# proof of complete DPVS runtime children or a hardware-testable FF.
+$integratedCorePass=$null -ne $pcIntegratedWorldCore -and
+    [string]$pcIntegratedWorldCore.schema -eq 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -and
+    [string]$pcIntegratedWorldCore.status -eq 'AZTEC_ORIGINAL_PC_GFXWORLD_CORE_IN_REAL_FF_OAT_LOAD_PASS_REMAINING_CHILDREN' -and
+    [string]$pcIntegratedWorldCore.probeLevel -eq 'Full' -and
+    [bool]$pcIntegratedWorldCore.realOriginalPcGfxWorldCoreEmitted -and
+    [bool]$pcIntegratedWorldCore.finalMaterialReferencesRebasedDuringCurrentFfEmit -and
+    [int]$pcIntegratedWorldCore.realPcGfxSurfaceCount -eq 735 -and
+    [int]$pcIntegratedWorldCore.realPcGfxWorldMaterialRoots -eq 39 -and
+    [bool]$pcIntegratedWorldCore.OatPass -and
+    -not [bool]$pcIntegratedWorldCore.allOriginalPcGfxWorldDpvsChildrenComplete -and
+    -not [bool]$pcIntegratedWorldCore.fullNativeWorldSourceClosurePass -and
+    -not [bool]$pcIntegratedWorldCore.hardwareReady -and
+    (Test-Path -LiteralPath ([string]$pcIntegratedWorldCore.outputFastFile) -PathType Leaf)
+Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots (OAT scratch)' (
+    $integratedCorePass -or $realMainWorldOatReady) 'Original-PC 735/39 real GfxWorld FF OAT core PASS (not full DPVS)'
+# Keep the later gates fail-closed until full required world child closure,
+# both native main/_load artifacts, and the independent release evidence.
+Add-Gate 'Emit real GfxWorld root, DPVS and required children' $realMainWorldOatReady 'Full world/DPVS closure verified in final main FF'
 Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $pairedFastFilesOatReady 'Both final paired FFs individually passed T4Xenon OAT 0 warnings/errors'
 Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $nativeReady 'Complete CoD Xe package plus two final OAT PASS FFs: START native Xbox test'
 
@@ -213,7 +230,7 @@ $pc39WorldFfPass=$null -ne $pc39WorldFfScratch -and
     -not [bool]$pc39WorldFfScratch.xenonGfxWorldRootEmitted -and
     -not [bool]$pc39WorldFfScratch.hardwareReady
 if($pc39WorldFfPass){
-    Write-Host '[AZTEC-FF-PROGRESS] 39/39 WORLD MATERIAL ROOTS serialized in OAT-PASS SCRATCH FF; 8509 Xbox root identity exact. Actual FF-resident GfxSurface/GfxWorld still PENDING.'
+    Write-Host '[AZTEC-FF-PROGRESS] HISTORICAL 39-MATERIAL BASELINE: OAT PASS in scratch FF before direct world graft (the integrated-world result is reported separately below).'
 }
 $pc735LiveLinkPass=$null -ne $pc735LiveWorldLink -and
     [string]$pc735LiveWorldLink.Status -eq 'AZTEC_735_SURFACE_MATERIAL_REFS_TO_39_REAL_XBOX_FF_MATERIAL_ROOTS_REBASED_STANDALONE_PASS' -and
@@ -225,7 +242,7 @@ $pc735LiveLinkPass=$null -ne $pc735LiveWorldLink -and
     -not [bool]$pc735LiveWorldLink.OatValidatedGfxWorldLoad -and
     -not [bool]$pc735LiveWorldLink.XboxHardwareReady
 if($pc735LiveLinkPass){
-    Write-Host '[AZTEC-FF-PROGRESS] GFXSURFACE -> REAL FF MATERIAL POINTER HANDOFF: 735/735 standalone +44 BE pointers into all 39 OAT-PASS Material graph owners, 0 shell targets. NOT inserted in GfxWorld FF.'
+    Write-Host '[AZTEC-FF-PROGRESS] HISTORICAL GFXSURFACE HANDOFF: standalone 735/735 +44 pointers to 39 material owners; direct world FF integration is reported below.'
 }
 $rootAbiPass=$null -ne $pcGfxWorldRootAbi -and
     [string]$pcGfxWorldRootAbi.status -eq 'AZTEC_NATIVE_XBOX_GFXWORLD_ROOT_AND_DPVS_ABI_EXACT_SOURCE_WITNESS' -and
@@ -247,11 +264,14 @@ $pcRootSeedPass=$null -ne $pcGfxWorldRootSeed -and
     -not [bool]$pcGfxWorldRootSeed.OatGfxWorldLoadValidated -and
     -not [bool]$pcGfxWorldRootSeed.XboxHardwareReady
 if($pcRootSeedPass){
-    Write-Host '[AZTEC-FF-PROGRESS] GFXWORLD ROOT CONVERTER STARTED: source 800B PC root -> 900B Xbox ABI scalars, embedded 100B DPVS counters verified. All world children + FF insertion still PENDING.'
+    Write-Host '[AZTEC-FF-PROGRESS] HISTORICAL GFXWORLD ROOT SEED: 800B PC -> 900B Xbox scalars + 100B DPVS counters; full world child closure remains incomplete.'
 }
 if($null -ne $pcIntegratedWorldCore -and
    [string]$pcIntegratedWorldCore.schema -eq 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'){
     Write-Host "[AZTEC-FF-PROGRESS] FIRST REAL GFXWORLD FF EMIT: core=$($pcIntegratedWorldCore.realOriginalPcGfxWorldCoreEmitted), OAT_PASS=$($pcIntegratedWorldCore.OatPass), 735 source surfaces/39 Material roots; full DPVS=$($pcIntegratedWorldCore.allOriginalPcGfxWorldDpvsChildrenComplete), paired _load still pending."
+    if($integratedCorePass){
+        Write-Host '[AZTEC-FF-PROGRESS] VERIFIED: 735/735 source-owned Xbox GfxSurface material refs are now in the OAT-loaded 8509-root GfxWorld CORE. This advances milestone 7 ONLY. Required DPVS/cell/lightmap closure is NOT done.'
+    }
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
