@@ -107,10 +107,41 @@ $ledger=[string]$got.MaterialRelocationLedger
 if(-not (Test-Path -LiteralPath $ledger -PathType Leaf)){
     throw "Missing original-PC material-pointer relocation ledger: $ledger"
 }
-$refs=@(Get-Content -LiteralPath $ledger -Raw | ConvertFrom-Json)
+# Windows PowerShell 5.1 sometimes passes a JSON root array through the
+# ConvertFrom-Json pipeline as ONE nested object[] instead of 735 records.
+# Normalize the JSON root explicitly, then verify EVERY original-PC pointer
+# and all 735 unbound slots; do not rely on @(... | ConvertFrom-Json).Count.
+$decodedLedger=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $ledger -Raw)
+$refs=New-Object 'System.Collections.Generic.List[object]'
+foreach($record in $decodedLedger){
+    if($record -is [System.Array]){
+        foreach($entry in $record){$refs.Add($entry)}
+    }else{
+        $refs.Add($record)
+    }
+}
+$bound=0
+$badRows=0
+$seenPointers=New-Object 'System.Collections.Generic.HashSet[string]'
+$seenIndices=New-Object 'System.Collections.Generic.HashSet[int]'
+foreach($record in $refs){
+    $i=[int]$record.SurfaceIndex
+    $ptr=[string]$record.OriginalPcPackedPointer
+    if($i -lt 0 -or $i -ge 735 -or
+       -not $seenIndices.Add($i) -or
+       $ptr -notmatch '^0x[0-9A-Fa-f]{8}$' -or
+       -not [string]::IsNullOrEmpty([string]$record.XboxMaterialRootName)){
+        $badRows++
+    }
+    [void]$seenPointers.Add($ptr.ToUpperInvariant())
+    if([bool]$record.BoundToXboxMaterialRoot){$bound++}
+}
+Write-Host "[AZTEC-GFX-XENON] Ledger audit: rows=$($refs.Count)/735, uniqueSurfaceIndices=$($seenIndices.Count)/735, distinctPCMaterialPtrs=$($seenPointers.Count)/39, boundXboxMaterials=$bound/0, malformed=$badRows"
 if($refs.Count -ne 735 -or
-   @($refs | Where-Object {[bool]$_.BoundToXboxMaterialRoot}).Count -ne 0){
-    throw '39-group / 735-material-slot relocation ledger must remain explicitly unbound.'
+   $seenIndices.Count -ne 735 -or
+   $seenPointers.Count -ne 39 -or
+   $bound -ne 0 -or $badRows -ne 0){
+    throw "Original-PC GfxWorld material relocation ledger gate failed: rows=$($refs.Count), indices=$($seenIndices.Count), pointerGroups=$($seenPointers.Count), bound=$bound, malformed=$badRows. Ledger=$ledger"
 }
 @(
   "status=AZTEC_PC_GFXWORLD_3_BUFFER_XENON_ENDIAN_READBACK_PASS",
