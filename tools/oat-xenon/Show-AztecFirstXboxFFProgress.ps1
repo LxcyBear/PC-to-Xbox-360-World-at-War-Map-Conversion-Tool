@@ -26,6 +26,7 @@ $mesh=Read-Report 'pc_gfxworld_source_mesh_export\aztec_pc_gfxworld_obj_export.j
 $converted=Read-Report 'pc_gfxworld_xenon_geometry_components\gfxworld_source_to_xenon_geometry_components.json'
 $pcMaterialWitness=Read-Report 'pc_oat_loaded_gfxworld_material_pointer_witness\pc_oat_gfxworld_material_pointer_reconciliation.json'
 $pcSurface76=Read-Report 'pc_xenon_76byte_gfxsurface_canary\aztec_735_gfxsurfaces_76byte_source_canary.json'
+$pcWorldMaterialCorpus=Read-Report 'pc_39_world_material_corpus_source\aztec_pc_39_world_material_corpus_summary.json'
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -125,6 +126,15 @@ $pc76Proof=$null -ne $pcSurface76 -and
     -not [bool]$pcSurface76.XboxHardwareReady
 if($pc76Proof){
     Write-Host "[AZTEC-FF-PROGRESS] REAL XBOX 76B SURFACE CANARY: 735 source-based structural records, topMip source-verified=$($pcSurface76.SourceDerivedNativeExactTopMipSurfaces)/735, null Material* fields=735; NOT A GFXWORLD FF."
+}
+$pc39CorpusPass=$null -ne $pcWorldMaterialCorpus -and
+    [string]$pcWorldMaterialCorpus.status -eq 'AZTEC_PC_OAT_39_MATERIAL_HEADERS_AND_CHILD_TABLES_SOURCE_EXPORTED' -and
+    [int]$pcWorldMaterialCorpus.typedWorldMaterialOwners -eq 39 -and
+    [int]$pcWorldMaterialCorpus.sourceHeaders -eq 39 -and
+    [int]$pcWorldMaterialCorpus.realXenonWorldMaterialGraphBodies -eq 0 -and
+    -not [bool]$pcWorldMaterialCorpus.hardwareReady
+if($pc39CorpusPass){
+    Write-Host "[AZTEC-FF-PROGRESS] PC MATERIAL GRAPH SOURCE: 39/39 original PC Material headers and child tables EXPORTED; 0/39 real Xenon world Material graphs integrated yet."
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
