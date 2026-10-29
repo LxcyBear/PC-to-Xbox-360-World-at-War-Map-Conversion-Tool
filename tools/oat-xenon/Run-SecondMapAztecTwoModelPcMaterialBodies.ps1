@@ -93,7 +93,7 @@ foreach($dep in @($audit.dependencies)){
         throw "Material $key no longer has exact native/PC identity evidence."
     }
     if(-not $wanted.ContainsKey($key)){
-        $wanted[$key]=[pscustomobject]@{Name=[string]$dep.materialName;Sources=@{}}
+        $wanted[$key]=[pscustomobject]@{Name=[string]$dep.materialName;Sources=@{};ReferenceSources=@{}}
     }
     foreach($hit in @($dep.pcSourceNameEvidence)){
         $role=[string]$hit.role
@@ -101,11 +101,14 @@ foreach($dep in @($audit.dependencies)){
         if(-not $roles.ContainsKey($role) -or (Normalize-Name $name) -ne $key){
             throw "Material $key source role/name evidence mismatch."
         }
-        if($wanted[$key].Sources.ContainsKey($role) -and
-           [string]$wanted[$key].Sources[$role] -ine $name){
-            throw "Ambiguous original PC Material identities within role $role for $key."
+        # The PC --list comma marker means this FF references a Material
+        # but does not prove its owned body is present here.
+        $isReference=$name.TrimStart().StartsWith(',',[StringComparison]::Ordinal)
+        $catalog=if($isReference){$wanted[$key].ReferenceSources}else{$wanted[$key].Sources}
+        if($catalog.ContainsKey($role) -and [string]$catalog[$role] -ine $name){
+            throw "Conflicting PC Material $(if($isReference){'references'}else{'owners'}) within role $role for $key."
         }
-        $wanted[$key].Sources[$role]=$name
+        $catalog[$role]=$name
     }
 }
 if($wanted.Count -lt 1 -or $wanted.Count -gt 2){
@@ -116,9 +119,15 @@ $bodyRows=New-Object 'System.Collections.Generic.List[object]'
 $status='AZTEC_PC_TWO_MODEL_MATERIAL_BODIES_BLOCKED'
 $blocker=''
 $runRoles=@($wanted.Values | ForEach-Object {$_.Sources.Keys} | Sort-Object -Unique)
+$referenceOnly=@($wanted.Values | Where-Object {$_.Sources.Count -eq 0})
+$refEvidenceCount=@($wanted.Values | ForEach-Object {$_.ReferenceSources.Keys}).Count
 Write-Host '[AZTEC-PC-MATERIAL] ==============================================='
 Write-Host '[AZTEC-PC-MATERIAL] SOURCE PC MATERIAL BODIES FOR 2 XMODELS'
-Write-Host "[AZTEC-PC-MATERIAL] distinct materials=$($wanted.Count) PC fastfile roles=$($runRoles.Count)"
+Write-Host "[AZTEC-PC-MATERIAL] distinct materials=$($wanted.Count) owned PC fastfile roles=$($runRoles.Count)"
+Write-Host "[AZTEC-PC-MATERIAL] reference hits=$refEvidenceCount reference-only identities=$($referenceOnly.Count)"
+foreach($target in $referenceOnly){
+    Write-Host "[AZTEC-PC-MATERIAL] REFERENCE-ONLY: $($target.Name) (no PC owned Material root yet; do not fabricate a JSON body)"
+}
 Write-Host '[AZTEC-PC-MATERIAL] No Xbox donor bytes, no FastFile linking, NOT FOR XBOX.'
 try{
     foreach($role in $runRoles){
@@ -148,7 +157,10 @@ try{
                     ([string]$_.FullName).Replace('\','/').ToLowerInvariant().EndsWith($suffix,[StringComparison]::Ordinal)
                 })
                 if($hits.Count -ne 1){
-                    throw "PC material $name in $role has $($hits.Count) matching OAT JSON body files (expected 1); inspect $log"
+                    $samples=@($files | Where-Object {
+                        ([string]$_.FullName).Replace('\','/') -match '(?i)/materials/'
+                    } | Select-Object -First 8 -ExpandProperty FullName)
+                    throw "PC OWNED material $name in $role has $($hits.Count) matching OAT JSON body files; sample material JSON paths=$($samples -join ' | '); inspect $log"
                 }
                 $doc=Get-Content -LiteralPath $hits[0].FullName -Raw | ConvertFrom-Json
                 $state=@()
@@ -205,6 +217,7 @@ try{
     }
     foreach($target in @($wanted.Values)){
         $key=Normalize-Name ([string]$target.Name)
+        if($target.Sources.Count -eq 0){continue}
         $matching=@($bodyRows.ToArray() | Where-Object {[string]$_.normalized -eq $key})
         if($matching.Count -ne $target.Sources.Count){
             throw "PC material $key source-variant coverage incomplete: $($matching.Count)/$($target.Sources.Count)"
@@ -214,7 +227,13 @@ try{
             throw "PC material $key has $($hashes.Count) different original PC JSON variants across roles; automatic selection prohibited."
         }
     }
-    $status='AZTEC_PC_TWO_MODEL_MATERIAL_BODIES_PASS'
+    if($referenceOnly.Count -ne 0){
+        $status='AZTEC_PC_TWO_MODEL_MATERIAL_REFERENCE_ONLY_BLOCKED'
+        $blocker="No original-PC owned Material root found for: $(@($referenceOnly | ForEach-Object {$_.Name}) -join ', '). This is an unresolved dependency, not an export failure."
+        Write-Host "[AZTEC-PC-MATERIAL] BLOCKER: $blocker"
+    }else{
+        $status='AZTEC_PC_TWO_MODEL_MATERIAL_BODIES_PASS'
+    }
 }catch{
     $blocker=$_.Exception.Message
     Write-Host "[AZTEC-PC-MATERIAL] BLOCKER: $blocker"
@@ -225,6 +244,16 @@ $result=[ordered]@{
     materialsRequested=$wanted.Count
     pcMaterialBodiesExtracted=$bodyRows.Count
     originalPcMaterialBodies=$bodyRows.ToArray()
+    pcOwnedMaterialIdentityCount=@($wanted.Values | Where-Object {$_.Sources.Count -gt 0}).Count
+    referenceOnlyMaterialIdentityCount=$referenceOnly.Count
+    referenceOnlyMaterials=@($referenceOnly | ForEach-Object {[string]$_.Name})
+    sourceOwnership=@($wanted.Values | ForEach-Object {
+        [ordered]@{
+            name=[string]$_.Name
+            ownedRoles=@($_.Sources.Keys | Sort-Object)
+            referenceOnlyRoles=@($_.ReferenceSources.Keys | Sort-Object)
+        }
+    })
     blocker=$blocker
     readyForXbox=$false;materialBodiesGraftedToXenon=0;fullMapConverted=$false
     note='Only PC-source OAT material JSON metadata/body extraction. No Xenon material serialization; no TechniqueSet/shader or image closure proof. Never deploy.'
@@ -233,6 +262,8 @@ $result | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $reportPath -Encod
 $summary=@(
     "AZTEC ORIGINAL PC MATERIAL BODY PROBE: $status"
     "distinct material identities=$($wanted.Count), JSON variants extracted=$($bodyRows.Count)"
+    "PC owned material identities=$(@($wanted.Values | Where-Object {$_.Sources.Count -gt 0}).Count); PC reference-only identities=$($referenceOnly.Count)"
+    "reference only names=$(@($referenceOnly | ForEach-Object {[string]$_.Name}) -join ', ')"
     "blocker=$blocker"
     'PC JSON is source-backed only; no Xbox material graph/FF emitted.'
     'NOT FOR XBOX.'
@@ -240,7 +271,7 @@ $summary=@(
 [IO.File]::WriteAllLines($textPath,[string[]]$summary,[Text.UTF8Encoding]::new($false))
 Write-Host '[AZTEC-PC-MATERIAL] ================= RESULT ========================'
 Write-Host "[AZTEC-PC-MATERIAL] status=$status"
-Write-Host "[AZTEC-PC-MATERIAL] PC material JSON variants=$($bodyRows.Count), distinct identities=$($wanted.Count)"
+Write-Host "[AZTEC-PC-MATERIAL] PC material JSON variants=$($bodyRows.Count), distinct identities=$($wanted.Count), reference-only=$($referenceOnly.Count)"
 Write-Host "[AZTEC-PC-MATERIAL] report=$textPath"
 Write-Host '[AZTEC-PC-MATERIAL] No Xbox FF / NOT FOR XBOX'
 if($status -ne 'AZTEC_PC_TWO_MODEL_MATERIAL_BODIES_PASS'){exit 4}
