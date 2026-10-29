@@ -3,7 +3,9 @@ param(
     [string]$PcFastFile = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps\nazi_zombie_FRUmansion\nazi_zombie_frumansion.ff',
     [string]$ModelName = '',
     [string]$OutputRoot = '',
-    [string]$AllowedModelNamesFile = ''
+    [string]$AllowedModelNamesFile = '',
+    [int]$MinimumMeshVertices = 0,
+    [int]$MinimumTriangleIndices = 0
 )
 
 Set-StrictMode -Version Latest
@@ -44,6 +46,8 @@ if (Test-Path -LiteralPath $graphCapabilityFile -PathType Leaf) {
         $hasResolvedXModelClassification = $false
     }
 }
+
+if ($MinimumMeshVertices -lt 0 -or $MinimumTriangleIndices -lt 0) { throw 'Mesh minimums cannot be negative.' }
 
 if (-not $hasResolvedXModelClassification) {
     throw @"
@@ -189,6 +193,58 @@ foreach ($file in $jsonFiles) {
 
 if ($candidates.Count -eq 0) {
     throw "PC XModel export produced no complete OAT JSON+GLTF model. Unlinker exit=$dumpCode. See: $pcDumpLog"
+}
+
+# Opt-in actual GLTF mesh gate; leaves older FRUmansion callers unchanged.
+if ($MinimumMeshVertices -gt 0 -or $MinimumTriangleIndices -gt 0) {
+    $renderable = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($candidate in $candidates.ToArray()) {
+        $model = Get-Content -LiteralPath $candidate.JsonPath -Raw | ConvertFrom-Json
+        $maxVertices=0; $maxIndices=0; $maxPrimitives=0
+        foreach ($lod in @($model.lods)) {
+            $gltfPath=Join-Path $pcDump (([string]$lod.file).Replace('/','\'))
+            $gltf=Get-Content -LiteralPath $gltfPath -Raw | ConvertFrom-Json
+            $accessors=@($gltf.accessors)
+            $vertices=0; $indices=0; $primitiveCount=0
+            foreach ($mesh in @($gltf.meshes)) {
+                if ($null -eq $mesh) { continue }
+                foreach ($primitive in @($mesh.primitives)) {
+                    if ($null -eq $primitive -or $null -eq $primitive.attributes) { continue }
+                    if ($primitive.PSObject.Properties['mode'] -and [int]$primitive.mode -ne 4) { continue }
+                    if (-not $primitive.attributes.PSObject.Properties['POSITION']) { continue }
+                    $position=[int]$primitive.attributes.POSITION
+                    if ($position -lt 0 -or $position -ge $accessors.Count) { continue }
+                    $v=[int]$accessors[$position].count
+                    if ($v -lt 3) { continue }
+                    $idxCount=$v
+                    if ($primitive.PSObject.Properties['indices']) {
+                        $idx=[int]$primitive.indices
+                        if ($idx -lt 0 -or $idx -ge $accessors.Count) { continue }
+                        $idxCount=[int]$accessors[$idx].count
+                    }
+                    if ($idxCount -lt 3 -or $idxCount % 3 -ne 0) { continue }
+                    $vertices+=$v; $indices+=$idxCount; $primitiveCount++
+                }
+            }
+            if ($indices -gt $maxIndices) {
+                $maxVertices=$vertices; $maxIndices=$indices; $maxPrimitives=$primitiveCount
+            }
+        }
+        if ($maxVertices -ge $MinimumMeshVertices -and
+            $maxIndices -ge $MinimumTriangleIndices -and $maxPrimitives -gt 0) {
+            $renderable.Add([pscustomobject]@{
+                Name=$candidate.Name;JsonPath=$candidate.JsonPath
+                LodCount=$candidate.LodCount;LodBytes=$candidate.LodBytes
+                MeshVertices=$maxVertices;TriangleIndices=$maxIndices
+                TrianglePrimitives=$maxPrimitives
+            })
+        }
+    }
+    if ($renderable.Count -eq 0) {
+        throw "No PC model GLTF has a triangle mesh meeting $MinimumMeshVertices vertices and $MinimumTriangleIndices indices."
+    }
+    Write-Host "[NUCLEAR-4U] Verified renderable mesh candidates=$($renderable.Count)/$($candidates.Count)"
+    $candidates=$renderable
 }
 
 # Optional strict whitelist for other maps (e.g. Aztec): take the smallest
@@ -581,6 +637,9 @@ $manifest = [ordered]@{
     selectedModel = $selected.Name
     selectedLodCount = $selected.LodCount
     selectedLodBytes = $selected.LodBytes
+    selectedMeshVertices = $(if ($selected.PSObject.Properties['MeshVertices']) { [int]$selected.MeshVertices } else { 0 })
+    selectedTriangleIndices = $(if ($selected.PSObject.Properties['TriangleIndices']) { [int]$selected.TriangleIndices } else { 0 })
+    selectedTrianglePrimitives = $(if ($selected.PSObject.Properties['TrianglePrimitives']) { [int]$selected.TrianglePrimitives } else { 0 })
     partClassificationFile = $partClassification
     partClassificationManifest = $partClassificationManifest
     partClassificationComplete = [bool]$selectedClass[0].Complete
