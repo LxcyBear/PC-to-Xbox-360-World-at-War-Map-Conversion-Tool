@@ -56,6 +56,33 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-second-material-children" when args.Length == 4:
+            {
+                var result = await T4AztecPcSecondMaterialChildrenProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT2] status=" + result.Status +
+                    " allImageDescriptors=" + result.AllSixAreImageDescriptors +
+                    " imageChain=" + result.SixInlineImageChainCandidate +
+                    " postImages=" + result.PostSixImagesCursor);
+                foreach (var t in result.Textures)
+                    Console.WriteLine("[AZTEC-MAT2] texture#" + t.Index +
+                        " semantic=" + t.Semantic + " water=" + t.IsWater +
+                        " pointer=" + t.ImagePointer);
+                foreach (var image in result.InlineImageCandidates)
+                    Console.WriteLine("[AZTEC-MAT2] image#" + image.Index +
+                        " plausible=" + image.HeaderPlausible +
+                        " nameCandidate=" + image.NameCandidate +
+                        " loadDef=" + image.LoadDefAt +
+                        " resource=" + image.ResourceSize +
+                        " after=" + image.AfterLoadDef);
+                foreach (var candidate in result.TopConstantTableCandidates.Take(6))
+                    Console.WriteLine("[AZTEC-MAT2] constants=" + candidate.ConstantTableAt +
+                        " plausible=" + candidate.PlausibleConstants + "/6" +
+                        " nextHeader=" + candidate.NextHeaderAt);
+                Console.WriteLine("[AZTEC-MAT2] report=" + args[3] +
+                    " -- source-only; no ownership or Xbox bindings.");
+                return 0;
+            }
             case "aztec-pc-first-material-state-next-header" when args.Length == 4:
             {
                 var result = await T4AztecPcFirstMaterialStateAndNextHeaderProbe.ProbeAsync(
