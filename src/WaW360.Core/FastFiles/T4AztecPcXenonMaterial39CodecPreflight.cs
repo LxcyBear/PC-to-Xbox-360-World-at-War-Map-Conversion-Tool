@@ -105,7 +105,8 @@ public static class T4AztecPcXenonMaterial39CodecPreflight
 
         // EXISTING CODEC validates all graph manifests and ABI fields here;
         // this is the code path the integrated writer also consumes.
-        var corpus=T4XenonMaterialCorpus.Load(graphRoot,bindingPath,roots,expectedOwned:39);
+        var corpus=T4XenonMaterialCorpus.Load(graphRoot,bindingPath,roots,
+            expectedOwned:39,allowSourceOnlyDiagnostic:true);
         if(corpus.OwnedByRoot.Count!=39)
             throw new InvalidDataException("Native MaterialGraphCodec did not load exactly 39 source-owned bodies.");
         var codecErrors=corpus.ValidateDependencies(roots).ToArray();
