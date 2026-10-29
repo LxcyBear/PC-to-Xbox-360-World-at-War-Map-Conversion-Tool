@@ -159,3 +159,4 @@ Write-Host "[AZTEC-GFX-XENON] PC indices=$($got.IndexCount)/58653, vertices=$($g
 Write-Host "[AZTEC-GFX-XENON] Material groups=$($got.DistinctPcMaterialPointers)/39, UNBOUND slots=$($got.ZeroMaterialPointerPlaceholders)/735"
 Write-Host "[AZTEC-GFX-XENON] report=$txt"
 Write-Host '[AZTEC-GFX-XENON] Next: real GfxWorld root + DPVS + Material links + OAT. NOT FOR XBOX.'
+& (Join-Path $PSScriptRoot 'Show-AztecFirstXboxFFProgress.ps1')
