@@ -31,18 +31,19 @@ internal sealed class T4XenonXModelCorpus
             throw new InvalidDataException("XModel binding manifest has no format.");
         var bindingFormat = format.GetString();
         var aztecCanary = bindingFormat == "WaW360.AztecPcSingleXModelBinding.v1";
-        if (!aztecCanary && bindingFormat != "WaW360.Nuclear4W.XModelRootBinding.v3")
+        var aztecTwoModels = bindingFormat == "WaW360.AztecPcTwoXModelBinding.v1";
+        if (!aztecCanary && !aztecTwoModels &&
+            bindingFormat != "WaW360.Nuclear4W.XModelRootBinding.v3")
             throw new InvalidDataException("Unexpected XModel root-binding manifest format.");
         if (!root.GetProperty("bindingPass").GetBoolean())
             throw new InvalidDataException("XModel root-binding manifest is not passing.");
 
         // The original 280 + 9 production corpus gate remains unchanged.
-        // Only an explicitly marked, single-root Aztec diagnostic binding
-        // may bypass those FRUmansion-specific counts. Never generalize to an
-        // arbitrary partial corpus: the runner SHA-pins the source model,
-        // checks every graph blob, and keeps hardware readiness false.
-        var requiredOwned = aztecCanary ? 1 : expectedOwned;
-        var requiredRefs = aztecCanary ? 0 : expectedReferences;
+        // The only partial Aztec diagnostic shapes are the pinned one-model
+        // canary and the explicitly enumerated two-model canary. Neither
+        // authorizes hardware deployment, and both require zero ref upgrades.
+        var requiredOwned = aztecCanary ? 1 : aztecTwoModels ? 2 : expectedOwned;
+        var requiredRefs = (aztecCanary || aztecTwoModels) ? 0 : expectedReferences;
         var ownedRows = root.GetProperty("ownedBindings").EnumerateArray().ToArray();
         var referenceRows = root.GetProperty("referenceBindings").EnumerateArray().ToArray();
         if (ownedRows.Length != requiredOwned)
@@ -59,6 +60,32 @@ internal sealed class T4XenonXModelCorpus
                 !NormalizeReferenceName(ownedRows[0].GetProperty("NativeName").GetString() ?? "")
                     .Equals("zombie_x2_icon", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Aztec single-XModel diagnostic binding identity/count gate failed.");
+        }
+
+        if (aztecTwoModels)
+        {
+            // Do not accept a generic subset or duplicate model graphs. The
+            // two explicitly source-backed Aztec canaries are required in
+            // stable corpus order (renderable mesh first, helper second).
+            if (root.GetProperty("nativeRoots").GetInt32() != 8509 ||
+                root.GetProperty("nativeXModelRoots").GetInt32() != 284)
+                throw new InvalidDataException("Aztec two-XModel native identity/count gate failed.");
+
+            var expectedNames = new[] { "zombie_x2_icon", "tag_origin" };
+            var indices = new HashSet<int>();
+            for (var i = 0; i < expectedNames.Length; i++)
+            {
+                var row = ownedRows[i];
+                var name = expectedNames[i];
+                if (row.GetProperty("CorpusOrdinal").GetInt32() != i ||
+                    !row.GetProperty("CorpusName").GetString()!
+                        .Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                    !NormalizeReferenceName(row.GetProperty("NativeName").GetString() ?? "")
+                        .Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                    !indices.Add(row.GetProperty("NativeRootIndex").GetInt32()))
+                    throw new InvalidDataException(
+                        $"Aztec two-XModel binding #{i} is not the expected unique {name} native root.");
+            }
         }
 
         var entries = new Dictionary<int, T4XenonXModelCorpusEntry>();
