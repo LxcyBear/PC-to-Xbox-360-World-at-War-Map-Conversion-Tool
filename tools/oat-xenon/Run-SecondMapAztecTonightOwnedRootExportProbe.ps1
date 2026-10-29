@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('stringtable','mapents','comworld','gameworldsp','gfxworld')]
+    # Windows PowerShell 5.1 powershell.exe -File forwards comma-separated
+    # values as ONE string. Validate after splitting, not on raw parameter.
     [string[]]$Families=@('stringtable','mapents','comworld','gameworldsp','gfxworld')
 )
 Set-StrictMode -Version Latest
@@ -44,7 +45,20 @@ foreach($role in @($census.pcSourceRoles)){
     $pins[$key]=$role
 }
 if($pins.Count -ne 3){throw 'Expected exactly three pinned PC FastFile roles.'}
-$selected=@($Families | Select-Object -Unique)
+# Accept both -Families stringtable,mapents (powershell.exe -File) and
+# an actual string[] supplied by a caller in an existing PowerShell session.
+$allowed=@('stringtable','mapents','comworld','gameworldsp','gfxworld')
+$selected=New-Object 'System.Collections.Generic.List[string]'
+foreach($token in @($Families)){
+    foreach($part in ([string]$token).Split([char]',')){
+        $familyName=$part.Trim().ToLowerInvariant()
+        if([string]::IsNullOrWhiteSpace($familyName) -or $familyName -notin $allowed){
+            throw "Invalid -Families entry '$familyName'. Allowed: $($allowed -join ',')."
+        }
+        if(-not $selected.Contains($familyName)){$selected.Add($familyName)}
+    }
+}
+if($selected.Count -eq 0){throw 'Select at least one original-PC asset family.'}
 New-Item -Path $work,$logs -ItemType Directory -Force | Out-Null
 
 $results=New-Object 'System.Collections.Generic.List[object]'
