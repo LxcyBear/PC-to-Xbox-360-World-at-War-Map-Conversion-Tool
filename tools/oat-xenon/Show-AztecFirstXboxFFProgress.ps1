@@ -24,6 +24,7 @@ $verts=Read-Report 'pc_gfxworld_vertex_source_probe\aztec_pc_gfxworld_vertex_sou
 $surfaces=Read-Report 'pc_gfxworld_surface_source_probe\aztec_pc_gfxworld_surface_source_probe.json'
 $mesh=Read-Report 'pc_gfxworld_source_mesh_export\aztec_pc_gfxworld_obj_export.json'
 $converted=Read-Report 'pc_gfxworld_xenon_geometry_components\gfxworld_source_to_xenon_geometry_components.json'
+$pcMaterialWitness=Read-Report 'pc_oat_loaded_gfxworld_material_pointer_witness\pc_oat_gfxworld_material_pointer_reconciliation.json'
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -83,7 +84,7 @@ Add-Gate 'PC GfxWorld geometry -> Xenon-endian 3-buffer readback' (
 # Do not silently treat OAT identity or an empty GfxWorld shell as a
 # converted runtime world. These later gates are fail-closed until a
 # documented new proof/report is explicitly wired into this tracker.
-Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $false 'PENDING real 39-pointer identity mapping'
+Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots' $false 'PENDING actual Xenon root relocations and runtime graph closure'
 Add-Gate 'Emit real GfxWorld root, DPVS and required children' $false 'PENDING source-backed Xbox world layout'
 Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $false 'PENDING first seven-family OAT validation'
 Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $false 'PENDING safe-to-copy audit and load plan'
@@ -101,6 +102,16 @@ for($i=0;$i -lt $gates.Count;$i++){
     $g=$gates[$i]
     $status=if($g.Passed){'PASS   '}else{'PENDING'}
     Write-Host ('[AZTEC-FF-PROGRESS] {0,2}. {1} | {2}' -f ($i+1),$status,$g.Name)
+}
+$pcWitnessPassed=$null -ne $pcMaterialWitness -and
+    [string]$pcMaterialWitness.status -eq 'AZTEC_PC_OAT_LOADER_735_TYPED_MATERIAL_POINTER_IDENTITIES_MATCH_ORDINAL_CANDIDATES' -and
+    [int]$pcMaterialWitness.loadedDirectPointerMatches -eq 735 -and
+    [int]$pcMaterialWitness.independentlyVerifiedOrdinalAndNameSurfaces -eq 735 -and
+    [int]$pcMaterialWitness.memoryRowsWithExactSourceCandidateName -eq 39 -and
+    [int]$pcMaterialWitness.xboxRootBindingsProven -eq 0 -and
+    -not [bool]$pcMaterialWitness.xboxHardwareReady
+if($pcWitnessPassed){
+    Write-Host '[AZTEC-FF-PROGRESS] PC MATERIAL IDENTITIES: 735/735 INDEPENDENT OAT TYPED POINTER PASS; Xbox Material root relocations still NOT written.'
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
