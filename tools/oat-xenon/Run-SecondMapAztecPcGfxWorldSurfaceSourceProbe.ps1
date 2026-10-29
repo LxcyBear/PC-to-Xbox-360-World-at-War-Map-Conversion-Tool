@@ -54,8 +54,8 @@ if(-not (Test-Path -LiteralPath $pc -PathType Leaf) -or
 }
 New-Item -Path $work -ItemType Directory -Force | Out-Null
 Write-Host '[AZTEC-PC-SURFACE] ===================================================='
-Write-Host '[AZTEC-PC-SURFACE] 735 PC GFXSURFACE RECORDS FROM REAL AZTEC MAP GEOMETRY'
-Write-Host '[AZTEC-PC-SURFACE] SHA-pinned 32713 vertices + 58653 indices; 48-byte T4 structures.'
+Write-Host '[AZTEC-PC-SURFACE] 735 PC GFXSURFACE RECORDS FROM REAL AZTEC MAP GEOMETRY (52-BYTE ABI)'
+Write-Host '[AZTEC-PC-SURFACE] SHA-pinned 32713 vertices + 58653 indices; 52-byte T4 structures.'
 Write-Host '[AZTEC-PC-SURFACE] No Xbox FF emission, previous 8509-root six-family PASS unchanged.'
 $saved=$ErrorActionPreference
 try{
@@ -104,7 +104,7 @@ if([string]$result.Schema -ne 'WaW360.AztecPcGfxSurfaceSourceProbe.v1' -or
        'AZTEC_PC_GFXWORLD_735_SURFACE_ARRAY_CANDIDATE_PASS',
        'AZTEC_PC_GFXWORLD_SURFACE_LAYOUT_UNRESOLVED') -or
    [int]$result.SurfaceCount -ne 735 -or
-   [int]$result.SurfaceStride -ne 48 -or
+   [int]$result.SurfaceStride -ne 52 -or
    [bool]$result.FullGfxWorldSerialized -or
    [bool]$result.SurfaceMaterialOwnershipProven -or
    [bool]$result.XboxHardwareReady){
