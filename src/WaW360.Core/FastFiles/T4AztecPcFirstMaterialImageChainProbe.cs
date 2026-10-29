@@ -160,7 +160,7 @@ public static class T4AztecPcFirstMaterialImageChainProbe
         var defaultRow = new AztecPcMaterialInlineImageChainRow(
             index, Hex(at), false, 0, 0, 0, 0, -1, "",
             "", false, null, null, false, null,
-            false, false, null, "", 0, 0, 0, 0, 0);
+            false, false, null, "", 0, 0, 0);
         if (at < 0 || (long)at + ImageHeaderBytes >= b.Length)
             return defaultRow;
 
