@@ -62,7 +62,7 @@ static async Task<int> MainAsync(string[] args)
                     args[1], args[2], args[3], args[4], CancellationToken.None);
                 Console.WriteLine($"[AZTEC-MAT-MEM] status={result.Status}");
                 Console.WriteLine($"[AZTEC-MAT-MEM] original source materialMemoryCount={result.MaterialMemoryCount}, FOLLOWING=0xFFFFFFFF, arrayBytes={result.MaterialMemoryArrayBytes}");
-                Console.WriteLine($"[AZTEC-MAT-MEM] 3-record signatures={result.ThreeRecordSignatures:N0}, full39={result.Full39RecordSignatures:N0}, directPreVertex={result.ExactArrayImmediatelyBeforeVertexBuffer}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] strict 3-record signatures={result.ThreeRecordSignatures:N0}, strict full39={result.Full39RecordSignatures:N0}, isolated39={result.Isolated39RecordSignatures:N0}, directPreVertex={result.ExactArrayImmediatelyBeforeVertexBuffer}");
                 foreach (var c in result.Candidates.Take(12))
                     Console.WriteLine($"[AZTEC-MAT-MEM] CANDIDATE {c.SourceOffsetHex} distanceToVertex={c.BytesBeforeVertexBuffer} ptrs: following={c.FollowingMaterialFields}, insert={c.InsertMaterialFields}, packed={c.PackedMaterialFields}, distinct={c.DistinctMaterialPointerFields}, positiveMemory={c.PositiveMemoryEntries}/39, sumMemory={c.TotalMemoryBytes:N0}, SHA={c.SourceArraySha256}");
                 Console.WriteLine($"[AZTEC-MAT-MEM] report={args[4]}");
