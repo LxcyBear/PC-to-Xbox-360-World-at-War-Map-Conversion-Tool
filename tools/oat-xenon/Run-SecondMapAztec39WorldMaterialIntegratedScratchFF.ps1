@@ -176,9 +176,9 @@ if($IntegrateWorld){
         probeLevel=$ProbeLevel
         realOriginalPcGfxWorldCoreEmitted=($core -and -not $diagnosticProbe)
         allOriginalPcGfxWorldDpvsChildrenComplete=[bool]$e.OriginalPcGfxWorldFullDpvsGraphComplete
-        realPcGfxSurfaceCount=735
+        realPcGfxSurfaceCount=if($ProbeLevel -in @('Surfaces','MaterialMemory','Full')){735}else{0}
         realPcGfxWorldMaterialRoots=39
-        finalMaterialReferencesRebasedDuringCurrentFfEmit=$core
+        finalMaterialReferencesRebasedDuringCurrentFfEmit=($core -and $ProbeLevel -in @('Surfaces','MaterialMemory','Full'))
         OatPass=$candidateOatPass
         OatError=[string]$e.OatGateError
         onlyRealGameDataUsed=$true
