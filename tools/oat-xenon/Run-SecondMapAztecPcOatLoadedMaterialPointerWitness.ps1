@@ -110,8 +110,9 @@ if(-not $countsPass -or -not [bool]$w.materialMemoryLoaded -or
     throw 'PC OAT loader world counts/pointers unavailable; do not promote ordinal bindings.'
 }
 if(@($w.memoryRows).Count -ne 39 -or @($w.surfaces).Count -ne 735 -or
-   [int]$w.directUniqueMaterialPointerMatches +
-   [int]$w.ambiguousSurfaces + [int]$w.unmatchedSurfaces -ne 735 -or
+   (([int]$w.directUniqueMaterialPointerMatches +
+     [int]$w.ambiguousSurfaces +
+     [int]$w.unmatchedSurfaces) -ne 735) -or
    [int]$w.totalTriangles -ne 19551){
     throw 'PC OAT loaded MaterialMemory/GfxSurface cardinalities changed from original source.'
 }
