@@ -78,7 +78,7 @@ $convertedOk=$null -ne $converted -and
     -not [bool]$converted.XenonGfxWorldRootEmitted -and
     -not [bool]$converted.OatGfxWorldBodyLoaded -and
     -not [bool]$converted.XboxHardwareReady
-Add-Gate 'PC GfxWorld geometry -> Xenon-endian 3-buffer readback' (
+Add-Gate 'PC geometry -> endian-converted source-layout 3-buffer readback' (
     $convertedOk -and $markerOk) 'Three-buffer SHA/735-slot ledger runner PASS'
 
 # Do not silently treat OAT identity or an empty GfxWorld shell as a
@@ -111,7 +111,7 @@ $pcWitnessPassed=$null -ne $pcMaterialWitness -and
     [int]$pcMaterialWitness.xboxRootBindingsProven -eq 0 -and
     -not [bool]$pcMaterialWitness.xboxHardwareReady
 if($pcWitnessPassed){
-    Write-Host '[AZTEC-FF-PROGRESS] PC MATERIAL IDENTITIES: 735/735 INDEPENDENT OAT TYPED POINTER PASS; Xbox Material root relocations still NOT written.'
+    Write-Host '[AZTEC-FF-PROGRESS] PC MATERIAL IDENTITIES: 735/735 INDEPENDENT OAT TYPED POINTER PASS; Xbox 76B surface ABI and Material root relocations NOT written.'
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
