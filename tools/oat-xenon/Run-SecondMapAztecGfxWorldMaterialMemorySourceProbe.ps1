@@ -46,7 +46,9 @@ New-Item -Path $work -ItemType Directory -Force | Out-Null
 Write-Host '[AZTEC-MAT-MEM] ======================================================='
 Write-Host '[AZTEC-MAT-MEM] ORIGINAL PC GFXWORLD 39 x 8 BYTE MATERIALMEMORY ARRAY'
 Write-Host '[AZTEC-MAT-MEM] Parent +0x18C = 39; +0x190 = FOLLOWING, search before verified vertices.'
-Write-Host '[AZTEC-MAT-MEM] Bounded physical window, original-PC SHA pinned. NO FF / NO XBOX.'
+Write-Host '[AZTEC-MAT-MEM] Bounded STRICT Virtual/sentinel Material* test; rejects low Temp-block numeric false positives.'
+Write-Host '[AZTEC-MAT-MEM] v1 produced 714,674 overlapping non-evidence matches. Never promote them.'
+Write-Host '[AZTEC-MAT-MEM] No FF / NO XBOX.'
 $saved=$ErrorActionPreference
 try{
     $ErrorActionPreference='Continue'
@@ -80,11 +82,11 @@ if($code -ne 0 -or -not (Test-Path -LiteralPath $json -PathType Leaf)){
 }
 $r=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $json -Raw)
 $validStatus=@(
-    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_ARRAY_CANDIDATE_PASS',
-    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_ARRAY_MULTIPLE_CANDIDATES',
-    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_ARRAY_NOT_LOCATED'
+    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_ISOLATED_CANDIDATE',
+    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_AMBIGUOUS',
+    'AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_NOT_LOCATED'
 )
-if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v1' -or
+if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v2' -or
    [string]$r.Status -notin $validStatus -or
    [int]$r.MaterialMemoryCount -ne 39 -or
    [int]$r.MaterialMemoryArrayBytes -ne 312 -or
@@ -97,20 +99,21 @@ if([string]$r.Schema -ne 'WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v1' -o
    [bool]$r.XboxHardwareReady){
     throw 'MaterialMemory source probe output or scratch-only hardware gate failed.'
 }
-Write-Host "[AZTEC-MAT-MEM] 3-row signatures=$($r.ThreeRecordSignatures), 39-row matches=$($r.Full39RecordSignatures)"
+Write-Host "[AZTEC-MAT-MEM] STRICT 3-row signatures=$($r.ThreeRecordSignatures), full39=$($r.Full39RecordSignatures), isolated39=$($r.Isolated39RecordSignatures)"
 Write-Host "[AZTEC-MAT-MEM] Immediately preceding original vertices=$($r.ExactArrayImmediatelyBeforeVertexBuffer)"
 foreach($candidate in @($r.Candidates | Select-Object -First 12)){
     Write-Host "[AZTEC-MAT-MEM] CANDIDATE $($candidate.SourceOffsetHex) beforeVertices=$($candidate.BytesBeforeVertexBuffer) following=$($candidate.FollowingMaterialFields) insert=$($candidate.InsertMaterialFields) offsets=$($candidate.PackedMaterialFields) distinct=$($candidate.DistinctMaterialPointerFields) positiveMemory=$($candidate.PositiveMemoryEntries)/39 totalMemoryBytes=$($candidate.TotalMemoryBytes)"
-    Write-Host "[AZTEC-MAT-MEM]   material fields first=$($candidate.FirstMaterialField) mid=$($candidate.MiddleMaterialField) last=$($candidate.LastMaterialField) SHA=$($candidate.SourceArraySha256)"
+    Write-Host "[AZTEC-MAT-MEM]   material fields first=$($candidate.FirstMaterialField) mid=$($candidate.MiddleMaterialField) last=$($candidate.LastMaterialField) sourceSurfacePtrMatches=$($candidate.OriginalSurfaceMaterialPointerMatches)/39 SHA=$($candidate.SourceArraySha256)"
 }
 @(
     "status=$($r.Status)",
     "Source PC GfxWorld parent MaterialMemory count=39, pointer=FOLLOWING",
     "39 GfxSurface Material references form independent 8-byte Virtual lattice, no gaps",
     "bounded search start=$($r.ScanStart) end=$($r.ScanEnd) bytesBeforeVertexMax=$($r.MaximumScanBackBytes)",
-    "3-row signatures=$($r.ThreeRecordSignatures), full39 candidates=$($r.Full39RecordSignatures)",
+    "strict 3-row signatures=$($r.ThreeRecordSignatures), full39=$($r.Full39RecordSignatures), isolated39=$($r.Isolated39RecordSignatures)",
     "immediately-before-vertex match=$($r.ExactArrayImmediatelyBeforeVertexBuffer)",
-    'A valid-looking 39-record array is NOT proof that GfxSurface Material* points to MaterialMemory*. Material names unresolved.',
+    'Rejects any low-number Temp-block pointer (v1 false positives); only Virtual/sentinel fields are accepted.',
+    'A strict isolated candidate is STILL NOT ownership proof; no-match is NOT absence proof. Material names unresolved.',
     'Gate 7 still pending. No Xbox FF or hardware authorization.',
     "Full JSON=$json"
 ) | Set-Content -LiteralPath $txt -Encoding UTF8
