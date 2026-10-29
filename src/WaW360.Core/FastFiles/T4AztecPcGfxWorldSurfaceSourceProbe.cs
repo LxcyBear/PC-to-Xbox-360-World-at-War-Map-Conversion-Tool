@@ -18,6 +18,9 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
     private const int VertexStride = 44;
     private const int SurfaceCount = 735;
     private const int SurfaceStride = 52;
+    private const int PinnedSurfaceOffset = 0x058E361E;
+    private const string PinnedSurfaceSha =
+        "919FF1CDB1EC5FCD57ED4020F1908AE813C1FB570C8631C15135E07C5DF852E5";
     private const string ZoneSha =
         "7B77A415579CDA0DDCF9F14C767C2FD16F5F350018F917EC7B6B30FC3F4036E5";
     private const string VertexSha =
@@ -75,12 +78,17 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
         // uint16 vertexCount, uint16 triCount, int baseIndex }, int pad,
         // Material* material, 4 bytes lightmap/reflection/light/flags,
         // then bounds[2][3] floats. 52 bytes on T4 x86.
-        // GfxWorld DPVS surface child arrays are not adjacent to root name;
-        // scan with strong structural gates instead of shared-string guesses.
+        // The previous exhaustive 52-byte scan identified one full
+        // 735/735 candidate. Verify its independently recorded SHA and
+        // validate its entire drawing/index topology directly: no need
+        // to rescan 113 MB to revisit the same original-PC bytes.
+        if (!Sha(b.AsSpan(PinnedSurfaceOffset, SurfaceCount * SurfaceStride))
+            .Equals(PinnedSurfaceSha, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Original PC 735-surface candidate SHA drifted.");
+
         var best = new List<AztecPcGfxSurfaceCandidate>();
         long firstGates = 0, sequenceGates = 0;
-        var maxStart = b.Length - SurfaceCount * SurfaceStride;
-        for (var start = WorldOffset + 804; start <= maxStart; start++)
+        for (var start = PinnedSurfaceOffset; start <= PinnedSurfaceOffset; start++)
         {
             if ((start & 0x3FFFFF) == 0) ct.ThrowIfCancellationRequested();
             if (!PossibleSurface(b, start) ||
@@ -98,6 +106,12 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
             var usable = 0; long tris = 0;
             var minBase = int.MaxValue; var maxIndexEnd = 0;
             var sample = new List<AztecPcGfxSurfaceSample>();
+            var referenced = new bool[IndicesCount];
+            var overlappingIndexEntries = 0;
+            var localIndicesInRange = 0;
+            var globalIndicesInRange = 0;
+            var inspectedIndexEntries = 0;
+            var sourceBlockMaterialPointers = 0;
             var prevBase = -1;
             var monotonicIndexBases = 0;
             for (var n = 0; n < SurfaceCount; n++)
@@ -111,6 +125,8 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
                 var okay = PossibleSurface(b, off);
                 if (okay) valid++;
                 if (MaterialPointer(matPtr)) materialPointers++;
+                if (T4ZonePointer.IsWithinBlock(matPtr, ff.ZoneHeader))
+                    sourceBlockMaterialPointers++;
                 if (ValidBounds(b, off)) boundsValid++;
                 if (okay && triCount > 0 && vertexCount >= 3) usable++;
                 tris += triCount;
@@ -119,6 +135,24 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
                     maxIndexEnd = baseIndex + triCount * 3;
                 if (prevBase >= 0 && baseIndex >= prevBase) monotonicIndexBases++;
                 prevBase = baseIndex;
+                // Real T4 GfxSurface drawing uses baseIndex + 3*triCount
+                // spans. Validate every index slot without assuming
+                // surfaces are sorted by baseIndex (they need not be).
+                if (okay)
+                {
+                    for (var idx = baseIndex; idx < baseIndex + triCount * 3; idx++)
+                    {
+                        if (referenced[idx]) overlappingIndexEntries++;
+                        referenced[idx] = true;
+                        var vertexIndex = U16(b, IndicesOffset + idx * 2);
+                        if (vertexIndex < vertexCount)
+                            localIndicesInRange++;
+                        if (vertexIndex >= firstVertex &&
+                            vertexIndex < firstVertex + vertexCount)
+                            globalIndicesInRange++;
+                        inspectedIndexEntries++;
+                    }
+                }
                 if (n < 8)
                     sample.Add(new AztecPcGfxSurfaceSample(n, firstVertex, vertexCount,
                         triCount, baseIndex, $"0x{matPtr:X8}", okay, ValidBounds(b, off)));
@@ -127,9 +161,13 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
                 if (n >= 32 && valid < n - 4) break;
             }
             if (valid < 650) continue;
+            var uncoveredIndexEntries = referenced.Count(v => !v);
             var candidate = new AztecPcGfxSurfaceCandidate(
                 start, $"0x{start:X8}", valid, boundsValid, materialPointers,
                 usable, tris, minBase, maxIndexEnd, monotonicIndexBases,
+                overlappingIndexEntries, uncoveredIndexEntries,
+                localIndicesInRange, globalIndicesInRange, inspectedIndexEntries,
+                sourceBlockMaterialPointers,
                 Sha(b.AsSpan(start, SurfaceCount * SurfaceStride)),
                 sample.ToArray(), false, false);
             best.Add(candidate);
@@ -144,19 +182,23 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
             .ThenByDescending(c => c.MonotonicIndexBasePairs)
             .ThenBy(c => c.SourceOffset).ToArray();
 
-        // Strict enough for a *candidate*, not for a renderable FF:
-        // verify coherent 735 records, nonzero geometry, and in-range
-        // index spans; requiring exact total global index coverage would
-        // wrongly reject worlds with unused/padded index data.
+        // Exact original-PC Aztec candidate verification, not Xbox load
+        // authorization: every one of the 58,653 index slots should be
+        // covered exactly once by all 735 surfaces, regardless of order.
+        // This is stronger than the previously arbitrary >=700/734
+        // monotonic-base threshold (real PC has 669/734).
         var strong = ordered.Length > 0 &&
             ordered[0].ValidSurfaceRecords == SurfaceCount &&
             ordered[0].ValidBoundingBoxes >= 730 &&
             ordered[0].ValidMaterialPointers >= 700 &&
             ordered[0].UsableSurfaceRecords >= 500 &&
-            ordered[0].TotalTriangleCount >= 5000 &&
-            ordered[0].TotalTriangleCount <= IndicesCount / 3 &&
-            ordered[0].MaximumIndexEnd <= IndicesCount &&
-            ordered[0].MonotonicIndexBasePairs >= 700;
+            ordered[0].TotalTriangleCount == IndicesCount / 3 &&
+            ordered[0].MaximumIndexEnd == IndicesCount &&
+            ordered[0].IndexSpanOverlapEntries == 0 &&
+            ordered[0].UncoveredIndexEntries == 0 &&
+            ordered[0].InspectedIndexEntries == IndicesCount &&
+            (ordered[0].LocalIndicesInRange == IndicesCount ||
+             ordered[0].GlobalIndicesInRange == IndicesCount);
 
         var result = new AztecPcGfxSurfaceReport(
             "WaW360.AztecPcGfxSurfaceSourceProbe.v1",
@@ -166,8 +208,8 @@ public static class T4AztecPcGfxWorldSurfaceSourceProbe
             VerticesOffset, VertexSha, IndicesOffset, IndexSha,
             SurfaceCount, SurfaceStride, firstGates, sequenceGates,
             ordered, false, false, false,
-            "735 original PC GfxSurface 52-byte structure signatures, counts and " +
-            "index coverage only. No authenticated material assignments, triangle " +
+            "735 original PC GfxSurface 52-byte source records and bounded " +
+            "index topology only. No authenticated material assignments, triangle " +
             "pointer rebasing, DPVS, GfxWorld Xenon serialization or Xbox visuals. " +
             "Original successful six-family FF is unchanged.");
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(reportJson))!);
@@ -225,7 +267,10 @@ public sealed record AztecPcGfxSurfaceCandidate(
     int SourceOffset, string SourceOffsetHex, int ValidSurfaceRecords,
     int ValidBoundingBoxes, int ValidMaterialPointers, int UsableSurfaceRecords,
     long TotalTriangleCount, int MinimumBaseIndex, int MaximumIndexEnd,
-    int MonotonicIndexBasePairs, string OriginalPCArraySha256,
+    int MonotonicIndexBasePairs, int IndexSpanOverlapEntries,
+    int UncoveredIndexEntries, int LocalIndicesInRange,
+    int GlobalIndicesInRange, int InspectedIndexEntries,
+    int SourceBlockMaterialPointers, string OriginalPCArraySha256,
     IReadOnlyList<AztecPcGfxSurfaceSample> FirstEightRecords,
     bool SourceOwnedByGfxWorldProven, bool RenderableXenonMeshEmitted);
 public sealed record AztecPcGfxSurfaceReport(
