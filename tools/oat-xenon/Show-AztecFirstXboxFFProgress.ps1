@@ -34,6 +34,7 @@ $pc735LiveWorldLink=Read-Report 'pc_xenon_735_world_surface_live_39_material_ff_
 $pcGfxWorldRootAbi=Read-Report 'xenon_native_gfxworld_root_dpvs_abi\native_xenon_gfxworld_root_dpvs_abi.json'
 $pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
 $pcIntegratedWorldCore=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run\aztec_pc_world_core_integrated_oat_run.json'
+$pcStaticDpvsProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static\aztec_pc_world_core_integrated_oat_run.json'
 $nativeTestReleaseReport=Join-Path $repo 'output\native_smoke_test_release\nazi_zombie_aztec\native_smoke_test_package_release.json'
 $nativeTestRelease=$null
 if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
@@ -272,6 +273,18 @@ if($null -ne $pcIntegratedWorldCore -and
     if($integratedCorePass){
         Write-Host '[AZTEC-FF-PROGRESS] VERIFIED: 735/735 source-owned Xbox GfxSurface material refs are now in the OAT-loaded 8509-root GfxWorld CORE. This advances milestone 7 ONLY. Required DPVS/cell/lightmap closure is NOT done.'
     }
+}
+$staticDpvsOatPass=$null -ne $pcStaticDpvsProbe -and
+    [string]$pcStaticDpvsProbe.status -eq 'AZTEC_GFXWORLD_SOURCE_STATIC_DPVS_CHILD_PROBE_OAT_PASS' -and
+    [bool]$pcStaticDpvsProbe.sourceBackedStaticDpvsProbe -and
+    [bool]$pcStaticDpvsProbe.OatPass -and
+    [int]$pcStaticDpvsProbe.realPcGfxSurfaceCount -eq 735 -and
+    [int]$pcStaticDpvsProbe.realPcGfxWorldMaterialRoots -eq 39 -and
+    -not [bool]$pcStaticDpvsProbe.allOriginalPcGfxWorldDpvsChildrenComplete -and
+    -not [bool]$pcStaticDpvsProbe.hardwareReady -and
+    (Test-Path -LiteralPath ([string]$pcStaticDpvsProbe.outputFastFile) -PathType Leaf)
+if($staticDpvsOatPass){
+    Write-Host '[AZTEC-FF-PROGRESS] GATE 8 INCREMENTAL OAT PASS: 613 original-PC sorted static surfaces + source-derived static-model instances integrated ahead of 735 GfxSurfaces. Full DPVS/cells/lightmaps still PENDING.'
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
