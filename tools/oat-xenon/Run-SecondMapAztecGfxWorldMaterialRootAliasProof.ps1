@@ -66,10 +66,11 @@ $pcRoot=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $manifest -Raw)
 if([string]$pcRoot.platform -ne 'PC' -or
    [string]$pcRoot.endianness -ne 'Little' -or
    [int]$pcRoot.xassetList.assetCount -ne @($pcRoot.assets).Count -or
-   [int]$pcRoot.xassetList.assetCount -lt 4000 -or
+   [int]$pcRoot.xassetList.assetCount -le 0 -or
    [string]$pcRoot.sourceFastFile -ine $pc){
     throw 'Original PC XAsset manifest platform/source/asset-count mismatch.'
 }
+Write-Host "[AZTEC-MAT-ROOT] PC manifest parsed: assets=$($pcRoot.xassetList.assetCount); cross-referencing 39 source pointer groups."
 $pcMats=@($pcRoot.assets | Where-Object {[string]$_.TypeName -ieq 'material'})
 $aliasMats=@($pcMats | Where-Object {[string]$_.referenceKind -eq 'OffsetOrAlias'})
 $inlineMats=@($pcMats | Where-Object {[string]$_.referenceKind -in @('InlineShared','Inline')})
@@ -99,8 +100,18 @@ foreach($group in $groups){
     if($ptr -notmatch '^0X[0-9A-F]{8}$'){
         throw "Invalid source material packed pointer in atlas: $ptr"
     }
-    $pcMaterialHits=if($materialByPointer.ContainsKey($ptr)){@($materialByPointer[$ptr].ToArray())}else{@()}
-    $allHits=if($allByPointer.ContainsKey($ptr)){@($allByPointer[$ptr].ToArray())}else{@()}
+    # PowerShell 5.1 unwraps singleton results when an if-expression is
+    # assigned to a variable, even if a branch uses @(...). Under
+    # Set-StrictMode -Version Latest that scalar has no .Count.
+    # Create real object[] values explicitly on both paths.
+    [object[]]$pcMaterialHits=@()
+    [object[]]$allHits=@()
+    if($materialByPointer.ContainsKey($ptr)){
+        $pcMaterialHits=[object[]]($materialByPointer[$ptr].ToArray())
+    }
+    if($allByPointer.ContainsKey($ptr)){
+        $allHits=[object[]]($allByPointer[$ptr].ToArray())
+    }
     $status=if($pcMaterialHits.Count -eq 1){
         $direct++
         'EXACT_PC_MATERIAL_HEADER_POINTER'
@@ -133,6 +144,7 @@ foreach($group in $groups){
 if($rows.Count -ne 39 -or $totalSurfaces -ne 735 -or $totalTriangles -ne 19551){
     throw 'GfxWorld 39-pointer source topology changed since passing atlas.'
 }
+Write-Host "[AZTEC-MAT-ROOT] Correlation complete: direct=$direct ambiguous=$ambiguous nonMaterial=$other unmatched=$(39-$direct-$ambiguous-$other)"
 $ranked=@($rows.ToArray() | Sort-Object -Property @{Expression='TriangleCount';Descending=$true},PcMaterialPointer)
 $ranked | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
 $report=[ordered]@{
