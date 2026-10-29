@@ -41,6 +41,9 @@ public static class T4AztecPcMaterialStreamWalker
         // This optional replay is isolated from the historical 15-material
         // run. The old three-argument CLI command never enables it.
         var nullImageReplay = nullImageProofJson != null;
+        string? witnessedFastFileSha = null;
+        string? witnessedRawWindowSha = null;
+        string? witnessedStateBitsSha = null;
         if (nullImageReplay)
         {
             using var nullDoc = JsonDocument.Parse(
@@ -73,6 +76,13 @@ public static class T4AztecPcMaterialStreamWalker
                 !exactRows[0].GetProperty("NextCountsPlausible").GetBoolean() ||
                 n.GetProperty("OriginalPcZoneSha256").GetString() != ZoneSha)
                 throw new InvalidDataException("Two-constant/eight-statebit next Material anchor changed.");
+            witnessedFastFileSha = n.GetProperty("OriginalPcFastFileSha256").GetString();
+            witnessedRawWindowSha = n.GetProperty("OriginalPcZoneSha256").GetString();
+            witnessedStateBitsSha = exactRows[0].GetProperty("StateBitsSha256").GetString();
+            if (string.IsNullOrWhiteSpace(witnessedFastFileSha) ||
+                string.IsNullOrWhiteSpace(witnessedRawWindowSha) ||
+                string.IsNullOrWhiteSpace(witnessedStateBitsSha))
+                throw new InvalidDataException("Null-image witness SHA fields missing.");
         }
         using var doc = JsonDocument.Parse(
             await File.ReadAllTextAsync(secondMaterialReportJson, ct));
@@ -115,6 +125,12 @@ public static class T4AztecPcMaterialStreamWalker
             !z.SourceSha256.Equals(prior.GetProperty("OriginalPcFastFileSha256").GetString(),
                 StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Original-PC Aztec compressed/decompressed SHA identity mismatch.");
+        if (nullImageReplay && (
+            !z.SourceSha256.Equals(witnessedFastFileSha, StringComparison.OrdinalIgnoreCase) ||
+            !Sha(b.AsSpan(0x057338DD, 8 * StateBytes)).Equals(
+                witnessedStateBitsSha, StringComparison.OrdinalIgnoreCase) ||
+            !Sha(b).Equals(witnessedRawWindowSha, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException("Null-image continuation compressed zone or statebit witness SHA mismatch.");
 
         var rows = new List<AztecPcWalkMaterial>();
         var cursor = FirstMaterialAt;
