@@ -853,7 +853,10 @@ static async Task<int> MainAsync(string[] args)
                     args[10].Equals("--aztec-pc-two-xmodel-image-rawfile-graft", StringComparison.Ordinal);
                 var aztecTwoModelMaterialMode = args.Length >= 11 &&
                     args[10].Equals("--aztec-pc-two-model-two-material-image-rawfile-graft", StringComparison.Ordinal);
-                var aztecAnyTwoModels = aztecTwoModelMode || aztecTwoModelMaterialMode;
+                var aztecTwoModelMaterialMapEntsMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-two-model-two-material-mapents-image-rawfile-graft", StringComparison.Ordinal);
+                var aztecTwoModelWithMaterials = aztecTwoModelMaterialMode || aztecTwoModelMaterialMapEntsMode;
+                var aztecAnyTwoModels = aztecTwoModelMode || aztecTwoModelWithMaterials;
                 var aztecAnyMixed = aztecImageRawMode || aztecOneModelMode || aztecAnyTwoModels;
                 if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
                     throw new ArgumentException(
@@ -893,6 +896,16 @@ static async Task<int> MainAsync(string[] args)
                      args[8] != "70" || args[9] != "436"))
                     throw new ArgumentException(
                         "Aztec two-XModel/two-Material SCRATCH syntax: xenon-graph-emit <renderer> <native> <identity> <binding> <scratch-output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-two-model-two-material-image-rawfile-graft <2-PC-image-graph> 2 <114-PC-rawfile-manifest> <2-PC-xmodel-graphs> <xmodel-binding> <2-PC-material-graphs> <material-binding>");
+                if (aztecTwoModelMaterialMapEntsMode &&
+                    (args.Length != 19 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     string.IsNullOrWhiteSpace(args[18]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec original-PC MapEnts 5-payload SCRATCH mode requires 2 images, 114 RawFiles, 2 models, 2 materials, plus the passing standalone MapEnts canary manifest (19 arguments).");
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
@@ -909,13 +922,14 @@ static async Task<int> MainAsync(string[] args)
                     args.Length >= 15 && !string.IsNullOrWhiteSpace(args[14]) ? args[14] : null;
                 var xmodelBindingManifest = (aztecOneModelMode || aztecAnyTwoModels) ? args[15] : aztecImageRawMode ? null :
                     args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
-                var materialGraphRoot = aztecTwoModelMaterialMode ? args[16] : aztecAnyMixed ? null :
+                var materialGraphRoot = aztecTwoModelWithMaterials ? args[16] : aztecAnyMixed ? null :
                     args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
-                var materialBindingManifest = aztecTwoModelMaterialMode ? args[17] : aztecAnyMixed ? null :
+                var materialBindingManifest = aztecTwoModelWithMaterials ? args[17] : aztecAnyMixed ? null :
                     args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
                 var rawFileGraftManifest = aztecAnyMixed ? args[13] :
                     rawFileOnlyMode ? args[11] :
                     args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
+                var mapEntsCanaryManifest = aztecTwoModelMaterialMapEntsMode ? args[18] : null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
@@ -929,10 +943,11 @@ static async Task<int> MainAsync(string[] args)
                     xmodelBindingManifest,
                     materialGraphRoot,
                     materialBindingManifest,
-                    rawFileGraftManifest);
+                    rawFileGraftManifest,
+                    mapEntsCanaryManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4E/4Y real Xenon renderer + image + XModel byte emission");
-                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMapEnts={result.RealMapEntsRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
                 Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; mainZoneBytes={result.MainZoneBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}; LARGE={result.LargeBytes:N0}");
                 Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
                 Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; oatLoadedAssets={result.OatLoadedAssets:N0}; oatExternalRefs={result.OatExternalReferenceAssets:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
