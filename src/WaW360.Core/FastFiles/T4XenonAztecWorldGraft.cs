@@ -40,6 +40,7 @@ public sealed class T4XenonAztecWorldGraft
     private readonly int _indicesAt;
     private readonly int _verticesAt;
     private readonly int _materialMemoryAt;
+    private readonly int _materialMemoryCountAt;
     private readonly int _dpvsSurfaceAt;
 
     public int NativeRootIndex { get; }
@@ -52,13 +53,14 @@ public sealed class T4XenonAztecWorldGraft
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
         byte[] vertices,byte[] surfaces,IReadOnlyList<int> surfaceOwners,
         IReadOnlyList<int> materialOwners,int indicesAt,int verticesAt,
-        int materialMemoryAt,int dpvsSurfaceAt)
+        int materialMemoryAt,int materialMemoryCountAt,int dpvsSurfaceAt)
     {
         NativeRootIndex=nativeRootIndex;NativeRootName=rootName;
         _root=root;_indices=indices;_vertices=vertices;_surfaces=surfaces;
         _surfaceOwners=surfaceOwners;_materialOwners=materialOwners;
         _indicesAt=indicesAt;_verticesAt=verticesAt;
-        _materialMemoryAt=materialMemoryAt;_dpvsSurfaceAt=dpvsSurfaceAt;
+        _materialMemoryAt=materialMemoryAt;_materialMemoryCountAt=materialMemoryCountAt;
+        _dpvsSurfaceAt=dpvsSurfaceAt;
     }
 
     public static async Task<T4XenonAztecWorldGraft> LoadAsync(
@@ -107,10 +109,13 @@ public sealed class T4XenonAztecWorldGraft
         var indicesAt=abi.GetProperty("indicesAt").GetInt32();
         var verticesAt=abi.GetProperty("vertexDataAt").GetInt32();
         var materialMemoryAt=abi.GetProperty("materialMemoryAt").GetInt32();
+        var materialMemoryCountAt=abi.GetProperty("materialMemoryCountAt").GetInt32();
         var dpvsSurfaceAt=abi.GetProperty("dpvsStaticAt").GetInt32()+
                           abi.GetProperty("dpvsStaticSurfacesAt").GetInt32();
         if(indicesAt!=20||verticesAt!=100||dpvsSurfaceAt!=780||
-           materialMemoryAt<=0||materialMemoryAt>=XboxRootSize-4)
+           materialMemoryAt<=0||materialMemoryAt>=XboxRootSize-4||
+           materialMemoryCountAt<=0||materialMemoryCountAt>=XboxRootSize-4||
+           materialMemoryCountAt==materialMemoryAt)
             throw new InvalidDataException("Native Xenon GfxWorld field offsets changed.");
 
         var surfaceBytes=await File.ReadAllBytesAsync(surfaces.GetProperty("BinaryFile").GetString()!,ct);
@@ -183,7 +188,8 @@ public sealed class T4XenonAztecWorldGraft
             }
         }
         return new(world[0].Index,world[0].Name,root,ix,vs,surfaceBytes,
-            surfaceOwnerIndices,owners,indicesAt,verticesAt,materialMemoryAt,dpvsSurfaceAt);
+            surfaceOwnerIndices,owners,indicesAt,verticesAt,
+            materialMemoryAt,materialMemoryCountAt,dpvsSurfaceAt);
     }
 
     // Both passes perform precisely the same VIRTUAL allocations. No
@@ -213,6 +219,7 @@ public sealed class T4XenonAztecWorldGraft
         Put(body,_verticesAt,T4ZonePointer.Following);
         Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
         Put(body,_materialMemoryAt,T4ZonePointer.Following);
+        Put(body,_materialMemoryCountAt,MaterialCount);
         tempRoot(XboxRootSize);
         zone.Write(body);
         EmitString(zone,virtualAlloc,NativeRootName);
