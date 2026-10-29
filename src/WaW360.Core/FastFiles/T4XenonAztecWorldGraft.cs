@@ -27,6 +27,10 @@ public sealed class T4XenonAztecWorldGraft
     private const int MaterialCount=39;
     private const int XboxRootSize=900;
     private const int XboxSurfaceSize=76;
+    private const int PcSurfaceStart=0x058E361E;
+    private const int StaticDpvsSortedAt=68;
+    private const int StaticDpvsModelsAt=72;
+    private const int StaticModelInstStride=28;
     private const string PcZoneSha="7B77A415579CDA0DDCF9F14C767C2FD16F5F350018F917EC7B6B30FC3F4036E5";
     private const string SourceIndicesSha="E89621777CB47C46BB47FE0CA948645D6813151E02A706C2A2325C01BDEFD32D";
     private const string SourceVerticesSha="6303269A8170F6F06233DCCE0BF1230EC6A659C4D0EE78CFDF7C14EE242D8041";
@@ -35,6 +39,9 @@ public sealed class T4XenonAztecWorldGraft
     private readonly byte[] _indices;
     private readonly byte[] _vertices;
     private readonly byte[] _surfaces;
+    // Populated only for the opt-in, source-verified DPVS child probe.
+    private readonly byte[]? _sortedSurfIndex;
+    private readonly byte[]? _staticModelInsts;
     private readonly IReadOnlyList<int> _surfaceOwners;
     private readonly IReadOnlyList<int> _materialOwners;
     private readonly int _indicesAt;
@@ -42,6 +49,8 @@ public sealed class T4XenonAztecWorldGraft
     private readonly int _materialMemoryAt;
     private readonly int _materialMemoryCountAt;
     private readonly int _dpvsSurfaceAt;
+    private readonly int _dpvsSortedAt;
+    private readonly int _dpvsModelsAt;
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
@@ -59,22 +68,34 @@ public sealed class T4XenonAztecWorldGraft
             $"Unknown GfxWorld child probe '{value}'.")
     };
 
+    private static bool StaticDpvsProbeEnabled =>
+        (Environment.GetEnvironmentVariable("WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE")?.Trim().ToLowerInvariant()) switch
+        {
+            null or "" => false,
+            "sorted-smodel" => true,
+            var value => throw new InvalidDataException($"Unknown static DPVS child probe '{value}'.")
+        };
+
     public bool FullDpvsChildGraphComplete => false;
     public int SourceSurfaces => _surfaceOwners.Count;
     public int RealMaterialOwners => _materialOwners.Count;
 
     private T4XenonAztecWorldGraft(
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
-        byte[] vertices,byte[] surfaces,IReadOnlyList<int> surfaceOwners,
+        byte[] vertices,byte[] surfaces,byte[]? sortedSurfIndex,
+        byte[]? staticModelInsts,IReadOnlyList<int> surfaceOwners,
         IReadOnlyList<int> materialOwners,int indicesAt,int verticesAt,
-        int materialMemoryAt,int materialMemoryCountAt,int dpvsSurfaceAt)
+        int materialMemoryAt,int materialMemoryCountAt,int dpvsSurfaceAt,
+        int dpvsSortedAt,int dpvsModelsAt)
     {
         NativeRootIndex=nativeRootIndex;NativeRootName=rootName;
         _root=root;_indices=indices;_vertices=vertices;_surfaces=surfaces;
+        _sortedSurfIndex=sortedSurfIndex;_staticModelInsts=staticModelInsts;
         _surfaceOwners=surfaceOwners;_materialOwners=materialOwners;
         _indicesAt=indicesAt;_verticesAt=verticesAt;
         _materialMemoryAt=materialMemoryAt;_materialMemoryCountAt=materialMemoryCountAt;
-        _dpvsSurfaceAt=dpvsSurfaceAt;
+        _dpvsSurfaceAt=dpvsSurfaceAt;_dpvsSortedAt=dpvsSortedAt;
+        _dpvsModelsAt=dpvsModelsAt;
     }
 
     public static async Task<T4XenonAztecWorldGraft> LoadAsync(
@@ -124,9 +145,14 @@ public sealed class T4XenonAztecWorldGraft
         var verticesAt=abi.GetProperty("vertexDataAt").GetInt32();
         var materialMemoryAt=abi.GetProperty("materialMemoryAt").GetInt32();
         var materialMemoryCountAt=abi.GetProperty("materialMemoryCountAt").GetInt32();
-        var dpvsSurfaceAt=abi.GetProperty("dpvsStaticAt").GetInt32()+
-                          abi.GetProperty("dpvsStaticSurfacesAt").GetInt32();
+        var dpvsRootAt=abi.GetProperty("dpvsStaticAt").GetInt32();
+        var dpvsSurfaceAt=dpvsRootAt+abi.GetProperty("dpvsStaticSurfacesAt").GetInt32();
+        var dpvsSortedAt=dpvsRootAt+abi.GetProperty("dpvsStaticSortedSurfaceIndexAt").GetInt32();
+        var dpvsModelsAt=dpvsRootAt+StaticDpvsModelsAt;
         if(indicesAt!=20||verticesAt!=100||dpvsSurfaceAt!=780||
+           dpvsRootAt!=704||
+           abi.GetProperty("dpvsStaticSize").GetInt32()!=100||
+           dpvsSortedAt!=772||dpvsModelsAt!=776||
            materialMemoryAt<=0||materialMemoryAt>=XboxRootSize-4||
            materialMemoryCountAt<=0||materialMemoryCountAt>=XboxRootSize-4||
            materialMemoryCountAt==materialMemoryAt)
@@ -201,9 +227,84 @@ public sealed class T4XenonAztecWorldGraft
                     BinaryPrimitives.ReadUInt32LittleEndian(zone.Bytes.AsSpan(sourceAt+k,4)));
             }
         }
+        // Xenon GfxWorldDpvsStatic load order:
+        //   sortedSurfIndex[staticSurfaceCount] (uint16)
+        //   smodelInsts[smodelCount] (GfxStaticModelInst, 28B)
+        //   surfaces[surfaceCount] (GfxSurface, 76B).
+        // In the original PC uncompressed stream, these arrays are adjacent
+        // even when their in-memory VIRTUAL block offsets are aligned. The
+        // probe verifies each source record before allowing OAT to read it.
+        byte[]? sortedBytes=null,modelBytes=null;
+        if(StaticDpvsProbeEnabled)
+        {
+            if(ProbeStage!=4)
+                throw new InvalidDataException("Static DPVS probe is only valid with the Full core.");
+            var pcDpvs=await File.ReadAllBytesAsync(
+                seed.GetProperty("OriginalPcDpvs100File").GetString()!,ct);
+            if(pcDpvs.Length!=100 ||
+               !Eq(Sha(pcDpvs),seed.GetProperty("OriginalPcDpvsSha256").GetString()))
+                throw new InvalidDataException("Original-PC DPVS static 100B provenance changed.");
+            uint smodelCount=BinaryPrimitives.ReadUInt32LittleEndian(pcDpvs.AsSpan(0,4));
+            uint staticCount=BinaryPrimitives.ReadUInt32LittleEndian(pcDpvs.AsSpan(4,4));
+            var originalShape=ad.RootElement.GetProperty("originalPcLoadedWorldChildShape");
+            if(staticCount!=613 || smodelCount>4096 ||
+               originalShape.GetProperty("smodelCount").GetUInt32()!=smodelCount ||
+               originalShape.GetProperty("staticSurfaceCount").GetUInt32()!=staticCount)
+                throw new InvalidDataException("Original-PC DPVS static sorted/model counts differ from OAT witness.");
+            uint rawSorted=BinaryPrimitives.ReadUInt32LittleEndian(pcDpvs.AsSpan(StaticDpvsSortedAt,4));
+            uint rawModels=BinaryPrimitives.ReadUInt32LittleEndian(pcDpvs.AsSpan(StaticDpvsModelsAt,4));
+            uint rawSurfaces=BinaryPrimitives.ReadUInt32LittleEndian(pcDpvs.AsSpan(76,4));
+            if(rawSorted!=T4ZonePointer.Following ||
+               (smodelCount>0 && rawModels!=T4ZonePointer.Following) ||
+               (smodelCount==0 && rawModels!=0) ||
+               rawSurfaces!=T4ZonePointer.Following)
+                throw new InvalidDataException(
+                    $"PC DPVS sorted/models/surfaces must be inline FOLLOWING children: " +
+                    $"sorted=0x{rawSorted:X8}, models=0x{rawModels:X8}, surfaces=0x{rawSurfaces:X8}.");
+            int modelSize=checked((int)smodelCount*StaticModelInstStride);
+            int sortedSize=checked((int)staticCount*2);
+            int sortedStart=PcSurfaceStart-modelSize-sortedSize;
+            int modelsStart=sortedStart+sortedSize;
+            if(sortedStart<SourceVertexStart+VertexCount*VertexStride ||
+               modelsStart+modelSize!=PcSurfaceStart)
+                throw new InvalidDataException("DPVS child range does not precede the source 735-surface array.");
+            sortedBytes=new byte[sortedSize];
+            modelBytes=new byte[modelSize];
+            var seen=new HashSet<ushort>();
+            for(int i=0;i<staticCount;i++)
+            {
+                ushort index=BinaryPrimitives.ReadUInt16LittleEndian(
+                    zone.Bytes.AsSpan(sortedStart+i*2,2));
+                if(index>=SurfaceCount || !seen.Add(index))
+                    throw new InvalidDataException(
+                        $"Source sortedSurfIndex entry #{i} is not a unique valid surface index: {index}.");
+                BinaryPrimitives.WriteUInt16BigEndian(
+                    sortedBytes.AsSpan(i*2,2),index);
+            }
+            for(int i=0;i<smodelCount;i++)
+            {
+                int at=modelsStart+i*StaticModelInstStride;
+                int target=i*StaticModelInstStride;
+                for(int k=0;k<24;k+=4)
+                {
+                    float value=BinaryPrimitives.ReadSingleLittleEndian(
+                        zone.Bytes.AsSpan(at+k,4));
+                    if(!float.IsFinite(value) || Math.Abs(value)>100000000f)
+                        throw new InvalidDataException($"Original-PC smodelInsts[{i}] bounds are not finite.");
+                    BinaryPrimitives.WriteSingleBigEndian(modelBytes.AsSpan(target+k,4),value);
+                }
+                for(int axis=0;axis<3;axis++)
+                    if(BinaryPrimitives.ReadSingleLittleEndian(zone.Bytes.AsSpan(at+axis*4,4))>
+                       BinaryPrimitives.ReadSingleLittleEndian(zone.Bytes.AsSpan(at+12+axis*4,4)))
+                        throw new InvalidDataException($"Original-PC smodelInsts[{i}] inverted bounds axis {axis}.");
+                // GfxColor is four raw bytes, not an endian-swapped float.
+                zone.Bytes.AsSpan(at+24,4).CopyTo(modelBytes.AsSpan(target+24,4));
+            }
+        }
         return new(world[0].Index,world[0].Name,root,ix,vs,surfaceBytes,
-            surfaceOwnerIndices,owners,indicesAt,verticesAt,
-            materialMemoryAt,materialMemoryCountAt,dpvsSurfaceAt);
+            sortedBytes,modelBytes,surfaceOwnerIndices,owners,indicesAt,verticesAt,
+            materialMemoryAt,materialMemoryCountAt,dpvsSurfaceAt,
+            dpvsSortedAt,dpvsModelsAt);
     }
 
     // Both passes perform precisely the same VIRTUAL allocations. No
@@ -221,6 +322,14 @@ public sealed class T4XenonAztecWorldGraft
         // Keep this exact allocation order in both Stage 4D and Stage 4E.
         if(stage>=3)virtualAlloc(MaterialCount*8L,4,true);
         if(stage>=4)virtualAlloc(_vertices.Length,4,true);
+        if(StaticDpvsProbeEnabled)
+        {
+            if(_sortedSurfIndex is null || _staticModelInsts is null)
+                throw new InvalidDataException("Static DPVS probe missing verified original-PC children.");
+            virtualAlloc(_sortedSurfIndex.Length,2,true);
+            if(_staticModelInsts.Length>0)
+                virtualAlloc(_staticModelInsts.Length,4,true);
+        }
         if(stage>=2)virtualAlloc(_surfaces.Length,4,true);
     }
 
@@ -238,6 +347,12 @@ public sealed class T4XenonAztecWorldGraft
         if(stage>=1)Put(body,_indicesAt,T4ZonePointer.Following);
         if(stage>=4)Put(body,_verticesAt,T4ZonePointer.Following);
         if(stage>=2)Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
+        if(StaticDpvsProbeEnabled)
+        {
+            Put(body,_dpvsSortedAt,T4ZonePointer.Following);
+            if(_staticModelInsts is { Length: > 0 })
+                Put(body,_dpvsModelsAt,T4ZonePointer.Following);
+        }
         if(stage>=3)Put(body,_materialMemoryAt,T4ZonePointer.Following);
         Put(body,_materialMemoryCountAt,MaterialCount);
         tempRoot(XboxRootSize);
@@ -268,6 +383,18 @@ public sealed class T4XenonAztecWorldGraft
         {
             virtualAlloc(_vertices.Length,4,true);
             zone.Write(_vertices);
+        }
+        if(StaticDpvsProbeEnabled)
+        {
+            if(_sortedSurfIndex is null || _staticModelInsts is null)
+                throw new InvalidDataException("Static DPVS probe missing verified child arrays.");
+            virtualAlloc(_sortedSurfIndex.Length,2,true);
+            zone.Write(_sortedSurfIndex);
+            if(_staticModelInsts.Length>0)
+            {
+                virtualAlloc(_staticModelInsts.Length,4,true);
+                zone.Write(_staticModelInsts);
+            }
         }
         if(stage>=2)
         {
