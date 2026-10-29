@@ -59,13 +59,16 @@ public static class T4AztecPcWorldMaterialNativeNameReconciliation
             a.GetProperty("materialSurfaceSlotsBoundToXbox").GetInt32() != 0 ||
             a.GetProperty("fullMaterialClosure").GetBoolean() ||
             a.GetProperty("readyForXbox").GetBoolean() ||
-            !n.GetProperty("TypeSequenceVerified").GetBoolean())
+            n.GetProperty("format").GetString() !=
+                "WaW360.T4Xenon.NativeIdentityManifest.v1" ||
+            n.GetProperty("assets").GetInt32() != NativeAssetCount ||
+            !n.GetProperty("typeSequenceVerified").GetBoolean())
             throw new InvalidDataException(
                 "Require PC physical bridge, 735-source surface inventory, verified native manifest, and zero-bound safety gates.");
 
         var materialRows = b.GetProperty("OrdinalPairingHypotheses").EnumerateArray().ToArray();
         var groups = a.GetProperty("materialReferenceGroups").EnumerateArray().ToArray();
-        var nativeRows = n.GetProperty("Entries").EnumerateArray().ToArray();
+        var nativeRows = n.GetProperty("entries").EnumerateArray().ToArray();
         if (materialRows.Length != MaterialCount ||
             groups.Length != MaterialCount || nativeRows.Length != NativeAssetCount ||
             b.GetProperty("OrdinalPairingHypotheses")
@@ -73,7 +76,7 @@ public static class T4AztecPcWorldMaterialNativeNameReconciliation
                     x.GetProperty("VirtualAliasToMaterialBindingProven").GetBoolean()))
             throw new InvalidDataException("The original 39 rows/39 groups/8,509 root sequence changed.");
 
-        var nativeFile = n.GetProperty("NativeFastFile").GetString();
+        var nativeFile = n.GetProperty("nativeFastFile").GetString();
         if (string.IsNullOrWhiteSpace(nativeFile) ||
             !File.Exists(nativeFile) ||
             new FileInfo(nativeFile).Length != 82739469L)
