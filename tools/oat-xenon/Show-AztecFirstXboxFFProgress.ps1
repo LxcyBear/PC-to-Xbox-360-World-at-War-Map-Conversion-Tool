@@ -32,6 +32,7 @@ $pc39CodecPreflight=Read-Report 'pc_xenon_39_material_existing_graph_codec_prefl
 $pc39WorldFfScratch=Read-Report 'pc_39_world_material_real_ff_scratch_integration\aztec_39_source_world_material_scratch_ff_gate.json'
 $pc735LiveWorldLink=Read-Report 'pc_xenon_735_world_surface_live_39_material_ff_link\aztec_735_world_surfaces_linked_to_39_ff_material_roots.json'
 $pcGfxWorldRootAbi=Read-Report 'xenon_native_gfxworld_root_dpvs_abi\native_xenon_gfxworld_root_dpvs_abi.json'
+$pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -197,6 +198,18 @@ $rootAbiPass=$null -ne $pcGfxWorldRootAbi -and
     -not [bool]$pcGfxWorldRootAbi.hardwareReady
 if($rootAbiPass){
     Write-Host "[AZTEC-FF-PROGRESS] XENON GFXWORLD ROOT+DPVS ABI WITNESS: native root $($pcGfxWorldRootAbi.nativeGfxWorldRootAbi.gfxWorldSize) bytes, dpvsStatic $($pcGfxWorldRootAbi.nativeGfxWorldRootAbi.dpvsStaticSize) bytes. PC world still not emitted."
+}
+$pcRootSeedPass=$null -ne $pcGfxWorldRootSeed -and
+    [string]$pcGfxWorldRootSeed.Status -eq 'AZTEC_PC_GFXWORLD_800_TO_XBOX_900_ROOT_SCALAR_AND_DPVS_SEED_PASS_NOT_FF' -and
+    [int]$pcGfxWorldRootSeed.XboxRootSize -eq 900 -and
+    [int]$pcGfxWorldRootSeed.OriginalPcRootSize -eq 800 -and
+    @($pcGfxWorldRootSeed.SourceVerifiedRootFields).Count -eq 3 -and
+    @($pcGfxWorldRootSeed.SourceVerifiedDpvsFields).Count -eq 10 -and
+    -not [bool]$pcGfxWorldRootSeed.FullWorldChildrenSerialized -and
+    -not [bool]$pcGfxWorldRootSeed.OatGfxWorldLoadValidated -and
+    -not [bool]$pcGfxWorldRootSeed.XboxHardwareReady
+if($pcRootSeedPass){
+    Write-Host '[AZTEC-FF-PROGRESS] GFXWORLD ROOT CONVERTER STARTED: source 800B PC root -> 900B Xbox ABI scalars, embedded 100B DPVS counters verified. All world children + FF insertion still PENDING.'
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
