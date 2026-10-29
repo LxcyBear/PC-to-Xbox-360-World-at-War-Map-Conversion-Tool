@@ -56,6 +56,18 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-surfaces" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldSurfaceSourceProbe.ScanAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("AZTEC-PC-GFX-SURFACE original PC 735 x 48-byte surface array investigation");
+                Console.WriteLine($"status={result.Status}; first-three={result.ThreeRecordGates:N0}; six-record={result.SixRecordGates:N0}");
+                foreach (var c in result.TopCandidates.Take(8))
+                    Console.WriteLine($"SURFACE-CANDIDATE {c.SourceOffsetHex}: headers={c.ValidSurfaceRecords}/735 bounds={c.ValidBoundingBoxes}/735 materialPtrs={c.ValidMaterialPointers}/735 tris={c.TotalTriangleCount} maxEnd={c.MaximumIndexEnd}/58653 monotonicBase={c.MonotonicIndexBasePairs}/734 SHA={c.OriginalPCArraySha256}");
+                Console.WriteLine($"report: {args[3]}");
+                Console.WriteLine("Diagnostic source geometry only; no GfxWorld/Xbox-ready FF.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-vertices" when args.Length == 4:
             {
                 var result = await T4AztecPcGfxWorldVertexSourceProbe.ScanAsync(
