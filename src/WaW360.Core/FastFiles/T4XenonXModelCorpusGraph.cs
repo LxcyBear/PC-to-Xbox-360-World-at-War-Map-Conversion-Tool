@@ -56,7 +56,8 @@ internal sealed class T4XenonXModelCorpus
                 root.GetProperty("model").GetString() != "zombie_x2_icon" ||
                 ownedRows[0].GetProperty("CorpusOrdinal").GetInt32() != 0 ||
                 ownedRows[0].GetProperty("CorpusName").GetString() != "zombie_x2_icon" ||
-                ownedRows[0].GetProperty("NativeName").GetString() != "zombie_x2_icon")
+                !NormalizeReferenceName(ownedRows[0].GetProperty("NativeName").GetString() ?? "")
+                    .Equals("zombie_x2_icon", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Aztec single-XModel diagnostic binding identity/count gate failed.");
         }
 
