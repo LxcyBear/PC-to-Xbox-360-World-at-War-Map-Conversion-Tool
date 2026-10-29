@@ -313,7 +313,7 @@ try{
         throw 'Combined FF is absent or not in isolated scratch output directory.'
     }
     Write-Host '[AZTEC-PC-2MODEL] 8509-root Xenon layout/OAT PASS: 2 real XModels, 2 images, 114 RawFiles'
-    $temp=Join-Path ([IO.Path]::GetTempPath()) ('wawAz3W_'+[guid]::NewGuid().ToString('N').Substring(0,8))
+    $temp=Join-Path ([IO.Path]::GetTempPath()) ('wawAz2R_'+[guid]::NewGuid().ToString('N').Substring(0,8))
     if($temp.Length -gt 115){throw 'OAT readback needs short physical temp path.'}
     $rawTemp=Join-Path $temp 'raw'
     $imgTemp=Join-Path $temp 'img'
@@ -330,11 +330,16 @@ try{
            @(Select-String -LiteralPath $listLog -Pattern '^\s*ERROR:').Count -ne 0){
             throw "OAT asset-list readback failed for combined model FF: $listLog"
         }
-        $listed=@(Get-Content -LiteralPath $listLog | Where-Object {
-            [string]$_ -match '(?i)(?:^|[\]\s])xmodel\s*,\s*zombie_x2_icon\s*$'
-        })
-        if($listed.Count -ne 1){throw "Original PC zombie_x2_icon XModel missing/ambiguous in combined OAT list: $($listed.Count)"}
-        $listPass=$true
+        $listLines=@(Get-Content -LiteralPath $listLog)
+        foreach($expectedModel in @([string]$modelRoot.Name,[string]$tagRoot.Name)){
+            $pattern='(?i)(?:^|[\]\s])xmodel\s*,\s*'+[regex]::Escape($expectedModel)+'\s*$'
+            $listed=@($listLines | Where-Object {[string]$_ -match $pattern})
+            if($listed.Count -ne 1){
+                throw "Original PC XModel $expectedModel missing/ambiguous in combined OAT list: $($listed.Count)"
+            }
+            $modelNamesListed++
+        }
+        $listPass=($modelNamesListed -eq 2)
         $prior=$ErrorActionPreference
         try{
             $ErrorActionPreference='Continue'
@@ -391,7 +396,7 @@ try{
     }finally{
         if(Test-Path -LiteralPath $temp -PathType Container){Remove-Item -LiteralPath $temp -Recurse -Force}
     }
-    $status='AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'
+    $status='AZTEC_PC_TWO_XMODEL_IMAGE_RAWFILE_GRAPH_PASS'
 }catch{
     $blocker=$_.Exception.Message
     Write-Host "[AZTEC-PC-2MODEL] BLOCKER: $blocker"
@@ -403,9 +408,9 @@ try{
     }
 }
 $report=[ordered]@{
-    schema='WaW360.AztecPcXModelImageRawFileCombinedGraph.v1'
+    schema='WaW360.AztecPcTwoXModelImageRawFileCombinedGraph.v1'
     status=$status;nativeRoots=8509
-    pcXModelSource='zombie_x2_icon'
+    pcXModelSources=@('zombie_x2_icon','tag_origin')
     sourcePcModelRootIndex=[int]$modelRoot.Index
     sourcePcXModelPackedVertices=$(if($null -eq $modelGraph){0}else{[int]$modelGraph.xenonPackedVertices})
     sourcePcXModelTriangles=$(if($null -eq $modelGraph){0}else{[int]$modelGraph.xenonTriangles})
@@ -413,6 +418,9 @@ $report=[ordered]@{
     realImageRoots=$(if($null -eq $emit){0}else{[int]$emit.RealImageRoots})
     realRawFileRoots=$(if($null -eq $emit){0}else{[int]$emit.RealRawFileRoots})
     independentModelIdentityReadback=$listPass
+    independentModelNamesListed=$modelNamesListed
+    secondPcModelRootIndex=[int]$tagRoot.Index
+    secondPcXModelGraphSha256=$tagGraphSha
     independentPcPixelShaExactReadbacks=$imgExact
     independentPcRawFileShaExactReadbacks=$rawExact
     layoutReplayExact=$(if($null -eq $emit){$false}else{[bool]$emit.LayoutReplayExact})
@@ -424,23 +432,23 @@ $report=[ordered]@{
     diagnosticScratchFF=$(if($null -eq $emit){''}else{[string]$emit.OutputFastFile})
     blocker=$blocker
     readyForXbox=$false;convertedMapsPromotionApproved=$false
-    fullAztecMapConverted=$false;remainingXModelPayloadsIncomplete=283
+    fullAztecMapConverted=$false;remainingXModelPayloadsIncomplete=282
     sourceOwnedMaterialsComplete=$false;sourceOwnedWorldGeometryComplete=$false
     sourceOwnedImageGraphComplete=$false
-    note='One source PC zombie_x2_icon Xenon mesh, two source PC image graphs and 114 source PC RawFiles in an otherwise incomplete 8509-root diagnostic graph. Native Xbox reference used for structural identity/renderer only. Not safe for Xbox.'
+    note='Two PC-source XModels (zombie_x2_icon mesh and tag_origin helper), 2 PC images and 114 PC RawFiles in 8509-root diagnostic graph. Other 282 XModels, materials and worlds incomplete. Never deploy.'
 }
 $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportFile -Encoding UTF8
 $lines=New-Object 'System.Collections.Generic.List[string]'
-$lines.Add("Aztec original PC 1 XModel + 2 Images + 114 RawFiles combined: $status")
-$lines.Add("OAT identity model=$listPass; PC image SHA=$imgExact/2; RawFile SHA=$rawExact/114")
+$lines.Add("Aztec original PC 2 XModels + 2 Images + 114 RawFiles combined: $status")
+$lines.Add("OAT identities $modelNamesListed/2 XModels; PC image SHA=$imgExact/2; RawFile SHA=$rawExact/114")
 $lines.Add("Xenon model packed vertices=$($report.sourcePcXModelPackedVertices) triangles=$($report.sourcePcXModelTriangles)")
 $lines.Add("Emitter actual native roots=$($report.nativeRoots), model roots=$($report.realXModelRoots), images=$($report.realImageRoots), RawFiles=$($report.realRawFileRoots)")
 $lines.Add("Blocker=$blocker")
-$lines.Add('The other 283 models, world, materials, images and production renderer source remain incomplete. NOT FOR XBOX.')
+$lines.Add('The other 282 models, world, materials, images and production renderer source remain incomplete. NOT FOR XBOX.')
 [IO.File]::WriteAllLines($reportTxt,[string[]]$lines.ToArray(),[Text.UTF8Encoding]::new($false))
 Write-Host '[AZTEC-PC-2MODEL] ================= RESULT ==============================='
 Write-Host "[AZTEC-PC-2MODEL] status=$status"
-Write-Host "[AZTEC-PC-2MODEL] modelOatListed=$listPass, PC image pixels=$imgExact/2, PC RawFiles=$rawExact/114"
+Write-Host "[AZTEC-PC-2MODEL] modelOatListed=$modelNamesListed/2, PC image pixels=$imgExact/2, PC RawFiles=$rawExact/114"
 Write-Host "[AZTEC-PC-2MODEL] report=$reportTxt"
 Write-Host '[AZTEC-PC-2MODEL] SCRATCH ONLY. NOT FOR XBOX.'
-if($status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'){exit 4}
+if($status -ne 'AZTEC_PC_TWO_XMODEL_IMAGE_RAWFILE_GRAPH_PASS'){exit 4}
