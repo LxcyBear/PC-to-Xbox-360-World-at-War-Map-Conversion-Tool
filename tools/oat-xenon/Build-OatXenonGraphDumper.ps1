@@ -90,6 +90,17 @@ try {
     Copy-Item -LiteralPath $pcWorldHeaderSrc -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialPointerWitnessT4.h') -Force
     Copy-Item -LiteralPath $pcWorldCppSrc -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialPointerWitnessT4.cpp') -Force
 
+    # Export all 39 original-PC world Material body/table sources so the
+    # production graph writer can eventually own their real dependencies.
+    $pcCorpusH = Join-Path $graphSrc 'GfxWorldMaterialCorpusDumperT4.h'
+    $pcCorpusC = Join-Path $graphSrc 'GfxWorldMaterialCorpusDumperT4.cpp'
+    if (-not (Test-Path -LiteralPath $pcCorpusH -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $pcCorpusC -PathType Leaf)) {
+        throw 'PC source-owned 39-world-Material graph corpus native dumper sources missing.'
+    }
+    Copy-Item -LiteralPath $pcCorpusH -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialCorpusDumperT4.h') -Force
+    Copy-Item -LiteralPath $pcCorpusC -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialCorpusDumperT4.cpp') -Force
+
     $xmodelInventoryHeaderSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.h'
     $xmodelInventoryCppSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.cpp'
     if (-not (Test-Path -LiteralPath $xmodelInventoryHeaderSrc -PathType Leaf) -or
@@ -235,6 +246,15 @@ try {
         $pcText = $pcText.Replace($pcIncludeNeedle, $pcIncludeNeedle + [Environment]::NewLine + $worldPcInclude)
     }
 
+    $pcCorpusInclude = '#include "Game/T4/GfxWorld/GfxWorldMaterialCorpusDumperT4.h"'
+    if ($pcText -notmatch [regex]::Escape($pcCorpusInclude)) {
+        if ($pcText -notmatch [regex]::Escape($worldPcInclude)) {
+            throw 'Pinned T4 GfxWorld PC witness include anchor missing for source corpus.'
+        }
+        $pcText = $pcText.Replace($worldPcInclude,
+            $worldPcInclude + [Environment]::NewLine + $pcCorpusInclude)
+    }
+
     $pcRegisterNeedle = 'RegisterAssetDumper(std::make_unique<xmodel::DumperT4>());'
     $pcRegisterLine = 'RegisterAssetDumper(std::make_unique<xmodel::ClassificationDumperT4>());'
     if ($pcText -notmatch [regex]::Escape($pcRegisterLine)) {
@@ -248,6 +268,15 @@ try {
             throw 'Pinned OAT PC ObjWriter XModel registration anchor missing before GfxWorld witness.'
         }
         $pcText = $pcText.Replace($pcRegisterLine, $pcRegisterLine + [Environment]::NewLine + '    ' + $worldPcRegister)
+    }
+
+    $pcCorpusRegister = 'RegisterAssetDumper(std::make_unique<gfxworld::MaterialCorpusDumperT4>());'
+    if ($pcText -notmatch [regex]::Escape($pcCorpusRegister)) {
+        if ($pcText -notmatch [regex]::Escape($worldPcRegister)) {
+            throw 'Pinned T4 GfxWorld PC witness registration missing for source corpus.'
+        }
+        $pcText = $pcText.Replace($worldPcRegister,
+            $worldPcRegister + [Environment]::NewLine + '    ' + $pcCorpusRegister)
     }
 
     $normalizedPcText = $pcText.TrimEnd([char]13, [char]10) + [char]10
@@ -383,6 +412,7 @@ try {
             't4-xmodel-classification-v1',
             't4xenon-xmodel-graph-inventory-v1',
             't4-pc-gfxworld-loaded-material-pointer-witness-v1',
+            't4-pc-gfxworld-39-material-source-graph-corpus-v1',
             't4xenon-gfxworld-surface-abi-loaded-pointer-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
         )
@@ -419,6 +449,8 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialCorpusDumperT4.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialCorpusDumperT4.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
