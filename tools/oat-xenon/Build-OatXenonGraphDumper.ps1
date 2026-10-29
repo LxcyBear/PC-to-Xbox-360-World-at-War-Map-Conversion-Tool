@@ -33,12 +33,14 @@ try {
     $pcXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\XModel'
     $pcWorldSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\GfxWorld'
     $xenonXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\XModel'
+    $xenonWorldSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\GfxWorld'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $materialSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $pcXModelSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $pcWorldSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $xenonXModelSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $xenonWorldSrcDir | Out-Null
 
     $graphSrc = Join-Path $PSScriptRoot 'graph-dumper'
     $headerSrc = Join-Path $graphSrc 'TechniqueSetGraphDumperT4Xenon.h'
@@ -110,6 +112,15 @@ try {
     Copy-Item -LiteralPath $xmodelRelocHeaderSrc -Destination $xmodelRelocHeaderDst -Force
     Copy-Item -LiteralPath $xmodelRelocCppSrc -Destination $xmodelRelocCppDst -Force
 
+    $xenonWorldHeaderSrc = Join-Path $graphSrc 'GfxWorldSurfaceAbiWitnessT4Xenon.h'
+    $xenonWorldCppSrc = Join-Path $graphSrc 'GfxWorldSurfaceAbiWitnessT4Xenon.cpp'
+    if (-not (Test-Path -LiteralPath $xenonWorldHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $xenonWorldCppSrc -PathType Leaf)) {
+        throw 'Pinned native Xbox GfxWorld ABI/topMip pointer witness source missing.'
+    }
+    Copy-Item -LiteralPath $xenonWorldHeaderSrc -Destination (Join-Path $xenonWorldSrcDir 'GfxWorldSurfaceAbiWitnessT4Xenon.h') -Force
+    Copy-Item -LiteralPath $xenonWorldCppSrc -Destination (Join-Path $xenonWorldSrcDir 'GfxWorldSurfaceAbiWitnessT4Xenon.cpp') -Force
+
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
     # ObjWriterT4Xenon.cpp lives in Game/T4Xenon, so this pinned revision
@@ -148,6 +159,15 @@ try {
         $text = $text.Replace($xmodelIncludeLine, $xmodelIncludeLine + [Environment]::NewLine + $xmodelRelocIncludeLine)
     }
 
+    $worldXenonInclude = '#include "GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.h"'
+    if ($text -notmatch [regex]::Escape($worldXenonInclude)) {
+        if ($text -notmatch [regex]::Escape($xmodelRelocIncludeLine)) {
+            throw 'Pinned T4Xenon XModel reloc include anchor missing for GfxWorld.'
+        }
+        $text = $text.Replace($xmodelRelocIncludeLine,
+            $xmodelRelocIncludeLine + [Environment]::NewLine + $worldXenonInclude)
+    }
+
     $registerNeedle = 'RegisterAssetDumper(std::make_unique<techset::PixelShaderDumperT4Xenon>());'
     $registerLine = 'RegisterAssetDumper(std::make_unique<techset::TechniqueSetGraphDumperT4Xenon>());'
     if ($text -notmatch [regex]::Escape($registerLine)) {
@@ -183,6 +203,15 @@ try {
     }
     # Set-Content appends a record terminator and can also change BOM semantics.
     # Preserve UTF-8 without BOM and force exactly one trailing LF.
+    $worldXenonRegister = 'RegisterAssetDumper(std::make_unique<gfxworld::SurfaceAbiWitnessT4Xenon>());'
+    if ($text -notmatch [regex]::Escape($worldXenonRegister)) {
+        if ($text -notmatch [regex]::Escape($xmodelRelocRegisterLine)) {
+            throw 'Pinned T4Xenon XModel reloc registration anchor missing for GfxWorld.'
+        }
+        $text = $text.Replace($xmodelRelocRegisterLine,
+            $xmodelRelocRegisterLine + [Environment]::NewLine + '    ' + $worldXenonRegister)
+    }
+
     $normalizedText = $text.TrimEnd([char]13, [char]10) + [char]10
     [System.IO.File]::WriteAllText(
         $writer,
@@ -354,6 +383,7 @@ try {
             't4-xmodel-classification-v1',
             't4xenon-xmodel-graph-inventory-v1',
             't4-pc-gfxworld-loaded-material-pointer-witness-v1',
+            't4xenon-gfxworld-surface-abi-loaded-pointer-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
         )
     }
@@ -389,6 +419,8 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
     }
     Pop-Location
