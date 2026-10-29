@@ -67,103 +67,153 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
             throw new InvalidDataException("Original-PC world, parent inline MaterialMemory count or source SHAs changed.");
 
         // T4_Assets.h: MaterialMemory {Material* material; int memory;}
-        // GfxWorld.txt reorders materialMemory just before vd/vld. The
-        // physical serialized array may have intervening inline children,
-        // so enumerate a small window ending immediately before vertex
-        // data instead of assuming (vertexStart - 39 * 8) is guaranteed.
+        // The prior v1 "any valid packed block" heuristic was unsound:
+        // low integer array values such as 0x00008E00 trivially fall in
+        // the Temp block, yielding >700,000 overlapping 39-row windows.
+        //
+        // v2 is intentionally narrower, NOT an assertion of ownership:
+        // original PC Material* fields are required to be explicit
+        // Following/Insert loaders or bounded VIRTUAL-block offsets.
+        // Reject low Temp-block numbers. Require an isolated run of
+        // exactly 39 entries (entry before AND entry after invalid).
+        // Null entries, other block types, and non-isolated arrays may
+        // still be legal elsewhere, so no-match is NOT proof of absence.
+        const int MaxReportCandidates = 20;
         var startMin = Math.Max(HeaderOffset + 900, VertexOffset - MaxBeforeVertices);
         var startMax = VertexOffset - ArrayBytes;
         var matched = new List<AztecMaterialMemorySourceArrayCandidate>();
         var threeRecordHits = 0;
         var thirtyNineHits = 0;
+        var isolated39Hits = 0;
 
-        bool ValidEntry(int offset, out uint material, out int memory)
+        var worldSurfaceMaterialPointers = a.GetProperty("Groups")
+            .EnumerateArray()
+            .Select(item => Convert.ToUInt32(
+                (item.GetProperty("PcMaterialPointer").GetString() ?? "")[2..], 16))
+            .ToHashSet();
+        if (worldSurfaceMaterialPointers.Count != 39)
+            throw new InvalidDataException("Alias manifest does not contain 39 source surface Material pointers.");
+
+        bool StrongEntry(int offset)
         {
-            material = U32(b, offset);
-            memory = I32(b, offset + 4);
+            if (offset < startMin || offset > VertexOffset - EntrySize)
+                return false;
+
+            var material = U32(b, offset);
+            var memory = I32(b, offset + 4);
             if (material == 0 || memory < 0 || memory > 64 * 1024 * 1024)
                 return false;
-            var dec = T4ZonePointer.Decode(material);
-            return dec.Kind == T4ZonePointerKind.Following ||
-                   dec.Kind == T4ZonePointerKind.Insert ||
-                   (dec.Kind == T4ZonePointerKind.Offset &&
-                    dec.Block is not null &&
-                    T4ZonePointer.IsWithinBlock(material, source.ZoneHeader));
+
+            var decoded = T4ZonePointer.Decode(material);
+            if (decoded.Kind is T4ZonePointerKind.Following or T4ZonePointerKind.Insert)
+                return true;
+
+            return decoded.Kind == T4ZonePointerKind.Offset &&
+                   decoded.Block == T4ZoneBlock.Virtual &&
+                   T4ZonePointer.IsWithinBlock(material, source.ZoneHeader);
         }
 
+        // Fixed-size, non-allocating scan. v1 eagerly created and SHA'd
+        // every false positive; v2 computes a SHA only for an isolated
+        // full-length candidate and caps returned samples.
         for (var start = startMin; start <= startMax; start++)
         {
             if ((start & 0x3FFFF) == 0) ct.ThrowIfCancellationRequested();
-            if (!ValidEntry(start, out _, out _) ||
-                !ValidEntry(start + 8, out _, out _) ||
-                !ValidEntry(start + 16, out _, out _))
+            if (!StrongEntry(start) ||
+                !StrongEntry(start + EntrySize) ||
+                !StrongEntry(start + 2 * EntrySize))
                 continue;
 
             threeRecordHits++;
             var good = 3;
+            for (var i = 3; i < ArrayCount; i++)
+            {
+                if (!StrongEntry(start + i * EntrySize))
+                    break;
+                good++;
+            }
+
+            if (good != ArrayCount)
+                continue;
+            thirtyNineHits++;
+
+            // A longer valid run gives multiple indistinguishable
+            // 39-row windows. Excluding them avoids misidentifying a
+            // sliding window as an independent MaterialMemory table.
+            var prev = start >= startMin + EntrySize &&
+                       StrongEntry(start - EntrySize);
+            var next = start + ArrayBytes + EntrySize <= VertexOffset &&
+                       StrongEntry(start + ArrayBytes);
+            if (prev || next)
+                continue;
+
+            isolated39Hits++;
+            if (matched.Count >= MaxReportCandidates)
+                continue;
+
             var following = 0;
             var insert = 0;
-            var blockPtrs = 0;
-            var sumMemory = 0L;
+            var virtualFields = 0;
             var positiveMemory = 0;
+            var surfacePointerMatches = 0;
+            var totalMemory = 0L;
             var distinctPointers = new HashSet<uint>();
             for (var i = 0; i < ArrayCount; i++)
             {
-                var off = start + i * EntrySize;
-                if (i >= 3 && !ValidEntry(off, out _, out _))
-                    break;
-                var ptr = U32(b, off);
-                var size = I32(b, off + 4);
-                var kind = T4ZonePointer.Decode(ptr).Kind;
+                var at = start + i * EntrySize;
+                var material = U32(b, at);
+                var size = I32(b, at + 4);
+                var kind = T4ZonePointer.Decode(material).Kind;
                 if (kind == T4ZonePointerKind.Following) following++;
                 else if (kind == T4ZonePointerKind.Insert) insert++;
-                else if (kind == T4ZonePointerKind.Offset) blockPtrs++;
+                else if (kind == T4ZonePointerKind.Offset) virtualFields++;
                 if (size != 0) positiveMemory++;
-                sumMemory += size;
-                distinctPointers.Add(ptr);
-                if (i >= 3) good++;
+                if (worldSurfaceMaterialPointers.Contains(material))
+                    surfacePointerMatches++;
+                totalMemory += size;
+                distinctPointers.Add(material);
             }
 
-            if (good != ArrayCount) continue;
-            thirtyNineHits++;
-            var first = U32(b, start);
-            var middle = U32(b, start + 19 * 8);
-            var last = U32(b, start + 38 * 8);
             matched.Add(new AztecMaterialMemorySourceArrayCandidate(
                 start, $"0x{start:X8}", ArrayCount, following, insert,
-                blockPtrs, distinctPointers.Count, positiveMemory, sumMemory,
-                $"0x{first:X8}", $"0x{middle:X8}", $"0x{last:X8}",
+                virtualFields, distinctPointers.Count, positiveMemory,
+                totalMemory, $"0x{U32(b, start):X8}",
+                $"0x{U32(b, start + 19 * 8):X8}",
+                $"0x{U32(b, start + 38 * 8):X8}",
                 Sha(b.AsSpan(start, ArrayBytes)),
-                VertexOffset - (start + ArrayBytes)));
+                VertexOffset - (start + ArrayBytes),
+                surfacePointerMatches));
         }
 
-        // Adjacent/overlapping 39-record windows may all look reasonable
-        // when the source table is longer than 39. Do not declare an
-        // exact owned array from those false ambiguities.
         var ordered = matched
-            .OrderByDescending(x => x.PositiveMemoryEntries)
+            .OrderByDescending(x => x.OriginalSurfaceMaterialPointerMatches)
             .ThenByDescending(x => x.DistinctMaterialPointerFields)
             .ThenBy(x => x.BytesBeforeVertexBuffer)
             .ToArray();
         var exactPreVertex = matched.Any(x => x.SourceOffset == VertexOffset - ArrayBytes);
+        var status = isolated39Hits == 1
+            ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_ISOLATED_CANDIDATE"
+            : isolated39Hits > 1
+                ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_AMBIGUOUS"
+                : "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_NOT_LOCATED";
+
         var result = new AztecMaterialMemorySourceProbeReport(
-            "WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v1",
-            matched.Count == 1
-                ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_ARRAY_CANDIDATE_PASS"
-                : matched.Count > 1
-                    ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_ARRAY_MULTIPLE_CANDIDATES"
-                    : "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_ARRAY_NOT_LOCATED",
+            "WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v2",
+            status,
             Path.GetFullPath(pcFastFile), source.SourceSha256, ZoneSha,
             HeaderOffset, "0x18C", ArrayCount, "0x190", "0xFFFFFFFF",
             VertexOffset, ArrayBytes, MaxBeforeVertices, startMin,
             startMax, threeRecordHits, thirtyNineHits, exactPreVertex,
-            ordered.Take(20).ToArray(),
+            ordered,
             false, false, false, false,
-            "39 x 8-byte MaterialMemory-shaped source records are candidates only. " +
-            "This is a bounded physical search anchored to authentic PC world vertices; " +
-            "the loader's FOLLOWING marker is not a physical offset. GfxSurface.Material* " +
-            "and MaterialMemory* point to different ABI types. No name mapping, no " +
-            "ownership claim, no Xbox emitter, no OAT world or hardware authorization.");
+            "STRICT diagnostic only. v1's 714,674 matches were false-positive " +
+            "pollution from accepting arbitrary low integers as packed Temp-block " +
+            "pointers. v2 only accepts bounded Virtual-block Material* words " +
+            "or Following/Insert and requires a bounded exactly-39 isolated run. " +
+            $"Isolated runs={isolated39Hits}, saved samples={ordered.Length}. " +
+            "Null/other-block pointers and non-isolated arrays are NOT tested. " +
+            "Even a unique candidate is not proof of materialMemory ownership, " +
+            "Material names, Xbox bindings or a hardware-ready FF.");
 
         var full = Path.GetFullPath(outputManifest);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
@@ -185,7 +235,8 @@ public sealed record AztecMaterialMemorySourceArrayCandidate(
     int FollowingMaterialFields, int InsertMaterialFields, int PackedMaterialFields,
     int DistinctMaterialPointerFields, int PositiveMemoryEntries,
     long TotalMemoryBytes, string FirstMaterialField, string MiddleMaterialField,
-    string LastMaterialField, string SourceArraySha256, int BytesBeforeVertexBuffer);
+    string LastMaterialField, string SourceArraySha256, int BytesBeforeVertexBuffer,
+    int OriginalSurfaceMaterialPointerMatches);
 
 public sealed record AztecMaterialMemorySourceProbeReport(
     string Schema, string Status, string OriginalPCFastFile,
