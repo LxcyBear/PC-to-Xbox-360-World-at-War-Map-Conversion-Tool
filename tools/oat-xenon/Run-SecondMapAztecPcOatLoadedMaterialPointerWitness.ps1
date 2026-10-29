@@ -12,7 +12,7 @@ $geometry=Join-Path $base 'pc_gfxworld_xenon_geometry_components\gfxworld_source
 $dumper=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $capFile=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\waw360-graph-dumper-capabilities.json'
 $out=Join-Path $base 'pc_oat_loaded_gfxworld_material_pointer_witness'
-$dumpRoot=Join-Path $out 'oat_dump'
+$dumpRoot=Join-Path $out ('oat_dump_' + [guid]::NewGuid().ToString('N'))
 $runLog=Join-Path $out 'oat_unlinker.log'
 $proofJson=Join-Path $out 'pc_oat_gfxworld_material_pointer_reconciliation.json'
 foreach($f in @($ledger,$geometry)){
