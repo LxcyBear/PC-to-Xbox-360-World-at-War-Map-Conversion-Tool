@@ -95,6 +95,21 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-gfxworld-root-dpvs-scalar-seed" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldRootDpvsSeed.BuildAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-WORLD-SEED] status=" + result.Status +
+                    " pcRoot=" + result.OriginalPcRootSize +
+                    " xenonRoot=" + result.XboxRootSize +
+                    " dpvsSize=" + result.DpvsSize +
+                    " verifiedRootFields=" + result.SourceVerifiedRootFields.Count +
+                    " verifiedDpvsFields=" + result.SourceVerifiedDpvsFields.Count +
+                    " fullChildrenSerialized=" + result.FullWorldChildrenSerialized);
+                Console.WriteLine("[AZTEC-WORLD-SEED] xenonRootSha=" + result.XboxScalarOnlyRootSha256 +
+                    " -- scalar seed ONLY; NOT a FastFile/GfxWorld.");
+                return 0;
+            }
             case "aztec-xenon-39-world-surface-live-layout-link" when args.Length == 6:
             {
                 var result = await T4AztecPcXenon39WorldSurfaceFinalLayoutLink.BuildAsync(
