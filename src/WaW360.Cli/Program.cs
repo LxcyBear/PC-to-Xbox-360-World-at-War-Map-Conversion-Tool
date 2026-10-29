@@ -840,22 +840,48 @@ static async Task<int> MainAsync(string[] args)
                 // positional args; avoid phantom image/model/material paths.
                 var rawFileOnlyMode = args.Length >= 11 &&
                     args[10].Equals("--rawfile-graft", StringComparison.Ordinal);
+                // A single named mode avoids Windows PowerShell 5.1 stripping
+                // absent optional positional arguments and shifting the
+                // image-graph and RawFile paths into incorrect slots.
+                // This command is restricted to the currently proven Aztec
+                // two-image diagnostic graft. It cannot authorize hardware.
+                var aztecImageRawMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-iwd-image-rawfile-graft", StringComparison.Ordinal);
                 if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
                     throw new ArgumentException(
                         "RawFile-only syntax: xenon-graph-emit <graph> <native> <identity> <binding> <output> <map> <oat> <techsets> <pixelshaders> --rawfile-graft <pc-owned-manifest.json>");
+                if (aztecImageRawMode &&
+                    (args.Length != 14 ||
+                     string.IsNullOrWhiteSpace(args[11]) ||
+                     !int.TryParse(args[12], out var aztecImageCount) || aztecImageCount != 2 ||
+                     string.IsNullOrWhiteSpace(args[13]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     !int.TryParse(args[8], out var aztecTechsets) || aztecTechsets != 70 ||
+                     !int.TryParse(args[9], out var aztecPixelShaders) || aztecPixelShaders != 436))
+                    throw new ArgumentException(
+                        "Aztec PC image+RawFile diagnostic syntax: xenon-graph-emit <graph> <native> <identity> <binding> <output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-iwd-image-rawfile-graft <PC-IWD-derived-Xenon-image-graph> 2 <PC-rawfile-graft.json>");
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
                 var expectedPixelShaders = args.Length >= 10 && int.TryParse(args[9], out var ep) ? ep : 897;
-                var imageGraphRoot = !rawFileOnlyMode && args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
-                var expectedImages = args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
-                var imageValidationOnly = args.Length < 13 || !bool.TryParse(args[12], out var ivo) || ivo;
-                var imageGraftLimit = args.Length >= 14 && int.TryParse(args[13], out var igl) ? igl : 0;
-                var xmodelGraphRoot = args.Length >= 15 && !string.IsNullOrWhiteSpace(args[14]) ? args[14] : null;
-                var xmodelBindingManifest = args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
-                var materialGraphRoot = args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
-                var materialBindingManifest = args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
-                var rawFileGraftManifest = rawFileOnlyMode ? args[11] :
+                var imageGraphRoot = aztecImageRawMode ? args[11] :
+                    !rawFileOnlyMode && args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
+                var expectedImages = aztecImageRawMode ? 2 :
+                    args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
+                var imageValidationOnly = aztecImageRawMode || args.Length < 13 ||
+                    !bool.TryParse(args[12], out var ivo) || ivo;
+                var imageGraftLimit = aztecImageRawMode ? 0 :
+                    args.Length >= 14 && int.TryParse(args[13], out var igl) ? igl : 0;
+                var xmodelGraphRoot = aztecImageRawMode ? null :
+                    args.Length >= 15 && !string.IsNullOrWhiteSpace(args[14]) ? args[14] : null;
+                var xmodelBindingManifest = aztecImageRawMode ? null :
+                    args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
+                var materialGraphRoot = aztecImageRawMode ? null :
+                    args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
+                var materialBindingManifest = aztecImageRawMode ? null :
+                    args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
+                var rawFileGraftManifest = aztecImageRawMode ? args[13] :
+                    rawFileOnlyMode ? args[11] :
                     args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
