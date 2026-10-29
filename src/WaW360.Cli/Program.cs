@@ -95,6 +95,21 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-xenon-76byte-surface-canary" when args.Length == 5:
+            {
+                var result = await T4AztecPcXenonGfxSurface76Canary.BuildAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-76B] status=" + result.Status +
+                    " 76ByteSurfaces=" + result.Surfaces +
+                    " unresolvedTopMip=" + result.UnresolvedTopMipSurfaces +
+                    " exactPcMaterialOwners=" + result.MaterialRelocationSites.Count +
+                    " xboxPointersWritten=" + result.WrittenMaterialPointerFields +
+                    " FFEmitted=" + result.XenonGfxWorldSerialized);
+                Console.WriteLine("[AZTEC-76B] binary=" + result.BinaryFile +
+                    " SHA256=" + result.BinarySha256 +
+                    " -- NON_DEPLOYABLE; no FF.");
+                return 0;
+            }
             case "aztec-pc-xenon-surface-topmip-calibration" when args.Length == 5:
             {
                 var result = await T4AztecPcXenonSurfaceTopMipCalibration.ProbeAsync(
