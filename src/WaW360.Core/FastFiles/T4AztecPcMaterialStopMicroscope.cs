@@ -117,8 +117,10 @@ public static class T4AztecPcMaterialStopMicroscope
             var fieldsPass = b[at + 10] <= 1 &&
                 b[at + 11] <= 11 && b[at + 12] <= 64 &&
                 category <= 7 && b[at + 31] <= 1;
+            string n = "";
+            int nameEnd = 0;
             var follows = namePtr == 0xFFFFFFFFu &&
-                TryReadName(b, at + ImageBytes, out var n, out var nameEnd);
+                TryReadName(b, at + ImageBytes, out n, out nameEnd);
             images.Add(new AztecPcStopImageHeaderCandidate(
                 Hex(at), at - StopImageAt,
                 Hex(mapType), Hex(imagePtr), Hex(namePtr),
