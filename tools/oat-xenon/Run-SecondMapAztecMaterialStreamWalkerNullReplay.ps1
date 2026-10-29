@@ -135,6 +135,17 @@ if([string]$r.Schema -ne 'WaW360.AztecPcMaterialStreamWalker.v1' -or
    [bool]$r.XboxHardwareReady){
     throw 'Source-only Material walk did not replay both anchors or violated Xbox safety gates.'
 }
+for($i=0; $i -lt 15; $i++){
+    $original=$oldW.Materials[$i]
+    $new=$r.Materials[$i]
+    foreach($field in @('HeaderAt','NextCursor','CandidateName','InlineImages',
+        'HeaderSha256','TextureTableSha256','ConstantTableSha256','StateBitsSha256')){
+        if([string]$new.$field -ne [string]$original.$field){
+            throw "Historical 15-material SHA replay differs at material $i field $field"
+        }
+    }
+}
+Write-Host '[AZTEC-MAT-REPLAY] Historical 15 material boundaries, identities and SHA hashes UNCHANGED'
 $nullImages=@($r.Materials | ForEach-Object { $_.Images } | Where-Object { $_.NameOnlyNullImageCandidate })
 if($nullImages.Count -ne 1 -or
    [string]$nullImages[0].HeaderAt -ne '0x05733869' -or
