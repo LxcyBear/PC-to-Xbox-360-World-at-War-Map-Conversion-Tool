@@ -210,206 +210,7 @@ try{
         }finally{$ErrorActionPreference=$prior}
         if($tagExit -ne 0 -or
            @(Select-String -LiteralPath $tagLog -Pattern '^\s*ERROR:').Count -ne 0 -or
-           @(Select-String -LiteralPath $tagLog -Pattern '(?i)^\s*Finished with\s+0\s+warnings?,\s+0\s+errors?\s*
-    New-Item -Path $emitRoot -ItemType Directory -Force | Out-Null
-    $binding=[ordered]@{
-        format='WaW360.AztecPcSingleXModelBinding.v1'
-        bindingPass=$true
-        nativeRoots=8509
-        nativeXModelRoots=284
-        model='zombie_x2_icon'
-        sourcePCFastFile=[string]$canary.sourceFastFile
-        sourcePCFastFileSha256=[string]$canary.sourceFastFileSha256
-        graphFileSha256=[string]$modelGraph.graphSha256
-        ownedBindings=@([ordered]@{
-            NativeRootIndex=[int]$modelRoot.Index
-            NativeName=[string]$modelRoot.Name
-            CorpusOrdinal=0
-            CorpusName='zombie_x2_icon'
-        })
-        referenceBindings=@()
-        note='This one-model diagnostic binds a single source-derived original PC XModel in the full Aztec root sequence. The other 283 XModels remain unconverted placeholders.'
-    }
-    $binding | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $bindingFile -Encoding UTF8
-    Write-Host "[AZTEC-PC-2MODEL] PC XModel graph PASS: vertices=$($modelGraph.xenonPackedVertices) triangles=$($modelGraph.xenonTriangles) surfaces=$($modelGraph.xenonSurfaces)"
-    $prior=$ErrorActionPreference
-    try{
-        $ErrorActionPreference='Continue'
-        & dotnet 'build' $cli '-c' 'Release' '--nologo' '-v:q' 2>&1 |
-            ForEach-Object {[string]$_} | Set-Content -LiteralPath $buildLog -Encoding UTF8
-        $buildExit=[int]$LASTEXITCODE
-    }finally{$ErrorActionPreference=$prior}
-    if($buildExit -ne 0){throw "Incremental .NET XModel graft build failed: $buildLog"}
-    Write-Host '[AZTEC-PC-2MODEL] .NET build PASS'
-    $args=@('run','--no-build','-c','Release','--project',$cli,'--',
-        'xenon-graph-emit',[string]$proof.dumpRoot,$native,$identityPath,
-        $bindingPath,$emitRoot,'nazi_zombie_aztec',$oat,'70','436',
-        '--aztec-pc-one-xmodel-image-rawfile-graft',$imgGraphRoot,'2',
-        $rawInputPath,$xmodelRoot,$bindingFile)
-    $prior=$ErrorActionPreference
-    try{
-        $ErrorActionPreference='Continue'
-        & dotnet @args 2>&1 | ForEach-Object {[string]$_} | Set-Content -LiteralPath $emitLog -Encoding UTF8
-        $emitterExit=[int]$LASTEXITCODE
-    }finally{$ErrorActionPreference=$prior}
-    $emitFile=Join-Path $emitRoot 'nuclear_xenon_renderer_emit.json'
-    if(-not (Test-Path -LiteralPath $emitFile -PathType Leaf)){
-        throw "Triple payload Xenon emitter did not create its report (exit=$emitterExit); see $emitLog"
-    }
-    $emit=Get-Content -LiteralPath $emitFile -Raw | ConvertFrom-Json
-    if($emitterExit -ne 0 -or -not [bool]$emit.ValidationPass -or
-       -not [bool]$emit.LayoutReplayExact -or
-       -not [bool]$emit.ExactIdentitySequence -or
-       -not [bool]$emit.OatZeroWarningsZeroErrors -or
-       -not [bool]$emit.ValidationOnly -or
-       [bool]$emit.ReadyForHardware -or
-       [int]$emit.NativeRoots -ne 8509 -or
-       [int]$emit.RealImageRoots -ne 2 -or
-       [int]$emit.RealRawFileRoots -ne 114 -or
-       [int]$emit.RealXModelRoots -ne 1 -or
-       [int]$emit.RealMaterialRoots -ne 0){
-        throw "8,509-root combined 1-XModel+2-image+114-RawFile OAT/layout identity gate failed (exit=$emitterExit)."
-    }
-    $ff=[string]$emit.OutputFastFile
-    if(-not (Test-Path -LiteralPath $ff -PathType Leaf) -or
-       -not ([IO.Path]::GetFullPath($ff)).StartsWith(
-           ([IO.Path]::GetFullPath($emitRoot)).TrimEnd([char]'\')+'\',
-           [StringComparison]::OrdinalIgnoreCase)){
-        throw 'Combined FF is absent or not in isolated scratch output directory.'
-    }
-    Write-Host '[AZTEC-PC-2MODEL] 8509-root Xenon layout/OAT PASS: 1 real XModel, 2 images, 114 RawFiles'
-    $temp=Join-Path ([IO.Path]::GetTempPath()) ('wawAz3W_'+[guid]::NewGuid().ToString('N').Substring(0,8))
-    if($temp.Length -gt 115){throw 'OAT readback needs short physical temp path.'}
-    $rawTemp=Join-Path $temp 'raw'
-    $imgTemp=Join-Path $temp 'img'
-    New-Item -Path $rawTemp,$imgTemp -ItemType Directory -Force | Out-Null
-    try{
-        $prior=$ErrorActionPreference
-        try{
-            $ErrorActionPreference='Continue'
-            & $oat '--no-color' '--list' $ff 2>&1 |
-                ForEach-Object {[string]$_} | Set-Content -LiteralPath $listLog -Encoding UTF8
-            $listExit=[int]$LASTEXITCODE
-        }finally{$ErrorActionPreference=$prior}
-        if($listExit -ne 0 -or
-           @(Select-String -LiteralPath $listLog -Pattern '^\s*ERROR:').Count -ne 0){
-            throw "OAT asset-list readback failed for combined model FF: $listLog"
-        }
-        $listed=@(Get-Content -LiteralPath $listLog | Where-Object {
-            [string]$_ -match '(?i)(?:^|[\]\s])xmodel\s*,\s*zombie_x2_icon\s*$'
-        })
-        if($listed.Count -ne 1){throw "Original PC zombie_x2_icon XModel missing/ambiguous in combined OAT list: $($listed.Count)"}
-        $listPass=$true
-        $prior=$ErrorActionPreference
-        try{
-            $ErrorActionPreference='Continue'
-            & $oat '--no-color' '--include-assets' 'rawfile' '--output-folder' $rawTemp $ff 2>&1 |
-                ForEach-Object {[string]$_} | Set-Content -LiteralPath $rawLog -Encoding UTF8
-            $rawExit=[int]$LASTEXITCODE
-        }finally{$ErrorActionPreference=$prior}
-        if($rawExit -ne 0 -or @(Select-String -LiteralPath $rawLog -Pattern '^\s*ERROR:').Count -ne 0){
-            throw "OAT RawFile readback from mixed model FF failed: $rawLog"
-        }
-        foreach($e in $rawEntries){
-            $file=Join-Path $rawTemp (([string]$e.name).Replace('/','\'))
-            if(-not (Test-Path -LiteralPath $file -PathType Leaf) -or
-               [long](Get-Item -LiteralPath $file).Length -ne [long]$e.bytes -or
-               (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ine [string]$e.sha256){
-                throw "PC RawFile changed after XModel integration: $($e.name)"
-            }
-            $rawExact++
-        }
-        Write-Host "[AZTEC-PC-2MODEL] PC RawFiles: $rawExact/114 exact source SHA readbacks"
-        $prior=$ErrorActionPreference
-        try{
-            $ErrorActionPreference='Continue'
-            & $oat '--no-color' '--include-assets' 'image' '--image-format' 'IWI' '--output-folder' $imgTemp $ff 2>&1 |
-                ForEach-Object {[string]$_} | Set-Content -LiteralPath $imgLog -Encoding UTF8
-            $imgExit=[int]$LASTEXITCODE
-        }finally{$ErrorActionPreference=$prior}
-        if($imgExit -ne 0 -or @(Select-String -LiteralPath $imgLog -Pattern '^\s*ERROR:').Count -ne 0){
-            throw "OAT pixel readback from mixed model FF failed: $imgLog"
-        }
-        $imgSources=@{}
-        foreach($r in @($ip.individualImages)){$imgSources[([string]$r.Name).ToLowerInvariant()]=$r}
-        $readImages=@(Get-ChildItem -LiteralPath $imgTemp -Filter '*.iwi' -File -Recurse -ErrorAction Stop)
-        if($readImages.Count -ne 2){throw "Combined model FF contained $($readImages.Count) real images, expected two."}
-        foreach($file in $readImages){
-            $relative=$file.FullName.Substring($imgTemp.Length).TrimStart([char]'\').Replace('\','/')
-            if($relative.StartsWith('images/',[StringComparison]::OrdinalIgnoreCase)){$relative=$relative.Substring(7)}
-            $name=$relative.Substring(0,$relative.Length-4).ToLowerInvariant()
-            if(-not $imgSources.ContainsKey($name)){throw "Unexpected extracted PC image: $name"}
-            $data=[IO.File]::ReadAllBytes($file.FullName)
-            if($data.Length -lt 29 -or $data[0] -ne 73 -or $data[1] -ne 87 -or
-               $data[2] -ne 105 -or $data[3] -ne 6 -or $data[4] -ne 13){
-                throw "Invalid original PC IWI header in model FF: $name"
-            }
-            $sha=[Security.Cryptography.SHA256]::Create()
-            try{$hash=([BitConverter]::ToString($sha.ComputeHash($data,28,$data.Length-28))).Replace('-','')}
-            finally{$sha.Dispose()}
-            if($hash -ine [string]$imgSources[$name].InputPayloadSha256){
-                throw "PC texture payload SHA mismatch after adding model: $name"
-            }
-            $imgExact++
-        }
-        if($imgExact -ne 2 -or $rawExact -ne 114){throw 'Triple-payload exact readback count failed.'}
-    }finally{
-        if(Test-Path -LiteralPath $temp -PathType Container){Remove-Item -LiteralPath $temp -Recurse -Force}
-    }
-    $status='AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'
-}catch{
-    $blocker=$_.Exception.Message
-    Write-Host "[AZTEC-PC-2MODEL] BLOCKER: $blocker"
-    foreach($l in @($graphLog,$buildLog,$emitLog,$listLog,$rawLog,$imgLog)){
-        if(Test-Path -LiteralPath $l -PathType Leaf){
-            Write-Host "[AZTEC-PC-2MODEL] Last $l"
-            foreach($line in @(Get-Content -LiteralPath $l -Tail 8)){Write-Host "[AZTEC-PC-2MODEL]   $line"}
-        }
-    }
-}
-$report=[ordered]@{
-    schema='WaW360.AztecPcXModelImageRawFileCombinedGraph.v1'
-    status=$status;nativeRoots=8509
-    pcXModelSource='zombie_x2_icon'
-    sourcePcModelRootIndex=[int]$modelRoot.Index
-    sourcePcXModelPackedVertices=$(if($null -eq $modelGraph){0}else{[int]$modelGraph.xenonPackedVertices})
-    sourcePcXModelTriangles=$(if($null -eq $modelGraph){0}else{[int]$modelGraph.xenonTriangles})
-    realXModelRoots=$(if($null -eq $emit){0}else{[int]$emit.RealXModelRoots})
-    realImageRoots=$(if($null -eq $emit){0}else{[int]$emit.RealImageRoots})
-    realRawFileRoots=$(if($null -eq $emit){0}else{[int]$emit.RealRawFileRoots})
-    independentModelIdentityReadback=$listPass
-    independentPcPixelShaExactReadbacks=$imgExact
-    independentPcRawFileShaExactReadbacks=$rawExact
-    layoutReplayExact=$(if($null -eq $emit){$false}else{[bool]$emit.LayoutReplayExact})
-    oatZeroWarningsZeroErrors=$(if($null -eq $emit){$false}else{[bool]$emit.OatZeroWarningsZeroErrors})
-    modelGraphProof=$graphDocPath
-    modelBindingManifest=$bindingFile
-    sourceTwoPcImageProof=$imgProofPath
-    source114RawFileProof=$rawProofPath
-    diagnosticScratchFF=$(if($null -eq $emit){''}else{[string]$emit.OutputFastFile})
-    blocker=$blocker
-    readyForXbox=$false;convertedMapsPromotionApproved=$false
-    fullAztecMapConverted=$false;remainingXModelPayloadsIncomplete=283
-    sourceOwnedMaterialsComplete=$false;sourceOwnedWorldGeometryComplete=$false
-    sourceOwnedImageGraphComplete=$false
-    note='One source PC zombie_x2_icon Xenon mesh, two source PC image graphs and 114 source PC RawFiles in an otherwise incomplete 8509-root diagnostic graph. Native Xbox reference used for structural identity/renderer only. Not safe for Xbox.'
-}
-$report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportFile -Encoding UTF8
-$lines=New-Object 'System.Collections.Generic.List[string]'
-$lines.Add("Aztec original PC 1 XModel + 2 Images + 114 RawFiles combined: $status")
-$lines.Add("OAT identity model=$listPass; PC image SHA=$imgExact/2; RawFile SHA=$rawExact/114")
-$lines.Add("Xenon model packed vertices=$($report.sourcePcXModelPackedVertices) triangles=$($report.sourcePcXModelTriangles)")
-$lines.Add("Emitter actual native roots=$($report.nativeRoots), model roots=$($report.realXModelRoots), images=$($report.realImageRoots), RawFiles=$($report.realRawFileRoots)")
-$lines.Add("Blocker=$blocker")
-$lines.Add('The other 283 models, world, materials, images and production renderer source remain incomplete. NOT FOR XBOX.')
-[IO.File]::WriteAllLines($reportTxt,[string[]]$lines.ToArray(),[Text.UTF8Encoding]::new($false))
-Write-Host '[AZTEC-PC-2MODEL] ================= RESULT ==============================='
-Write-Host "[AZTEC-PC-2MODEL] status=$status"
-Write-Host "[AZTEC-PC-2MODEL] modelOatListed=$listPass, PC image pixels=$imgExact/2, PC RawFiles=$rawExact/114"
-Write-Host "[AZTEC-PC-2MODEL] report=$reportTxt"
-Write-Host '[AZTEC-PC-2MODEL] SCRATCH ONLY. NOT FOR XBOX.'
-if($status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'){exit 4}
-).Count -eq 0){
+           @(Select-String -LiteralPath $tagLog -Pattern '(?i)^\s*Finished with\s+0\s+warnings?,\s+0\s+errors?\s*$').Count -eq 0){
             throw "Second PC model OAT graph extraction failed: $tagLog"
         }
         $tagFiles=@(Get-ChildItem -LiteralPath (Join-Path $short 'xenon_xmodel_graphs') -Filter '*.json' -File)
@@ -439,22 +240,30 @@ if($status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'){exit 4}
     if(Test-Path -LiteralPath $emitRoot -PathType Container){Remove-Item -LiteralPath $emitRoot -Recurse -Force}
     New-Item -Path $emitRoot -ItemType Directory -Force | Out-Null
     $binding=[ordered]@{
-        format='WaW360.AztecPcSingleXModelBinding.v1'
+        format='WaW360.AztecPcTwoXModelBinding.v1'
         bindingPass=$true
         nativeRoots=8509
         nativeXModelRoots=284
-        model='zombie_x2_icon'
+        models=@('zombie_x2_icon','tag_origin')
         sourcePCFastFile=[string]$canary.sourceFastFile
         sourcePCFastFileSha256=[string]$canary.sourceFastFileSha256
         graphFileSha256=[string]$modelGraph.graphSha256
-        ownedBindings=@([ordered]@{
-            NativeRootIndex=[int]$modelRoot.Index
-            NativeName=[string]$modelRoot.Name
-            CorpusOrdinal=0
-            CorpusName='zombie_x2_icon'
-        })
+        ownedBindings=@(
+            [ordered]@{
+                NativeRootIndex=[int]$modelRoot.Index
+                NativeName=[string]$modelRoot.Name
+                CorpusOrdinal=0
+                CorpusName='zombie_x2_icon'
+            },
+            [ordered]@{
+                NativeRootIndex=[int]$tagRoot.Index
+                NativeName=[string]$tagRoot.Name
+                CorpusOrdinal=1
+                CorpusName='tag_origin'
+            }
+        )
         referenceBindings=@()
-        note='This one-model diagnostic binds a single source-derived original PC XModel in the full Aztec root sequence. The other 283 XModels remain unconverted placeholders.'
+        note='Diagnostic only: two separately source-derived original PC XModels (mesh + helper). The other 282 owned XModels remain placeholders.'
     }
     $binding | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $bindingFile -Encoding UTF8
     Write-Host "[AZTEC-PC-2MODEL] PC XModel graph PASS: vertices=$($modelGraph.xenonPackedVertices) triangles=$($modelGraph.xenonTriangles) surfaces=$($modelGraph.xenonSurfaces)"
@@ -470,7 +279,7 @@ if($status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'){exit 4}
     $args=@('run','--no-build','-c','Release','--project',$cli,'--',
         'xenon-graph-emit',[string]$proof.dumpRoot,$native,$identityPath,
         $bindingPath,$emitRoot,'nazi_zombie_aztec',$oat,'70','436',
-        '--aztec-pc-one-xmodel-image-rawfile-graft',$imgGraphRoot,'2',
+        '--aztec-pc-two-xmodel-image-rawfile-graft',$imgGraphRoot,'2',
         $rawInputPath,$xmodelRoot,$bindingFile)
     $prior=$ErrorActionPreference
     try{
@@ -492,9 +301,9 @@ if($status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'){exit 4}
        [int]$emit.NativeRoots -ne 8509 -or
        [int]$emit.RealImageRoots -ne 2 -or
        [int]$emit.RealRawFileRoots -ne 114 -or
-       [int]$emit.RealXModelRoots -ne 1 -or
+       [int]$emit.RealXModelRoots -ne 2 -or
        [int]$emit.RealMaterialRoots -ne 0){
-        throw "8,509-root combined 1-XModel+2-image+114-RawFile OAT/layout identity gate failed (exit=$emitterExit)."
+        throw "8,509-root combined 2-XModel+2-image+114-RawFile OAT/layout identity gate failed (exit=$emitterExit)."
     }
     $ff=[string]$emit.OutputFastFile
     if(-not (Test-Path -LiteralPath $ff -PathType Leaf) -or
@@ -503,7 +312,7 @@ if($status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS'){exit 4}
            [StringComparison]::OrdinalIgnoreCase)){
         throw 'Combined FF is absent or not in isolated scratch output directory.'
     }
-    Write-Host '[AZTEC-PC-2MODEL] 8509-root Xenon layout/OAT PASS: 1 real XModel, 2 images, 114 RawFiles'
+    Write-Host '[AZTEC-PC-2MODEL] 8509-root Xenon layout/OAT PASS: 2 real XModels, 2 images, 114 RawFiles'
     $temp=Join-Path ([IO.Path]::GetTempPath()) ('wawAz3W_'+[guid]::NewGuid().ToString('N').Substring(0,8))
     if($temp.Length -gt 115){throw 'OAT readback needs short physical temp path.'}
     $rawTemp=Join-Path $temp 'raw'
