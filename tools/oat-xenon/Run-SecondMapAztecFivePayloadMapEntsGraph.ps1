@@ -74,8 +74,11 @@ if([string]$prior.schema -ne 'WaW360.AztecPcTwoXModelTwoMaterialMixedGraph.v1' -
 # the standalone canary already pins this index through the PC census.
 $expectedIndex=[int]$canary.nativeRootIndex
 $expectedName=([string]$canary.asset).Replace('\','/')
+# Native manifest uses the exact wire name 'map_ents' while OAT's
+# Linker/Unlinker and our census call the family 'mapents'.
+# Normalize ONLY the family identifier; never change a root name/index.
 $allMapEnts=@($identity.Entries | Where-Object {
-    [string]::Equals([string]$_.TypeName,'mapents',[StringComparison]::OrdinalIgnoreCase)
+    ([string]$_.TypeName).Replace('_','').ToLowerInvariant() -eq 'mapents'
 })
 Write-Host "[AZTEC-PC-5PAYLOAD] MapEnts gate: canary root=$expectedIndex identity=$expectedName, native mapents roots=$($allMapEnts.Count)"
 foreach($item in $allMapEnts){
@@ -89,8 +92,8 @@ $identityMatches=[string]::Equals(
     ([string]$nativeAtIndex.Name).Replace('\','/'),
     $expectedName,[StringComparison]::OrdinalIgnoreCase)
 $typeMatches=[string]::Equals(
-    [string]$nativeAtIndex.TypeName,'mapents',
-    [StringComparison]::OrdinalIgnoreCase)
+    ([string]$nativeAtIndex.TypeName).Replace('_',''),
+    'mapents',[StringComparison]::OrdinalIgnoreCase)
 $rootIndexMatches=([int]$nativeAtIndex.Index -eq $expectedIndex)
 if($allMapEnts.Count -ne 1 -or -not $typeMatches -or
    -not $identityMatches -or -not $rootIndexMatches){
