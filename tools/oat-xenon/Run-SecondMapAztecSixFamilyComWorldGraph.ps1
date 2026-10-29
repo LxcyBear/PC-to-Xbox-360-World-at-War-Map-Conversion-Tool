@@ -281,7 +281,25 @@ try{
            -not ([IO.Path]::GetFullPath($fullZone)).StartsWith($allowedZoneRoot,[StringComparison]::OrdinalIgnoreCase)){
             throw 'New ComWorld raw-zone diagnostic is missing or outside scratch emitter root.'
         }
-        $uncompressed=[IO.File]::ReadAllBytes($fullZone)
+        # Validate against an independent decompression of the actual
+        # Xbox .ff, NOT just the emitter's intermediate raw .zone.
+        $recovered=Join-Path $temp 'final_comworld_ff_unpacked.zone'
+        $unpackLog=Join-Path $logDir 'final_xenon_ff_decompress.log'
+        $saved=$ErrorActionPreference
+        try{
+            $ErrorActionPreference='Continue'
+            & dotnet 'run' '--no-build' '-c' 'Release' '--project' $cli '--' 'decompress' $outputFF $recovered 2>&1 |
+                ForEach-Object {[string]$_} | Set-Content -LiteralPath $unpackLog -Encoding UTF8
+            $unpackCode=[int]$LASTEXITCODE
+        }finally{$ErrorActionPreference=$saved}
+        if($unpackCode -ne 0 -or -not (Test-Path -LiteralPath $recovered -PathType Leaf)){
+            throw "Independent Xbox FF decompression failed (exit=$unpackCode): $unpackLog"
+        }
+        if((Get-FileHash -LiteralPath $recovered -Algorithm SHA256).Hash -ine
+           (Get-FileHash -LiteralPath $fullZone -Algorithm SHA256).Hash){
+            throw 'Final Xenon FF decompress differs from emitted raw zone SHA-256.'
+        }
+        $uncompressed=[IO.File]::ReadAllBytes($recovered)
         $comAt=[int64]$emit.ComWorldZoneOffset
         $nameBytes=[Text.Encoding]::UTF8.GetBytes('maps/nazi_zombie_aztec.d3dbsp'+[char]0)
         $comBlockLength=64+$nameBytes.Length+144+1056+2816
