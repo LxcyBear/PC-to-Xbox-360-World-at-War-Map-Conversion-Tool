@@ -85,6 +85,8 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
         var threeRecordHits = 0;
         var thirtyNineHits = 0;
         var isolated39Hits = 0;
+        var fullWindowEvidence = new List<AztecMaterialMemoryWindowBoundaryEvidence>();
+        const int MaxFullWindowSamples = 32;
 
         var worldSurfaceMaterialPointers = a.GetProperty("Groups")
             .EnumerateArray()
@@ -136,6 +138,42 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
             if (good != ArrayCount)
                 continue;
             thirtyNineHits++;
+
+            // Record EVERY surviving full-39 start (up to 32), including
+            // non-isolated windows. The previous v2 saved only isolated
+            // candidates and therefore hid the two real surviving windows.
+            // The source pointer/member statistics are observational only;
+            // an adjacent second window means these are overlapping views
+            // of >=40 records, NOT two different owned MaterialMemory arrays.
+            if (fullWindowEvidence.Count < MaxFullWindowSamples)
+            {
+                var overlapPtrs = 0;
+                var inlineMarkers = 0;
+                var virtualRefs = 0;
+                var distinct = new HashSet<uint>();
+                var totalMemory = 0L;
+                for (var j = 0; j < ArrayCount; j++)
+                {
+                    var at = start + j * EntrySize;
+                    var raw = U32(b, at);
+                    var kind = T4ZonePointer.Decode(raw).Kind;
+                    if (kind is T4ZonePointerKind.Following or T4ZonePointerKind.Insert)
+                        inlineMarkers++;
+                    else if (kind == T4ZonePointerKind.Offset)
+                        virtualRefs++;
+                    if (worldSurfaceMaterialPointers.Contains(raw))
+                        overlapPtrs++;
+                    distinct.Add(raw);
+                    totalMemory += I32(b, at + 4);
+                }
+                fullWindowEvidence.Add(new AztecMaterialMemoryWindowBoundaryEvidence(
+                    start, $"0x{start:X8}", start - startMin,
+                    start >= startMin + EntrySize && StrongEntry(start - EntrySize),
+                    start + ArrayBytes <= VertexOffset - EntrySize && StrongEntry(start + ArrayBytes),
+                    overlapPtrs, inlineMarkers, virtualRefs, distinct.Count, totalMemory,
+                    $"0x{U32(b, start):X8}", $"0x{U32(b, start + 38 * EntrySize):X8}",
+                    Sha(b.AsSpan(start, ArrayBytes))));
+            }
 
             // A longer valid run gives multiple indistinguishable
             // 39-row windows. Excluding them avoids misidentifying a
@@ -191,29 +229,40 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
             .ThenBy(x => x.BytesBeforeVertexBuffer)
             .ToArray();
         var exactPreVertex = matched.Any(x => x.SourceOffset == VertexOffset - ArrayBytes);
-        var status = isolated39Hits == 1
+        var adjacentTwoWindowsFortyRecordRun =
+            thirtyNineHits == 2 && fullWindowEvidence.Count == 2 &&
+            Math.Abs(fullWindowEvidence[0].SourceOffset -
+                     fullWindowEvidence[1].SourceOffset) == EntrySize &&
+            isolated39Hits == 0;
+        var status = adjacentTwoWindowsFortyRecordRun
+            ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_TWO_OVERLAPPING_WINDOWS_40_RECORD_RUN"
+            : isolated39Hits == 1
             ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_ISOLATED_CANDIDATE"
             : isolated39Hits > 1
                 ? "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_AMBIGUOUS"
                 : "AZTEC_PC_GFXWORLD_39_MATERIAL_MEMORY_STRICT_NOT_LOCATED";
 
         var result = new AztecMaterialMemorySourceProbeReport(
-            "WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v2",
+            "WaW360.AztecPcGfxWorldMaterialMemorySourceProbe.v3",
             status,
             Path.GetFullPath(pcFastFile), source.SourceSha256, ZoneSha,
             HeaderOffset, "0x18C", ArrayCount, "0x190", "0xFFFFFFFF",
             VertexOffset, ArrayBytes, MaxBeforeVertices, startMin,
             startMax, threeRecordHits, thirtyNineHits, isolated39Hits, exactPreVertex,
+            adjacentTwoWindowsFortyRecordRun, fullWindowEvidence.ToArray(),
             ordered,
             false, false, false, false,
-            "STRICT diagnostic only. v1's 714,674 matches were false-positive " +
-            "pollution from accepting arbitrary low integers as packed Temp-block " +
-            "pointers. v2 only accepts bounded Virtual-block Material* words " +
-            "or Following/Insert and requires a bounded exactly-39 isolated run. " +
-            $"Isolated runs={isolated39Hits}, saved samples={ordered.Length}. " +
-            "Null/other-block pointers and non-isolated arrays are NOT tested. " +
-            "Even a unique candidate is not proof of materialMemory ownership, " +
-            "Material names, Xbox bindings or a hardware-ready FF.");
+            "Original-PC source-bound 39x8 boundary analysis. Version 1's " +
+            "714,674 false positives were arbitrary Temp block numeric data. " +
+            "Version 2 found 47 strong 3-row signatures, 2 full windows and 0 " +
+            "isolated 39-row runs but hid non-isolated locations. Version 3 " +
+            "records bounded exact starts, preceding/following record validity, " +
+            "39-slot pointer-field overlap with the real GfxSurface material " +
+            "reference lattice, inline directive count, distinct references, " +
+            "and SHA256 for each full window. Adjacent windows imply a " +
+            "40-record run, not a proved 39-record MaterialMemory asset. " +
+            "Null/other-block pointers are deliberately excluded; no-hit " +
+            "does NOT establish absence. No names/Xbox bindings/FF.");
 
         var full = Path.GetFullPath(outputManifest);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
@@ -238,6 +287,15 @@ public sealed record AztecMaterialMemorySourceArrayCandidate(
     string LastMaterialField, string SourceArraySha256, int BytesBeforeVertexBuffer,
     int OriginalSurfaceMaterialPointerMatches);
 
+public sealed record AztecMaterialMemoryWindowBoundaryEvidence(
+    int SourceOffset, string SourceOffsetHex, int DistanceFromScanStart,
+    bool PreviousEightByteRecordPlausible,
+    bool NextEightByteRecordPlausible,
+    int FieldMatchesWithSourceGfxSurfaceMaterialPointers,
+    int FollowingOrInsertDirectiveFields, int PackedVirtualPointerFields,
+    int DistinctMaterialPointerFields, long SumMemoryFields,
+    string FirstMaterialWord, string LastMaterialWord, string Source39WindowSha256);
+
 public sealed record AztecMaterialMemorySourceProbeReport(
     string Schema, string Status, string OriginalPCFastFile,
     string OriginalPCFastFileSha256, string OriginalPCZoneSha256,
@@ -248,6 +306,8 @@ public sealed record AztecMaterialMemorySourceProbeReport(
     int ScanStart, int ScanEnd, int ThreeRecordSignatures, int Full39RecordSignatures,
     int Isolated39RecordSignatures,
     bool ExactArrayImmediatelyBeforeVertexBuffer,
+    bool TwoFullWindowsOverlapIntoFortyRecordRun,
+    IReadOnlyList<AztecMaterialMemoryWindowBoundaryEvidence> FullWindowBoundaryEvidence,
     IReadOnlyList<AztecMaterialMemorySourceArrayCandidate> Candidates,
     bool ExactPhysicalOwnershipProven, bool PCMaterialNamesResolved,
     bool XboxMaterialBindingsProven, bool XboxHardwareReady, string Note);
