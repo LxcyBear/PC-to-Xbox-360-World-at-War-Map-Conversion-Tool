@@ -21,7 +21,7 @@ public static class T4AztecPcGfxWorldMaterialAliasTrace
     private const string PcSurfaceSha =
         "919FF1CDB1EC5FCD57ED4020F1908AE813C1FB570C8631C15135E07C5DF852E5";
 
-    public static async Task<AztecPcGfxMaterialAliasTraceReport> ScanAsync(
+    public static async Task<AztecPcGfxWorldMaterialAliasTraceReport> ScanAsync(
         string pcFastFile, string atlasPath, string correlationPath,
         string outputJson, CancellationToken ct = default)
     {
