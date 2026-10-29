@@ -855,7 +855,9 @@ static async Task<int> MainAsync(string[] args)
                     args[10].Equals("--aztec-pc-two-model-two-material-image-rawfile-graft", StringComparison.Ordinal);
                 var aztecTwoModelMaterialMapEntsMode = args.Length >= 11 &&
                     args[10].Equals("--aztec-pc-two-model-two-material-mapents-image-rawfile-graft", StringComparison.Ordinal);
-                var aztecTwoModelWithMaterials = aztecTwoModelMaterialMode || aztecTwoModelMaterialMapEntsMode;
+                var aztecSixFamilyComWorldMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-six-family-comworld-scratch-graft", StringComparison.Ordinal);
+                var aztecTwoModelWithMaterials = aztecTwoModelMaterialMode || aztecTwoModelMaterialMapEntsMode || aztecSixFamilyComWorldMode;
                 var aztecAnyTwoModels = aztecTwoModelMode || aztecTwoModelWithMaterials;
                 var aztecAnyMixed = aztecImageRawMode || aztecOneModelMode || aztecAnyTwoModels;
                 if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
@@ -906,6 +908,16 @@ static async Task<int> MainAsync(string[] args)
                      args[8] != "70" || args[9] != "436"))
                     throw new ArgumentException(
                         "Aztec original-PC MapEnts 5-payload SCRATCH mode requires 2 images, 114 RawFiles, 2 models, 2 materials, plus the passing standalone MapEnts canary manifest (19 arguments).");
+                if (aztecSixFamilyComWorldMode &&
+                    (args.Length != 20 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     string.IsNullOrWhiteSpace(args[18]) || string.IsNullOrWhiteSpace(args[19]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec ComWorld scratch graft requires 2 images, 114 RawFiles, 2 models, 2 materials, original PC MapEnts and source-pinned ComWorld burnable cells proof (20 arguments).");
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
@@ -929,7 +941,8 @@ static async Task<int> MainAsync(string[] args)
                 var rawFileGraftManifest = aztecAnyMixed ? args[13] :
                     rawFileOnlyMode ? args[11] :
                     args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
-                var mapEntsCanaryManifest = aztecTwoModelMaterialMapEntsMode ? args[18] : null;
+                var mapEntsCanaryManifest = (aztecTwoModelMaterialMapEntsMode || aztecSixFamilyComWorldMode) ? args[18] : null;
+                var comWorldProofManifest = aztecSixFamilyComWorldMode ? args[19] : null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
@@ -944,10 +957,11 @@ static async Task<int> MainAsync(string[] args)
                     materialGraphRoot,
                     materialBindingManifest,
                     rawFileGraftManifest,
-                    mapEntsCanaryManifest);
+                    mapEntsCanaryManifest,
+                    comWorldProofManifest);
 
                 Console.WriteLine("NUCLEAR STAGE 4E/4Y real Xenon renderer + image + XModel byte emission");
-                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMapEnts={result.RealMapEntsRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMapEnts={result.RealMapEntsRoots:N0}; realComWorlds={result.RealComWorldRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
                 Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; mainZoneBytes={result.MainZoneBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}; LARGE={result.LargeBytes:N0}");
                 Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
                 Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; oatLoadedAssets={result.OatLoadedAssets:N0}; oatExternalRefs={result.OatExternalReferenceAssets:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
