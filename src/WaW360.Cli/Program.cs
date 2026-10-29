@@ -63,6 +63,8 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"[AZTEC-MAT-ALIAS] status={result.Status}");
                 Console.WriteLine($"[AZTEC-MAT-ALIAS] block={result.SourcePointerBlock}, packed reference groups={result.DistinctPackedWorldMaterialPointers}, eightByteLattice={result.SharedEightByteVirtualOffsetLattice}");
                 Console.WriteLine($"[AZTEC-MAT-ALIAS] spanSlots={result.VirtualSpanEightByteSlots}, emptySlots={result.UnreferencedSlotsWithinSpan}, outsideSurfaceRawHits={result.AdditionalNonSurfaceSerializedPointerHits}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] GfxWorld +0x18C count={result.HeaderMaterialMemoryCountCandidateAt0x18C}; +0x190 ptr={result.HeaderFollowingMaterialMemoryPointerCandidateAt0x190} ({result.HeaderFollowingMaterialMemoryPointerDecoded})");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] +0x190 pointer inBlock={result.HeaderMaterialMemoryPointerInSourceBlockBounds}, equalsFirstOf39={result.HeaderPointerEqualsFirstOf39VirtualSlots}, equalsAnyOf39={result.HeaderPointerEqualsAnyOf39VirtualSlots}");
                 Console.WriteLine($"[AZTEC-MAT-ALIAS] 39-count source header candidates: {string.Join(", ", result.FixedWorldHeader39CountCandidateOffsets)}");
                 foreach (var group in result.Groups.OrderByDescending(g => g.OtherSerializedReferenceCount).Take(12))
                     Console.WriteLine($"[AZTEC-MAT-ALIAS] {group.PcMaterialPointer}: tris={group.TriangleCount}, surfaces={group.SurfaceCount}, outsideSurfaceHits={group.OtherSerializedReferenceCount} first=[{string.Join(", ", group.OtherSerializedReferenceOffsets)}]");
