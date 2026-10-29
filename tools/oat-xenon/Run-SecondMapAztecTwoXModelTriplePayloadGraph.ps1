@@ -8,6 +8,8 @@ $work=Join-Path $base 'pc_two_xmodel_image_rawfile_integration'
 $graphRunner=Join-Path $PSScriptRoot 'Run-SecondMapAztecRenderableXModelGraph.ps1'
 $graphDocPath=Join-Path $base 'pc_xmodel_renderable_graph\aztec_pc_xmodel_relocatable_graph.json'
 $canaryPath=Join-Path $base 'pc_xmodel_renderable_canary\aztec_pc_xmodel_renderable_canary.json'
+$tagCanaryPath=Join-Path $base 'pc_xmodel_canary\aztec_pc_xmodel_canary.json'
+$tripleProofPath=Join-Path $base 'pc_xmodel_image_rawfile_integration\aztec_pc_xmodel_image_rawfile_integration.json'
 $mixedPath=Join-Path $base 'pc_iwd_rawfile_integration\aztec_pc_iwd_rawfile_integration.json'
 $imgProofPath=Join-Path $base 'pc_iwd_image_roundtrip\aztec_pc_iwd_xenon_image_roundtrip.json'
 $rawProofPath=Join-Path $base 'pc_rawfile_graft\pc_rawfile_graft_result.json'
@@ -17,13 +19,15 @@ $nativeProofPath=Join-Path $base 'native_graph_proof\native_graph_proof_result.j
 $bindingPath=Join-Path $base 'renderer_preflight\native_root_binding\nuclear_xenon_root_binding.json'
 $cli=Join-Path $repo 'src\WaW360.Cli\WaW360.Cli.csproj'
 $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
-foreach($file in @($graphRunner,$canaryPath,$mixedPath,$imgProofPath,$rawProofPath,
+foreach($file in @($graphRunner,$canaryPath,$tagCanaryPath,$tripleProofPath,$mixedPath,$imgProofPath,$rawProofPath,
     $rawInputPath,$identityPath,$nativeProofPath,$bindingPath,$cli,$oat)){
     if(-not (Test-Path -LiteralPath $file -PathType Leaf)){
         throw "Aztec 1-XModel+2-images+114-RawFiles input missing: $file"
     }
 }
 $canary=Get-Content -LiteralPath $canaryPath -Raw | ConvertFrom-Json
+$tagCanary=Get-Content -LiteralPath $tagCanaryPath -Raw | ConvertFrom-Json
+$tripleProof=Get-Content -LiteralPath $tripleProofPath -Raw | ConvertFrom-Json
 $mixed=Get-Content -LiteralPath $mixedPath -Raw | ConvertFrom-Json
 $ip=Get-Content -LiteralPath $imgProofPath -Raw | ConvertFrom-Json
 $rawProof=Get-Content -LiteralPath $rawProofPath -Raw | ConvertFrom-Json
@@ -53,6 +57,32 @@ if([string]$canary.schema -ne 'WaW360.AztecPcRenderableXModelCanary.v1' -or
    [string]$proof.nativeSha256 -ine 'e0f3c244dd7b72d0fe71c05faf014c2c9bfb05f770183954b3e7cde625eba98f'){
     throw 'Aztec PC model, prior combined source payloads or 8,509-root native identity proof changed.'
 }
+if([string]$tagCanary.schema -ne 'WaW360.AztecPcXModelXenonCanary.v1' -or
+   [string]$tagCanary.status -ne 'AZTEC_PC_XMODEL_XENON_CANARY_PASS' -or
+   [string]$tagCanary.selectedModel -ine 'tag_origin' -or
+   -not [bool]$tagCanary.classificationComplete -or
+   -not [bool]$tagCanary.xenonOatRoundtripPass -or
+   [string]$tagCanary.sourceFastFileSha256 -ine [string]$canary.sourceFastFileSha256 -or
+   [string]$tripleProof.status -ne 'AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_GRAPH_PASS' -or
+   [int]$tripleProof.realXModelRoots -ne 1 -or
+   [int]$tripleProof.independentPcPixelShaExactReadbacks -ne 2 -or
+   [int]$tripleProof.independentPcRawFileShaExactReadbacks -ne 114){
+    throw 'Both PC XModel canaries and original 3-way SHA readback must pass before expansion.'
+}
+if(-not (Test-Path -LiteralPath ([string]$tagCanary.sourceFastFile) -PathType Leaf) -or
+   (Get-FileHash -LiteralPath ([string]$tagCanary.sourceFastFile) -Algorithm SHA256).Hash -ine
+    [string]$tagCanary.sourceFastFileSha256 -or
+   -not (Test-Path -LiteralPath ([string]$tagCanary.bridgeManifest) -PathType Leaf)){
+    throw 'PC tag_origin source FF or bridge manifest unavailable/changed.'
+}
+$tagBridge=Get-Content -LiteralPath ([string]$tagCanary.bridgeManifest) -Raw | ConvertFrom-Json
+if([string]$tagBridge.format -ne 'WaW360.Nuclear4U.OatXModelBridge.v5' -or
+   [string]$tagBridge.selectedModel -ine 'tag_origin' -or
+   -not [bool]$tagBridge.bridgePass -or -not [bool]$tagBridge.xenonRoundTripPass -or
+   -not [bool]$tagBridge.partClassificationComplete -or
+   -not (Test-Path -LiteralPath ([string]$tagBridge.linkedFastFile) -PathType Leaf)){
+    throw 'PC tag_origin standalone Xenon bridge evidence not intact.'
+}
 $native=[string]$proof.verifiedGoldenXboxFastFile
 if(-not (Test-Path -LiteralPath $native -PathType Leaf) -or
    [long](Get-Item -LiteralPath $native).Length -ne 82739469L -or
@@ -69,6 +99,20 @@ $nativeX=@($identity.Entries | Where-Object {
 })
 if($nativeX.Count -ne 1){throw "Single Aztec native XModel identity missing or ambiguous: $($nativeX.Count)"}
 $modelRoot=$nativeX[0]
+function NormModel([string]$v){
+    $v=$v.Trim().TrimStart(',').Replace('\','/')
+    if($v.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){$v=$v.Substring(0,$v.Length-3)}
+    return $v.ToLowerInvariant()
+}
+$tagRoots=@($identity.Entries | Where-Object {
+    [string]$_.TypeName -ieq 'xmodel' -and
+    -not ([string]$_.Name).StartsWith(',') -and
+    (NormModel ([string]$_.Name)) -eq 'tag_origin'
+})
+if($tagRoots.Count -ne 1 -or [int]$tagRoots[0].Index -eq [int]$modelRoot.Index){
+    throw "Distinct native tag_origin owned XModel root required; found $($tagRoots.Count)"
+}
+$tagRoot=$tagRoots[0]
 $imgGraphRoot=Join-Path $base 'pc_iwd_rawfile_integration\pc_xenon_image_graph'
 if(-not (Test-Path -LiteralPath (Join-Path $imgGraphRoot 'xenon_image_graphs') -PathType Container)){
     throw "The already passing original PC 2-image graph cache is absent: $imgGraphRoot"
@@ -93,14 +137,14 @@ $emitLog=Join-Path $logRoot 'mixed_emit.log'
 $listLog=Join-Path $logRoot 'oat_list.log'
 $rawLog=Join-Path $logRoot 'oat_rawfile_readback.log'
 $imgLog=Join-Path $logRoot 'oat_image_readback.log'
-$bindingFile=Join-Path $work 'aztec_single_pc_xmodel_root_binding.json'
-$reportFile=Join-Path $work 'aztec_pc_xmodel_image_rawfile_integration.json'
-$reportTxt=Join-Path $work 'aztec_pc_xmodel_image_rawfile_integration.txt'
-$status='AZTEC_PC_XMODEL_IMAGE_RAWFILE_COMBINED_BLOCKED'
-$blocker='';$graphExit=-1;$emitterExit=-1;$rawExact=0;$imgExact=0;$listPass=$false
-$emit=$null;$modelGraph=$null
+$bindingFile=Join-Path $work 'aztec_two_pc_xmodel_root_binding.json'
+$reportFile=Join-Path $work 'aztec_two_pc_xmodel_image_rawfile_integration.json'
+$reportTxt=Join-Path $work 'aztec_two_pc_xmodel_image_rawfile_integration.txt'
+$status='AZTEC_PC_TWO_XMODEL_IMAGE_RAWFILE_BLOCKED'
+$blocker='';$graphExit=-1;$emitterExit=-1;$rawExact=0;$imgExact=0;$listPass=$false;$modelNamesListed=0
+$emit=$null;$modelGraph=$null;$tagGraphSha=''
 Write-Host '[AZTEC-PC-2MODEL] ============================================================='
-Write-Host '[AZTEC-PC-2MODEL] 1 REAL PC XMODEL + 2 REAL PC IMAGES + 114 REAL PC RAWFILES'
+Write-Host '[AZTEC-PC-2MODEL] 2 REAL PC XMODELS (MESH+HELPER) + 2 REAL IMAGES + 114 RAWFILES'
 Write-Host '[AZTEC-PC-2MODEL] 8,509 ROOTS; OAT LAYOUT + MODEL/IMAGE/RAWFILE READBACK'
 Write-Host '[AZTEC-PC-2MODEL] Scratch only, NEVER DEPLOY ON XBOX.'
 Write-Host '[AZTEC-PC-2MODEL] ============================================================='
