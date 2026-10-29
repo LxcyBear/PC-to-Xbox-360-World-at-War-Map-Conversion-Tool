@@ -115,8 +115,9 @@ public static class T4AztecPcGfxWorldXenonGeometryCodec
                 faces < 1 || baseIndex < 0 || baseIndex + faces * 3 > IndexCount ||
                 !T4ZonePointer.IsWithinBlock(material, source.ZoneHeader))
                 throw new InvalidDataException($"PC GfxSurface#{s} source geometry/material pointer invalid.");
-            // Full 52-byte Xbox-endian static struct, except material:
-            // PC's packed pointer cannot directly name an Xbox Material!
+            // BIG-ENDIAN 52-byte ORIGINAL-PC surface layout, NOT a native
+            // 76-byte T4Xenon GfxSurface: Xbox adds six topMip floats,
+            // shifting Material* from +20 to +44. PC pointer stays null.
             // Emit null as an explicit blocker until root identities are
             // rebound; keep the original pointer in the relocation ledger.
             foreach (var off in new[] { 0, 4, 12, 16, 20, 28, 32, 36, 40, 44, 48 })
@@ -209,7 +210,7 @@ public static class T4AztecPcGfxWorldXenonGeometryCodec
             ledgerPath, materialRecords.Count, materials.Count,
             relativeIndices, zeroMaterialPtrs,
             false, false, false,
-            "Original-PC content used exclusively. Full Xbox-endian index/vertex/surface array " +
+            "Original-PC bytes only. 52B surface is an endian-converted PC-layout DIAGNOSTIC, NOT a 76B Xbox ABI surface. " +
             "readback passes, but all 735 source material pointers are intentionally unbound (null) " +
             "in the endian-only surface buffer. Packed normals/vertex semantics, OAT GfxWorld root " +
             "allocation, DPVS, runtime resources and Material/lightmaps remain unverified. NO FF.");
