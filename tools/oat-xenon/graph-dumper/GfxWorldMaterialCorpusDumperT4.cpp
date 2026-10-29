@@ -159,6 +159,69 @@ namespace gfxworld
             << (world.vd.vertices ? "true":"false");
         out << "}";
 
+        // Gate 8 ORIGINAL PC child-source export, additive to the existing
+        // 39 Material corpus. PC OAT has already resolved all source pointers:
+        // use typed arrays rather than inferring physical positions from
+        // packed 0x84... zone offsets. This is NOT a Xenon payload.
+        const bool gate8Shape =
+            world.planeCount == 3447 &&
+            world.nodeCount == 24511 &&
+            world.dpvs.smodelCount == 1903 &&
+            world.dpvs.staticSurfaceCount == 613 &&
+            world.dpvsPlanes.cellCount == 11 &&
+            sizeof(cplane_s) == 20 &&
+            sizeof(uint16_t) == 2 &&
+            world.dpvsPlanes.planes && world.dpvsPlanes.nodes &&
+            world.dpvs.smodelDrawInsts &&
+            world.vertexLayerDataSize > 0 &&
+            world.vertexLayerDataSize <= 32 * 1024 * 1024 &&
+            world.vld.data;
+        const auto planesPath = root + "/gate8_planes_pc_le.bin";
+        const auto nodesPath = root + "/gate8_nodes_pc_le.bin";
+        const auto layerPath = root + "/gate8_vertex_layer_pc_raw.bin";
+        bool gate8Blobs = false;
+        if (gate8Shape)
+        {
+            gate8Blobs =
+                WriteBlob(context, planesPath, world.dpvsPlanes.planes, static_cast<size_t>(world.planeCount)) &&
+                WriteBlob(context, nodesPath, world.dpvsPlanes.nodes, static_cast<size_t>(world.nodeCount)) &&
+                WriteBlob(context, layerPath, world.vld.data, static_cast<size_t>(world.vertexLayerDataSize));
+        }
+        out << ",\"gate8ChildSource\":{";
+        out << "\"status\":";
+        JsonString(out, gate8Blobs
+            ? "T4_PC_GATE8_TYPED_CHILD_BLOBS_EXPORTED"
+            : "T4_PC_GATE8_SOURCE_SHAPE_OR_EXPORT_BLOCKED");
+        out << ",\"planeCount\":" << world.planeCount;
+        out << ",\"nodeCount\":" << world.nodeCount;
+        out << ",\"smodelCount\":" << world.dpvs.smodelCount;
+        out << ",\"cellCount\":" << world.dpvsPlanes.cellCount;
+        out << ",\"vertexLayerDataSize\":" << world.vertexLayerDataSize;
+        out << ",\"planeStride\":" << sizeof(cplane_s);
+        out << ",\"nodeStride\":" << sizeof(uint16_t);
+        out << ",\"planesPath\":"; JsonString(out, planesPath);
+        out << ",\"nodesPath\":"; JsonString(out, nodesPath);
+        out << ",\"vertexLayerPath\":"; JsonString(out, layerPath);
+        out << ",\"planesPresent\":" << (world.dpvsPlanes.planes ? "true":"false");
+        out << ",\"nodesPresent\":" << (world.dpvsPlanes.nodes ? "true":"false");
+        out << ",\"layerPresent\":" << (world.vld.data ? "true":"false");
+        out << ",\"staticModelDrawInstsPresent\":"
+            << (world.dpvs.smodelDrawInsts ? "true":"false");
+        // Save ONLY source XModel identities here; the raw draw records
+        // contain host-memory XModel* pointers and are never dumped verbatim.
+        out << ",\"staticModelDrawNames\":[";
+        if (world.dpvs.smodelDrawInsts &&
+            world.dpvs.smodelCount >= 0 && world.dpvs.smodelCount <= 4096)
+        {
+            for (int i = 0; i < world.dpvs.smodelCount; ++i)
+            {
+                if (i) out << ',';
+                const auto* model = world.dpvs.smodelDrawInsts[i].model;
+                JsonNullable(out, model ? model->name : nullptr);
+            }
+        }
+        out << "]}";
+
         int exported=0,missing=0,totalTextures=0,totalConstants=0,
             totalState=0,unresolvedWater=0,errors=0;
         out << ",\"materials\":[";
