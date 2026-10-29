@@ -74,7 +74,14 @@ try{
 }finally{$ErrorActionPreference=$saved}
 if($code -ne 0 -or -not(Test-Path -LiteralPath $json -PathType Leaf)){
     if(Test-Path -LiteralPath $runLog -PathType Leaf){
-        Get-Content -LiteralPath $runLog -Tail 30 | ForEach-Object {Write-Host "[AZTEC-MAT-NAMES] TRACE: $_"}
+        # The first exception line identifies the root cause; the final
+        # Program.cs stack frame by itself is not diagnostic.
+        Write-Host '[AZTEC-MAT-NAMES] EXCEPTION HEAD:'
+        Get-Content -LiteralPath $runLog -TotalCount 12 |
+            ForEach-Object {Write-Host "[AZTEC-MAT-NAMES] TRACE: $_"}
+        Write-Host '[AZTEC-MAT-NAMES] EXCEPTION TAIL:'
+        Get-Content -LiteralPath $runLog -Tail 12 |
+            ForEach-Object {Write-Host "[AZTEC-MAT-NAMES] TRACE: $_"}
     }
     throw "Aztec source-to-native-name audit failed exit=$code; log=$runLog"
 }
