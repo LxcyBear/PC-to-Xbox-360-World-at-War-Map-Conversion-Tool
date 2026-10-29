@@ -137,6 +137,31 @@ try{
             if($i -lt 8){$preview.Add($entry)}
         }
         $score=$validCoords+$validPtrs+$unique.Count
+        # Serialized ComBurnableCell::data is 32 bytes per inlined
+        # pointer in ZoneCode. The child buffers should follow the
+        # complete 88*12 parent array, but this is still a source
+        # stream *candidate*, not independently proved pointer ownership.
+        $dataOffsets=New-Object 'System.Collections.Generic.List[object]'
+        if($validPtrs -eq 88 -and $inline -gt 0){
+            $size=$inline*32
+            for($dataPad=0;$dataPad -le 16;$dataPad++){
+                $dataAt=$begin+$length+$dataPad
+                if($dataAt -lt 0 -or $dataAt -gt $bytes.Length-$size){continue}
+                $nzero=0
+                for($j=0;$j -lt $size;$j++){
+                    if($bytes[$dataAt+$j] -ne 0){$nzero++}
+                }
+                $dataOffsets.Add([pscustomobject]@{
+                    sourceOffset=$dataAt
+                    paddingAfterCellArray=$dataPad
+                    inlineCellCount=$inline
+                    sampleBytes=$size
+                    nonzeroSampleBytes=$nzero
+                    sourceSampleSha256=(Sha $bytes $dataAt $size)
+                    dataChildOwnershipProven=$false
+                })
+            }
+        }
         $candidateRows.Add([pscustomobject]@{
             serializedCellArrayOffset=$begin
             bytePaddingAfterLights=$pad
@@ -150,6 +175,7 @@ try{
             score=$score
             scoreMax=264
             cellArraySha256=(Sha $bytes $begin $length)
+            adjacent32ByteSampleCandidates=@($dataOffsets.ToArray())
             firstEightCells=$preview.ToArray()
             allCellCoordinates=$coords.ToArray()
         })
@@ -166,6 +192,10 @@ try{
         Write-Host "[AZTEC-PC-BURNABLE] cells offset=0x$('{0:X8}' -f $item.serializedCellArrayOffset) pad=$($item.bytePaddingAfterLights) coordinates=$($item.boundsMatchingCoordinates)/88 ptrs=$($item.recognizedPointers)/88 unique=$($item.uniqueCoordinates) inline=$($item.inlinePointers) score=$($item.score)/264"
         foreach($entry in @($item.firstEightCells | Select-Object -First 3)){
             Write-Host "[AZTEC-PC-BURNABLE]   cell#$($entry.index) x=$($entry.x) y=$($entry.y) ptr=$($entry.pointerHex)"
+        }
+        if($item.score -eq 264 -and @($item.adjacent32ByteSampleCandidates).Count -ne 0){
+            $d=$item.adjacent32ByteSampleCandidates[0]
+            Write-Host "[AZTEC-PC-BURNABLE]   POSSIBLE child buffer offset=0x$('{0:X8}' -f $d.sourceOffset) bytes=$($d.sampleBytes) nonzero=$($d.nonzeroSampleBytes) sha=$($d.sourceSampleSha256)"
         }
     }
     if($strong){
@@ -203,6 +233,7 @@ $report=[ordered]@{
     bestCellArray=$selected
     topCandidates=$observed
     child32ByteSamplesAuthenticated=$false
+    adjacentSampleLayoutCandidatesCaptured=$true
     exactSourceWorldSerializationProven=$false
     xboxWorldConverted=$false
     hardwareTestAuthorized=$false
