@@ -56,6 +56,26 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-material-inline-boundary" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldMaterialInlineBoundaryProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-BOUNDARY] status={result.Status}");
+                foreach (var w in result.Windows)
+                {
+                    Console.WriteLine($"[AZTEC-MAT-BOUNDARY] WINDOW {w.WindowStart}, following={w.FollowingPointerFields}/39, after={w.FollowingHeaderCandidateStart}, afterWord={w.FollowingHeaderCandidateFirstWord}, preValid={w.ValidPrecedingEightByteRecord}, nextValid={w.ValidFollowingEightByteRecord}");
+                    Console.WriteLine($"[AZTEC-MAT-BOUNDARY] memoryFields min={w.SmallestMemoryField}, max={w.LargestMemoryField}, total={w.SumMemoryFields}");
+                    foreach (var h in w.PossibleMaterialHeaders)
+                    {
+                        Console.WriteLine($"[AZTEC-MAT-BOUNDARY] MaterialShape={h.CandidateMaterialBytes} infoBytes={h.CandidateMaterialInfoBytes}, plausibleCounts={h.PlausibleMaterialCountFields}, texture={h.TextureCount}, constant={h.ConstantCount}, stateBits={h.StateBitsCount}, camera={h.CameraRegion}, techset={h.TechniqueSetPointer}");
+                        foreach (var n in h.NameCandidates)
+                            Console.WriteLine($"[AZTEC-MAT-BOUNDARY]   NAME-CANDIDATE {n.SourceOffset} = {n.UnverifiedName} (alignment={n.AlignmentAfterMaterialHeader}); NOT PROVEN");
+                    }
+                }
+                Console.WriteLine($"[AZTEC-MAT-BOUNDARY] report={args[3]}");
+                Console.WriteLine("[AZTEC-MAT-BOUNDARY] 39 names and Xbox bindings NOT proven. NO FF.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-material-memory-probe" when args.Length == 5:
             {
                 var result = await T4AztecPcGfxWorldMaterialMemorySourceProbe.ScanAsync(
