@@ -95,6 +95,26 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-verified-material-relocation-worklist" when args.Length == 6:
+            {
+                var result = await T4AztecPcVerifiedSurfaceMaterialRelocationPlan.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-FIXUPS] status=" + result.Status +
+                    " verifiedPcMaterialIdentities=" + result.VerifiedTypedPcSurfaceIdentities +
+                    " uniqueXboxMaterialNames=" + result.UniqueGoldenXboxNativeMaterialRootNames +
+                    " exactSites=" + result.ExactRelocationSites +
+                    " surfaceBytesPatched=" + result.XenonSurfaceMaterialPointersWritten +
+                    " FFEmitted=" + result.XenonGfxWorldEmitted);
+                foreach (var entry in result.RelocationIntents.Take(8))
+                    Console.WriteLine("[AZTEC-MAT-FIXUPS] intent surface=" + entry.SurfaceIndex +
+                        " beFieldAt=" + entry.XenonSurfaceBufferByteOffset +
+                        " name=" + entry.VerifiedPcMaterialName +
+                        " rootIndex=" + entry.UniqueMatchingXboxNativeRootIndex +
+                        " written=" + entry.XenonMaterialPointerWritten);
+                Console.WriteLine("[AZTEC-MAT-FIXUPS] report=" + args[5] +
+                    " -- verified root IDENTITY, NOT Xbox pointer. NO FF.");
+                return 0;
+            }
             case "aztec-pc-world-735-surface-material-candidates" when args.Length == 5:
             {
                 var result = await T4AztecPcWorldSurfaceMaterialCandidateLedger.ProbeAsync(
