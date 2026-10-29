@@ -65,8 +65,16 @@ try{
     $code=[int]$LASTEXITCODE
 }finally{$ErrorActionPreference=$saved}
 if($code -ne 0){
+    Write-Host '[AZTEC-PC-GFX-VERTEX] FIRST COMPILER ERRORS:'
     if(Test-Path -LiteralPath $buildLog -PathType Leaf){
-        Get-Content -LiteralPath $buildLog -Tail 20 | ForEach-Object {Write-Host "[AZTEC-PC-GFX-VERTEX] BUILD: $_"}
+        $found=@(Select-String -LiteralPath $buildLog -Pattern '(?i)\berror\s+(?:CS|MSB)\d+|\berror:' | Select-Object -First 12)
+        if($found.Count -gt 0){
+            foreach($item in $found){
+                Write-Host "[AZTEC-PC-GFX-VERTEX] ERROR: $($item.Line)"
+            }
+        }else{
+            Get-Content -LiteralPath $buildLog -Tail 40 | ForEach-Object {Write-Host "[AZTEC-PC-GFX-VERTEX] BUILD: $_"}
+        }
     }
     throw "Incremental .NET GfxWorld source-probe build failed: $buildLog"
 }
