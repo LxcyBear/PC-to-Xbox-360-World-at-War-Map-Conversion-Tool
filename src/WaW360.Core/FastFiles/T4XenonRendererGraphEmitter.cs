@@ -16,6 +16,11 @@ public sealed class T4XenonRendererEmitResult
     public required int RealRawFileRoots { get; init; }
     public required int RealMapEntsRoots { get; init; }
     public required int RealComWorldRoots { get; init; }
+    public required long ComWorldZoneOffset { get; init; }
+    public required string ComWorldParentXenonSha256 { get; init; }
+    public required string ComWorldLightsXenonSha256 { get; init; }
+    public required string ComWorldCellsXenonSha256 { get; init; }
+    public required string ComWorldSamplesSourceSha256 { get; init; }
     public required int RealMaterialRoots { get; init; }
     public required int MaterialReferenceRoots { get; init; }
     public required int RealXModelRoots { get; init; }
@@ -239,6 +244,7 @@ public static class T4XenonRendererGraphEmitter
         var realRawFiles = 0;
         var realMapEnts = 0;
         var realComWorlds = 0;
+        long comWorldZoneOffset = -1;
         var targetImageRoots = imageGraph is null
             ? 0
             : imageGraftLimit > 0
@@ -377,6 +383,7 @@ public static class T4XenonRendererGraphEmitter
                 // two fixed ComPrimaryLight records (no defName children),
                 // 88 ComBurnableCell headers, then 88 * 32 source sample bytes.
                 state.TempRoot(pcComWorld.ParentXenon.Length);
+                comWorldZoneOffset = zone.Position;
                 zone.Write(pcComWorld.ParentXenon);
                 EmitString(zone, state, pcComWorld.Name);
 
@@ -596,6 +603,7 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"PC-backed RawFile roots:    {realRawFiles:N0}");
         report.AppendLine($"Original-PC MapEnts roots:   {realMapEnts:N0} (scratch-only)");
         report.AppendLine($"Original-PC ComWorld roots:  {realComWorlds:N0} (source-derived; scratch-only)");
+        report.AppendLine($"PC ComWorld zone offset:     0x{comWorldZoneOffset:X}");
         report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
@@ -632,6 +640,11 @@ public static class T4XenonRendererGraphEmitter
             RealRawFileRoots = realRawFiles,
             RealMapEntsRoots = realMapEnts,
             RealComWorldRoots = realComWorlds,
+            ComWorldZoneOffset = comWorldZoneOffset,
+            ComWorldParentXenonSha256 = pcComWorld is null ? "" : Convert.ToHexString(SHA256.HashData(pcComWorld.ParentXenon)),
+            ComWorldLightsXenonSha256 = pcComWorld is null ? "" : Convert.ToHexString(SHA256.HashData(pcComWorld.LightsXenon)),
+            ComWorldCellsXenonSha256 = pcComWorld is null ? "" : Convert.ToHexString(SHA256.HashData(pcComWorld.BurnableCellsXenon)),
+            ComWorldSamplesSourceSha256 = pcComWorld?.SourceSamplesSha256 ?? "",
             RealMaterialRoots = realMaterials,
             MaterialReferenceRoots = materialCorpus?.ReferenceRoots ?? 0,
             RealXModelRoots = realXModels,
