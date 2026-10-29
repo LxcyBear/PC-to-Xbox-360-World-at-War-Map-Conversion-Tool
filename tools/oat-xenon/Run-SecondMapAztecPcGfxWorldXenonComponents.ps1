@@ -90,15 +90,16 @@ if([string]$got.Schema -ne 'WaW360.AztecPcGfxWorldXenonGeometryComponents.v1' -o
    [bool]$got.XboxHardwareReady){
     throw 'Aztec Xbox-endian GfxWorld component manifest failed original source and hardware gating.'
 }
-foreach($file in @(
-    @($got.XenonIndicesFile,$got.XenonIndicesSha256,117306),
-    @($got.XenonVerticesFile,$got.XenonVerticesSha256,1439372),
-    @($got.XenonSurfacesFile,$got.XenonSurfacesSha256,38220)
-)){
-    $p=[string]$file[0]
+$components=@(
+    [pscustomobject]@{Path=[string]$got.XenonIndicesFile;Sha=[string]$got.XenonIndicesSha256;Size=117306},
+    [pscustomobject]@{Path=[string]$got.XenonVerticesFile;Sha=[string]$got.XenonVerticesSha256;Size=1439372},
+    [pscustomobject]@{Path=[string]$got.XenonSurfacesFile;Sha=[string]$got.XenonSurfacesSha256;Size=38220}
+)
+foreach($component in $components){
+    $p=$component.Path
     if(-not (Test-Path -LiteralPath $p -PathType Leaf) -or
-       [long](Get-Item -LiteralPath $p).Length -ne [long]$file[2] -or
-       (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ine [string]$file[1]){
+       [long](Get-Item -LiteralPath $p).Length -ne [long]$component.Size -or
+       (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ine [string]$component.Sha){
         throw "Xbox-endian GfxWorld component bytes or SHA mismatch: $p"
     }
 }
