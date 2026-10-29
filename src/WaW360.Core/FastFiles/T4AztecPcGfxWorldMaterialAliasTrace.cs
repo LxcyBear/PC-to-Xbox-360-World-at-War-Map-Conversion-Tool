@@ -71,7 +71,7 @@ public static class T4AztecPcGfxWorldMaterialAliasTrace
             var value = item.GetProperty("PcMaterialPointer").GetString() ?? "";
             if (value.Length != 10 || !value.StartsWith("0X", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Unexpected source packed GfxSurface Material pointer string.");
-            var ptr = Convert.ToUInt32(value.AsSpan(2), 16);
+            var ptr = Convert.ToUInt32(value.Substring(2), 16);
             var surfaces = item.GetProperty("SurfaceCount").GetInt32();
             var tris = item.GetProperty("TriangleCount").GetInt32();
             if (!T4ZonePointer.IsWithinBlock(ptr, source.ZoneHeader) ||
