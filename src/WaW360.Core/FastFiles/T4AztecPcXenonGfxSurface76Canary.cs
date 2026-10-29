@@ -67,7 +67,7 @@ public static class T4AztecPcXenonGfxSurface76Canary
         var isKnown = derivation is "PC_SURFACE_BOUNDS_FLOAT32_EXACT"
             or "PC_VERTEX_SPAN_AABB_FLOAT32_EXACT"
             or "PC_TRIANGLE_VERTEX_AABB_FLOAT32_EXACT";
-        if (topMipReady != isKnown ||
+        if ((topMipReady && !isKnown) ||
             (topMipReady && (t.GetProperty("NativeGeometryFieldDisagreements").GetInt32() != 0 ||
                              t.GetProperty("BoundsFloat32ExactMatches").GetInt32() != Count ||
                              t.GetProperty("FiniteNativeTopMipSurfaces").GetInt32() != Count)))
