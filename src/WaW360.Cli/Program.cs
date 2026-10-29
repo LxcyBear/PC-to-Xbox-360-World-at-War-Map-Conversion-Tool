@@ -56,6 +56,19 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-vertices" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldVertexSourceProbe.ScanAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("AZTEC-PC-GFX-VERTICES original 32713 x 44-byte T4 GfxWorldVertex source scan");
+                Console.WriteLine($"status={result.Status}; source indices={result.SourcePCIndexCount:N0}; PC vertices={result.SourcePCVertexCount:N0}");
+                Console.WriteLine($"scan 0x{result.ScanStart:X8}..0x{result.ScanEnd:X8}; coarse={result.CoarseCandidates:N0}; deeper={result.DeepCandidates:N0}");
+                foreach (var c in result.TopCandidates.Take(8))
+                    Console.WriteLine($"CANDIDATE {c.SourceOffsetHex}: binormalSign={c.ValidBinormalSigns:N0}/32713 XYZ={c.ValidPositions:N0}/32713 UV={c.ValidTexCoords:N0}/32713 uniqueSampleXYZ={c.UniqueSampledPositions:N0} bbox=({c.MinX:N1},{c.MinY:N1},{c.MinZ:N1})..({c.MaxX:N1},{c.MaxY:N1},{c.MaxZ:N1}) SHA={c.OriginalPCArraySha256}");
+                Console.WriteLine($"report: {args[3]}");
+                Console.WriteLine("PC geometry candidate only; not full GfxWorld, no FF, not hardware ready.");
+                return 0;
+            }
             case "aztec-pc-gameworldsp-hunt" when args.Length == 3:
             {
                 var result = await T4AztecPcGameWorldSpHeaderHunt.ScanAsync(
