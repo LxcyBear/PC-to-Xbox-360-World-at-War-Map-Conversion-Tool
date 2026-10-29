@@ -12,7 +12,12 @@ $geometry=Join-Path $base 'pc_gfxworld_xenon_geometry_components\gfxworld_source
 $dumper=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $capFile=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\waw360-graph-dumper-capabilities.json'
 $out=Join-Path $base 'pc_oat_loaded_gfxworld_material_pointer_witness'
-$dumpRoot=Join-Path $out ('oat_dump_' + [guid]::NewGuid().ToString('N'))
+# Native OAT's output writer is not robust to Win32 MAX_PATH. The prior
+# repo/output/.../oat_dump_GUID directory alone was 250 characters; after
+# OAT appended its category and filename it exceeded MAX_PATH. The user's
+# source FF and persistent report/log paths are unchanged; only the native
+# temporary dump directory moves under the much shorter Windows TEMP root.
+$dumpRoot=Join-Path ([System.IO.Path]::GetTempPath()) ('WaW360_AztecGfx_' + [guid]::NewGuid().ToString('N').Substring(0,12))
 $runLog=Join-Path $out 'oat_unlinker.log'
 $proofJson=Join-Path $out 'pc_oat_gfxworld_material_pointer_reconciliation.json'
 foreach($f in @($ledger,$geometry)){
@@ -69,7 +74,13 @@ if(-not $installed -and $BuildDumper){
 if(-not $installed){
     throw "PC OAT loader witness not installed. Run this same script with -BuildDumper to build it once; capability=$capability"
 }
+# Keep substantial headroom for native per-category folder and asset name.
+$worstCaseWitness=Join-Path (Join-Path $dumpRoot 'pc_gfxworld_material_pointer_witness') (('A' * 96) + '.json')
+if($worstCaseWitness.Length -ge 240){
+    throw "Temporary OAT path is still too long for robust native dumping ($($worstCaseWitness.Length) chars). Shorten TEMP; refusing launch."
+}
 New-Item -ItemType Directory -Path $dumpRoot -Force | Out-Null
+Write-Host "[AZTEC-OAT-POINTERS] nativeOutputRoot=$dumpRoot length=$($dumpRoot.Length) worstCaseWitnessLength=$($worstCaseWitness.Length)"
 Write-Host '[AZTEC-OAT-POINTERS] ======================================================'
 Write-Host '[AZTEC-OAT-POINTERS] INDEPENDENT PC OAT-LOADER MATERIAL* POINTER WITNESS'
 Write-Host '[AZTEC-OAT-POINTERS] Compare loaded GfxSurface.material against loaded MaterialMemory[].material.'
