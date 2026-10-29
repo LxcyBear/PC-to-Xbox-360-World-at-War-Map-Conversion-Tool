@@ -86,6 +86,11 @@ try{
     # ISO-8859-1 decodes exactly one char per byte, keeping the original
     # byte offsets of ASCII asset name strings even in binary zone data.
     $chars=[Text.Encoding]::GetEncoding(28591).GetString($zone)
+    # PowerShell 5.1 parses 0xFFFFFFFF as signed -1. Casting -1 to
+    # System.UInt32 throws before comparing any candidate headers.
+    # Use the exact unsigned range endpoints, never signed hex casts.
+    $ptrFollowing=[uint32]::MaxValue
+    $ptrInsert=[uint32]($ptrFollowing - 1)
     Write-Host "[AZTEC-PC-WORLD] Original PC decompressed zone=$zoneBytes bytes; SHA256=$zoneSha"
     foreach($root in $roots.ToArray()){
         $name=([string]$root.sourceName).Replace('\','/')
@@ -110,13 +115,13 @@ try{
                 $namePointer=[BitConverter]::ToUInt32($zone,$start)
                 # A T4 source inline name pointer is either FOLLOWING or
                 # INSERT. A packed-alias pointer requires a separate decoder.
-                if($namePointer -ne [uint32]0xFFFFFFFF -and
-                   $namePointer -ne [uint32]0xFFFFFFFE){continue}
+                if($namePointer -ne $ptrFollowing -and
+                   $namePointer -ne $ptrInsert){continue}
                 $nonzero=0;$inlinePointers=0;$aliases=0
                 for($off=0;$off -le $fixedSize-4;$off+=4){
                     $v=[BitConverter]::ToUInt32($zone,($start+$off))
                     if($v -ne 0){$nonzero++}
-                    if($v -eq [uint32]0xFFFFFFFF -or $v -eq [uint32]0xFFFFFFFE){$inlinePointers++}
+                    if($v -eq $ptrFollowing -or $v -eq $ptrInsert){$inlinePointers++}
                     elseif($v -ne 0){$aliases++}
                 }
                 $hash=[Security.Cryptography.SHA256]::Create()
