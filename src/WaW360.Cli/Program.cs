@@ -56,6 +56,33 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-first-material-image-chain" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstMaterialImageChainProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-CHAIN] status=" + result.Status);
+                Console.WriteLine("[AZTEC-MAT-CHAIN] possible three-image chain=" +
+                    result.ThreeImageSerializationChainCandidate +
+                    " afterThird=" + result.HypotheticalPostThirdImageCursor);
+                foreach (var image in result.AdditionalImageCandidates)
+                    Console.WriteLine("[AZTEC-MAT-CHAIN] IMAGE#" + image.ImageIndex +
+                        " header=" + image.HeaderAt +
+                        " plausible=" + image.ImageHeaderPlausible +
+                        " nameCandidate=" + image.CandidateName +
+                        " LoadDef=" + image.CandidateLoadDefAt +
+                        " dimsMatch=" + image.LoadDefPrefixDimensionsMatch +
+                        " resourceBytes=" + image.LoadDefResourceBytes +
+                        " nextCursor=" + image.CandidateAfterLoadDef);
+                foreach (var table in result.NearbyAlignedConstantTableCandidates)
+                    Console.WriteLine("[AZTEC-MAT-CHAIN] constants=" + table.ConstantTableAt +
+                        " plausible=" + table.PlausibleConstants + "/6" +
+                        " statebits=" + table.StateBitsTableAt +
+                        " nextHeader=" + table.HypotheticalNextMaterialAt +
+                        " nextNameFollowing=" + table.NextNameFollowing);
+                Console.WriteLine("[AZTEC-MAT-CHAIN] report=" + args[3] +
+                    " -- no PC material ownership, Xbox binding or FF.");
+                return 0;
+            }
             case "aztec-pc-first-image-loaddef-boundary" when args.Length == 4:
             {
                 var result = await T4AztecPcFirstImageLoadDefBoundaryProbe.ProbeAsync(
