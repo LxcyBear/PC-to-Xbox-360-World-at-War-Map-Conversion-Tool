@@ -75,19 +75,63 @@ Write-Host '[AZTEC-OAT-POINTERS] INDEPENDENT PC OAT-LOADER MATERIAL* POINTER WIT
 Write-Host '[AZTEC-OAT-POINTERS] Compare loaded GfxSurface.material against loaded MaterialMemory[].material.'
 Write-Host '[AZTEC-OAT-POINTERS] Also test GfxSurface.material == ADDRESS of MaterialMemory row separately.'
 Write-Host '[AZTEC-OAT-POINTERS] Read-only original PC FF. No Xenon surface rewrite / NO FF.'
+# This original-PC FF is processed by an external native x86 executable.
+# It can return a Windows NTSTATUS with *zero* stdout/stderr. A streaming
+# Set-Content pipeline does not create a file for empty input; create the
+# diagnostic file even for a silent native crash.
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+$captured=New-Object 'System.Collections.Generic.List[string]'
+$launchError=$null
+$code=$null
 $saved=$ErrorActionPreference
 try{
     $ErrorActionPreference='Continue'
-    & $dumper '--no-color' '--include-assets' 'gfxworld' '--output-folder' $dumpRoot $pc 2>&1 |
-        ForEach-Object {[string]$_} | Set-Content -LiteralPath $runLog -Encoding UTF8
-    $code=[int]$LASTEXITCODE
-}finally{$ErrorActionPreference=$saved}
+    $global:LASTEXITCODE=$null
+    try{
+        & $dumper '--no-color' '--include-assets' 'gfxworld' '--output-folder' $dumpRoot $pc 2>&1 |
+            ForEach-Object { $captured.Add([string]$_) }
+        if($null -ne $LASTEXITCODE){ $code=[int]$LASTEXITCODE }
+    }catch{
+        $launchError=[string]$_
+        $captured.Add("PowerShell native invocation error: $launchError")
+    }
+}finally{
+    $ErrorActionPreference=$saved
+}
+if($null -eq $code){$code=-1}
+$exitHex='0x{0:X8}' -f ([long]$code -band 4294967295L)
+$logLines=New-Object 'System.Collections.Generic.List[string]'
+$logLines.Add('AZTEC-OAT-POINTERS external process capture v2')
+$logLines.Add("Executable: $dumper")
+$logLines.Add("InputPcFastFile: $pc")
+$logLines.Add("OutputDirectory: $dumpRoot")
+$logLines.Add("ExitCodeDecimal: $code")
+$logLines.Add("ExitCodeHex: $exitHex")
+$logLines.Add("OutputLines: $($captured.Count)")
+if($null -ne $launchError){$logLines.Add("InvocationError: $launchError")}
+if($captured.Count -eq 0){
+    $logLines.Add('[NO STDOUT OR STDERR FROM OAT]')
+}else{
+    foreach($line in $captured){$logLines.Add($line)}
+}
+[System.IO.File]::WriteAllLines($runLog,[string[]]$logLines,
+    [System.Text.UTF8Encoding]::new($false))
+Write-Host "[AZTEC-OAT-POINTERS] OAT exit=$code ($exitHex); capturedOutputLines=$($captured.Count)"
+Write-Host "[AZTEC-OAT-POINTERS] OAT log=$runLog"
 if($code -ne 0){
     Write-Host '[AZTEC-OAT-POINTERS] OAT ERROR HEAD:'
-    Get-Content -LiteralPath $runLog -TotalCount 12 | ForEach-Object {Write-Host "[AZTEC-OAT-POINTERS] TRACE $_"}
-    Write-Host '[AZTEC-OAT-POINTERS] OAT ERROR TAIL:'
-    Get-Content -LiteralPath $runLog -Tail 12 | ForEach-Object {Write-Host "[AZTEC-OAT-POINTERS] TRACE $_"}
-    throw "PC original FF OAT material pointer witness dump failed exit=$code; log=$runLog"
+    Get-Content -LiteralPath $runLog -TotalCount 14 |
+        ForEach-Object {Write-Host "[AZTEC-OAT-POINTERS] TRACE $_"}
+    if($captured.Count -gt 14){
+        Write-Host '[AZTEC-OAT-POINTERS] OAT ERROR TAIL:'
+        Get-Content -LiteralPath $runLog -Tail 12 |
+            ForEach-Object {Write-Host "[AZTEC-OAT-POINTERS] TRACE $_"}
+    }
+    if($captured.Count -eq 0){
+        Write-Host '[AZTEC-OAT-POINTERS] Native process returned without any stdout/stderr.'
+        Write-Host '[AZTEC-OAT-POINTERS] This is an OAT-process failure, NOT a PC material mapping verdict.'
+    }
+    throw "Original PC OAT loader witness failed exit=$code ($exitHex); log=$runLog"
 }
 $dir=Join-Path $dumpRoot 'pc_gfxworld_material_pointer_witness'
 $files=@(Get-ChildItem -LiteralPath $dir -Filter '*.json' -File -ErrorAction SilentlyContinue)
