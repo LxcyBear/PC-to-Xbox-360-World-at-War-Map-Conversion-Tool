@@ -849,6 +849,8 @@ static async Task<int> MainAsync(string[] args)
                     args[10].Equals("--aztec-pc-iwd-image-rawfile-graft", StringComparison.Ordinal);
                 var aztecOneModelMode = args.Length >= 11 &&
                     args[10].Equals("--aztec-pc-one-xmodel-image-rawfile-graft", StringComparison.Ordinal);
+                var aztecTwoModelMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-two-xmodel-image-rawfile-graft", StringComparison.Ordinal);
                 if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
                     throw new ArgumentException(
                         "RawFile-only syntax: xenon-graph-emit <graph> <native> <identity> <binding> <output> <map> <oat> <techsets> <pixelshaders> --rawfile-graft <pc-owned-manifest.json>");
@@ -870,27 +872,35 @@ static async Task<int> MainAsync(string[] args)
                      args[8] != "70" || args[9] != "436"))
                     throw new ArgumentException(
                         "Aztec one-model scratch syntax: xenon-graph-emit <renderer> <native> <identity> <binding> <scratch-output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-one-xmodel-image-rawfile-graft <2-PC-image-graph> 2 <114-PC-rawfile-manifest> <one-PC-xmodel-graph> <single-model-binding>");
+                if (aztecTwoModelMode &&
+                    (args.Length != 16 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec two-model SCRATCH syntax: xenon-graph-emit <renderer> <native> <identity> <binding> <scratch-output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-two-xmodel-image-rawfile-graft <2-PC-image-graph> 2 <114-PC-rawfile-manifest> <two-PC-xmodel-graph> <exact-two-model-binding>");
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
                 var expectedPixelShaders = args.Length >= 10 && int.TryParse(args[9], out var ep) ? ep : 897;
-                var imageGraphRoot = (aztecImageRawMode || aztecOneModelMode) ? args[11] :
+                var imageGraphRoot = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) ? args[11] :
                     !rawFileOnlyMode && args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
-                var expectedImages = (aztecImageRawMode || aztecOneModelMode) ? 2 :
+                var expectedImages = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) ? 2 :
                     args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
-                var imageValidationOnly = (aztecImageRawMode || aztecOneModelMode) || args.Length < 13 ||
+                var imageValidationOnly = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) || args.Length < 13 ||
                     !bool.TryParse(args[12], out var ivo) || ivo;
-                var imageGraftLimit = (aztecImageRawMode || aztecOneModelMode) ? 0 :
+                var imageGraftLimit = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) ? 0 :
                     args.Length >= 14 && int.TryParse(args[13], out var igl) ? igl : 0;
-                var xmodelGraphRoot = aztecOneModelMode ? args[14] : aztecImageRawMode ? null :
+                var xmodelGraphRoot = (aztecOneModelMode || aztecTwoModelMode) ? args[14] : aztecImageRawMode ? null :
                     args.Length >= 15 && !string.IsNullOrWhiteSpace(args[14]) ? args[14] : null;
-                var xmodelBindingManifest = aztecOneModelMode ? args[15] : aztecImageRawMode ? null :
+                var xmodelBindingManifest = (aztecOneModelMode || aztecTwoModelMode) ? args[15] : aztecImageRawMode ? null :
                     args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
-                var materialGraphRoot = (aztecImageRawMode || aztecOneModelMode) ? null :
+                var materialGraphRoot = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) ? null :
                     args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
-                var materialBindingManifest = (aztecImageRawMode || aztecOneModelMode) ? null :
+                var materialBindingManifest = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) ? null :
                     args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
-                var rawFileGraftManifest = (aztecImageRawMode || aztecOneModelMode) ? args[13] :
+                var rawFileGraftManifest = (aztecImageRawMode || aztecOneModelMode || aztecTwoModelMode) ? args[13] :
                     rawFileOnlyMode ? args[11] :
                     args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
 
