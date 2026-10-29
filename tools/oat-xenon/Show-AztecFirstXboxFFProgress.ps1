@@ -112,7 +112,7 @@ $pcWitnessPassed=$null -ne $pcMaterialWitness -and
     [int]$pcMaterialWitness.xboxRootBindingsProven -eq 0 -and
     -not [bool]$pcMaterialWitness.xboxHardwareReady
 if($pcWitnessPassed){
-    Write-Host '[AZTEC-FF-PROGRESS] PC MATERIAL IDENTITIES: 735/735 INDEPENDENT OAT TYPED POINTER PASS; Xbox 76B surface ABI and Material root relocations NOT written.'
+    Write-Host '[AZTEC-FF-PROGRESS] PC MATERIAL IDENTITIES: 735/735 INDEPENDENT OAT TYPED POINTER PASS; standalone 76B source-derived surfaces PASS, but no valid serialized Xbox Material graph/FF relocations.'
 }
 $pc76Proof=$null -ne $pcSurface76 -and
     [string]$pcSurface76.Schema -eq 'WaW360.AztecPcXenonGfxSurface76Canary.v1' -and
