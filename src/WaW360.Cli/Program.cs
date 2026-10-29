@@ -95,6 +95,21 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-xenon-39-world-surface-live-layout-link" when args.Length == 6:
+            {
+                var result = await T4AztecPcXenon39WorldSurfaceFinalLayoutLink.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5], CancellationToken.None);
+                Console.WriteLine("[AZTEC-735-LIVE-LINK] status=" + result.Status +
+                    " realFFBodies=" + result.RealFfMaterialBodies +
+                    " linkedSurfaces=" + result.SurfacesLinkedToRealFfBodies +
+                    " identityShellRefs=" + result.SurfacesLinkedToIdentityShells +
+                    " standaloneBytes=" + result.LinkedSurfaceByteLength +
+                    " FFInserted=" + result.WorldGfxSurfaceArrayInsertedInFf);
+                Console.WriteLine("[AZTEC-735-LIVE-LINK] ffSha=" +
+                    result.ExactValidated39MaterialFastFileSha256 +
+                    " linkedSurfaceSha=" + result.StandaloneLinkedSurfaceArraySha256);
+                return 0;
+            }
             case "aztec-xenon-39-material-codec-preflight" when args.Length == 4:
             {
                 var result = await T4AztecPcXenonMaterial39CodecPreflight.RunAsync(
