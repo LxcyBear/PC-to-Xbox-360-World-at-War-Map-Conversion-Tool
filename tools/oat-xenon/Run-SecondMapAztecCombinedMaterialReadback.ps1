@@ -171,11 +171,26 @@ try{
         }
         Compare-Section (Texture-Signature $src) (Texture-Signature $g) "$name texture slots/images"
         $blobRows=New-Object 'System.Collections.Generic.List[object]'
-        foreach($tuple in @(
-            @('constantTableFile',[long]$g.counts.constants * [long]$g.abi.constantDef),
-            @('stateBitsTableFile',[long]$g.counts.stateBits * [long]$g.abi.stateBits)
-        )){
-            $field=[string]$tuple[0];$bytes=[long]$tuple[1]
+        # PowerShell 5.1 unrolls nested @() tuple arrays in foreach.
+        # The previous $tuple[1] selected the raw constants count (e.g. 2),
+        # NOT the true blob byte length. Use named records and explicit
+        # parenthesized arithmetic; match T4XenonMaterialGraphCodec.Emit.
+        $expectedBlobs=@(
+            [pscustomobject]@{
+                Field='constantTableFile'
+                Bytes=([long]$g.counts.constants * [long]$g.abi.constantDef)
+            }
+            [pscustomobject]@{
+                Field='stateBitsTableFile'
+                Bytes=([long]$g.counts.stateBits * [long]$g.abi.stateBits)
+            }
+        )
+        foreach($spec in $expectedBlobs){
+            $field=[string]$spec.Field
+            $bytes=[long]$spec.Bytes
+            if($bytes -lt 0 -or $bytes -gt 10485760L){
+                throw "Invalid Material $name $field blob length: $bytes"
+            }
             $oldSha=Blob-SHA $src $baselineRoot $field $bytes
             $newSha=Blob-SHA $g $short $field $bytes
             if($oldSha -ine $newSha){
