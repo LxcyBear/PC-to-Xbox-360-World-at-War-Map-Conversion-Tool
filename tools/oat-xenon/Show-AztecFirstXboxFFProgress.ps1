@@ -28,6 +28,7 @@ $pcMaterialWitness=Read-Report 'pc_oat_loaded_gfxworld_material_pointer_witness\
 $pcSurface76=Read-Report 'pc_xenon_76byte_gfxsurface_canary\aztec_735_gfxsurfaces_76byte_source_canary.json'
 $pcWorldMaterialCorpus=Read-Report 'pc_39_world_material_corpus_source\aztec_pc_39_world_material_corpus_summary.json'
 $pcXenonMaterialCandidates=Read-Report 'pc_to_xenon_39_world_material_graph_candidates\aztec_39_pc_to_xenon_material_graph_candidates.json'
+$pc39CodecPreflight=Read-Report 'pc_xenon_39_material_existing_graph_codec_preflight\aztec_39_material_existing_codec_preflight.json'
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -149,6 +150,15 @@ $pc39XenonCandidatesPass=$null -ne $pcXenonMaterialCandidates -and
     -not [bool]$pcXenonMaterialCandidates.XboxHardwareReady
 if($pc39XenonCandidatesPass){
     Write-Host "[AZTEC-FF-PROGRESS] 39/39 PC WORLD MATERIALS -> 96B XENON ABI CANDIDATE BLOBS BUILT; dependencies unresolved=$($pcXenonMaterialCandidates.MissingNativeDependencies), no FF roots/OAT yet."
+}
+$pc39CodecPass=$null -ne $pc39CodecPreflight -and
+    [string]$pc39CodecPreflight.Status -eq 'AZTEC_39_SOURCE_XENON_MATERIAL_GRAPHS_EXISTING_CODEC_LOAD_PASS_DEPENDENCY_AUDIT' -and
+    [int]$pc39CodecPreflight.MaterialGraphsLoadedByExistingCodec -eq 39 -and
+    -not [bool]$pc39CodecPreflight.RealXboxWorldMaterialBodiesEmitted -and
+    -not [bool]$pc39CodecPreflight.IntegratedOatFastFileValidated -and
+    -not [bool]$pc39CodecPreflight.XboxHardwareReady
+if($pc39CodecPass){
+    Write-Host "[AZTEC-FF-PROGRESS] SOURCE GRAPH WRITER CONTRACT: 39/39 loaded by existing Xenon Material codec, $($pc39CodecPreflight.MaterialGraphsPlannedByExistingCodec)/39 allocator plans; missing deps=$($pc39CodecPreflight.MissingNativeDependencyOccurrences), FF gates still PENDING."
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
