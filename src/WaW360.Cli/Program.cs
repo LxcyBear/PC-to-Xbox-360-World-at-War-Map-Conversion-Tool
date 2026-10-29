@@ -56,6 +56,20 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-gfxworld-material-alias-trace" when args.Length == 5:
+            {
+                var result = await T4AztecPcGfxWorldMaterialAliasTrace.ScanAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] block={result.SourcePointerBlock}, packed reference groups={result.DistinctPackedWorldMaterialPointers}, eightByteLattice={result.SharedEightByteVirtualOffsetLattice}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] spanSlots={result.VirtualSpanEightByteSlots}, emptySlots={result.UnreferencedSlotsWithinSpan}, outsideSurfaceRawHits={result.AdditionalNonSurfaceSerializedPointerHits}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] 39-count source header candidates: {string.Join(", ", result.FixedWorldHeader39CountCandidateOffsets)}");
+                foreach (var group in result.Groups.OrderByDescending(g => g.OtherSerializedReferenceCount).Take(12))
+                    Console.WriteLine($"[AZTEC-MAT-ALIAS] {group.PcMaterialPointer}: tris={group.TriangleCount}, surfaces={group.SurfaceCount}, outsideSurfaceHits={group.OtherSerializedReferenceCount} first=[{string.Join(", ", group.OtherSerializedReferenceOffsets)}]");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] report={args[4]}");
+                Console.WriteLine("[AZTEC-MAT-ALIAS] No Material names or Xbox roots bound. NO FF.");
+                return 0;
+            }
             case "aztec-pc-gfxworld-xenon-components" when args.Length == 4:
             {
                 var result = await T4AztecPcGfxWorldXenonGeometryCodec.ConvertAsync(
