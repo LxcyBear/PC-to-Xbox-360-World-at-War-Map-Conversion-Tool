@@ -22,7 +22,7 @@ public static class T4AztecPcMaterialPostImagesConstantProbe
     private const string ZoneSha =
         "7B77A415579CDA0DDCF9F14C767C2FD16F5F350018F917EC7B6B30FC3F4036E5";
 
-    public static async Task<AztecPcPostImageConstantsReport> ProbeAsync(
+    public static async Task<AztecPcPostImagesConstantsReport> ProbeAsync(
         string pcFastFile, string chainJson, string outputJson,
         CancellationToken ct = default)
     {
@@ -130,7 +130,7 @@ public static class T4AztecPcMaterialPostImagesConstantProbe
             : hits.Length > 1
                 ? "AZTEC_PC_POST_IMAGES_MULTIPLE_6X32_CONSTANT_WINDOW_CANDIDATES"
                 : "AZTEC_PC_POST_IMAGES_6X32_CONSTANT_WINDOW_UNRESOLVED";
-        var result = new AztecPcPostImageConstantsReport(
+        var result = new AztecPcPostImagesConstantsReport(
             "WaW360.AztecPcPostImagesConstants.v1",
             status, Path.GetFullPath(pcFastFile), zone.SourceSha256, ZoneSha,
             Hex(PostImages), SearchBytes, ConstantCount, ConstantStride,
