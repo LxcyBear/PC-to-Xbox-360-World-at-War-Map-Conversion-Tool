@@ -194,7 +194,7 @@ $report=[ordered]@{
     schema='WaW360.AztecPcComWorldBurnableSource.v1'
     status=$status
     originalPCMapFastFile=$pc
-    originalPCMapSha256=[string]$roleS=[string]$roles[0].sourceSha256
+    originalPCMapSha256=[string]$roles[0].sourceSha256
     originalPCZoneSha256=$zoneSha
     comWorldHeaderSha256=[string]$proof.comWorld.sourceParentSha256
     twoLights144ByteSha256=[string]$lights[0].lightFixedArraySha256
