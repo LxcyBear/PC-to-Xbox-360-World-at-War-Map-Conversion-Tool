@@ -56,6 +56,27 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-first-image-loaddef-boundary" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstImageLoadDefBoundaryProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-LOADDEF] status=" + result.Status);
+                Console.WriteLine("[AZTEC-LOADDEF] image=" + result.ImageHeaderAt +
+                    " LoadDef=" + result.LoadDefPrefixAt +
+                    " DXT5=" + result.FormatFourCC +
+                    " mipCount=" + result.MipLevelCount +
+                    " resourceBytes=" + result.ResourceSize);
+                Console.WriteLine("[AZTEC-LOADDEF] hypothetical physical end=" +
+                    result.CandidatePhysicalCursorAfterLoadDef);
+                foreach (var candidate in result.BoundedNextImageCandidates)
+                    Console.WriteLine("[AZTEC-LOADDEF] nextHeader=" + candidate.Offset +
+                        " plausible=" + candidate.StructurallyPlausible +
+                        " dimensions=" + candidate.Width + "x" +
+                        candidate.Height + "x" + candidate.Depth);
+                Console.WriteLine("[AZTEC-LOADDEF] report=" + args[3] +
+                    " -- PC source-only; no ownership or Xbox bindings.");
+                return 0;
+            }
             case "aztec-pc-first-material-image-cursor" when args.Length == 4:
             {
                 var result = await T4AztecPcFirstMaterialInlineImageProbe.ProbeAsync(
