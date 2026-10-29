@@ -180,7 +180,9 @@ try{
 }finally{$ErrorActionPreference=$old}
 if($null -eq $pcExit){$pcExit=-1}
 $pcLog=Join-Path $out 'original_pc_oat_gfxworld_root_dpvs.log'
-[IO.File]::WriteAllLines($pcLog,[string[]]@("Exit=$pcExit","FF=$pcFastFile") + [string[]]@($pcOutput),[Text.UTF8Encoding]::new($false))
+$pcLogLines=@("Exit=$pcExit","FF=$pcFastFile")
+$pcLogLines+=@($pcOutput)
+[IO.File]::WriteAllLines($pcLog,[string[]]$pcLogLines,[Text.UTF8Encoding]::new($false))
 Write-Host "[AZTEC-WORLD-ABI] Original-PC OAT exit=$pcExit outputLines=$($pcOutput.Count)"
 if($pcExit -ne 0){
     Get-Content -LiteralPath $pcLog -Tail 16 | ForEach-Object {Write-Host "[AZTEC-WORLD-ABI] PC TRACE $_"}
@@ -234,7 +236,7 @@ $payload=[ordered]@{
     originalPcFastFileSha256=[string]$pcSource.sourceFastFileSha256
     originalPcGfxWorldRootAbi=$pcAbi
     originalPcLoadedWorldChildShape=$pcShape
-    pcVsOriginalXboxReferenceChildCountDifferences=@($shapeDiffs)
+    pcVsOriginalXboxReferenceChildCountDifferences=$shapeDiffs.ToArray()
     nativeGfxWorldRootAbi=$a
     loadedNativeWorldChildShape=$g
     pcExpectedVertexCount=32713
