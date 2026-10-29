@@ -51,6 +51,10 @@ public sealed class T4XenonAztecWorldGraft
     private readonly int _dpvsSurfaceAt;
     private readonly int _dpvsSortedAt;
     private readonly int _dpvsModelsAt;
+    // Opt-in typed original-PC Gate8 source children; never Xbox donor bytes.
+    private byte[]? _gate8Planes, _gate8Nodes, _gate8Layer;
+    private int _gate8PlanePointerAt, _gate8NodePointerAt;
+    private int _gate8LayerPointerAt, _gate8LayerSizeAt;
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
@@ -301,10 +305,80 @@ public sealed class T4XenonAztecWorldGraft
                 zone.Bytes.AsSpan(at+24,4).CopyTo(modelBytes.AsSpan(target+24,4));
             }
         }
-        return new(world[0].Index,world[0].Name,root,ix,vs,surfaceBytes,
+        var graft=new T4XenonAztecWorldGraft(
+            world[0].Index,world[0].Name,root,ix,vs,surfaceBytes,
             sortedBytes,modelBytes,surfaceOwnerIndices,owners,indicesAt,verticesAt,
             materialMemoryAt,materialMemoryCountAt,dpvsSurfaceAt,
             dpvsSortedAt,dpvsModelsAt);
+        var gate8Path=Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE8_CHILD_CORPUS");
+        if(!string.IsNullOrWhiteSpace(gate8Path))
+        {
+            if(!StaticDpvsProbeEnabled || ProbeStage!=4)
+                throw new InvalidDataException("Gate8 typed plane/node/layer probe requires Full + source-static-DPVS mode.");
+            using var childDoc=JsonDocument.Parse(await File.ReadAllTextAsync(gate8Path,ct));
+            var child=childDoc.RootElement;
+            if(child.GetProperty("schema").GetString()!="WaW360.AztecGate8PcTypedChildCorpus.v1" ||
+               child.GetProperty("status").GetString()!="AZTEC_PC_GATE8_TYPED_PLANES_NODES_LAYER_SOURCE_PASS" ||
+               child.GetProperty("xboxFfEmitted").GetBoolean() ||
+               child.GetProperty("fullDpvsComplete").GetBoolean() ||
+               child.GetProperty("xboxHardwareReady").GetBoolean() ||
+               !Eq(child.GetProperty("originalPcFFSha256").GetString(),zone.SourceSha256) ||
+               child.GetProperty("planeCount").GetInt32()!=3447 ||
+               child.GetProperty("nodeCount").GetInt32()!=24511 ||
+               child.GetProperty("staticModelDrawCount").GetInt32()!=1903)
+                throw new InvalidDataException("Original-PC Gate8 typed child source proof drifted.");
+            var children=child.GetProperty("sourceBlobs");
+            static async Task<byte[]> ReadBlob(JsonElement blob,int expected,CancellationToken ct)
+            {
+                var path=blob.GetProperty("path").GetString()!;
+                var data=await File.ReadAllBytesAsync(path,ct);
+                if(data.Length!=expected ||
+                   blob.GetProperty("bytes").GetInt64()!=expected ||
+                   !Eq(Sha(data),blob.GetProperty("sha256").GetString()))
+                    throw new InvalidDataException($"Gate8 PC source child length/SHA failed: {path}");
+                return data;
+            }
+            var planeSrc=await ReadBlob(children.GetProperty("planes"),3447*20,ct);
+            var nodeSrc=await ReadBlob(children.GetProperty("nodes"),24511*2,ct);
+            var layerSrc=await ReadBlob(children.GetProperty("vertexLayer"),
+                child.GetProperty("vertexLayerBytes").GetInt32(),ct);
+            if(layerSrc.Length==0 || layerSrc.Length>33554432)
+                throw new InvalidDataException("Gate8 PC vertex-layer byte count is invalid.");
+            var planesBe=new byte[planeSrc.Length];
+            var nodesBe=new byte[nodeSrc.Length];
+            for(int i=0;i<3447;i++)
+            {
+                int at=i*20;
+                for(int k=0;k<4;k++)
+                {
+                    float value=BinaryPrimitives.ReadSingleLittleEndian(planeSrc.AsSpan(at+k*4,4));
+                    if(!float.IsFinite(value) || Math.Abs(value)>100000000f)
+                        throw new InvalidDataException($"PC GfxWorld plane[{i}].coeff[{k}] invalid.");
+                    BinaryPrimitives.WriteSingleBigEndian(planesBe.AsSpan(at+k*4,4),value);
+                }
+                planeSrc.AsSpan(at+16,4).CopyTo(planesBe.AsSpan(at+16,4));
+            }
+            for(int i=0;i<24511;i++)
+                BinaryPrimitives.WriteUInt16BigEndian(nodesBe.AsSpan(i*2,2),
+                    BinaryPrimitives.ReadUInt16LittleEndian(nodeSrc.AsSpan(i*2,2)));
+            var vldAt=abi.GetProperty("vertexLayerDataAt").GetInt32();
+            var dpvsPlanesAt=abi.GetProperty("dpvsPlanesAt").GetInt32();
+            // Pinned native layout: GfxWorld::vertexLayerDataSize immediately
+            // precedes GfxWorldVertexLayerData::data, and DPVS plane/node
+            // pointers occupy +4/+8 in GfxWorldDpvsPlanes.
+            if(vldAt<8 || vldAt>=XboxRootSize-4 ||
+               dpvsPlanesAt<0 || dpvsPlanesAt>=XboxRootSize-16 ||
+               vldAt-4<=verticesAt)
+                throw new InvalidDataException("Native Xenon PC-derived plane/node/vld pointer offsets unsupported.");
+            graft._gate8Planes=planesBe;
+            graft._gate8Nodes=nodesBe;
+            graft._gate8Layer=layerSrc;
+            graft._gate8PlanePointerAt=dpvsPlanesAt+4;
+            graft._gate8NodePointerAt=dpvsPlanesAt+8;
+            graft._gate8LayerPointerAt=vldAt;
+            graft._gate8LayerSizeAt=vldAt-4;
+        }
+        return graft;
     }
 
     // Both passes perform precisely the same VIRTUAL allocations. No
@@ -316,12 +390,21 @@ public sealed class T4XenonAztecWorldGraft
         virtualAlloc(Encoding.UTF8.GetByteCount(NativeRootName)+1L,1,true);
         virtualAlloc(Encoding.UTF8.GetByteCount("nazi_zombie_aztec")+1L,1,true);
         if(stage>=1)virtualAlloc(_indices.Length,2,true);
+        if(_gate8Planes is not null && _gate8Nodes is not null)
+        {
+            // Before materialMemory: GfxWorldDpvsPlanes is loaded earlier
+            // in the pinned OAT reordered structure sequence.
+            virtualAlloc(_gate8Planes.Length,4,true);
+            virtualAlloc(_gate8Nodes.Length,2,true);
+        }
         // Pinned OAT GfxWorld reorder: '... materialMemory vd vld'.
         // Its first member remains at the original position; vd/vld follow
         // immediately, while the embedded DPVS surfaces are loaded later.
         // Keep this exact allocation order in both Stage 4D and Stage 4E.
         if(stage>=3)virtualAlloc(MaterialCount*8L,4,true);
         if(stage>=4)virtualAlloc(_vertices.Length,4,true);
+        if(_gate8Layer is not null)
+            virtualAlloc(_gate8Layer.Length,1,true);
         if(StaticDpvsProbeEnabled)
         {
             if(_sortedSurfIndex is null || _staticModelInsts is null)
@@ -354,6 +437,15 @@ public sealed class T4XenonAztecWorldGraft
                 Put(body,_dpvsModelsAt,T4ZonePointer.Following);
         }
         if(stage>=3)Put(body,_materialMemoryAt,T4ZonePointer.Following);
+        if(_gate8Planes is not null && _gate8Nodes is not null && _gate8Layer is not null)
+        {
+            Put(body,8,3447);
+            Put(body,12,24511);
+            Put(body,_gate8PlanePointerAt,T4ZonePointer.Following);
+            Put(body,_gate8NodePointerAt,T4ZonePointer.Following);
+            Put(body,_gate8LayerSizeAt,(uint)_gate8Layer.Length);
+            Put(body,_gate8LayerPointerAt,T4ZonePointer.Following);
+        }
         Put(body,_materialMemoryCountAt,MaterialCount);
         tempRoot(XboxRootSize);
         zone.Write(body);
@@ -363,6 +455,13 @@ public sealed class T4XenonAztecWorldGraft
         {
             virtualAlloc(_indices.Length,2,true);
             zone.Write(_indices);
+        }
+        if(_gate8Planes is not null && _gate8Nodes is not null)
+        {
+            virtualAlloc(_gate8Planes.Length,4,true);
+            zone.Write(_gate8Planes);
+            virtualAlloc(_gate8Nodes.Length,2,true);
+            zone.Write(_gate8Nodes);
         }
         // OAT reads MaterialMemory, then GfxWorldVertexData, then embedded
         // GfxWorldDpvsStatic.surfaces. A surface-first stream causes the first
@@ -383,6 +482,11 @@ public sealed class T4XenonAztecWorldGraft
         {
             virtualAlloc(_vertices.Length,4,true);
             zone.Write(_vertices);
+        }
+        if(_gate8Layer is not null)
+        {
+            virtualAlloc(_gate8Layer.Length,1,true);
+            zone.Write(_gate8Layer);
         }
         if(StaticDpvsProbeEnabled)
         {
