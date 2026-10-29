@@ -129,22 +129,27 @@ foreach($family in $selected){
                     })
                 }
             }
-            # OAT source export is only considered evidence when 0/0 and files
-            # actually exist. These files are NOT independently mapped to the
-            # target root yet, so a pass is EXPORT_ONLY, never conversion-ready.
-            $ok=$exit -eq 0 -and $zero -and $errorLines.Count -eq 0 -and $fileRows.Count -gt 0
+            # OAT can exit 0/0 while emitting ONLY zone_source metadata for
+            # unsupported families (ComWorld/GameWorldSP/GfxWorld). Metadata
+            # is not an exported asset body. An empty StringTable .csv is a
+            # real asset file (though its content still needs verification).
+            $assetRows=@($fileRows.ToArray() | Where-Object {
+                -not ([string]$_.relativePath).StartsWith('zone_source/',[StringComparison]::OrdinalIgnoreCase)
+            })
+            $ok=$exit -eq 0 -and $zero -and $errorLines.Count -eq 0 -and $assetRows.Count -gt 0
             $outcome=if($ok){'PC_OAT_EXPORT_FILES_AVAILABLE'}else{'PC_OAT_BODY_EXPORT_BLOCKED'}
             if($ok){$ownedExport++}
             $attempts.Add([pscustomobject]@{
                 role=[string]$role;sourceFastFile=$pcPath;sourceSha256=[string]$pins[[string]$role].sourceSha256
                 oatExitCode=$exit;oatZeroWarningsZeroErrors=$zero
                 exportedFiles=$fileRows.Count
+                actualAssetBodyFiles=$assetRows.Count
                 exportedFileInventory=$fileRows.ToArray()
                 warningsOrErrors=$errorLines
                 status=$outcome
                 log=$log
             })
-            Write-Host "[AZTEC-PC-CRITICAL] $family from $($role): $outcome, files=$($fileRows.Count), exit=$exit, OAT 0/0=$zero"
+            Write-Host "[AZTEC-PC-CRITICAL] $family from $($role): $outcome, files=$($fileRows.Count), assetFiles=$($assetRows.Count), exit=$exit, OAT 0/0=$zero"
             foreach($sample in @($fileRows.ToArray() | Select-Object -First 4)){
                 Write-Host "[AZTEC-PC-CRITICAL]   EXPORTED: $($sample.relativePath) ($($sample.bytes) bytes)"
             }
