@@ -17,6 +17,10 @@ public static class T4AztecPcMaterialStreamWalker
     private const int FirstMaterialAt = 0x05731803;
     private const int FirstExpectedSecondAt = 0x05731AC1;
     private const int SecondExpectedThirdAt = 0x05731EA2;
+    private const int NullImageMaterialAt = 0x057337C5;
+    private const int NullImageAt = 0x05733869;
+    private const int NullImageNameEndsAt = 0x0573389D;
+    private const int AfterNullImageMaterialAt = 0x0573391D;
     private const int MaxMaterials = 39;
     private const int MaxStreamBytes = 16 * 1024 * 1024;
     private const int MaterialBytes = 112;
@@ -32,8 +36,44 @@ public static class T4AztecPcMaterialStreamWalker
 
     public static async Task<AztecPcMaterialStreamWalkReport> ProbeAsync(
         string pcFastFile, string secondMaterialReportJson, string outputJson,
-        CancellationToken ct = default)
+        CancellationToken ct = default, string? nullImageProofJson = null)
     {
+        // This optional replay is isolated from the historical 15-material
+        // run. The old three-argument CLI command never enables it.
+        var nullImageReplay = nullImageProofJson != null;
+        if (nullImageReplay)
+        {
+            using var nullDoc = JsonDocument.Parse(
+                await File.ReadAllTextAsync(nullImageProofJson!, ct));
+            var n = nullDoc.RootElement;
+            if (n.GetProperty("Schema").GetString() != "WaW360.AztecPcNullImageBoundary.v1" ||
+                n.GetProperty("Status").GetString() !=
+                    "AZTEC_PC_NULL_IMAGE_NAME_ONLY_EXACT_MATERIAL_CONTINUATION_CANDIDATE" ||
+                n.GetProperty("PendingMaterialHeaderAt").GetString() != "0x057337C5" ||
+                n.GetProperty("NullImageHeaderAt").GetString() != "0x05733869" ||
+                n.GetProperty("NullImageNameAt").GetString() != "0x0573388D" ||
+                n.GetProperty("NullImageName").GetString() != ",global_black_c" ||
+                n.GetProperty("CandidateAfterInlineName").GetString() != "0x0573389D" ||
+                n.GetProperty("NestedLoadDefProven").GetBoolean() ||
+                !n.GetProperty("ExactPostNameMaterialContinuationPlausible").GetBoolean() ||
+                n.GetProperty("GfxWorldMaterialMemoryOwnershipProven").GetBoolean() ||
+                n.GetProperty("All39SourceMaterialNamesProven").GetBoolean() ||
+                n.GetProperty("XboxMaterialBindingsProven").GetBoolean() ||
+                n.GetProperty("XboxHardwareReady").GetBoolean())
+                throw new InvalidDataException("Required source-only exact null-image continuation witness changed.");
+            var exactRows = n.GetProperty("Candidates").EnumerateArray()
+                .Where(x => x.GetProperty("DeltaAfterName").GetInt32() == 0).ToArray();
+            if (exactRows.Length != 1 ||
+                exactRows[0].GetProperty("ConstantTableAt").GetString() != "0x0573389D" ||
+                exactRows[0].GetProperty("PlausibleConstants").GetInt32() != 2 ||
+                exactRows[0].GetProperty("StateBitsAt").GetString() != "0x057338DD" ||
+                exactRows[0].GetProperty("NextHeaderAt").GetString() != "0x0573391D" ||
+                !exactRows[0].GetProperty("NextNameFollowingAndReadable").GetBoolean() ||
+                exactRows[0].GetProperty("NextNameCandidate").GetString() != "wc/goal" ||
+                !exactRows[0].GetProperty("NextCountsPlausible").GetBoolean() ||
+                n.GetProperty("OriginalPcZoneSha256").GetString() != ZoneSha)
+                throw new InvalidDataException("Two-constant/eight-statebit next Material anchor changed.");
+        }
         using var doc = JsonDocument.Parse(
             await File.ReadAllTextAsync(secondMaterialReportJson, ct));
         var prior = doc.RootElement;
@@ -92,7 +132,7 @@ public static class T4AztecPcMaterialStreamWalker
                 break;
             }
 
-            var one = TryWalkOne(b, z.ZoneHeader, i, cursor);
+            var one = TryWalkOne(b, z.ZoneHeader, i, cursor, nullImageReplay);
             if (one.Row == null)
             {
                 stopReason = one.Reason;
@@ -111,8 +151,17 @@ public static class T4AztecPcMaterialStreamWalker
             if (i == 1 && cursor != SecondExpectedThirdAt)
                 throw new InvalidDataException(
                     "Reusable walker did not replay prior second Material exact end 0x05731EA2.");
+            if (nullImageReplay && i == 15 && cursor != AfterNullImageMaterialAt)
+                throw new InvalidDataException(
+                    "Null-image replay did not end Material #15 at exactly 0x0573391D.");
             stopAt = Hex(cursor);
         }
+        if (nullImageReplay && (rows.Count < 16 ||
+            rows[15].HeaderAt != Hex(NullImageMaterialAt) ||
+            rows[15].NextCursor != Hex(AfterNullImageMaterialAt) ||
+            rows[15].Images.Count(x => x.NameOnlyNullImageCandidate) != 1))
+            throw new InvalidDataException(
+                "Guarded null-image replay did not preserve material #15 and its exact next header.");
         if (rows.Count < 2)
             throw new InvalidDataException(
                 "Reusable decoder regressed before independently verified two-material structural chain.");
@@ -134,8 +183,10 @@ public static class T4AztecPcMaterialStreamWalker
             "Diagnostic PC-source contiguous Material/texture/image/constant/statebit " +
             "shape replay only. 112B headers; inline FOLLOWING name; 16B descriptors; " +
             "TS_WATER_MAP=11 is an unimplemented branch (never decoded as image); " +
-            "only inline GfxImages with INSERT texture+FOLLOWING name and DXT1/3/5 " +
-            "loadDef-shaped prefixes are walked. Counted child tables using other " +
+            "ordinary inline GfxImages with INSERT texture+FOLLOWING name and DXT1/3/5 " +
+            "loadDef-shaped prefixes are walked. The optional separate CLI replay " +
+            "allows only the SHA-pinned MAPTYPE_NONE/null-texture/name-only child " +
+            "at 0x05733869, explicitly WITHOUT a LoadDef. Counted tables using other " +
             "pointer modes, reused streams, non-inline loadDefs, unsupported " +
             "image formats and other source layouts STOP safely and are not " +
             "automatically skipped. Material names are UNVERIFIED candidates; " +
@@ -150,7 +201,8 @@ public static class T4AztecPcMaterialStreamWalker
     }
 
     private static (AztecPcWalkMaterial? Row, int After, string Reason, int FaultAt)
-        TryWalkOne(byte[] b, ZoneHeaderSummary block, int ordinal, int start)
+        TryWalkOne(byte[] b, ZoneHeaderSummary block, int ordinal, int start,
+            bool allowWitnessedNullImage)
     {
         (AztecPcWalkMaterial?, int, string, int) Fail(string why, int at) =>
             (null, start, why, at);
@@ -224,6 +276,30 @@ public static class T4AztecPcMaterialStreamWalker
             var height = U16(b, cursor + 26);
             var depth = U16(b, cursor + 28);
             var category = b[cursor + 30];
+            // At exactly the independently proved stop, T4 MAPTYPE_NONE
+            // carries a null GfxTexture with a FOLLOWING name, not a
+            // 16-byte LoadDef. No other null-image instance is trusted.
+            if (allowWitnessedNullImage && ordinal == 15 &&
+                start == NullImageMaterialAt && cursor == NullImageAt &&
+                textures[j].DescriptorIndex == 1 &&
+                mapType == 0 && imageTex == 0 &&
+                imageNamePtr == 0xFFFFFFFFu &&
+                width == 0 && height == 0 && depth == 0 && category == 0 &&
+                b[cursor + 10] <= 1 && b[cursor + 11] <= 11 &&
+                b[cursor + 12] <= 64 && b[cursor + 31] <= 1)
+            {
+                if (!TryReadName(b, cursor + ImageBytes, out var nullName,
+                        out var afterNullName) ||
+                    nullName != ",global_black_c" ||
+                    afterNullName != NullImageNameEndsAt)
+                    return Fail("WITNESSED_NULL_IMAGE_INLINE_NAME_CHANGED", cursor);
+                images.Add(new AztecPcWalkImage(
+                    j, Hex(cursor), nullName, 0, 0, 0,
+                    "MAPTYPE_NONE_NO_LOADDEF", 0, 0,
+                    "NOT_PRESENT", Hex(afterNullName), true));
+                cursor = afterNullName;
+                continue;
+            }
             if (mapType is < 3 or > 5 ||
                 imageTex != 0xFFFFFFFEu ||
                 imageNamePtr != 0xFFFFFFFFu ||
@@ -350,7 +426,8 @@ public sealed record AztecPcWalkTexture(
 public sealed record AztecPcWalkImage(
     int TextureDescriptorIndex, string HeaderAt, string CandidateName,
     int Width, int Height, int Depth, string Format, int MipLevelCount,
-    uint ResourceBytes, string LoadDefAt, string After);
+    uint ResourceBytes, string LoadDefAt, string After,
+    bool NameOnlyNullImageCandidate = false);
 public sealed record AztecPcWalkMaterial(
     int Ordinal, string HeaderAt, string CandidateName,
     int TextureCount, int ConstantCount, int StateBitsCount,
