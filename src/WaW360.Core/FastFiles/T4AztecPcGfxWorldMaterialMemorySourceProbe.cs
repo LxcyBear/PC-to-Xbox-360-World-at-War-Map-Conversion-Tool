@@ -203,7 +203,7 @@ public static class T4AztecPcGfxWorldMaterialMemorySourceProbe
             Path.GetFullPath(pcFastFile), source.SourceSha256, ZoneSha,
             HeaderOffset, "0x18C", ArrayCount, "0x190", "0xFFFFFFFF",
             VertexOffset, ArrayBytes, MaxBeforeVertices, startMin,
-            startMax, threeRecordHits, thirtyNineHits, exactPreVertex,
+            startMax, threeRecordHits, thirtyNineHits, isolated39Hits, exactPreVertex,
             ordered,
             false, false, false, false,
             "STRICT diagnostic only. v1's 714,674 matches were false-positive " +
@@ -246,6 +246,7 @@ public sealed record AztecMaterialMemorySourceProbeReport(
     string SourceMaterialMemoryPointer, int SourceVertexBufferOffset,
     int MaterialMemoryArrayBytes, int MaximumScanBackBytes,
     int ScanStart, int ScanEnd, int ThreeRecordSignatures, int Full39RecordSignatures,
+    int Isolated39RecordSignatures,
     bool ExactArrayImmediatelyBeforeVertexBuffer,
     IReadOnlyList<AztecMaterialMemorySourceArrayCandidate> Candidates,
     bool ExactPhysicalOwnershipProven, bool PCMaterialNamesResolved,
