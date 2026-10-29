@@ -112,7 +112,7 @@ if([string]$result.Schema -ne 'WaW360.AztecPcGfxSurfaceSourceProbe.v1' -or
 }
 Write-Host "[AZTEC-PC-SURFACE] 3-record signatures=$($result.ThreeRecordGates), 6-record signatures=$($result.SixRecordGates)"
 foreach($c in @($result.TopCandidates | Select-Object -First 8)){
-    Write-Host "[AZTEC-PC-SURFACE] CANDIDATE $($c.SourceOffsetHex) surfaces=$($c.ValidSurfaceRecords)/735 bounds=$($c.ValidBoundingBoxes)/735 materialPtrs=$($c.ValidMaterialPointers)/735 tris=$($c.TotalTriangleCount)/19551 maxIndexEnd=$($c.MaximumIndexEnd)/58653 monotonic=$($c.MonotonicIndexBasePairs)/734"
+    Write-Host "[AZTEC-PC-SURFACE] CANDIDATE $($c.SourceOffsetHex) surfaces=$($c.ValidSurfaceRecords)/735 bounds=$($c.ValidBoundingBoxes)/735 materialPtrs=$($c.ValidMaterialPointers)/735 tris=$($c.TotalTriangleCount)/19551 maxIndexEnd=$($c.MaximumIndexEnd)/58653 monotonic=$($c.MonotonicIndexBasePairs)/734 missing=$($c.UncoveredIndexEntries) overlapping=$($c.IndexSpanOverlapEntries) local=$($c.LocalIndicesInRange)/58653 global=$($c.GlobalIndicesInRange)/58653 sourceBlockMaterials=$($c.SourceBlockMaterialPointers)/735"
     Write-Host "[AZTEC-PC-SURFACE]   source SHA=$($c.OriginalPCArraySha256)"
     foreach($first in @($c.FirstEightRecords | Select-Object -First 2)){
         Write-Host "[AZTEC-PC-SURFACE]   srf#$($first.Index) firstVertex=$($first.FirstVertex) vertices=$($first.VertexCount) tris=$($first.TriangleCount) baseIndex=$($first.BaseIndex) material=$($first.MaterialPointer)"
