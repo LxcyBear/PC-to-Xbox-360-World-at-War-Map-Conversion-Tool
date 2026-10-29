@@ -27,6 +27,7 @@ $converted=Read-Report 'pc_gfxworld_xenon_geometry_components\gfxworld_source_to
 $pcMaterialWitness=Read-Report 'pc_oat_loaded_gfxworld_material_pointer_witness\pc_oat_gfxworld_material_pointer_reconciliation.json'
 $pcSurface76=Read-Report 'pc_xenon_76byte_gfxsurface_canary\aztec_735_gfxsurfaces_76byte_source_canary.json'
 $pcWorldMaterialCorpus=Read-Report 'pc_39_world_material_corpus_source\aztec_pc_39_world_material_corpus_summary.json'
+$pcXenonMaterialCandidates=Read-Report 'pc_to_xenon_39_world_material_graph_candidates\aztec_39_pc_to_xenon_material_graph_candidates.json'
 
 $sixOk=$null -ne $six -and
     [string]$six.status -eq 'AZTEC_PC_SIX_FAMILY_COMWORLD_GRAPH_PASS' -and
@@ -135,6 +136,19 @@ $pc39CorpusPass=$null -ne $pcWorldMaterialCorpus -and
     -not [bool]$pcWorldMaterialCorpus.hardwareReady
 if($pc39CorpusPass){
     Write-Host "[AZTEC-FF-PROGRESS] PC MATERIAL GRAPH SOURCE: 39/39 original PC Material headers and child tables EXPORTED; 0/39 real Xenon world Material graphs integrated yet."
+}
+$pc39XenonCandidatesPass=$null -ne $pcXenonMaterialCandidates -and
+    [string]$pcXenonMaterialCandidates.Status -eq 'AZTEC_39_PC_MATERIALS_TO_XENON_96B_SOURCE_GRAPH_CANDIDATES_ONLY' -and
+    [int]$pcXenonMaterialCandidates.SourceMaterialChildrenConverted -eq 39 -and
+    [int]$pcXenonMaterialCandidates.CoveredWorldSurfaces -eq 735 -and
+    [int]$pcXenonMaterialCandidates.TextureDescriptors -eq 87 -and
+    [int]$pcXenonMaterialCandidates.ConstantRecords -eq 93 -and
+    [int]$pcXenonMaterialCandidates.StateBitsRecords -eq 192 -and
+    -not [bool]$pcXenonMaterialCandidates.RealXenonMaterialRootsEmitted -and
+    -not [bool]$pcXenonMaterialCandidates.IntegratedOatFfValidated -and
+    -not [bool]$pcXenonMaterialCandidates.XboxHardwareReady
+if($pc39XenonCandidatesPass){
+    Write-Host "[AZTEC-FF-PROGRESS] 39/39 PC WORLD MATERIALS -> 96B XENON ABI CANDIDATE BLOBS BUILT; dependencies unresolved=$($pcXenonMaterialCandidates.MissingNativeDependencies), no FF roots/OAT yet."
 }
 Write-Host '[AZTEC-FF-PROGRESS] The existing 8,509-root FF remains diagnostic-only.'
 Write-Host '[AZTEC-FF-PROGRESS] No Xbox FF release until all hardware-gating checks pass.'
