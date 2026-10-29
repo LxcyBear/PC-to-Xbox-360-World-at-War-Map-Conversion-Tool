@@ -56,6 +56,25 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-material-stop-microscope" when args.Length == 4:
+            {
+                var result = await T4AztecPcMaterialStopMicroscope.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-STOP] status=" + result.Status +
+                    " imageStop=" + result.StopImageAt +
+                    " material=" + result.PendingMaterialHeader +
+                    " nameCandidate=" + result.PendingMaterialNameCandidate);
+                Console.WriteLine("[AZTEC-MAT-STOP] exact reasons: " +
+                    string.Join(", ", result.ExactStopRejectionReasons));
+                foreach (var item in result.ImageHeaderCandidates)
+                    Console.WriteLine("[AZTEC-MAT-STOP] candidate=" + item.HeaderOffset +
+                        " delta=" + item.DeltaFromStop +
+                        " map=" + item.MapType + " texture=" + item.TexturePointer +
+                        " name=" + item.NamePointer + " strict=" + item.StrictWalkerAccepts);
+                Console.WriteLine("[AZTEC-MAT-STOP] report=" + args[3] +
+                    " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
+                return 0;
+            }
             case "aztec-pc-material-stream-walker" when args.Length == 4:
             {
                 var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
