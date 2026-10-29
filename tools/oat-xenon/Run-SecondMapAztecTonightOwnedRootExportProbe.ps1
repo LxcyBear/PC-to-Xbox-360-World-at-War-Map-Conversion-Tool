@@ -65,7 +65,7 @@ foreach($family in $selected){
             family=$family;status='NO_UNIQUE_PC_OWNER';originalPcAssetName=$null
             ownerRoles=@();attempts=@();blocker='Expected exactly one source-owned PC name.'
         })
-        Write-Host "[AZTEC-PC-CRITICAL] $family: no unique PC-owned target"
+        Write-Host "[AZTEC-PC-CRITICAL] ${family}: no unique PC-owned target"
         continue
     }
     $name=[string]$roots[0].nativeName
@@ -147,7 +147,7 @@ foreach($family in $selected){
         }
     }
     $state=if($ownedExport -gt 0){'PC_SOURCE_EXPORT_AVAILABLE'}else{'PC_SOURCE_BODY_EXPORT_BLOCKED'}
-    if($state -ne 'PC_SOURCE_EXPORT_AVAILABLE'){$failed.Add("$family: no OAT 0/0 owned PC export produced a body file.")}
+    if($state -ne 'PC_SOURCE_EXPORT_AVAILABLE'){$failed.Add("${family}: no OAT 0/0 owned PC export produced a body file.")}
     $results.Add([pscustomobject]@{
         family=$family;nativeRoot=[int]$roots[0].nativeRoot
         originalPcAssetName=$name;ownerRoles=$owners
@@ -156,7 +156,7 @@ foreach($family in $selected){
         payloadToXboxConverted=$false
     })
 }
-$status=if($failed.Count -eq 0){'AZTEC_PC_CRITICAL_FIVE_FAMILY_EXPORT_EVIDENCE_PASS'}else{'AZTEC_PC_CRITICAL_BODY_EXPORT_PARTIAL'}
+$status=if($failed.Count -eq 0){'AZTEC_PC_CRITICAL_REQUESTED_FAMILY_EXPORT_EVIDENCE_PASS'}else{'AZTEC_PC_CRITICAL_BODY_EXPORT_PARTIAL'}
 $report=[ordered]@{
     schema='WaW360.AztecTonightCriticalBodyExport.v1'
     status=$status
