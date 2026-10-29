@@ -117,6 +117,11 @@ foreach($m in @($materialCanary.xenonMaterialGraphs)){
         throw "PC Material graph $($m.name) or pinned SHA has drifted."
     }
 }
+function NormModel([string]$v){
+    $v=$v.Trim().TrimStart(',').Replace('\','/')
+    if($v.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){$v=$v.Substring(0,$v.Length-3)}
+    return $v.ToLowerInvariant()
+}
 $materialRoots=New-Object 'System.Collections.Generic.List[object]'
 foreach($name in $materialNames){
     $matches=@($identity.Entries | Where-Object {
@@ -145,11 +150,6 @@ $nativeX=@($identity.Entries | Where-Object {
 })
 if($nativeX.Count -ne 1){throw "Single Aztec native XModel identity missing or ambiguous: $($nativeX.Count)"}
 $modelRoot=$nativeX[0]
-function NormModel([string]$v){
-    $v=$v.Trim().TrimStart(',').Replace('\','/')
-    if($v.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){$v=$v.Substring(0,$v.Length-3)}
-    return $v.ToLowerInvariant()
-}
 $tagRoots=@($identity.Entries | Where-Object {
     [string]$_.TypeName -ieq 'xmodel' -and
     -not ([string]$_.Name).StartsWith(',') -and
