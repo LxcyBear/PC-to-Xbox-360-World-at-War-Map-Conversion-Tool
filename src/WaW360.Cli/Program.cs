@@ -95,6 +95,20 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-world-material-native-name-audit" when args.Length == 5:
+            {
+                var result = await T4AztecPcWorldMaterialNativeNameReconciliation.ProbeAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-NAMES] status=" + result.Status +
+                    " sourceMaterialNames=" + result.SourceMaterialCandidates +
+                    " nativeMaterialRoots=" + result.GoldenNativeMaterialRoots +
+                    " uniqueNames=" + result.UniqueExactNameCandidates +
+                    " noNameMatches=" + result.NoExactNameCandidates +
+                    " ambiguous=" + result.AmbiguousExactNameCandidates);
+                Console.WriteLine("[AZTEC-MAT-NAMES] report=" + args[4] +
+                    " -- NAME MATCHES ONLY; no virtual-pointer or Xbox bindings.");
+                return 0;
+            }
             case "aztec-pc-material-world-boundary-bridge" when args.Length == 7:
             {
                 var result = await T4AztecPcMaterialWorldBoundaryBridge.ProbeAsync(
