@@ -68,6 +68,7 @@ static async Task<int> MainAsync(string[] args)
                     foreach (var h in w.PossibleMaterialHeaders)
                     {
                         Console.WriteLine($"[AZTEC-MAT-BOUNDARY] MaterialShape={h.CandidateMaterialBytes} infoBytes={h.CandidateMaterialInfoBytes}, plausibleCounts={h.PlausibleMaterialCountFields}, texture={h.TextureCount}, constant={h.ConstantCount}, stateBits={h.StateBitsCount}, camera={h.CameraRegion}, techset={h.TechniqueSetPointer}");
+                        Console.WriteLine($"[AZTEC-MAT-BOUNDARY]  ABI check namePtr={h.MaterialNamePointer} nameFollowing={h.NamePointerIsFollowing}, techsetBounded={h.TechniqueSetPointerCompatible}, texturePtrBounded={h.TextureTablePointerCompatible}, constantPtrBounded={h.ConstantTablePointerCompatible}, bitsPtrBounded={h.StateBitsTablePointerCompatible}, allDependenciesCompatible={h.AllDependencyPointerFieldsCompatible}, stringAtExactPostHeader={h.ExactPostHeaderReadableString}");
                         foreach (var n in h.NameCandidates)
                             Console.WriteLine($"[AZTEC-MAT-BOUNDARY]   NAME-CANDIDATE {n.SourceOffset} = {n.UnverifiedName} (alignment={n.AlignmentAfterMaterialHeader}); NOT PROVEN");
                     }
