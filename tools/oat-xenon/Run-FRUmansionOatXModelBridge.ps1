@@ -2,7 +2,8 @@
 param(
     [string]$PcFastFile = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\PC Maps\nazi_zombie_FRUmansion\nazi_zombie_frumansion.ff',
     [string]$ModelName = '',
-    [string]$OutputRoot = ''
+    [string]$OutputRoot = '',
+    [string]$AllowedModelNamesFile = ''
 )
 
 Set-StrictMode -Version Latest
@@ -188,6 +189,30 @@ foreach ($file in $jsonFiles) {
 
 if ($candidates.Count -eq 0) {
     throw "PC XModel export produced no complete OAT JSON+GLTF model. Unlinker exit=$dumpCode. See: $pcDumpLog"
+}
+
+# Optional strict whitelist for other maps (e.g. Aztec): take the smallest
+# fully exported canonical model whose name is actually present in that
+# map's verified native XModel root set. The FRUmansion default is unchanged.
+if (-not [string]::IsNullOrWhiteSpace($AllowedModelNamesFile)) {
+    if (-not (Test-Path -LiteralPath $AllowedModelNamesFile -PathType Leaf)) {
+        throw "Allowed XModel identity file missing: $AllowedModelNamesFile"
+    }
+    $allowed = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in [IO.File]::ReadLines($AllowedModelNamesFile)) {
+        $value = $name.Trim()
+        if ($value) { [void]$allowed.Add($value) }
+    }
+    if ($allowed.Count -eq 0) { throw 'The allowed XModel identity file was empty.' }
+    $filtered = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($candidate in $candidates.ToArray()) {
+        if ($allowed.Contains([string]$candidate.Name)) { $filtered.Add($candidate) }
+    }
+    if ($filtered.Count -eq 0) {
+        throw "No complete PC XModel GLTF+JSON exports matched the allowed native XModel identity list. OAT exit=$dumpCode."
+    }
+    Write-Host "[NUCLEAR-4U] Allowed native-root export candidates: $($filtered.Count)/$($candidates.Count)"
+    $candidates = $filtered
 }
 
 $selected = $null
@@ -583,6 +608,7 @@ $manifest = [ordered]@{
     xenonRoundTripPass = $roundTripPass
     bridgePass = $bridgePass
     productionFidelityNote = 'partclassification.csv is recovered from the original PC fastfile and is required complete before Xenon import.'
+    allowedModelNamesFile = $AllowedModelNamesFile
     sourcePolicy = @(
         'XModel geometry and skeleton metadata originate from the PC fastfile through OAT canonical JSON+GLTF export.',
         'The T4 Xenon OAT asset loader reconstructs the console-native XModel and XSurface representation.',
