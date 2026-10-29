@@ -1353,7 +1353,10 @@ static async Task<int> MainAsync(string[] args)
                     args[10].Equals("--aztec-pc-two-model-two-material-mapents-image-rawfile-graft", StringComparison.Ordinal);
                 var aztecSixFamilyComWorldMode = args.Length >= 11 &&
                     args[10].Equals("--aztec-pc-six-family-comworld-scratch-graft", StringComparison.Ordinal);
-                var aztecTwoModelWithMaterials = aztecTwoModelMaterialMode || aztecTwoModelMaterialMapEntsMode || aztecSixFamilyComWorldMode;
+                var aztecWorld39SourceScratchMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-world-39-material-source-scratch-graft", StringComparison.Ordinal);
+                var aztecTwoModelWithMaterials = aztecTwoModelMaterialMode || aztecTwoModelMaterialMapEntsMode ||
+                    aztecSixFamilyComWorldMode || aztecWorld39SourceScratchMode;
                 var aztecAnyTwoModels = aztecTwoModelMode || aztecTwoModelWithMaterials;
                 var aztecAnyMixed = aztecImageRawMode || aztecOneModelMode || aztecAnyTwoModels;
                 if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
@@ -1404,6 +1407,16 @@ static async Task<int> MainAsync(string[] args)
                      args[8] != "70" || args[9] != "436"))
                     throw new ArgumentException(
                         "Aztec original-PC MapEnts 5-payload SCRATCH mode requires 2 images, 114 RawFiles, 2 models, 2 materials, plus the passing standalone MapEnts canary manifest (19 arguments).");
+                if (aztecWorld39SourceScratchMode &&
+                    (args.Length != 20 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     string.IsNullOrWhiteSpace(args[18]) || string.IsNullOrWhiteSpace(args[19]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec 39 world-Material source-SCRATCH FF mode requires 2 images, 114 RawFiles, 2 XModels, all 39 candidate Material graphs, source-only 39-root binding, PC MapEnts and PC ComWorld (20 arguments). NOT for Xbox.");
                 if (aztecSixFamilyComWorldMode &&
                     (args.Length != 20 || string.IsNullOrWhiteSpace(args[11]) ||
                      args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
@@ -1437,8 +1450,8 @@ static async Task<int> MainAsync(string[] args)
                 var rawFileGraftManifest = aztecAnyMixed ? args[13] :
                     rawFileOnlyMode ? args[11] :
                     args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
-                var mapEntsCanaryManifest = (aztecTwoModelMaterialMapEntsMode || aztecSixFamilyComWorldMode) ? args[18] : null;
-                var comWorldProofManifest = aztecSixFamilyComWorldMode ? args[19] : null;
+                var mapEntsCanaryManifest = (aztecTwoModelMaterialMapEntsMode || aztecSixFamilyComWorldMode || aztecWorld39SourceScratchMode) ? args[18] : null;
+                var comWorldProofManifest = (aztecSixFamilyComWorldMode || aztecWorld39SourceScratchMode) ? args[19] : null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
@@ -1454,7 +1467,8 @@ static async Task<int> MainAsync(string[] args)
                     materialBindingManifest,
                     rawFileGraftManifest,
                     mapEntsCanaryManifest,
-                    comWorldProofManifest);
+                    comWorldProofManifest,
+                    aztecSourceOnly39MaterialFfScratch: aztecWorld39SourceScratchMode);
 
                 Console.WriteLine("NUCLEAR STAGE 4E/4Y real Xenon renderer + image + XModel byte emission");
                 Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMapEnts={result.RealMapEntsRoots:N0}; realComWorlds={result.RealComWorldRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
