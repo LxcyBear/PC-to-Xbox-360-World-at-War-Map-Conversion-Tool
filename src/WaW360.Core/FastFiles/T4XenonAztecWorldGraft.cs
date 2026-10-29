@@ -161,7 +161,6 @@ public sealed class T4XenonAztecWorldGraft
         var original=seed.GetProperty("OriginalPcFastFile").GetString()!;
         var zone=await FastFileAnalysisCache.GetZoneAsync(original,ct);
         if(zone.Platform!=WaWPlatform.PC ||
-           !Eq(zone.SourceSha256,material.GetProperty("OriginalPcFastFileSha256").GetString()) &&
            !Eq(zone.SourceSha256,ad.RootElement.GetProperty("originalPcFastFileSha256").GetString()) ||
            !Eq(Sha(zone.Bytes),PcZoneSha) ||
            !Eq(Sha(zone.Bytes.AsSpan(SourceIndexStart,IndexCount*2)),SourceIndicesSha) ||
