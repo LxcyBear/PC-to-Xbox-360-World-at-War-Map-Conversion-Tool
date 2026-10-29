@@ -270,8 +270,7 @@ public sealed record AztecPcMaterialInlineImageChainRow(
     bool LoadDefPrefixDimensionsMatch, string? CandidateLoadDefAt,
     bool ResourceFitsSource, bool FormatIsDXT1DXT3OrDXT5,
     string? CandidateAfterLoadDef, string FormatFourCC,
-    int MipLevelCount, int LoadDefFlags, uint LoadDefResourceBytes,
-    int Reserved);
+    int MipLevelCount, int LoadDefFlags, uint LoadDefResourceBytes);
 
 public sealed record AztecPcMaterialPostImageConstantCandidate(
     string ConstantTableAt, int PlausibleConstants,
