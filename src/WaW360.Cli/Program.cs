@@ -95,6 +95,25 @@ static async Task<int> MainAsync(string[] args)
                     " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
                 return 0;
             }
+            case "aztec-pc-world-735-surface-material-candidates" when args.Length == 5:
+            {
+                var result = await T4AztecPcWorldSurfaceMaterialCandidateLedger.ProbeAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-735-CANDIDATES] status=" + result.Status +
+                    " exactNativeNames=" + result.UniqueExactNativeNameCandidates +
+                    " virtualSlots=" + result.DistinctVirtualAliasSlots +
+                    " hypotheticalSurfaces=" + result.HypotheticalSurfacesLabeled +
+                    " triangleCoverage=" + result.HypotheticalTrianglesLabeled);
+                foreach (var g in result.CandidateGroups.Take(8))
+                    Console.WriteLine("[AZTEC-735-CANDIDATES] candidate#" + g.Ordinal +
+                        " virtual=" + g.SourceVirtualAliasPointer +
+                        " unverifiedSourceName=" + g.SourceMaterialNameCandidate +
+                        " uniqueXboxRootNameIndex=" + g.UniqueExactNativeMaterialNameRootIndex +
+                        " proposedSurfaces=" + g.RecountedSourceSurfaceCount);
+                Console.WriteLine("[AZTEC-735-CANDIDATES] report=" + args[4] +
+                    " -- ORDINAL HYPOTHESIS ONLY. No Xbox bindings or FF.");
+                return 0;
+            }
             case "aztec-pc-world-material-native-name-audit" when args.Length == 5:
             {
                 var result = await T4AztecPcWorldMaterialNativeNameReconciliation.ProbeAsync(
