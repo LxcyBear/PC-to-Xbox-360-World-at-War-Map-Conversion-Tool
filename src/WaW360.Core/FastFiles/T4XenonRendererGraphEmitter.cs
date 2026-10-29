@@ -586,7 +586,8 @@ public static class T4XenonRendererGraphEmitter
         // native identity + OAT pass cannot certify hardware readiness until
         // PC-owned StringTable values have a real serializer.
         var emptyStringTableShells = roots.Count(r => Normalize(r.TypeName) == "stringtable");
-        var validationOnly = (imageGraph is not null && imageGraphValidationOnly) ||
+        var validationOnly = aztecSourceOnly39MaterialFfScratch ||
+                             (imageGraph is not null && imageGraphValidationOnly) ||
                              emptyStringTableShells != 0;
         var validationPass =
             layoutReplayExact && wrapped.RoundTripVerified &&
