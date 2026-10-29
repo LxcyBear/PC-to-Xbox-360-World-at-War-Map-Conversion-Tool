@@ -56,7 +56,7 @@ public static class T4AztecPcGfxWorldVertexSourceProbe
         var source = await FastFileAnalysisCache.GetZoneAsync(originalPcFastFile, ct);
         if (source.Platform != WaWPlatform.PC ||
             source.Bytes.Length != PcZoneBytes ||
-            !source.SourceHash.Equals(j.GetProperty("originalPcFastFileSha256").GetString(),
+            !source.SourceSha256.Equals(j.GetProperty("originalPcFastFileSha256").GetString(),
                 StringComparison.OrdinalIgnoreCase) ||
             !Sha(source.Bytes).Equals(j.GetProperty("originalPcZoneSha256").GetString(),
                 StringComparison.OrdinalIgnoreCase))
@@ -198,7 +198,7 @@ public static class T4AztecPcGfxWorldVertexSourceProbe
             "WaW360.AztecPcGfxWorldVertexSourceProbe.v1",
             strong ? "AZTEC_PC_GFXWORLD_32713_VERTEX_ARRAY_CANDIDATE_PASS" :
                 "AZTEC_PC_GFXWORLD_VERTEX_LAYOUT_UNRESOLVED",
-            originalPcFastFile, source.SourceHash, Sha(bytes),
+            originalPcFastFile, source.SourceSha256, Sha(bytes),
             HeaderOffset, IndicesOffset, IndexCount, VertexCount,
             VertexStride, VertexArrayBytes, startMin, startMax,
             coarsePasses, deepPasses, ranked,
