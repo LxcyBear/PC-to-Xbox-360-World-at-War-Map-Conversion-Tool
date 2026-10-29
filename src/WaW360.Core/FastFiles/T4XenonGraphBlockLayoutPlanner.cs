@@ -89,7 +89,8 @@ public static class T4XenonGraphBlockLayoutPlanner
         string? materialGraphRoot = null,
         string? materialBindingManifest = null,
         string? rawFileGraftManifest = null,
-        string? mapEntsCanaryManifest = null)
+        string? mapEntsCanaryManifest = null,
+        string? comWorldProofManifest = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -129,6 +130,7 @@ public static class T4XenonGraphBlockLayoutPlanner
         var roots = LoadNativeIdentity(nativeIdentityManifest);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
         var pcMapEnts = T4XenonAztecMapEntsGraft.Load(mapEntsCanaryManifest, roots);
+        var pcComWorld = await T4XenonAztecComWorldGraft.LoadAsync(comWorldProofManifest, roots, cancellationToken);
         var bindings = LoadBindings(bindingManifest);
         var blockers = new List<string>();
         var notes = new List<string>();
@@ -395,6 +397,20 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if (pcComWorld is not null && root.Index == pcComWorld.NativeRootIndex)
+            {
+                // T4 ComWorld: fixed 64-byte TEMP root; name string,
+                // 2 x 72-byte primary lights, 88 x 12-byte cell records,
+                // then 88 x 32-byte source-owned burnable sample arrays.
+                state.TempRoot(pcComWorld.ParentXenon.Length);
+                state.VirtualAlloc(Utf8Z(pcComWorld.Name), 1, true);
+                state.VirtualAlloc(pcComWorld.LightsXenon.Length, 4, true);
+                state.VirtualAlloc(pcComWorld.BurnableCellsXenon.Length, 4, true);
+                for (var i = 0; i < 88; i++)
+                    state.VirtualAlloc(32, 1, true);
+                continue;
+            }
+
             if (pcMapEnts is not null && root.Index == pcMapEnts.NativeRootIndex)
             {
                 // T4 MapEnts = name*, entityString*, numEntityChars (12 bytes).
@@ -447,6 +463,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
+        if (pcComWorld is not null)
+            notes.Add("One genuine PC-derived ComWorld #7178 parent, two primary lights, 88 burnable cells and 2816 source sample bytes; validation only.");
         if (pcMapEnts is not null)
             notes.Add("One genuine original-PC 571011-byte MapEnts source with pinned Xenon readback, diagnostics only.");
         if (rawFileGraft.Count != 0)
