@@ -7,8 +7,9 @@ namespace WaW360.Core.FastFiles;
 /// <summary>
 /// Joins independent OAT-loaded PC typed Material* equality for ALL 735
 /// GfxSurface records with unique golden native Xbox material ROOT NAMES
-/// and the EXACT null fields in the already-verified Xenon-endian surface
-/// buffer. Creates a zero-mutation relocation INTENT, NOT a pointer patch.
+/// and the EXACT null fields in the 52B big-endian PC source-layout buffer
+/// (NOT native 76B Xenon GfxSurface). Creates a source identity INTENT,
+/// NOT an Xbox ABI pointer patch.
 /// An XAsset root index is not a native address or valid packed zone pointer.
 /// </summary>
 public static class T4AztecPcVerifiedSurfaceMaterialRelocationPlan
@@ -263,9 +264,11 @@ public static class T4AztecPcVerifiedSurfaceMaterialRelocationPlan
             "Each of 735 OAT-loaded original-PC GfxSurface.Material typed pointers " +
             "uniquely equals the material pointer in its expected MaterialMemory row, " +
             "and the loaded name matches a unique golden Xbox Material root NAME/INDEX. " +
-            "The Xenon endian-only 52-byte GfxSurface buffer remains SHA-identical " +
+            "The endian-only 52-byte PC-layout diagnostic buffer remains SHA-identical " +
             "with 735 NULL Material fields; this records exact 4-byte relocation " +
-            "SITES and desired root IDENTITIES only. An XAsset root index is NOT a " +
+            "SITES in PC layout (+20), NOT native Xbox 76B layout (+44). The Xenon
+            "serializer must derive six additional topMip floats per surface; only
+            "root IDENTITIES are known. An XAsset root index is NOT a " +
             "valid Xenon pointer. NO pointer encoded, NO FF produced, NO runtime " +
             "Material graph/DPVS closure confirmed, NO Gate 7 or hardware approval.");
         var dest = Path.GetFullPath(outputPath);
