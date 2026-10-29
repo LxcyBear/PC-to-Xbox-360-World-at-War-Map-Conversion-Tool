@@ -98,7 +98,7 @@ try{
     }
     $root=0x049122C0
     if((Sha $z $root 128) -ine [string]$gfx.fixed128ByteSourceSha256 -or
-       (U32 $z $root) -ne [uint32]0x84702AC9 -or
+       (U32 $z $root) -ne [uint32]::Parse('84702AC9',[Globalization.NumberStyles]::HexNumber) -or
        (U32 $z ($root+4)) -ne [uint32]::MaxValue -or
        [int](U32 $z ($root+8)) -ne 3447 -or
        [int](U32 $z ($root+12)) -ne 24511 -or
