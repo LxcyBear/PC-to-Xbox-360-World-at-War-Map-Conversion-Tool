@@ -14,7 +14,8 @@ internal sealed class T4XenonMaterialCorpus
         string graphRoot,
         string bindingManifest,
         IReadOnlyList<T4XenonNativeIdentityEntry> roots,
-        int expectedOwned = 502)
+        int expectedOwned = 502,
+        bool allowSourceOnlyDiagnostic = false)
     {
         graphRoot = Path.GetFullPath(graphRoot);
         bindingManifest = Path.GetFullPath(bindingManifest);
@@ -38,6 +39,20 @@ internal sealed class T4XenonMaterialCorpus
         // proven two-material canary pair and zero other partial corpora.
         var aztecTwoMaterial = binding.TryGetProperty("Format", out var bindingFormat) &&
             bindingFormat.GetString() == "WaW360.AztecPcTwoMaterialBinding.v1";
+        // Deliberately keep source-only 39-material proof manifests from
+        // becoming production FF inputs accidentally. A separate diagnostic
+        // must opt in explicitly; the existing integrated writer never does.
+        var aztec39Candidate = binding.TryGetProperty("Format", out var candidateFormat) &&
+            candidateFormat.GetString() == "WaW360.AztecPc39MaterialCodecIdentityCandidate.v1";
+        if (aztec39Candidate &&
+            (!allowSourceOnlyDiagnostic ||
+             expectedOwned != 39 ||
+             !binding.GetProperty("ValidationOnly").GetBoolean() ||
+             binding.GetProperty("NativeRoots").GetInt32() != 8509 ||
+             binding.GetProperty("RuntimeMaterialBodiesWritten").GetBoolean() ||
+             binding.GetProperty("CompleteDependencyClosure").GetBoolean()))
+            throw new InvalidDataException(
+                "Aztec 39 Material source-only identity preflight cannot be used in FF production.");
         if (aztecTwoMaterial)
         {
             if (binding.GetProperty("NativeRoots").GetInt32() != 8509 ||
