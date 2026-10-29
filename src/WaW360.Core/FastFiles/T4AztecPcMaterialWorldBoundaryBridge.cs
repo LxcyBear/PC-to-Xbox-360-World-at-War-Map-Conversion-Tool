@@ -193,8 +193,10 @@ public static class T4AztecPcMaterialWorldBoundaryBridge
         {
             ct.ThrowIfCancellationRequested();
             var node = materialNodes[i];
-            var current = ParseHex(node.GetProperty("HeaderAt").GetString()!);
-            var next = ParseHex(node.GetProperty("NextCursor").GetString()!);
+            // Material header and next-cursor are PHYSICAL byte-array offsets.
+            // Keep them as int; packed GfxSurface pointers remain uint elsewhere.
+            var current = checked((int)ParseHex(node.GetProperty("HeaderAt").GetString()!));
+            var next = checked((int)ParseHex(node.GetProperty("NextCursor").GetString()!));
             var name = node.GetProperty("CandidateName").GetString()!;
             var memAt = MemoryAt + i * MemoryStride;
             var directive = U32(b, memAt);
