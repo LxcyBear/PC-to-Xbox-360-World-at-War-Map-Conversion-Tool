@@ -6,6 +6,7 @@ $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $nativeManifest=Join-Path $base 'main_native_closure\native_identity\nazi_zombie_aztec_native_identity_manifest.json'
 $linked=Join-Path $base 'pc_xenon_735_world_surface_live_39_material_ff_link\aztec_735_world_surfaces_linked_to_39_ff_material_roots.json'
+$sourceSummary=Join-Path $base 'pc_39_world_material_corpus_source\aztec_pc_39_world_material_corpus_summary.json'
 $dumper=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $capabilities=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\waw360-graph-dumper-capabilities.json'
 $capability='t4xenon-gfxworld-root-dpvs-layout-witness-v1'
@@ -13,11 +14,12 @@ $out=Join-Path $base 'xenon_native_gfxworld_root_dpvs_abi'
 $log=Join-Path $out 'native_oat_gfxworld_root_dpvs.log'
 $report=Join-Path $out 'native_xenon_gfxworld_root_dpvs_abi.json'
 $temp=Join-Path ([IO.Path]::GetTempPath()) ('WaW360_XenonWorldRoot_' + [Guid]::NewGuid().ToString('N').Substring(0,12))
-foreach($p in @($nativeManifest,$linked)){
+foreach($p in @($nativeManifest,$linked,$sourceSummary)){
     if(-not(Test-Path -LiteralPath $p -PathType Leaf)){
         throw "GfxWorld root/DPVS ABI source or 735 real-Material link proof missing: $p"
     }
 }
+$pcSource=Get-Content -LiteralPath $sourceSummary -Raw | ConvertFrom-Json
 $n=Get-Content -LiteralPath $nativeManifest -Raw | ConvertFrom-Json
 $l=Get-Content -LiteralPath $linked -Raw | ConvertFrom-Json
 if([string]$n.format -ne 'WaW360.T4Xenon.NativeIdentityManifest.v1' -or
@@ -33,6 +35,19 @@ if([string]$n.format -ne 'WaW360.T4Xenon.NativeIdentityManifest.v1' -or
    [bool]$l.GfxWorldRootSerialized -or
    [bool]$l.XboxHardwareReady){
     throw 'Requires exact previous 735 GfxSurfaces linked to 39 REAL Xbox FF material owners, but no GfxWorld FF promoted.'
+}
+if([string]$pcSource.status -ne 'AZTEC_PC_OAT_39_MATERIAL_HEADERS_AND_CHILD_TABLES_SOURCE_EXPORTED' -or
+   [int]$pcSource.typedWorldMaterialOwners -ne 39 -or
+   [int]$pcSource.worldSurfaces -ne 735 -or
+   [int]$pcSource.sourceHeaders -ne 39 -or
+   [bool]$pcSource.hardwareReady){
+    throw 'Original PC source OAT material/root evidence missing.'
+}
+$pcFastFile=[string]$pcSource.originalPcFastFile
+if(-not(Test-Path -LiteralPath $pcFastFile -PathType Leaf) -or
+   (Get-FileHash -LiteralPath $pcFastFile -Algorithm SHA256).Hash -ine
+        [string]$pcSource.sourceFastFileSha256){
+    throw 'Original PC Aztec input FF SHA changed; cannot map PC child fields.'
 }
 $native=[string]$n.nativeFastFile
 if(-not(Test-Path -LiteralPath $native -PathType Leaf) -or
@@ -142,6 +157,72 @@ if($null -eq $a -or $null -eq $g -or
    -not [bool]$g.verticesPresent){
     throw "Pinned Xbox loader root/DPVS ABI/child-shape invariant not proven. Review raw witness $($files[0].FullName)"
 }
+
+# Second half of ONE PINNED OAT BUILD: original-PC typed GfxWorld source
+# root and DPVS child counts, not an Xbox donor body. Prior PC material
+# extraction already proved the source 39/39; re-run with the added ABI
+# witness in this same tool binary, retaining only count/offset metadata.
+$pcTemp=Join-Path ([IO.Path]::GetTempPath()) ('WaW360_PcWorldRoot_' + [Guid]::NewGuid().ToString('N').Substring(0,12))
+$pcWorst=Join-Path $pcTemp ('pc_gfxworld_39_material_source_corpus\' + ('A'*96) + '\material_38_statebits_pc_le.bin')
+if($pcWorst.Length -ge 240){throw "PC original source OAT temporary path too long: $($pcWorst.Length)."}
+New-Item -ItemType Directory -Force -Path $pcTemp | Out-Null
+$pcOutput=New-Object 'System.Collections.Generic.List[string]'
+$pcExit=$null
+$old=$ErrorActionPreference
+try{
+    $ErrorActionPreference='Continue'
+    $global:LASTEXITCODE=$null
+    try{
+        & $dumper '--no-color' '--include-assets' 'gfxworld' '--output-folder' $pcTemp $pcFastFile 2>&1 |
+            ForEach-Object {$pcOutput.Add([string]$_)}
+        if($null -ne $LASTEXITCODE){$pcExit=[int]$LASTEXITCODE}
+    }catch{$pcOutput.Add("Original-PC OAT invocation failed: $_")}
+}finally{$ErrorActionPreference=$old}
+if($null -eq $pcExit){$pcExit=-1}
+$pcLog=Join-Path $out 'original_pc_oat_gfxworld_root_dpvs.log'
+[IO.File]::WriteAllLines($pcLog,[string[]]@("Exit=$pcExit","FF=$pcFastFile") + [string[]]@($pcOutput),[Text.UTF8Encoding]::new($false))
+Write-Host "[AZTEC-WORLD-ABI] Original-PC OAT exit=$pcExit outputLines=$($pcOutput.Count)"
+if($pcExit -ne 0){
+    Get-Content -LiteralPath $pcLog -Tail 16 | ForEach-Object {Write-Host "[AZTEC-WORLD-ABI] PC TRACE $_"}
+    throw "Original-PC typed GfxWorld root/DPVS source witness failed: $pcLog"
+}
+$pcCorpus=Join-Path $pcTemp 'pc_gfxworld_39_material_source_corpus'
+$pcFiles=@(Get-ChildItem -LiteralPath $pcCorpus -Filter manifest.json -File -Recurse -ErrorAction SilentlyContinue)
+if($pcFiles.Count -ne 1){throw "Expected exactly 1 original-PC GfxWorld root shape source; found $($pcFiles.Count)."}
+$loadedPc=Get-Content -LiteralPath $pcFiles[0].FullName -Raw | ConvertFrom-Json
+$pcAbi=$loadedPc.pcWorldRootAbi
+$pcShape=$loadedPc.pcLoadedWorldRootShape
+if([string]$loadedPc.format -ne 'WaW360.T4PcGfxWorld39MaterialSourceCorpus.v1' -or
+   -not [bool]$loadedPc.abiVerified -or
+   [int]$loadedPc.materialMemoryCount -ne 39 -or
+   [int]$loadedPc.surfaceCount -ne 735 -or
+   [int]$loadedPc.exportedMaterialHeaders -ne 39 -or
+   $null -eq $pcAbi -or $null -eq $pcShape -or
+   [int]$pcAbi.materialMemorySize -ne 8 -or
+   [int]$pcAbi.dpvsStaticSurfacesAt -le 0 -or
+   [int]$pcShape.indexCount -ne 58653 -or
+   [int]$pcShape.vertexCount -ne 32713 -or
+   [int]$pcShape.surfaceCount -ne 735 -or
+   [int]$pcShape.materialMemoryCount -ne 39 -or
+   -not [bool]$pcShape.surfacesPresent -or
+   -not [bool]$pcShape.indicesPresent -or
+   -not [bool]$pcShape.verticesPresent){
+    throw "Original-PC GfxWorld root/DPVS source ABI not proven from loaded game data: $($pcFiles[0].FullName)"
+}
+$shapeDiffs=New-Object 'System.Collections.Generic.List[object]'
+foreach($field in @('planeCount','nodeCount','cellCount','indexCount','surfaceCount',
+    'vertexCount','vertexLayerDataSize','materialMemoryCount','smodelCount',
+    'staticSurfaceCount','smodelVisDataCount','surfaceVisDataCount')){
+    $pcV=[long]$pcShape.PSObject.Properties[$field].Value
+    $xbV=[long]$g.PSObject.Properties[$field].Value
+    if($pcV -ne $xbV){
+        $shapeDiffs.Add([ordered]@{field=$field;originalPc=$pcV;nativeXboxReference=$xbV})
+    }
+}
+Write-Host "[AZTEC-WORLD-ABI] SOURCE PC rootBytes=$($pcAbi.gfxWorldSize) dpvsStaticBytes=$($pcAbi.dpvsStaticSize)"
+Write-Host "[AZTEC-WORLD-ABI] SOURCE PC staticSurfaces=$($pcShape.staticSurfaceCount) cells=$($pcShape.cellCount) visData=$($pcShape.surfaceVisDataCount)"
+Write-Host "[AZTEC-WORLD-ABI] source/native child count differences=$($shapeDiffs.Count) (recorded, NOT guessed equal)"
+
 $payload=[ordered]@{
     schema='WaW360.AztecXenonNativeGfxWorldRootDpvsAbiWitness.v1'
     status='AZTEC_NATIVE_XBOX_GFXWORLD_ROOT_AND_DPVS_ABI_EXACT_SOURCE_WITNESS'
@@ -149,13 +230,18 @@ $payload=[ordered]@{
     originalNativeFastFileSha256='E0F3C244DD7B72D0FE71C05FAF014C2C9BFB05F770183954B3E7CDE625EBA98F'
     generated39RealMaterialsScratchFf=[string]$l.ExactValidated39MaterialFastFile
     standalone735RealFfMaterialLinkProof=$linked
+    originalPcFastFile=$pcFastFile
+    originalPcFastFileSha256=[string]$pcSource.sourceFastFileSha256
+    originalPcGfxWorldRootAbi=$pcAbi
+    originalPcLoadedWorldChildShape=$pcShape
+    pcVsOriginalXboxReferenceChildCountDifferences=@($shapeDiffs)
     nativeGfxWorldRootAbi=$a
     loadedNativeWorldChildShape=$g
     pcExpectedVertexCount=32713
     pcExpectedIndexCount=58653
     pcExpectedSurfaceCount=735
     pcExpectedMaterialMemoryCount=39
-    pcVsNativeCountParity=$true
+    pcVsNativeGeometryAndMaterialCountsEqual=$true
     sourceGfxWorldRootSerialized=$false
     sourceDpvsStaticSerialized=$false
     sourceWorldSurfacesInsertedInFf=$false
@@ -168,6 +254,7 @@ Write-Host "[AZTEC-WORLD-ABI] offsets dpvsRoot=$($a.dpvsStaticAt) surfacesInDpvs
 Write-Host "[AZTEC-WORLD-ABI] offsets vertexData=$($a.vertexDataAt) indexPtr=$($a.indicesAt) materialMemory=$($a.materialMemoryAt)"
 Write-Host "[AZTEC-WORLD-ABI] nativeLoadedCounts indices=$($g.indexCount) vertices=$($g.vertexCount) surfaces=$($g.surfaceCount) materialOwners=$($g.materialMemoryCount) staticSurfaces=$($g.staticSurfaceCount)"
 Write-Host "[AZTEC-WORLD-ABI] DPVS child visCounts surface=$($g.surfaceVisDataCount) smodel=$($g.smodelVisDataCount) cells=$($g.cellCount)"
+Write-Host "[AZTEC-WORLD-ABI] PC v Xbox root sizes: $($pcAbi.gfxWorldSize) -> $($a.gfxWorldSize); DPVS: $($pcAbi.dpvsStaticSize) -> $($a.dpvsStaticSize)"
 Write-Host "[AZTEC-WORLD-ABI] report=$report"
 Write-Host '[AZTEC-WORLD-ABI] Native ABI proven only; original PC GfxWorld children not yet inserted. Gate 8 PENDING.'
 & (Join-Path $PSScriptRoot 'Show-AztecFirstXboxFFProgress.ps1')
