@@ -46,17 +46,17 @@ if([string]$bridge.format -ne 'WaW360.Nuclear4U.OatXModelBridge.v5' -or
    (Get-FileHash -LiteralPath ([string]$canary.sourceFastFile) -Algorithm SHA256).Hash -ine [string]$canary.sourceFastFileSha256){
     throw 'Original PC mesh source or independent Xenon FF has changed.'
 }
-$rootMatches=@($native.Entries | Where-Object {
-    [string]$_.TypeName -ieq 'xmodel' -and [string]$_.Name -ieq 'zombie_x2_icon'
-})
-if($rootMatches.Count -ne 1){throw "Expected exactly one Aztec native XModel root, got $($rootMatches.Count)"}
-$root=$rootMatches[0]
-$materialRoots=@($native.Entries | Where-Object {[string]$_.TypeName -ieq 'material'})
 function Normalize([string]$value){
     $v=$value.Trim().TrimStart(',').Replace('\','/')
     if($v.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){$v=$v.Substring(0,$v.Length-3)}
     return $v.ToLowerInvariant()
 }
+$rootMatches=@($native.Entries | Where-Object {
+    [string]$_.TypeName -ieq 'xmodel' -and (Normalize ([string]$_.Name)) -eq 'zombie_x2_icon'
+})
+if($rootMatches.Count -ne 1){throw "Expected exactly one normalized native XModel root for zombie_x2_icon, got $($rootMatches.Count)"}
+$root=$rootMatches[0]
+$materialRoots=@($native.Entries | Where-Object {[string]$_.TypeName -ieq 'material'})
 $targetGraph=Join-Path $work 'graph\dumps\000'
 $log=Join-Path $work 'xmodel_graph_oat.log'
 $report=Join-Path $work 'aztec_pc_xmodel_relocatable_graph.json'
@@ -100,7 +100,7 @@ try{
     if($gFiles.Count -ne 1){throw "Expected one relocatable graph, found $($gFiles.Count)"}
     $g=Get-Content -LiteralPath $gFiles[0].FullName -Raw | ConvertFrom-Json
     if([string]$g.format -ne 'WaW360.T4Xenon.XModelRelocatableGraph.v1' -or
-       [string]$g.name -ine [string]$root.Name -or
+       (Normalize ([string]$g.name)) -ne (Normalize ([string]$root.Name)) -or
        [int]$g.abi.xmodel -ne 212 -or
        [int]$g.unsupported.count -ne 0 -or
        [int]$g.reusable.aliasCount -ne 0){
