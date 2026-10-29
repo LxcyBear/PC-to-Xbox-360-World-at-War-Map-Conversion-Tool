@@ -37,7 +37,8 @@ internal static class T4XenonAztecMapEntsGraft
         if (name != "maps/nazi_zombie_aztec.d3dbsp" ||
             root < 0 || root >= roots.Count ||
             roots[root].Index != root ||
-            !roots[root].TypeName.Equals("mapents", StringComparison.OrdinalIgnoreCase) ||
+            !roots[root].TypeName.Replace("_", string.Empty, StringComparison.Ordinal)
+                .Equals("mapents", StringComparison.OrdinalIgnoreCase) ||
             !roots[root].Name.Equals(name, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Aztec MapEnts root/identity is missing or ambiguous.");
 
