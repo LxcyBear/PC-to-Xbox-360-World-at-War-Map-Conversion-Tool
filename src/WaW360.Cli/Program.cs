@@ -56,6 +56,27 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Wrote manifest: {args[2]}");
                 return 0;
             }
+            case "aztec-pc-material-stream-walker" when args.Length == 4:
+            {
+                var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-WALK] status=" + result.Status +
+                    " decoded=" + result.DecodedMaterialCandidates +
+                    " inlineImages=" + result.InlineImages +
+                    " stopReason=" + result.StopReason +
+                    " stopAt=" + result.StopAt);
+                foreach (var m in result.Materials)
+                    Console.WriteLine("[AZTEC-MAT-WALK] material#" + m.Ordinal +
+                        " start=" + m.HeaderAt + " unverifiedName=" + m.CandidateName +
+                        " textures=" + m.TextureCount +
+                        " inlineImages=" + m.InlineImages +
+                        " constants=" + m.ConstantCount +
+                        " statebits=" + m.StateBitsCount +
+                        " after=" + m.NextCursor);
+                Console.WriteLine("[AZTEC-MAT-WALK] report=" + args[3] +
+                    " -- structural source candidates ONLY; no Xbox FF.");
+                return 0;
+            }
             case "aztec-pc-second-material-children" when args.Length == 4:
             {
                 var result = await T4AztecPcSecondMaterialChildrenProbe.ProbeAsync(
