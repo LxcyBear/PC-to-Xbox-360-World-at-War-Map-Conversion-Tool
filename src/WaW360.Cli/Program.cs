@@ -63,12 +63,13 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"[AZTEC-MAT-CHILD] status={result.Status}");
                 Console.WriteLine($"[AZTEC-MAT-CHILD] first source Material={result.FirstMaterialHeaderAt}, nameCandidate={result.UnverifiedName}, postName={result.ExactPostNameOffset}");
                 Console.WriteLine($"[AZTEC-MAT-CHILD] childCounts textures={result.TextureCount}, constants={result.ConstantCount}, stateBits={result.StateBitsCount}, alignedLayouts={result.TestedAlignedChildLayouts}, fullyCompatible={result.FullyCompatibleDirectLayouts}");
+                Console.WriteLine($"[AZTEC-MAT-CHILD] T4 ABI textureStride={result.TextureDescriptorStride}, imagePointerOffset=+{result.TextureImagePointerOffset}, bestTextureValid={result.BestValidTextureDescriptorCount}/6, fullyValidTextureTableStarts=[{string.Join(", ", result.FullyValidTextureTableSourceOffsets)}]");
                 foreach (var c in result.BestCandidates.Take(6))
                 {
                     Console.WriteLine($"[AZTEC-MAT-CHILD] layout texture={c.TextureTableAt} constant={c.ConstantTableAt} stateBits={c.StateBitsTableAt} nextHeader={c.NextExpectedMaterialHeaderAt}");
                     Console.WriteLine($"[AZTEC-MAT-CHILD]   textureValid={c.ValidTextureDescriptors}/6, constantValid={c.PlausibleConstantRecords}/6, nextNameFollowing={c.NextMaterialHeaderNameFollowing}, nextCountsPlausible={c.NextMaterialHeaderCountsPlausible}");
                     foreach (var t in c.TextureSamples)
-                        Console.WriteLine($"[AZTEC-MAT-CHILD]   texture#{t.Index} semantic={t.Semantic} image={t.ImagePointer} plausible={t.Plausible}");
+                        Console.WriteLine($"[AZTEC-MAT-CHILD]   texture#{t.Index} semantic={t.Semantic} mature={t.IsMatureContent} image={t.ImagePointer} plausible={t.Plausible}");
                 }
                 Console.WriteLine($"[AZTEC-MAT-CHILD] report={args[3]}");
                 Console.WriteLine("[AZTEC-MAT-CHILD] Structural candidates only; names/39 bindings/FF not proven.");
