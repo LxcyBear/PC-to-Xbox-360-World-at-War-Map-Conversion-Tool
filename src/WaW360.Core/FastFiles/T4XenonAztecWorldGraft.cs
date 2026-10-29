@@ -215,9 +215,13 @@ public sealed class T4XenonAztecWorldGraft
         virtualAlloc(Encoding.UTF8.GetByteCount(NativeRootName)+1L,1,true);
         virtualAlloc(Encoding.UTF8.GetByteCount("nazi_zombie_aztec")+1L,1,true);
         if(stage>=1)virtualAlloc(_indices.Length,2,true);
-        if(stage>=2)virtualAlloc(_surfaces.Length,4,true);
+        // Pinned OAT GfxWorld reorder: '... materialMemory vd vld'.
+        // Its first member remains at the original position; vd/vld follow
+        // immediately, while the embedded DPVS surfaces are loaded later.
+        // Keep this exact allocation order in both Stage 4D and Stage 4E.
         if(stage>=3)virtualAlloc(MaterialCount*8L,4,true);
         if(stage>=4)virtualAlloc(_vertices.Length,4,true);
+        if(stage>=2)virtualAlloc(_surfaces.Length,4,true);
     }
 
     public void Emit(Stream zone,Action<long,int,bool> virtualAlloc,
@@ -245,15 +249,9 @@ public sealed class T4XenonAztecWorldGraft
             virtualAlloc(_indices.Length,2,true);
             zone.Write(_indices);
         }
-        if(stage>=2)
-        {
-            var linkedSurfaces=(byte[])_surfaces.Clone();
-            for(int i=0;i<SurfaceCount;i++)
-                Put(linkedSurfaces,i*XboxSurfaceSize+44,
-                    finalRootPointers[_surfaceOwners[i]]);
-            virtualAlloc(linkedSurfaces.Length,4,true);
-            zone.Write(linkedSurfaces);
-        }
+        // OAT reads MaterialMemory, then GfxWorldVertexData, then embedded
+        // GfxWorldDpvsStatic.surfaces. A surface-first stream causes the first
+        // surface's vertexCount/triCount to be decoded as a TEMP-block pointer.
         if(stage>=3)
         {
             var materialMemory=new byte[MaterialCount*8];
@@ -270,6 +268,15 @@ public sealed class T4XenonAztecWorldGraft
         {
             virtualAlloc(_vertices.Length,4,true);
             zone.Write(_vertices);
+        }
+        if(stage>=2)
+        {
+            var linkedSurfaces=(byte[])_surfaces.Clone();
+            for(int i=0;i<SurfaceCount;i++)
+                Put(linkedSurfaces,i*XboxSurfaceSize+44,
+                    finalRootPointers[_surfaceOwners[i]]);
+            virtualAlloc(linkedSurfaces.Length,4,true);
+            zone.Write(linkedSurfaces);
         }
     }
 
