@@ -58,7 +58,7 @@ if(-not(Test-Installed) -and $BuildDumper){
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Build-OatXenonGraphDumper.ps1')
     if($LASTEXITCODE -ne 0 -or -not $?){throw 'Native OAT PC Material corpus build failed.'}
 }
-if(-not(Test-Installed)){throw "Missing $capability: run this script ONCE with -BuildDumper."}
+if(-not(Test-Installed)){throw "Missing ${capability}: run this script ONCE with -BuildDumper."}
 $worst=Join-Path $dumpRoot ('pc_gfxworld_39_material_source_corpus\' + ('A'*96) + '\material_38_statebits_pc_le.bin')
 if($worst.Length -ge 240){throw "OAT output path too long ($($worst.Length)), shorten TEMP."}
 New-Item -ItemType Directory -Force -Path $out,$sourceRoot,$dumpRoot | Out-Null
