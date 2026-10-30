@@ -101,9 +101,24 @@ function Stage-One([int]$ordinal,[string]$name,[int]$rootIndex,[string]$sourceFo
     }
     foreach($mat in @($graph.materials)){
         if([string]::IsNullOrWhiteSpace([string]$mat)){continue}
-        $m=@($nativeMaterials|Where-Object {(Norm ([string]$_.Name)) -eq (Norm ([string]$mat))})
+        # Mirror the existing C# XModel graph resolver's exact-first
+        # material identity tiers. Do NOT collapse owned '_wj' Materials
+        # with distinct comma-prefixed external reference roots.
+        $matWanted=([string]$mat).Replace('\','/')
+        $exact=@($nativeMaterials|Where-Object {
+            ([string]$_.Name).Replace('\','/') -ieq $matWanted
+        })
+        if($exact.Count -gt 0){$m=$exact}
+        else{
+            $unmarked=$matWanted.TrimStart(',')
+            $near=@($nativeMaterials|Where-Object {
+                ([string]$_.Name).TrimStart(',').Replace('\','/') -ieq $unmarked
+            })
+            if($near.Count -gt 0){$m=$near}
+            else{$m=@($nativeMaterials|Where-Object {(Norm ([string]$_.Name)) -eq (Norm $matWanted)})}
+        }
         if($m.Count -ne 1){
-            throw "Real $name Material $mat has $($m.Count) native ownership candidates. Cannot link its graph."
+            throw "Real $name Material $mat has $($m.Count) strong native ownership candidates. Cannot link its graph."
         }
     }
     $dst=Join-Path (Join-Path $graphs 'dumps') ('{0:D3}' -f $ordinal)
