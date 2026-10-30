@@ -4,6 +4,7 @@ param([switch]$IntegrateWorld,
       [string]$ProbeLevel='Full',
       [switch]$DpvsStaticProbe,
       [switch]$Gate8ChildProbe,
+      [switch]$Gate8FiveModelProbe,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -20,6 +21,12 @@ if($Gate8ChildProbe -and (-not $DpvsStaticProbe -or -not $IntegrateWorld -or $Pr
 if(-not $Gate8ChildProbe -and $Gate8ChildLevel -ne 'All'){
     throw '-Gate8ChildLevel applies only to -Gate8ChildProbe.'
 }
+if($Gate8FiveModelProbe -and
+   (-not $IntegrateWorld -or $ProbeLevel -ne 'Full' -or
+    -not $DpvsStaticProbe -or -not $Gate8ChildProbe -or
+    $Gate8ChildLevel -ne 'All')){
+    throw '-Gate8FiveModelProbe requires -IntegrateWorld -ProbeLevel Full -DpvsStaticProbe -Gate8ChildProbe -Gate8ChildLevel All.'
+}
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $priorRoot=Join-Path $base 'pc_two_xmodel_two_material_fullgraph_integration'
@@ -32,6 +39,36 @@ $images=Join-Path $base 'pc_iwd_rawfile_integration\pc_xenon_image_graph'
 $raw=Join-Path $base 'pc_rawfile_graft\pc_rawfile_graft_input.json'
 $models=Join-Path $priorRoot 'pc_two_xmodel_graph'
 $modelBinding=Join-Path $priorRoot 'aztec_two_pc_xmodel_root_binding.json'
+if($Gate8FiveModelProbe){
+    # Exact 5-model proof is prepared only by Stage-AztecGate8FiveSourceXModelGraphs.
+    # It is a separate graph root/binding and cannot mutate the original 2-model
+    # canary or previously proven 8,509-root Gate8 BSP candidate.
+    $staging=Join-Path $repo '.deps\aztec8-five-xmodels\aztec_gate8_five_xmodel_staging.json'
+    if(-not(Test-Path -LiteralPath $staging -PathType Leaf)){
+        throw "Five original-PC XModel staging proof missing: $staging"
+    }
+    $stage=Get-Content -LiteralPath $staging -Raw | ConvertFrom-Json
+    if([string]$stage.schema -ne 'WaW360.AztecGate8FiveXModelStaging.v1' -or
+       [string]$stage.status -ne 'AZTEC_GATE8_FIVE_SOURCE_XMODEL_GRAPHS_STAGED' -or
+       [int]$stage.modelCount -ne 5 -or
+       [int]$stage.rootCount -ne 8509 -or
+       [int]$stage.staticDrawsRepresented -ne 1572 -or
+       [bool]$stage.hardwareReady){
+        throw 'Gate8 source-owned five-XModel graph staging manifest is not verified.'
+    }
+    $models=[string]$stage.graphRoot
+    $modelBinding=[string]$stage.bindingManifest
+    foreach($item in @($stage.graphProofs)){
+        if(-not(Test-Path -LiteralPath ([string]$item.stagedGraph) -PathType Leaf) -or
+           (Get-FileHash -LiteralPath ([string]$item.stagedGraph) -Algorithm SHA256).Hash -ine
+               [string]$item.sha256){
+            throw "Five-XModel graph staging SHA changed at $($item.ordinal): $($item.name)"
+        }
+    }
+    if(@($stage.graphProofs).Count -ne 5){
+        throw 'Five-XModel graph staging requires exactly five SHA-authenticated graph rows.'
+    }
+}
 $map=Join-Path $base 'pc_mapents_xenon_canary\aztec_pc_mapents_xenon_canary.json'
 $com=Join-Path $base 'pc_comworld_burnable_source\aztec_pc_comworld_burnable_source.json'
 $cli=Join-Path $repo 'src\WaW360.Cli\WaW360.Cli.csproj'
@@ -44,7 +81,8 @@ if($Gate8ChildProbe -and -not(Test-Path -LiteralPath $gate8Source -PathType Leaf
 }
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate8ChildLevel -eq 'All'){'pc_gate8_planes_nodes_layer'}
+        if($Gate8FiveModelProbe){'pc_gate8_5x_ff'}
+        elseif($Gate8ChildLevel -eq 'All'){'pc_gate8_planes_nodes_layer'}
         else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_'+$Gate8ChildLevel.ToLowerInvariant()}
     }
     elseif($DpvsStaticProbe){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static'}
@@ -147,6 +185,10 @@ if($IntegrateWorld){
     if($Gate8ChildProbe){
         Write-Host "[AZTEC-WORLD39-FF] GATE8 SOURCE CHILD PROBE: level=$Gate8ChildLevel (Planes -> Nodes -> All)"
     }
+    if($Gate8FiveModelProbe){
+        Write-Host '[AZTEC-WORLD39-FF] OPT-IN Gate8 FIVE source-owned XModel graph bodies: two prior + three real foliage'
+        Write-Host '[AZTEC-WORLD39-FF] This does NOT yet serialize all 1,903 static draw records.'
+    }
     Write-Host '[AZTEC-WORLD39-FF] Only partial DPVS scalar+surface graph: other DPVS/cell/lightmap/runtime children remain incomplete'
 }else{
     Write-Host '[AZTEC-WORLD39-FF] BASELINE: no FF-resident GfxWorld or 735-surface world linkage in this mode'
@@ -234,13 +276,29 @@ if($IntegrateWorld){
         [int]$e.RealMaterialRoots -eq 39 -and
         [int]$e.NativeRoots -eq 8509
     $diagnosticProbe=($ProbeLevel -ne 'Full') -or $DpvsStaticProbe -or $Gate8ChildProbe
-    $candidateOatPass=([bool]$e.ValidationPass) -and
+    $candidateOatPass=($code -eq 0) -and
+        ([bool]$e.ValidationPass) -and
         [bool]$e.OatZeroWarningsZeroErrors -and
         [bool]$e.ExactIdentitySequence -and
         [bool]$e.LayoutReplayExact
+    if($Gate8FiveModelProbe){
+        $candidateOatPass=$candidateOatPass -and
+            [bool]$e.ValidationOnly -and
+            -not [bool]$e.ReadyForHardware -and
+            [int]$e.NativeRoots -eq 8509 -and
+            [int]$e.RealXModelRoots -eq 5 -and
+            [int]$e.RealMaterialRoots -eq 39 -and
+            [int]$e.RealImageRoots -eq 2 -and
+            [int]$e.RealRawFileRoots -eq 114 -and
+            [int]$e.RealMapEntsRoots -eq 1 -and
+            [int]$e.RealComWorldRoots -eq 1
+    }
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate8ChildProbe -and $Gate8ChildLevel -ne 'All'){
+        status=if($Gate8FiveModelProbe){
+            if($core -and $candidateOatPass){'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS'}
+            else{'AZTEC_GATE8_FIVE_REAL_XMODELS_WORLD_OAT_BLOCKED'}
+        }elseif($Gate8ChildProbe -and $Gate8ChildLevel -ne 'All'){
             if($core -and $candidateOatPass){'AZTEC_GFXWORLD_PC_GATE8_PARTIAL_CHILD_BISECTION_OAT_PASS'}
             else{'AZTEC_GFXWORLD_PC_GATE8_PARTIAL_CHILD_BISECTION_OAT_BLOCKED'}
         }elseif($Gate8ChildProbe){
@@ -260,6 +318,9 @@ if($IntegrateWorld){
         sourceBackedGate8PlaneNodeLayerProbe=($Gate8ChildProbe -and $Gate8ChildLevel -eq 'All')
         sourceBackedGate8PartialChildBisect=($Gate8ChildProbe -and $Gate8ChildLevel -ne 'All')
         sourceBackedGate8ProbeLevel=if($Gate8ChildProbe){$Gate8ChildLevel}else{''}
+        fiveSourceOwnedXModelProbe=[bool]$Gate8FiveModelProbe
+        realXModelRootsInCurrentFf=[int]$e.RealXModelRoots
+        fiveSourceModelStagingManifest=if($Gate8FiveModelProbe){$staging}else{''}
         realOriginalPcGfxWorldCoreEmitted=($core -and -not $diagnosticProbe)
         allOriginalPcGfxWorldDpvsChildrenComplete=[bool]$e.OriginalPcGfxWorldFullDpvsGraphComplete
         realPcGfxSurfaceCount=if($ProbeLevel -in @('Surfaces','MaterialMemory','Full')){735}else{0}
@@ -274,7 +335,9 @@ if($IntegrateWorld){
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
-        note=if($Gate8ChildProbe){
+        note=if($Gate8FiveModelProbe){
+            'SCRATCH-ONLY five source-owned Xenon XModel graph root upgrades, with original-PC Gate8 BSP plane/node/layer world. Exactly 3 static draw models added to the 2 earlier canaries, but all 1903 static draw entries remain unbound, and other DPVS/cell/runtime branches are incomplete. No main/_load pair or Xbox hardware.'
+        }elseif($Gate8ChildProbe){
             'SCRATCH-ONLY Gate8 child probe: OAT typed original-PC 3447 BSP planes + 24511 nodes + vld bytes + static DPVS + original-PC world core. This is NOT full DPVS, not full runtime dependencies, not a native main/_load pair, and not hardware approved.'
         }elseif($DpvsStaticProbe){
             'SCRATCH-ONLY STATIC DPVS PROBE: 613 sortedSurface indices and original-PC static model instances are source-derived and placed before the 735 surfaces. Even with OAT pass, this does NOT complete other static/dynamic DPVS, cell/lightmap, full runtime dependencies or hardware release.'
@@ -285,7 +348,7 @@ if($IntegrateWorld){
         }
     }
     $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $report -Encoding UTF8
-    Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel sourceDpvsProbe=$DpvsStaticProbe gate8ChildProbe=$Gate8ChildProbe gate8Level=$Gate8ChildLevel fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
+    Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel sourceDpvsProbe=$DpvsStaticProbe gate8ChildProbe=$Gate8ChildProbe gate8Level=$Gate8ChildLevel fiveModelProbe=$Gate8FiveModelProbe realXModels=$($e.RealXModelRoots) fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
     Write-Host "[AZTEC-WORLD-INTEGRATED] OAT PASS=$candidateOatPass originalPcWorldFF=$($e.OutputFastFile)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] status=$($result.status)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] report=$report"
