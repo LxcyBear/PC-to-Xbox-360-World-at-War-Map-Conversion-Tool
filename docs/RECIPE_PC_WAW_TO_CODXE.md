@@ -75,6 +75,25 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Windows-confirmed 44-file Aztec corpus, lossless beta staging path
+
+Latest Windows run of `Test-CodXeT4BetaLayout.ps1` after `ce41b31`: **PowerShell 5.1 AST 8/8 PASS**, Aztec reference `nazi_zombie_aztec` is **44 files / 120,068,964 bytes**, including **37 `highmip/` files** and **0 loose sound files**. Main FF 80,309,061 bytes (76.589 MiB), load and patch FFs present, `preview.dds` present, `map.json` absent. The auditor again found no installed `usermaps` root under the selected *reference collection*, so this is a source-package inventory, not beta-install verification. Current Aztec Xbox readiness remains 3/10 verified evidence gates.
+
+**New non-installing beta-layout staging tool (code pushed, Windows runtime PENDING):** `tools/oat-xenon/Stage-CodXeT4BetaPackage.ps1` accepts a map-shaped reference folder containing `<map>.ff`. It defaults to **dry run**. Opt-in `-Stage` writes a unique, non-overwriting **separate copy** under `output/codxe_beta_stage/<map>_<run-id>/_codxe/usermaps/<map>/`, retaining every source path and file (including `highmip`, `_patch.ff`, DDS and unknown extras). Each staged file gets exact source/destination length and SHA-256 comparison, with a console progress bar and machine-readable JSON manifest. Symlinks/junctions, ambiguous or missing main FF, path escape, hash mismatch and overwrite are blocked. A staging guard outside the map folder labels the copy `REFERENCE ONLY NOT XBOX RELEASE`. Source files and old installs are never modified. This does NOT repair or re-encode any FF, convert missing assets, certify the beta format, or authorize Xbox deployment.
+
+Run its dry run before testing staging:
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+$aztec='C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\codxe latest (working map references)\nazi_zombie_aztec'
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Stage-CodXeT4BetaPackage.ps1' -SourceMapDirectory $aztec
+```
+
+When the user explicitly wants a local staged copy, rerun the same command with `-Stage` (no overwrite or Xbox install). The first real beta-installed `_codxe` tree still needs independent validation against this predicted structure, and `map.json` remains optional in PUBLIC CodXe UI only, not independently confirmed optional in the beta.
+
 ## October 30 — Aztec 44-file reference package: WinPS inventory PASS; CodXe beta profile hardened
 
 **Windows-verified:** commit `c3d4108` `Test-CodXeT4BetaLayout.ps1` passed AST preflight **8/8** and discovered exactly one map-shaped reference matching `-MapName nazi_zombie_aztec` under the user's `codxe latest (working map references)` folder. Inventory:
