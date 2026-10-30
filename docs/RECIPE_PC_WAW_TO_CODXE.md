@@ -414,3 +414,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 ```
 
 **Not a release gate:** 71/71 source identities would validate names, not real WeaponDef variable/scalar/animation/audio conversion. Do not copy this file to Xbox. Next gate is actual WeaponDef owned graph serialization and full OAT extraction, both independently read back and verified.
+
+
+## October 30 — source-owned WeaponDef scalar canary (Windows validation pending)
+
+Windows scalar witness: 71 proof bodies, 10 packed-name records, 1/10 uniquely fingerprinted numeric signatures, 27 duplicate-scalar-signature groups. These collisions DO NOT defeat the previously independently proven 10/10 loaded VIRTUAL pointer-to-name results. Do not infer identity from scalar equality or XAsset ordinal.
+
+The 449,743-byte 71-name Xbox diagnostic has independent OAT `--list` and full extraction PASS, exit 0, zero warnings and errors. Keep it unchanged. The MAIN proof-heavy FF still fails OAT and no Xbox release is authorized.
+
+New opt-in `WAW360_WEAPON_REAL_SCALAR_DIAGNOSTIC=1` emits a SECOND `hardware_test_main_xanim_native_layout_weapon_real_scalars` candidate. The builder uses current genuine-PC source offset/pointer plus the original 0x9AC Xbox-endian Alpha 7b proof record, cross-checks identity against the direct pointer witness, and copies exactly the 59 previously enumerated 32-bit nonpointer numeric fields into each of 71 name-only shells. All other fields, script strings, sound/model/animation/FX pointers and owned payloads remain inert. It verifies self-contained traversal, zone readback and wrapper round trip, and writes a DO_NOT_DEPLOY marker. This is not real gameplay WeaponDef conversion. The matrix Candidate cache includes the scalar-opt-in flag.
+
+Windows test from repo root, no native OAT rebuild:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+$env:WAW360_WEAPON_DIRECT_WITNESS_JSON = (Resolve-Path -LiteralPath '.\output\multi_map_matrix\runs\run_20261030_024027_373fb3\weapon_direct_vptr_20261030_164506.json').Path
+$env:WAW360_WEAPON_REAL_SCALAR_DIAGNOSTIC = '1'
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1' -Mode Candidate -OatVariants Primary -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
+Once emitted, separately run `Run-WaWMultiMapOatDifferential.ps1` on the latest **new** Candidate matrix with `-OatMode List`, then `Extract`, and `-VariantNames hardware_test_main_xanim_native_layout_weapon_real_scalars`. Do not count scalar-only experiment as Xbox gameplay fidelity, production owned WeaponDef conversion or a hardware release gate.
