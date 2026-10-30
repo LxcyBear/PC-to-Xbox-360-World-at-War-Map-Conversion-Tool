@@ -65,6 +65,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 The differential tool saves exact FF SHA, OAT exit code, and full extractor warnings/errors. Its automatic readiness refresh will mark the script-closure extraction gate PASS only when the matching FF digest is unchanged and OAT returns a clean full extract; a new failure instead gives us the next technical blocker. **Neither outcome authorizes an Xbox test**; the primary asset graph and other safety gates remain open.
 
+## CodXe upcoming beta — flat shared T4 usermap layout (October 30)
+
+Michael's beta changelog announces: **'New map layout, nested t4 dir gone (sorry)'** and reports that prior converted map packages need layout updates. This is a packaging/installation compatibility requirement *separate from* the Xbox FF binary conversion. Do not assume old converted `.ff` bytes need re-encoding solely due to the directory change.
+
+**Expected migration in the game directory:**
+
+```text
+OLD: <WaW game>/_codxe/t4/usermaps/<map>/<map>.ff
+NEW: <WaW game>/_codxe/usermaps/<map>/<map>.ff
+```
+
+The public CodXe source `src/common/config.cpp` currently chooses its `data_root` from shared `_codxe` or a legacy nested `t4` root; `src/game/t4/sp/components/fastfiles.cpp` constructs `<root>/usermaps/<map>/<zone>.ff` and `<root>/usermaps/<map>/sounds/...`. The upcoming **beta** contract may remove old path handling, and may also introduce extra packaging requirements. These two source files explain the old/new root difference but are **not** evidence of all unpublished beta features. Public references:
+
+- https://github.com/michaeloliverx/codxe/blob/main/src/common/config.cpp
+- https://github.com/michaeloliverx/codxe/blob/main/src/game/t4/sp/components/fastfiles.cpp
+- https://github.com/michaeloliverx/codxe/blob/main/src/game/t4/sp/components/ui.cpp
+
+PC2XB3 SourceArchive now explicitly plans the expected flat `_codxe/usermaps/<map>/` installation root without writing files there. `tools/oat-xenon/Test-CodXeT4BetaLayout.ps1 -Root <game-folder-or-beta-reference-folder>` is an independent **read-only** inventory: detects flat vs nested roots, enumerates actual files, checks name-based FF and common menu metadata presence, and creates JSON under the converter's `output/codxe_beta_layout_audit/`. The tool never moves existing maps or approves release.
+
+**Beta acceptance gate:** compare the user's available **actual beta reference map** file tree and beta build version with the expected flat output before implementing a migration/exporter. Confirm whether `map.arena`, `_patch.ff`, `.pak`, `_load.bik`, `highmip/`, streamed `sounds/`, and metadata are required/optional/preserved, rather than inventing a mandatory set. Never silently delete existing highmips, sound streams, patch FFs, videos, or additional metadata.
+
+**First beta inventory command (source folder is an example; no Xbox write):**
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-CodXeT4BetaLayout.ps1' -Root 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\codxe latest (working map references)'
+```
+
+**Status: packaging profile and read-only inventory added to repo; actual beta compatibility not yet verified.** Full Xbox readiness remains **3/10** evidence gates for Aztec pending real assets, complete OAT extract, RAM/pool checks and final packaging.
+
 ## Required gates
 
 | Step | Requirement | PC2XB3 status |
