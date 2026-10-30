@@ -26,10 +26,12 @@ try{
 }finally{$ErrorActionPreference=$old}
 if($stageExit -ne 0){throw 'PC-owned model conversion or source/native-reference classification blocked. Previous five-XModel map unchanged.'}
 $stageProof=Get-Content -LiteralPath $stagingProof -Raw|ConvertFrom-Json
-if([string]$stageProof.status -ne 'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED' -or
+if([string]$stageProof.status -notin @('AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED',
+       'AZTEC_GATE8_SOURCE_MODELS_STAGED_WITH_UNRESOLVED_REFERENCES') -or
    [int]$stageProof.sourceModels -ne 27 -or
    [int]$stageProof.staticDrawsRepresented -ne 1903 -or
-   ([int]$stageProof.realOwnedStaticModelTypes + [int]$stageProof.nativeExternalReferenceModelTypes) -ne 27 -or
+   ([int]$stageProof.realOwnedStaticModelTypes + [int]$stageProof.nativeExternalReferenceModelTypes +
+       [int]$stageProof.unresolvedNativeReferenceModelTypes) -ne 27 -or
    [int]$stageProof.modelCount -ne (2 + [int]$stageProof.realOwnedStaticModelTypes)){
     throw 'Source model ownership/classified native-reference stage is not complete.'
 }
@@ -48,10 +50,12 @@ if($emitExit -ne 0 -or -not(Test-Path -LiteralPath $report -PathType Leaf)){
 $r=Get-Content -LiteralPath $report -Raw|ConvertFrom-Json
 $ff=[string]$r.outputFastFile
 if([string]$r.schema -ne 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -or
-   [string]$r.status -ne 'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS' -or
+   [string]$r.status -notin @('AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS',
+       'AZTEC_GATE8_REAL_OWNED_XMODEL_FF_OAT_PASS_REFERENCES_UNRESOLVED') -or
    [int]$r.realXModelRootsInCurrentFf -ne [int]$stageProof.modelCount -or
    [int]$r.sourceOwnedStaticModelTypes -ne [int]$stageProof.realOwnedStaticModelTypes -or
    [int]$r.verifiedNativeExternalModelReferences -ne [int]$stageProof.nativeExternalReferenceModelTypes -or
+   [int]$r.unresolvedNativeSourceModelReferences -ne [int]$stageProof.unresolvedNativeReferenceModelTypes -or
    [int]$r.realPcGfxSurfaceCount -ne 735 -or
    [int]$r.realPcGfxWorldMaterialRoots -ne 39 -or
    -not [bool]$r.OatPass -or
@@ -66,8 +70,12 @@ $length=(Get-Item -LiteralPath $ff).Length
 Write-Host '[AZTEC-REAL-FF] ====================================================='
 Write-Host "[AZTEC-REAL-FF] PASS: $($r.status)"
 Write-Host "[AZTEC-REAL-FF] REAL Xbox source-derived XModel bodies=$($r.realXModelRootsInCurrentFf) (original two + $($stageProof.realOwnedStaticModelTypes) static types)."
-Write-Host "[AZTEC-REAL-FF] EXTERNAL native reference model types=$($stageProof.nativeExternalReferenceModelTypes), source typed model names=27/27, world surfaces=735"
-Write-Host '[AZTEC-REAL-FF] Source placement count 1903 is classified, NOT YET physically linked into GfxWorld.'
+Write-Host "[AZTEC-REAL-FF] SOURCE NAMES: real model types=$($stageProof.realOwnedStaticModelTypes), verified native refs=$($stageProof.nativeExternalReferenceModelTypes), UNRESOLVED refs=$($stageProof.unresolvedNativeReferenceModelTypes) -- 27/27 accounted"
+Write-Host '[AZTEC-REAL-FF] World geometry: 735 actual source-derived GfxSurfaces.'
+Write-Host '[AZTEC-REAL-FF] Source placement count 1903 is ACCOUNTED, NOT ALL VERIFIED, and NOT physically linked into GfxWorld.'
+if([int]$stageProof.unresolvedNativeReferenceModelTypes -gt 0){
+    Write-Host '[AZTEC-REAL-FF] WARNING: unresolved source XModel references remain identity-only; runtime use UNKNOWN. No Xbox approval.'
+}
 Write-Host "[AZTEC-REAL-FF] physical bytes=$length sha256=$sha"
 Write-Host "[AZTEC-REAL-FF] FF=$ff"
 Write-Host '[AZTEC-REAL-FF] NEXT real integration target: 1903 XModel draw links/complete world DPVS+required image/runtime assets.'
