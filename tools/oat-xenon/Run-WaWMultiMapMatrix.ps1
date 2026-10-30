@@ -238,6 +238,18 @@ foreach($m in $maps){
     }
     $folder=Join-Path $run $m.id
     $output=Join-Path $folder 'conversion'
+    if($Mode -eq 'Candidate'){
+        # C# V2 emitter appends map-name/hardware_test_* folders. The
+        # user's deep OneDrive checkout can otherwise exceed MAX_PATH.
+        # Keep durable matrix logs in $run, but FF payloads isolated in
+        # a short, unique TEMP folder (not auto-deleted).
+        $shortRun=Join-Path ([IO.Path]::GetTempPath()) ('WMM_'+(HashText $run).Substring(0,10))
+        $output=Join-Path $shortRun $m.id
+        Write-Host "[MULTIMAP]   Candidate output (short path): $output"
+        if($output.Length -gt 120){
+            throw "Short-path Candidate output exceeds 120 characters: $output"
+        }
+    }
     New-Item -ItemType Directory -Path $output -Force | Out-Null
     $finger=@()
     foreach($inputFile in (@($m.main,$m.mod,$m.patch) | Where-Object{
@@ -487,7 +499,8 @@ foreach($m in $maps){
         map=$m.name;profile=$m.profile;sourceRoot=$m.root
         main=$m.main;mainBytes=if($m.main -and (Test-Path -LiteralPath $m.main -PathType Leaf)){[int64](Get-Item -LiteralPath $m.main).Length}else{0}
         iwdCount=$m.iwds;sourceFingerprint=$sourceHash
-        status=$status;mode=$Mode;stages=@($events.ToArray())
+        status=$status;mode=$Mode;conversionOutputFolder=$output
+        stages=@($events.ToArray())
         emittedCandidateFFCount=$emittedFfCount;emittedCandidateFFBytes=$emittedFfBytes
         emittedCandidates=@($emittedFFs.ToArray())
         emittedCandidateSizeHistory=$emittedHistoryFile
