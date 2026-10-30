@@ -145,9 +145,26 @@ foreach($m in @($matrix.maps)){
         if($scriptListOk){"OAT --list 0 warnings/errors; FF SHA $([string]$script.sha256)"}else{'No same-run, SHA-matched clean OAT listing result'})))
 
     $scriptExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $scriptVariant 'Extract' $script
-    $gates.Add((New-Gate 'SCRIPT_EXTRACT' 'Script-closure full OAT extraction' $(
-        if($scriptExtractOk){'PASS'}else{'PENDING'}) $(
-        if($scriptExtractOk){'Same SHA fully extracted without warnings/errors'}else{'Full OAT extraction not yet proven for script-closure FF'})))
+    $scriptExtractFailure=$null
+    foreach($d in $diffs.ToArray()){
+        foreach($e in @($d.results)){
+            if($null -ne $e -and [string]$e.map -ieq $mapName -and
+               [string]$e.variant -eq $scriptVariant -and
+               [string]$e.oatMode -eq 'Extract' -and
+               [string]$e.sha256 -ieq [string]$script.sha256 -and
+               [long]$e.bytes -eq [long]$script.bytes -and
+               [string]$e.status -notin @('OAT_EXTRACT_CLEAN_DIAGNOSTIC','OAT_EXTRACT_EXIT0_SUMMARY_UNCONFIRMED')){
+                $scriptExtractFailure=[string]$e.status
+                break
+            }
+        }
+        if($null -ne $scriptExtractFailure){break}
+    }
+    $scriptExtractState=if($scriptExtractOk){'PASS'}elseif($null -ne $scriptExtractFailure){'BLOCKED'}else{'PENDING'}
+    $scriptExtractReason=if($scriptExtractOk){'Same SHA fully extracted without warnings/errors'}elseif($null -ne $scriptExtractFailure){
+        "Same-SHA full OAT extraction failed: $scriptExtractFailure (error is authoritative even with OAT exit=0)"
+    }else{'Full OAT extraction not yet proven for script-closure FF'}
+    $gates.Add((New-Gate 'SCRIPT_EXTRACT' 'Script-closure full OAT extraction' $scriptExtractState $scriptExtractReason))
 
     $mainExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $mainVariant 'Extract' $primary
     if(-not $mainExtractOk -and $primaryValid){
