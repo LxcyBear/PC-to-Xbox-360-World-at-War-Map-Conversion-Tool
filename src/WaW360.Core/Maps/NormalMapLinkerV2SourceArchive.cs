@@ -247,12 +247,11 @@ public static class NormalMapLinkerV2SourceArchive
             canonicalBase + "\\  <- shared usermap package root",
             canonicalBase + "\\" + canonicalBase + ".ff <- canonical merged primary graph (NOT a byte-for-byte mirror of any one PC FF)"
         };
+        // Recipe Step 7: always emit an Xbox-native loading-screen zone.
         if (selectedLoad is not null)
-            packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- selected canonical load graph: " + selectedLoad.FileName);
-
-        // This plan follows the supplied WaW360Tool porting knowledge file,
-        // NOT prior screenshot-based or assumed plugin package layouts.
-        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- required load zone assembled from the stock zombie prototype load template");
+            packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- REQUIRED: Xbox stock load template with PC loading picture from " + selectedLoad.FileName);
+        else
+            packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- REQUIRED: Xbox stock load template with generated title card");
         packagePlan.Add(canonicalBase + "\\map.json <- CodXe r351+ map menu metadata");
         packagePlan.Add(canonicalBase + "\\preview.dds <- CodXe r351+ map preview");
         if (externalSoundsExpected)
