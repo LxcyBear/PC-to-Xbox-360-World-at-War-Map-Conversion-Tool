@@ -3,6 +3,8 @@ param(
     [string]$MatrixJson='',
     [string[]]$IncludeMaps=@('nazi_zombie_FRUmansion','nazi_zombie_tower','Backrooms','nazi_zombie_aztec_V2.2'),
     [string[]]$VariantNames=@('hardware_test_main_xanim_native_layout_tracked_shell'),
+    [ValidateSet('Extract','List')]
+    [string]$OatMode='Extract',
     [string]$OatExe=''
 )
 Set-StrictMode -Version Latest
@@ -47,7 +49,7 @@ $runRoot=Split-Path -Path $MatrixJson -Parent
 $stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
 $report=Join-Path $runRoot ('oat_differential_'+$stamp+'.json')
 Write-Host '[OAT-DIFF] ==========================================================='
-Write-Host "[OAT-DIFF] No rebuild. Matrix: $MatrixJson"
+Write-Host "[OAT-DIFF] No rebuild. Matrix: $MatrixJson | OAT mode=$OatMode"
 Write-Host "[OAT-DIFF] Checking: $($IncludeMaps -join ', ')"
 foreach($m in $matrix.maps){
     $selected=$false
@@ -95,7 +97,12 @@ foreach($m in $matrix.maps){
                 New-Item -ItemType Directory -Path $out -Force | Out-Null
                 $stdout=Join-Path $tmp 'stdout.log'
                 $stderr=Join-Path $tmp 'stderr.log'
-                $argsLine=(@('--no-color','--output-folder',$out,$copy) | ForEach-Object {
+                $arguments=if($OatMode -eq 'List'){
+                    @('--list','--no-color',$copy)
+                }else{
+                    @('--no-color','--output-folder',$out,$copy)
+                }
+                $argsLine=(@($arguments) | ForEach-Object {
                     '"'+([string]$_).Replace('"','\"')+'"'
                 }) -join ' '
                 $proc=Start-Process -FilePath $OatExe -ArgumentList $argsLine -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru -Wait -NoNewWindow -ErrorAction Stop
@@ -113,9 +120,9 @@ foreach($m in $matrix.maps){
                 }
                 $bad=$all -match '(?im)(^\s*(?:\[STDERR\]\s*)?(?:ERROR\s*:|FATAL\s*:)|^\s*Failed\s+with|Unhandled exception|Loading fastfile failed)'
                 if($code -eq 0 -and $zero -and -not $bad){
-                    $status='OAT_PASS_DIAGNOSTIC_ONLY'
+                    $status=if($OatMode -eq 'List'){'OAT_LIST_CLEAN_DIAGNOSTIC'}else{'OAT_EXTRACT_CLEAN_DIAGNOSTIC'}
                 }elseif($code -eq 0 -and -not $bad){
-                    $status='OAT_ZERO_EXIT_SUMMARY_UNCONFIRMED'
+                    $status=if($OatMode -eq 'List'){'OAT_LIST_EXIT0_SUMMARY_UNCONFIRMED'}else{'OAT_EXTRACT_EXIT0_SUMMARY_UNCONFIRMED'}
                 }elseif($all -match 'Zone tried to reference invalid block 7'){
                     $status='INVALID_BLOCK_7'
                 }elseif($all -match '(?i)ERROR\s*:\s*Failed to open file.*weapons/'){
@@ -142,7 +149,7 @@ foreach($m in $matrix.maps){
                 Remove-Item -LiteralPath $tmp -Force -Recurse -ErrorAction SilentlyContinue
             }
             $results.Add([pscustomobject]@{
-                map=$mapName;variant=$variant;status=$status;bytes=$bytes
+                map=$mapName;variant=$variant;oatMode=$OatMode;status=$status;bytes=$bytes
                 sha256=$hash;exit=$code;log=$log;hardwareReady=$false
             })
         }
@@ -153,7 +160,7 @@ if($results.Count -eq 0){
 }
 [ordered]@{
     schema='WaW360.MultiMapOatDifferential.v1'
-    matrix=$MatrixJson;gitCommit=[string]$matrix.gitCommit
+    matrix=$MatrixJson;oatMode=$OatMode;gitCommit=[string]$matrix.gitCommit
     note='Read-only OAT recheck of already-emitted FFs. No Xbox release approval.'
     results=@($results.ToArray())
 }|ConvertTo-Json -Depth 9 | Set-Content -LiteralPath $report -Encoding UTF8
