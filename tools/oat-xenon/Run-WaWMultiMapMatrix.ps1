@@ -193,10 +193,14 @@ foreach($m in $maps){
     if($match){$priority.Add($m)}else{$other.Add($m)}
 }
 $maps=@($priority.ToArray())+@($other.ToArray())
-foreach($pattern in $PriorityMaps){
-    if(@($maps|Where-Object{$_.name -like $pattern}).Count -eq 0){
-        Write-Host "[MULTIMAP] PRIORITY MAP NOT DETECTED: $pattern (no source created, check folder/FF name)"
+if($IncludeMaps.Count -eq 0){
+    foreach($pattern in $PriorityMaps){
+        if(@($maps|Where-Object{$_.name -like $pattern}).Count -eq 0){
+            Write-Host "[MULTIMAP] PRIORITY MAP NOT DETECTED: $pattern (no source created, check folder/FF name)"
+        }
     }
+}else{
+    Write-Host "[MULTIMAP] Explicit map filter applied; priority-map absence is expected when excluded: $($IncludeMaps -join ', ')"
 }
 Write-Host "[MULTIMAP] Found $($maps.Count) maps. First priorities: $($PriorityMaps -join ', ')"
 Write-Host "[MULTIMAP] Compiled engine SHA/commit: $rev"
