@@ -94,6 +94,27 @@ namespace gfxworld
             "T4Xenon surface material reference must be at byte +44.");
         static_assert(offsetof(GfxSurface, bounds) == 52,
             "T4Xenon surface bounds must be at +52.");
+        // Gate 8F: native Xbox static-draw ABI, *measured* in pinned
+        // T4Xenon compiler structs. This is an observation, not a graft.
+        static_assert(sizeof(GfxPackedPlacement) == 28,
+            "Xbox static model packed placement must be 28 bytes.");
+        static_assert(sizeof(GfxStaticModelDrawInst) == 60,
+            "Xbox static draw must be 60 bytes, not PC 92 bytes.");
+        static_assert(offsetof(GfxStaticModelDrawInst, placement) == 4,
+            "Xbox static draw placement offset changed.");
+        static_assert(offsetof(GfxStaticModelDrawInst, model) == 32,
+            "Xbox XModel pointer offset changed.");
+        static_assert(offsetof(GfxStaticModelDrawInst, reflectionProbeIndex) == 36,
+            "Xbox reflection probe offset changed.");
+        static_assert(offsetof(GfxStaticModelDrawInst, primaryLightIndex) == 37,
+            "Xbox primary light offset changed.");
+        static_assert(offsetof(GfxStaticModelDrawInst, lightingHandle) == 38,
+            "Xbox 16-bit lighting handle offset changed.");
+        static_assert(offsetof(GfxStaticModelDrawInst, flags) == 40,
+            "Xbox flags offset changed.");
+        static_assert(offsetof(GfxStaticModelDrawInst, pad) == 41,
+            "Xbox draw padding offset changed.");
+
 
         const auto& world = *asset.Asset();
         const auto worldName = world.name
@@ -161,6 +182,59 @@ namespace gfxworld
         out << ",\"surfaceCount\":" << world.surfaceCount;
         out << ",\"vertexCount\":" << world.vertexCount;
         out << ",\"vertexLayerDataSize\":" << world.vertexLayerDataSize;
+        // A completely separate read-only calibration of ORIGINAL Xbox
+        // draw fields, not serialized Xbox draw bytes and not a fixup list.
+        // Only publish rows if the original loader actually fixed the
+        // expected 1903 native draw instances; never fabricate missing data.
+        out << ",\"nativeStaticDrawAbi\":{";
+        out << "\"stride\":" << sizeof(GfxStaticModelDrawInst);
+        out << ",\"placementStride\":" << sizeof(GfxPackedPlacement);
+        out << ",\"cullDistAt\":" << offsetof(GfxStaticModelDrawInst,cullDist);
+        out << ",\"placementAt\":" << offsetof(GfxStaticModelDrawInst,placement);
+        out << ",\"originAt\":" << (offsetof(GfxStaticModelDrawInst,placement) + offsetof(GfxPackedPlacement,origin));
+        out << ",\"axisAt\":" << (offsetof(GfxStaticModelDrawInst,placement) + offsetof(GfxPackedPlacement,axis));
+        out << ",\"scaleAt\":" << (offsetof(GfxStaticModelDrawInst,placement) + offsetof(GfxPackedPlacement,scale));
+        out << ",\"modelAt\":" << offsetof(GfxStaticModelDrawInst,model);
+        out << ",\"reflectionAt\":" << offsetof(GfxStaticModelDrawInst,reflectionProbeIndex);
+        out << ",\"primaryLightAt\":" << offsetof(GfxStaticModelDrawInst,primaryLightIndex);
+        out << ",\"lightingHandleAt\":" << offsetof(GfxStaticModelDrawInst,lightingHandle);
+        out << ",\"flagsAt\":" << offsetof(GfxStaticModelDrawInst,flags);
+        out << ",\"padAt\":" << offsetof(GfxStaticModelDrawInst,pad);
+        out << "}";
+        const bool drawReady = world.dpvs.smodelCount == 1903 &&
+            world.dpvs.smodelDrawInsts != nullptr;
+        out << ",\"nativeStaticDrawCount\":" << world.dpvs.smodelCount;
+        out << ",\"nativeStaticDrawArrayAvailable\":" << (drawReady?"true":"false");
+        out << ",\"nativeStaticDraws\":[";
+        if (drawReady)
+        {
+            for(int i=0; i<world.dpvs.smodelCount; ++i)
+            {
+                if(i) out << ',';
+                const auto& d = world.dpvs.smodelDrawInsts[i];
+                out << "{\"ordinal\":" << i;
+                out << ",\"model\":";
+                JsonString(out,d.model ? d.model->name : nullptr);
+                out << ",\"cullDist\":" << std::setprecision(9) << d.cullDist;
+                out << ",\"origin\":";
+                WriteTriple(out,d.placement.origin);
+                out << ",\"packedAxisWords\":["
+                    << d.placement.axis[0].packed << ','
+                    << d.placement.axis[1].packed << ','
+                    << d.placement.axis[2].packed << ']';
+                out << ",\"scale\":" << d.placement.scale;
+                out << ",\"reflectionProbeIndex\":" << static_cast<unsigned>(d.reflectionProbeIndex);
+                out << ",\"primaryLightIndex\":" << static_cast<unsigned>(d.primaryLightIndex);
+                out << ",\"lightingHandle\":" << static_cast<unsigned>(d.lightingHandle);
+                out << ",\"flags\":" << static_cast<unsigned>(d.flags);
+                unsigned int padNonZero=0;
+                for(const auto octet:d.pad){if(octet)++padNonZero;}
+                out << ",\"paddingNonZeroBytes\":" << padNonZero;
+                out << '}';
+            }
+        }
+        out << ']';
+        out << ",\"nativeStaticDrawWitnessOnly\":true";
         out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
         out << ",\"smodelCount\":" << world.dpvs.smodelCount;
         out << ",\"staticSurfaceCount\":" << world.dpvs.staticSurfaceCount;
