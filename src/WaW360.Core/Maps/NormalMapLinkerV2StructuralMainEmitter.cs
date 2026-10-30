@@ -2122,6 +2122,116 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return bytes;
     }
 
+    private sealed record OrdinalWeaponNameProbeResult(
+        List<StructuralPayload> Payloads,
+        int KnownNamesConfirmed,
+        int SyntheticNamesSubstituted,
+        int SourceFastFilesVerified);
+
+    /// <summary>
+    /// Diagnostic A/B ONLY, not production identity resolution. The ORIGINAL
+    /// PC OAT semantic XAsset pool is cross-checked against every existing
+    /// concrete WeaponDef proof name, with exactly matching physical source
+    /// root counts and unique source asset names. The remaining ten names can
+    /// then be applied to an isolated inert-WeaponDef shell variant to bypass
+    /// the Windows exporter filename restriction and expose later OAT faults.
+    ///
+    /// Unknown ordinal positions are NOT independent packed-pointer target
+    /// proofs, and their names MUST NOT be applied to the production graph.
+    /// </summary>
+    private static async Task<OrdinalWeaponNameProbeResult> BuildWeaponNameOrdinalProbeAsync(
+        IReadOnlyList<LinkerV2CanonicalRoot> roots,
+        IReadOnlyList<StructuralPayload> payloads,
+        IReadOnlyDictionary<string, SourceContext> contexts,
+        CancellationToken ct)
+    {
+        if (roots.Count != payloads.Count)
+            throw new InvalidDataException("Weapon order probe requires exactly one payload per root.");
+
+        var bySource = new Dictionary<string, Dictionary<int, string>>(StringComparer.OrdinalIgnoreCase);
+        var confirmed = 0;
+        var candidates = 0;
+
+        foreach (var fileGroup in roots
+            .Where(r => r.XboxTypeName.Equals("weapon", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(r => r.SourceFastFile, StringComparer.OrdinalIgnoreCase))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!contexts.TryGetValue(fileGroup.Key, out var ctx))
+                throw new InvalidDataException($"Weapon order probe missing PC source context: {fileGroup.Key}");
+
+            var physical = Physical(ctx.Document, "weapon");
+            var listed = await T4PcOatTechniqueSetIdentityCatalog.ListPcAssetNamesAsync(
+                ctx.Path, "weapon", ct);
+            if (listed.Count != physical.Count || listed.Count != fileGroup.Count())
+                throw new InvalidDataException(
+                    $"PC OAT WeaponDef count mismatch: {Path.GetFileName(ctx.Path)} OAT={listed.Count}, physical={physical.Count}, graph={fileGroup.Count()}.");
+            if (listed.Any(string.IsNullOrWhiteSpace) ||
+                listed.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listed.Count)
+                throw new InvalidDataException(
+                    $"PC OAT WeaponDef names are empty/duplicate: {Path.GetFileName(ctx.Path)}.");
+
+            var mappings = new Dictionary<int, string>();
+            var anchors = 0;
+            var unknowns = 0;
+            for (var ordinal = 0; ordinal < physical.Count; ordinal++)
+            {
+                var sourceRoot = physical[ordinal];
+                if (!ctx.Payloads.TryGetValue(sourceRoot.Index, out var proof))
+                    throw new InvalidDataException(
+                        $"Weapon proof/root missing: {Path.GetFileName(ctx.Path)}#{sourceRoot.Index}");
+                var original = proof.Name;
+                var fromOat = listed[ordinal];
+                if (original.StartsWith("<packed-name@", StringComparison.OrdinalIgnoreCase))
+                {
+                    // OAT is authoritative for the original source XAsset
+                    // name, but positional pairing is still PROBE ONLY.
+                    if (fromOat.IndexOfAny(new[] {'<', '>', '/', '\\', ':'}) >= 0)
+                        throw new InvalidDataException($"Unsafe original WeaponDef identity: {fromOat}");
+                    mappings.Add(sourceRoot.Index, fromOat);
+                    unknowns++;
+                    continue;
+                }
+                if (!string.Equals(original, fromOat, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"Weapon OAT/proof known-name order conflict in {Path.GetFileName(ctx.Path)} ordinal={ordinal}: proof='{original}', OAT='{fromOat}'.");
+                anchors++;
+            }
+            if (anchors < 3)
+                throw new InvalidDataException(
+                    $"Insufficient independent known-name anchors in {Path.GetFileName(ctx.Path)}: {anchors}.");
+            confirmed += anchors;
+            candidates += unknowns;
+            bySource[fileGroup.Key] = mappings;
+        }
+        if (candidates == 0)
+            throw new InvalidDataException("No synthetic WeaponDef names to isolate in the A/B diagnostic.");
+
+        var changed = 0;
+        var output = new List<StructuralPayload>(payloads.Count);
+        for (var i = 0; i < roots.Count; i++)
+        {
+            var root = roots[i];
+            var baseline = payloads[i];
+            if (root.XboxTypeName.Equals("weapon", StringComparison.OrdinalIgnoreCase) &&
+                bySource.TryGetValue(root.SourceFastFile, out var remap) &&
+                remap.TryGetValue(root.SourceAssetIndex, out var realOatName))
+            {
+                output.Add(new StructuralPayload(
+                    "weapon",
+                    realOatName,
+                    BuildFixedNameShell(0x9AC, realOatName),
+                    true,
+                    "DIAGNOSTIC_ONLY_UNVERIFIED_ORDINAL: self-contained inert WeaponDef shell named by original PC OAT XAsset list, not packed-pointer proof"));
+                changed++;
+            }
+            else output.Add(baseline);
+        }
+        if (changed != candidates)
+            throw new InvalidDataException($"Weapon probe source count mismatch: found={candidates}, renamed={changed}.");
+        return new OrdinalWeaponNameProbeResult(output, confirmed, changed, bySource.Count);
+    }
+
     private static IReadOnlyList<StructuralPayload> BuildTrackedShellVariant(IReadOnlyList<StructuralPayload> payloads)
     {
         return payloads.Select(p =>
