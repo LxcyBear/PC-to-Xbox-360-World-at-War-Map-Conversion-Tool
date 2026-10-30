@@ -7,6 +7,11 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+# powershell.exe -File can pass comma-separated -IncludeMaps as ONE string.
+# Normalize both Windows argument forms without matching unrelated maps.
+$IncludeMaps=@($IncludeMaps | ForEach-Object {
+    ([string]$_) -split ','
+} | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne '' })
 # Validate EXISTING candidates via OAT only. No .NET build, no new FF emission.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 if([string]::IsNullOrWhiteSpace($MatrixJson)){
