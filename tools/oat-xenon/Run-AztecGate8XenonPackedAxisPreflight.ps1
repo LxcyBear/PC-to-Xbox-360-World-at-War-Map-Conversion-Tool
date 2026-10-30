@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [switch]$Use28ModelWorld,
     [ValidateRange(0.0001, 0.02)]
     [double]$MaxPackedComponentError=0.003,
     [ValidateRange(0.001, 0.25)]
@@ -9,6 +10,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
 # Gate 8D: original-PC 1903 GfxStaticModelDrawInst numeric placement preflight.
+# -Use28ModelWorld checks the 28 real-body FF plus exact native stock
+# reference identity. The older five-model proof remains an independent mode.
 # The exact Xbox T4Xenon vec packer is copied from PINNED OAT:
 # src/Common/Game/T4Xenon/CommonT4Xenon.cpp uses
 # pack32::Vec3PackUnitVecThirdBased in src/Common/Utils/Pack.cpp
@@ -19,18 +22,29 @@ $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $n=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $sourceProofPath=Join-Path $n 'pc_gate8_static_draw_source\aztec_gate8_pc_static_draw_source_report.json'
 $fivePath=Join-Path $n 'pc_gate8_5x_ff\aztec_pc_world_core_integrated_oat_run.json'
+$worldPath=if($Use28ModelWorld){
+    Join-Path $n 'pc_gate8_29x_ff\aztec_pc_world_core_integrated_oat_run.json'
+}else{$fivePath}
+$stagingPath=Join-Path $repo '.deps\aztec8-all-static-xmodels\aztec_gate8_29_xmodel_staging.json'
 $auditPath=Join-Path $n 'pc_gate8_static_model_dependency_audit\aztec_gate8_static_draw_xmodel_dependencies.json'
 $identityPath=Join-Path $n 'main_native_closure\native_identity\nazi_zombie_aztec_native_identity_manifest.json'
-$out=Join-Path $n 'pc_gate8_static_draw_xenon_axis_preflight'
+$out=Join-Path $n $(if($Use28ModelWorld){
+    'pc_gate8_static_draw_xenon_axis_preflight_28_model_world'
+}else{'pc_gate8_static_draw_xenon_axis_preflight'})
 $reportPath=Join-Path $out 'aztec_1903_xenon_axis_pack_preflight.json'
 $entriesPath=Join-Path $out 'aztec_1903_packed_axis_candidates.json'
-foreach($p in @($sourceProofPath,$fivePath,$auditPath,$identityPath)){
+$required=@($sourceProofPath,$worldPath,$auditPath,$identityPath)
+if($Use28ModelWorld){$required+= $stagingPath}
+foreach($p in $required){
     if(-not(Test-Path -LiteralPath $p -PathType Leaf)){
         throw "Missing original-PC Xenon placement preflight input: $p"
     }
 }
 $source=Get-Content -LiteralPath $sourceProofPath -Raw | ConvertFrom-Json
-$five=Get-Content -LiteralPath $fivePath -Raw | ConvertFrom-Json
+$world=Get-Content -LiteralPath $worldPath -Raw | ConvertFrom-Json
+$staging=if($Use28ModelWorld){
+    Get-Content -LiteralPath $stagingPath -Raw | ConvertFrom-Json
+}else{$null}
 $audit=Get-Content -LiteralPath $auditPath -Raw | ConvertFrom-Json
 $identity=Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
 if([string]$source.schema -ne 'WaW360.AztecGate8PcStaticDrawSourceProof.v1' -or
@@ -40,18 +54,48 @@ if([string]$source.schema -ne 'WaW360.AztecGate8PcStaticDrawSourceProof.v1' -or
    [int]$source.fiveRealModelBodyDrawsRepresented -ne 1572 -or
    [bool]$source.pcModelPointerBytesCopied -or
    [bool]$source.hardwareReady -or
-   [string]$five.status -ne 'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS' -or
-   -not [bool]$five.OatPass -or
-   [int]$five.realXModelRootsInCurrentFf -ne 5 -or
-   -not [bool]$five.fiveSourceOwnedXModelProbe -or
-   [bool]$five.hardwareReady -or
    [string]$audit.schema -ne 'WaW360.AztecGate8StaticDrawModelDependencyAudit.v1' -or
    [int]$audit.sourceDrawInstances -ne 1903 -or
    [int]$audit.distinctSourceStaticModelNames -ne 27 -or
    [string]$identity.format -ne 'WaW360.T4Xenon.NativeIdentityManifest.v1' -or
    [int]$identity.assets -ne 8509 -or
    -not [bool]$identity.typeSequenceVerified){
-    throw 'Pinned PC 1903 draw, 5-XModel OAT world or 8509-root native model identity changed.'
+    throw 'Pinned PC 1903 draw or 8509-root native model identity changed.'
+}
+if($Use28ModelWorld){
+    if([string]$world.status -ne 'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS' -or
+       -not [bool]$world.OatPass -or
+       [int]$world.realXModelRootsInCurrentFf -ne 28 -or
+       [int]$world.sourceOwnedStaticModelTypes -ne 26 -or
+       [int]$world.verifiedNativeExternalModelReferences -ne 1 -or
+       [int]$world.unresolvedNativeSourceModelReferences -ne 0 -or
+       [bool]$world.hardwareReady -or
+       [string]$staging.schema -ne 'WaW360.AztecGate8AllStaticXModelStaging.v1' -or
+       [int]$staging.modelCount -ne 28 -or
+       [int]$staging.rootCount -ne 8509 -or
+       [int]$staging.staticDrawsRepresented -ne 1903 -or
+       [int]$staging.realOwnedStaticModelTypes -ne 26 -or
+       [int]$staging.nativeExternalReferenceModelTypes -ne 1 -or
+       [int]$staging.nativeExternalReferenceDraws -ne 1 -or
+       [int]$staging.unresolvedNativeReferenceDraws -ne 0 -or
+       @($staging.graphProofs).Count -ne 28 -or
+       [bool]$staging.hardwareReady -or
+       [int]$source.verifiedSourceWorldModelBodies -ne 28 -or
+       -not [bool]$source.verifiedSourceWorldHasAll27StaticModelIdentities -or
+       [int]$source.sourceDrawOccurrencesCoveredByRealConvertedModelTypes -ne 1902){
+        throw '28-model world, source draw coverage, or exact verified stock reference evidence changed.'
+    }
+}else{
+    if([string]$world.status -ne 'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS' -or
+       -not [bool]$world.OatPass -or
+       [int]$world.realXModelRootsInCurrentFf -ne 5 -or
+       -not [bool]$world.fiveSourceOwnedXModelProbe -or
+       [bool]$world.hardwareReady){
+        throw 'Pinned five-model OAT world changed.'
+    }
+}
+if(-not(Test-Path -LiteralPath ([string]$world.outputFastFile) -PathType Leaf)){
+    throw 'Verified native world FF is missing; no placement preflight can proceed.'
 }
 $sourcePath=[string]$source.typedDrawFile
 if(-not(Test-Path -LiteralPath $sourcePath -PathType Leaf) -or
@@ -147,6 +191,34 @@ foreach($name in @($real.Keys)){
         throw "Gate8 source-owned real foliage native identity drift: $name"
     }
 }
+$external=@{}
+if($Use28ModelWorld){
+    $real=@{}
+    foreach($binding in @($staging.graphProofs)){
+        $name=Norm ([string]$binding.name)
+        if($lookup.ContainsKey($name)){
+            if($real.ContainsKey($name) -or [int]$lookup[$name].root -ne [int]$binding.nativeRoot){
+                throw "28-world source-owned graph identity mismatch for $name."
+            }
+            $real[$name]=[int]$binding.nativeRoot
+        }
+    }
+    foreach($reference in @($staging.nativeExternalReferences)){
+        $name=Norm ([string]$reference.model)
+        if(-not $lookup.ContainsKey($name) -or
+           [int]$lookup[$name].root -ne [int]$reference.nativeRoot -or
+           $real.ContainsKey($name) -or $external.ContainsKey($name) -or
+           -not [bool]$reference.stockOatExactBodyMatch -or
+           [bool]$reference.runtimeResidencyVerified){
+            throw "28-world native-stock-only draw identity is unproven: $name."
+        }
+        $external[$name]=[int]$reference.nativeRoot
+    }
+    if($real.Count -ne 26 -or $external.Count -ne 1 -or
+       $real.Count + $external.Count -ne 27){
+        throw "28-world source model identity coverage incomplete: owned=$($real.Count), stock=$($external.Count)."
+    }
+}
 $maxError=0.0
 $maxLengthError=0.0
 $maxErrorRecord=-1
@@ -154,6 +226,7 @@ $outsideUnit=0
 $badAxes=0
 $knownReal=0
 $pending=0
+$knownExternal=0
 $seen=@{}
 $candidates=New-Object 'System.Collections.Generic.List[object]'
 $quantErrors=New-Object 'System.Collections.Generic.List[object]'
@@ -165,7 +238,8 @@ for($i=0;$i -lt 1903;$i++){
         throw "PC original static draw transform/native name mismatch at ordinal $i"
     }
     $isReal=$real.ContainsKey($name)
-    if($isReal){$knownReal++}else{$pending++}
+    $isExternal=$external.ContainsKey($name)
+    if($isReal){$knownReal++}elseif($isExternal){$knownExternal++}else{$pending++}
     if(-not $seen.ContainsKey($name)){$seen[$name]=0}
     $seen[$name]++
     $encoded=New-Object 'System.Collections.Generic.List[string]'
@@ -201,7 +275,8 @@ for($i=0;$i -lt 1903;$i++){
         ordinal=$i
         model=[string]$d.model
         nativeModelRoot=[int]$lookup[$name].root
-        realModelBodyPresentInFiveXmodelFf=$isReal
+        realModelBodyPresentInCurrentWorldFf=$isReal
+        exactExternalStockIdentityOnly=$isExternal
         axisPackedWords=@($encoded.ToArray())
         maxComponentRoundTripError=$rowMax
     })
@@ -212,8 +287,12 @@ foreach($kv in @($lookup.Keys)){
         throw "PC static draw ordinal/name histogram changed for $kv."
     }
 }
-if($knownReal -ne 1572 -or $pending -ne 331){
-    throw "Five-model scratch FF source model placement counts changed: real=$knownReal shells=$pending."
+$expectedOwned=if($Use28ModelWorld){1902}else{1572}
+$expectedExternal=if($Use28ModelWorld){1}else{0}
+$expectedPending=if($Use28ModelWorld){0}else{331}
+if($knownReal -ne $expectedOwned -or
+   $knownExternal -ne $expectedExternal -or $pending -ne $expectedPending){
+    throw "OAT world draw-model coverage changed: owned=$knownReal external=$knownExternal identityOnly=$pending."
 }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $candidateDoc=[ordered]@{
@@ -222,6 +301,7 @@ $candidateDoc=[ordered]@{
     packer='T4Xenon.Common::Vec3PackUnitVec = pack32::Vec3PackUnitVecThirdBased'
     pinnedOatCommit='3beaa7c81af517f0c05f2b4612d477ed1541b676'
     sourceDrawsSha256=[string]$source.typedDrawSha256
+    verifiedWorldMode=if($Use28ModelWorld){'28-model'}else{'five-model'}
     records=@($candidates.ToArray())
     originalPcModelPointerBytesCopied=$false
     xboxLightingHandleSemanticsVerified=$false
@@ -236,14 +316,17 @@ $result=[ordered]@{
     status=if($allPass){'AZTEC_GATE8_1903_PC_PLACEMENT_XENON_PACKED_AXES_PREFLIGHT_PASS'}else{'AZTEC_GATE8_PC_PLACEMENT_AXES_NEED_SOURCE_ABI_REVIEW'}
     sourceDrawReport=$sourceProofPath
     originalPcDrawSourceSha256=[string]$source.typedDrawSha256
-    verifiedFiveRealXModelWorldOatReport=$fivePath
+    verifiedFiveRealXModelWorldOatReport=if($Use28ModelWorld){''}else{$fivePath}
+    verifiedSourceWorldOatReport=$worldPath
+    verifiedWorldMode=if($Use28ModelWorld){'28-model'}else{'five-model'}
     nativeIdentityManifest=$identityPath
     packedAxesReport=$entriesPath
     originalPcDrawCount=1903
     distinctOriginalPcModels=27
-    modelNamesWithRealBodiesInFiveRootWorldFf=3
-    placementOccurrencesWithRealModelBodies=1572
-    placementOccurrencesWithOnlyNativeIdentity=331
+    modelNamesWithRealBodiesInCurrentWorldFf=$real.Count
+    placementOccurrencesWithRealModelBodies=$knownReal
+    placementOccurrencesWithVerifiedExternalStockIdentity=$knownExternal
+    placementOccurrencesWithOnlyNativeIdentity=$pending
     encodedT4XenonUnitAxisVectors=5709
     largestComponentQuantizationError=$maxError
     largestComponentErrorRecord=$maxErrorRecord
@@ -259,13 +342,13 @@ $result=[ordered]@{
     xenonDrawRecordsWritten=0
     worldGfxStaticModelDrawInstsIntegrated=0
     hardwareReady=$false
-    note='All 1903 source draw placements mapped by root identity. Exact pinned T4Xenon pack/unpack codec exercised for 3x3 axes. Candidate output is ONLY per-axis packed words and native root identities, not complete Xenon draw bytes; lighting handle, flags, runtime bytes and pointer binding remain unverified.'
+    note='All 1903 source draw placements mapped by root identity. Exact pinned T4Xenon pack/unpack codec exercised for 3x3 axes. 28-world mode requires 1902 locally owned model draw occurrences plus one separately stock-verified identity, but does not establish runtime residency. Candidate output is ONLY per-axis packed words and native root identities, not complete Xenon draw bytes; lighting handle, flags, runtime bytes and pointer binding remain unverified.'
 }
 $result|ConvertTo-Json -Depth 7|Set-Content -LiteralPath $reportPath -Encoding UTF8
 Write-Host '[AZTEC-GATE8-AXES] =================================================='
 Write-Host "[AZTEC-GATE8-AXES] status=$($result.status)"
 Write-Host "[AZTEC-GATE8-AXES] source typed draws=1903, distinct models=27, packed axes=5709"
-Write-Host "[AZTEC-GATE8-AXES] proven model bodies=1572 placements, remaining shells=331"
+Write-Host "[AZTEC-GATE8-AXES] model bodies=$knownReal placements; verified external stock identity=$knownExternal; unresolved identity-only=$pending"
 Write-Host ('[AZTEC-GATE8-AXES] maxPackedComponentError={0:G9} (limit={1:G9})' -f $maxError,$MaxPackedComponentError)
 Write-Host ('[AZTEC-GATE8-AXES] maxSourceAxisLengthError={0:G9} (limit={1:G9})' -f $maxLengthError,$MaxSourceAxisLengthError)
 Write-Host "[AZTEC-GATE8-AXES] badSourceAxes=$badAxes outsideUnitComponents=$outsideUnit"
