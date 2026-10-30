@@ -230,7 +230,10 @@ if($IntegrateWorld){
         [bool]$e.LayoutReplayExact
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate8ChildProbe){
+        status=if($Gate8ChildProbe -and $Gate8ChildLevel -ne 'All'){
+            if($core -and $candidateOatPass){'AZTEC_GFXWORLD_PC_GATE8_PARTIAL_CHILD_BISECTION_OAT_PASS'}
+            else{'AZTEC_GFXWORLD_PC_GATE8_PARTIAL_CHILD_BISECTION_OAT_BLOCKED'}
+        }elseif($Gate8ChildProbe){
             if($core -and $candidateOatPass){'AZTEC_GFXWORLD_PC_GATE8_PLANES_NODES_LAYER_OAT_PASS'}
             else{'AZTEC_GFXWORLD_PC_GATE8_PLANES_NODES_LAYER_OAT_BLOCKED'}
         }elseif($DpvsStaticProbe){
@@ -244,7 +247,8 @@ if($IntegrateWorld){
         }else{'AZTEC_ORIGINAL_PC_GFXWORLD_INTEGRATION_OAT_BLOCKED'}
         probeLevel=$ProbeLevel
         sourceBackedStaticDpvsProbe=[bool]$DpvsStaticProbe
-        sourceBackedGate8PlaneNodeLayerProbe=[bool]$Gate8ChildProbe
+        sourceBackedGate8PlaneNodeLayerProbe=($Gate8ChildProbe -and $Gate8ChildLevel -eq 'All')
+        sourceBackedGate8PartialChildBisect=($Gate8ChildProbe -and $Gate8ChildLevel -ne 'All')
         sourceBackedGate8ProbeLevel=if($Gate8ChildProbe){$Gate8ChildLevel}else{''}
         realOriginalPcGfxWorldCoreEmitted=($core -and -not $diagnosticProbe)
         allOriginalPcGfxWorldDpvsChildrenComplete=[bool]$e.OriginalPcGfxWorldFullDpvsGraphComplete
