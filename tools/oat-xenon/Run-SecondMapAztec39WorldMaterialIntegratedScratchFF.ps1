@@ -86,13 +86,16 @@ if($Gate8AllModelProbe){
     }
     $allStage=Get-Content -LiteralPath $allStaging -Raw | ConvertFrom-Json
     if([string]$allStage.schema -ne 'WaW360.AztecGate8AllStaticXModelStaging.v1' -or
-       [string]$allStage.status -ne 'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_GRAPHS_STAGED' -or
-       [int]$allStage.modelCount -ne 29 -or
+       [string]$allStage.status -ne 'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED' -or
        [int]$allStage.sourceModels -ne 27 -or
        [int]$allStage.staticDrawsRepresented -ne 1903 -or
+       [int]$allStage.realOwnedStaticModelTypes + [int]$allStage.nativeExternalReferenceModelTypes -ne 27 -or
+       [int]$allStage.modelCount -ne (2 + [int]$allStage.realOwnedStaticModelTypes) -or
        [int]$allStage.rootCount -ne 8509 -or
        [bool]$allStage.hardwareReady -or
-       @($allStage.graphProofs).Count -ne 29){
+       @($allStage.graphProofs).Count -ne [int]$allStage.modelCount -or
+       @($allStage.nativeExternalReferences).Count -ne [int]$allStage.nativeExternalReferenceModelTypes){
+
         throw 'All-static PC model real graph staging report failed its strict ownership gate.'
     }
     foreach($graph in @($allStage.graphProofs)){
@@ -227,7 +230,7 @@ if($IntegrateWorld){
         Write-Host '[AZTEC-WORLD39-FF] This does NOT yet serialize all 1,903 static draw records.'
     }
     if($Gate8AllModelProbe){
-        Write-Host '[AZTEC-WORLD39-FF] OPT-IN ALL PC 27 STATIC XMODEL TYPES: 29 real source bodies in the actual 8509-root world FF.'
+        Write-Host "[AZTEC-WORLD39-FF] ALL PC static model identities: $($allStage.modelCount) real source bodies, $($allStage.nativeExternalReferenceModelTypes) native references."
         Write-Host '[AZTEC-WORLD39-FF] IMPORTANT: still 0/1903 GfxStaticModelDrawInst links; not a finished native map.'
     }
     Write-Host '[AZTEC-WORLD39-FF] Only partial DPVS scalar+surface graph: other DPVS/cell/lightmap/runtime children remain incomplete'
@@ -339,7 +342,7 @@ if($IntegrateWorld){
             [bool]$e.ValidationOnly -and
             -not [bool]$e.ReadyForHardware -and
             [int]$e.NativeRoots -eq 8509 -and
-            [int]$e.RealXModelRoots -eq 29 -and
+            [int]$e.RealXModelRoots -eq [int]$allStage.modelCount -and
             [int]$e.RealMaterialRoots -eq 39 -and
             [int]$e.RealImageRoots -eq 2 -and
             [int]$e.RealRawFileRoots -eq 114 -and
@@ -349,7 +352,7 @@ if($IntegrateWorld){
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
         status=if($Gate8AllModelProbe){
-            if($core -and $candidateOatPass){'AZTEC_GATE8_ALL_27_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS'}
+            if($core -and $candidateOatPass){'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS'}
             else{'AZTEC_GATE8_ALL_STATIC_XMODEL_WORLD_OAT_BLOCKED'}
         }elseif($Gate8FiveModelProbe){
             if($core -and $candidateOatPass){'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS'}
@@ -377,6 +380,10 @@ if($IntegrateWorld){
         fiveSourceOwnedXModelProbe=[bool]$Gate8FiveModelProbe
         all27StaticSourceXModelProbe=[bool]$Gate8AllModelProbe
         all27SourceModelStagingManifest=if($Gate8AllModelProbe){$allStaging}else{''}
+        sourceStaticModelTypesClassified=if($Gate8AllModelProbe){27}else{0}
+        sourceOwnedStaticModelTypes=if($Gate8AllModelProbe){[int]$allStage.realOwnedStaticModelTypes}else{0}
+        verifiedNativeExternalModelReferences=if($Gate8AllModelProbe){[int]$allStage.nativeExternalReferenceModelTypes}else{0}
+        nativeExternalModelResidencyVerified=$false
         realXModelRootsInCurrentFf=[int]$e.RealXModelRoots
         fiveSourceModelStagingManifest=if($Gate8FiveModelProbe){$staging}else{''}
         realOriginalPcGfxWorldCoreEmitted=($core -and -not $diagnosticProbe)
@@ -394,7 +401,7 @@ if($IntegrateWorld){
         emitterReport=$emitManifest
         emitterLog=$log
         note=if($Gate8AllModelProbe){
-            'SCRATCH-ONLY: 29 actual source-owned PC-to-Xenon XModel graph bodies, including all 27 original-PC static model TYPES. Native 8509-root layout and OAT load required. No 1903 draw-instance linkage, still incomplete DPVS, images, runtime world and remaining source dependencies. NEVER call this the full converted Aztec map or deploy to Xbox.'
+            'SCRATCH-ONLY: original-PC 27 static model NAME identities classified as genuine converted source-owned model bodies OR proven native external references; only genuine model bodies serialized, reference names kept as references. Native 8509-root/OAT check required. No 1903 draw-instance linkage, external reference residency, complete DPVS, images or runtime closure. NOT for Xbox deployment.'
         }elseif($Gate8FiveModelProbe){
             'SCRATCH-ONLY five source-owned Xenon XModel graph root upgrades, with original-PC Gate8 BSP plane/node/layer world. Exactly 3 static draw models added to the 2 earlier canaries, but all 1903 static draw entries remain unbound, and other DPVS/cell/runtime branches are incomplete. No main/_load pair or Xbox hardware.'
         }elseif($Gate8ChildProbe){
