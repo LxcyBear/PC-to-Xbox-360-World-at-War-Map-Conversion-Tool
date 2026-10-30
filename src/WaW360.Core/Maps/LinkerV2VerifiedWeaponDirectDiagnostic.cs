@@ -161,7 +161,7 @@ internal static class LinkerV2VerifiedWeaponDirectDiagnostic
             // Original variable WeaponDef ownership is NOT reconstructed here.
             var nameBytes = Encoding.ASCII.GetBytes(row.Name);
             var blob = new byte[0x9AC + nameBytes.Length + 1];
-            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(blob.AsSpan(0, 4), 0xFFFFFFFDu);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(blob.AsSpan(0, 4), 0xFFFFFFFFu);
             nameBytes.CopyTo(blob.AsSpan(0x9AC));
             output.Add(new NormalMapLinkerV2StructuralMainEmitter.StructuralPayload(
                 "weapon", row.Name, blob, true,
