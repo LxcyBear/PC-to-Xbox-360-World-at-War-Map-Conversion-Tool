@@ -89,10 +89,42 @@ foreach($m in $matrix.maps){
     Write-Host "[WEAPON-NAMES] $mapName proof records=$($names.Count) | packed-name synthetic=$($unresolved.Count) | proof files=$($proofFiles.Count)"
     foreach($n in @($unresolved | Select-Object -First 4)){Write-Host "[WEAPON-NAMES]   unresolved: $($n.name) at PC source offset=$($n.offset)"}
 
+    # The matrix's public per-map result has "main" and "sourceRoot",
+    # but deliberately does not persist "mod" or "patch". Under
+    # Set-StrictMode, reading $m.mod/$m.patch throws PropertyNotFoundStrict.
+    # The authoritative Linker V2 source-archive report already lists EVERY
+    # participating original PC FF (map, patch, mod, auxiliary), with
+    # GraphParticipation and its real source path. Read that inventory rather
+    # than inventing properties or silently dropping non-main sources.
     $inputs=New-Object 'System.Collections.Generic.List[string]'
-    foreach($p in @($m.main,$m.mod,$m.patch)){
-        if(-not [string]::IsNullOrWhiteSpace([string]$p) -and (Test-Path -LiteralPath $p -PathType Leaf)){
-            if(-not $inputs.Contains([string]$p)){$inputs.Add([string]$p)}
+    $archiveFile=Join-Path ([string]$m.conversionOutputFolder) (Join-Path $mapName (Join-Path 'linker_v2_source_archive' ($mapName+'_linker_v2_source_archive.json')))
+    if(Test-Path -LiteralPath $archiveFile -PathType Leaf){
+        $archive=Get-Content -LiteralPath $archiveFile -Raw | ConvertFrom-Json
+        if($null -eq $archive -or $null -eq $archive.PSObject.Properties['FastFiles']){
+            throw "Linker V2 source archive has no FastFiles inventory: $archiveFile"
+        }
+        foreach($source in @($archive.FastFiles)){
+            if($null -eq $source){continue}
+            if([string]$source.GraphParticipation -notin @('PRIMARY_GRAPH_SOURCE','AUXILIARY_GRAPH_SOURCE')){continue}
+            $original=[string]$source.Path
+            if([string]::IsNullOrWhiteSpace($original)){continue}
+            if(-not(Test-Path -LiteralPath $original -PathType Leaf)){
+                Write-Host "[WEAPON-NAMES]   Source FF no longer present: $original"
+                continue
+            }
+            if(-not $inputs.Contains($original)){$inputs.Add($original)}
+        }
+        Write-Host "[WEAPON-NAMES]   Source archive: $($inputs.Count) participating original PC FF(s), including mod/patch when present."
+    }else{
+        # Compatibility with historical matrix records whose short-TEMP
+        # Linker V2 archive may have been deleted. Do not pretend this
+        # single-main fallback includes the complete mod/patch source graph.
+        Write-Host "[WEAPON-NAMES]   WARNING: source archive missing; auditing main PC FF only: $archiveFile"
+        $mainProperty=$m.PSObject.Properties['main']
+        if($null -ne $mainProperty -and
+            -not [string]::IsNullOrWhiteSpace([string]$mainProperty.Value) -and
+            (Test-Path -LiteralPath ([string]$mainProperty.Value) -PathType Leaf)){
+            $inputs.Add([string]$mainProperty.Value)
         }
     }
     $oatSources=New-Object 'System.Collections.Generic.List[object]'
