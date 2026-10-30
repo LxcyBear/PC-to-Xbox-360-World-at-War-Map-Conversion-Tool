@@ -1,5 +1,19 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — 9/13 verified first-Xbox-test milestones; 28-model Gate 8D axis proof
+
+**Verified on Windows:** the first-Xbox-test progress script now reports **9/13 milestone gates (69%)**, including all **1,903 source PC GfxStaticModelDrawInst transforms** extracted from the OAT-valid 28-XModel world. The combined current diagnostic is **3.45 MiB** with 28 source-owned Xenon XModel bodies, 735 surfaces and 39 materials. All **1,903 actual GfxWorld draw pointer links remain absent**; GfxWorld DPVS/required children, paired runtime FFs and Xbox smoke-test release remain PENDING. Milestone percentages are gate counts, **not development time, gameplay completeness or physical FF growth**.
+
+**New, awaiting Windows execution:** `Run-AztecGate8XenonPackedAxisPreflight.ps1 -Use28ModelWorld` works against the verified 28-body world and the new SHA-backed 1,903-typed-draw source report, preserving the old five-model mode separately. It rechecks all 27 names and Xbox root identities, **26 owned static model types representing 1,902 source draw occurrences**, and one exact OAT stock-body identity for the remaining draw (`viewmodel_default`; hardware residency not proven). It runs the pinned T4Xenon 10-bit axis codec and 5,709-axis quantization test, writing a **separate 28-model diagnostic folder**. This is packed-axis/source-name proof only, **not** a 60-byte Xenon draw serializer, pointer relocation, OAT graft, new FF or release gate.
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate8XenonPackedAxisPreflight.ps1" -Use28ModelWorld
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Show-AztecFirstXboxFFProgress.ps1"
+```
+
+
 ## October 30 — OAT-verified FF size-growth tracker + two progress bars; start 1,903 original-PC draw source bridge
 
 **New actual-size history, no dummy payloads:** the verified 28-XModel/8,509-root diagnostic baseline from the user's console log is exactly **3,615,230 bytes (3.45 MiB)**, SHA256 `0CBD019ABB5D702429B9EECA9B04A843311FF118DDEDBD5CF012C757F757CF82`. `Build-AztecAllRealStaticModelWorldFF.ps1` now records **only FF builds that independently pass the same strict OAT emitter manifest and physical SHA checks** in `output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping\pc_gate8_29x_ff\build_logs\aztec_ff_size_history.json`. The new `Record-AztecOatFastFileSize.ps1` prints total bytes / MiB, signed byte delta from previous distinct verified FF, whether this is a new peak, real XModel/GfxSurface/Material body counts, physical static-draw link count (currently **0/1,903**), SHA, and ledger path. Records are persisted on distinct hash changes; unchanged rebuilds do not generate fake growth. The baseline comes from the user's proven prior log; this size history never uses artificial size padding and **bytes != map completeness**.
