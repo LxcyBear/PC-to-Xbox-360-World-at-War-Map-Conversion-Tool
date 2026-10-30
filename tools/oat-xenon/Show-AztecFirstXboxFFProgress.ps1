@@ -36,6 +36,13 @@ $pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_se
 $pcIntegratedWorldCore=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run\aztec_pc_world_core_integrated_oat_run.json'
 $pcStaticDpvsProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static\aztec_pc_world_core_integrated_oat_run.json'
 $pcGate8ChildProbe=Read-Report 'pc_gate8_planes_nodes_layer\aztec_pc_world_core_integrated_oat_run.json'
+$pc28ModelWorld=Read-Report 'pc_gate8_29x_ff\aztec_pc_world_core_integrated_oat_run.json'
+$pc28ModelStagingPath=Join-Path $repo '.deps\aztec8-all-static-xmodels\aztec_gate8_29_xmodel_staging.json'
+$pc28ModelStaging=$null
+if(Test-Path -LiteralPath $pc28ModelStagingPath -PathType Leaf){
+    try{$pc28ModelStaging=Get-Content -LiteralPath $pc28ModelStagingPath -Raw|ConvertFrom-Json}
+    catch{$pc28ModelStaging=$null}
+}
 $nativeTestReleaseReport=Join-Path $repo 'output\native_smoke_test_release\nazi_zombie_aztec\native_smoke_test_package_release.json'
 $nativeTestRelease=$null
 if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
@@ -148,8 +155,43 @@ $integratedCorePass=$null -ne $pcIntegratedWorldCore -and
     (Test-Path -LiteralPath ([string]$pcIntegratedWorldCore.outputFastFile) -PathType Leaf)
 Add-Gate 'Bind all 735 GfxSurface material refs to Xbox roots (OAT scratch)' (
     $integratedCorePass -or $realMainWorldOatReady) 'Original-PC 735/39 real GfxWorld FF OAT core PASS (not full DPVS)'
-# Keep the later gates fail-closed until full required world child closure,
-# both native main/_load artifacts, and the independent release evidence.
+# Gate for the October 30 verified combined ORIGINAL-PC source XModel FF:
+# not 28 independent canaries: 28 real owned model bodies physically
+# inside ONE OAT-readable 8509-root world FF. 1903 actual GfxWorld draw
+# record links are a SEPARATE gate, currently false.
+$modelsInOneFf=$null -ne $pc28ModelWorld -and
+    $null -ne $pc28ModelStaging -and
+    [string]$pc28ModelWorld.schema -eq 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -and
+    [string]$pc28ModelWorld.status -eq 'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS' -and
+    [bool]$pc28ModelWorld.OatPass -and
+    [int]$pc28ModelWorld.realXModelRootsInCurrentFf -eq 28 -and
+    [int]$pc28ModelWorld.sourceOwnedStaticModelTypes -eq 26 -and
+    [int]$pc28ModelWorld.verifiedNativeExternalModelReferences -eq 1 -and
+    [int]$pc28ModelWorld.unresolvedNativeSourceModelReferences -eq 0 -and
+    [int]$pc28ModelWorld.realPcGfxSurfaceCount -eq 735 -and
+    [int]$pc28ModelWorld.realPcGfxWorldMaterialRoots -eq 39 -and
+    [string]$pc28ModelStaging.schema -eq 'WaW360.AztecGate8AllStaticXModelStaging.v1' -and
+    [int]$pc28ModelStaging.modelCount -eq 28 -and
+    [int]$pc28ModelStaging.rootCount -eq 8509 -and
+    [int]$pc28ModelStaging.staticDrawsRepresented -eq 1903 -and
+    @($pc28ModelStaging.graphProofs).Count -eq 28 -and
+    -not [bool]$pc28ModelStaging.hardwareReady -and
+    -not [bool]$pc28ModelWorld.hardwareReady -and
+    (Test-Path -LiteralPath ([string]$pc28ModelWorld.outputFastFile) -PathType Leaf)
+Add-Gate '28 source-derived XModels integrated in one 8,509-root OAT FF' $modelsInOneFf '28 real model bodies, one stock XModel identity; 735 surfaces and 39 materials'
+
+# Explicit fail-closed 1,903 *physical GfxStaticModelDrawInst* gate.
+# Source name accounting (1903/1903) is NOT an emitted draw-array proof.
+$drawLinksOatPass=$false
+if($modelsInOneFf -and
+   $null -ne $pc28ModelWorld.PSObject.Properties['actualWorldDrawRecordsLinked']){
+    $drawLinksOatPass=[int]$pc28ModelWorld.actualWorldDrawRecordsLinked -eq 1903 -and
+        [bool]$pc28ModelWorld.OatPass
+}
+Add-Gate 'Physically link all 1,903 static-model GfxWorld draw records' $drawLinksOatPass 'Needs original-PC placement array and 1,903 native XModel pointer relocations, then OAT'
+
+# Keep release gates fail-closed until full required world child closure,
+# both native main/_load artifacts, and independent hardware evidence.
 Add-Gate 'Emit real GfxWorld root, DPVS and required children' $realMainWorldOatReady 'Full world/DPVS closure verified in final main FF'
 Add-Gate 'Integrated FF OAT pass + required runtime dependencies' $pairedFastFilesOatReady 'Both final paired FFs individually passed T4Xenon OAT 0 warnings/errors'
 Add-Gate 'Controlled Xbox smoke-test FF approved for deployment' $nativeReady 'Complete CoD Xe package plus two final OAT PASS FFs: START native Xbox test'
@@ -163,6 +205,10 @@ $bar=('='*$filled)+('-'*($segments-$filled))
 Write-Host '[AZTEC-FF-PROGRESS] ==================================================='
 Write-Host "[AZTEC-FF-PROGRESS] FIRST CONTROLLED XBOX TEST: [$bar] $percent% ($passed/$total milestones)"
 Write-Host '[AZTEC-FF-PROGRESS] Milestones count VERIFIED GATES, not time/effort or percentage of full conversion.'
+if($modelsInOneFf){
+    $size=(Get-Item -LiteralPath ([string]$pc28ModelWorld.outputFastFile)).Length
+    Write-Host ('[AZTEC-FF-PROGRESS] LATEST COMBINED SOURCE FF: {0:N2} MiB | 28 XModels + 735 surfaces + 39 Materials | 0/1903 GfxWorld static draw links verified' -f ($size/1MB))
+}
 for($i=0;$i -lt $gates.Count;$i++){
     $g=$gates[$i]
     $status=if($g.Passed){'PASS   '}else{'PENDING'}
