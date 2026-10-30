@@ -362,7 +362,7 @@ foreach($m in $maps){
                 # so a map emitting an FF but applying 0 overrides is not
                 # mistaken for successful recipe conversion.
                 foreach($line in @((Get-Content -LiteralPath $log) | Where-Object {
-                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^BLOCKER: '
+                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^WEAPON ORDINAL A/B|^BLOCKER: '
                 } | Select-Object -First 12)){
                     Write-Host "[MULTIMAP-RECIPE] $($m.name): $line"
                 }
