@@ -1,5 +1,15 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## Aztec 26-model milestone — real source XModel wave now complete, corpus integration next
+
+**Verified on user Windows in latest console log:** the 27 distinct original-PC GfxWorld static-draw model names split into **26 independent real PC→Xenon XModel OAT-PASS bodies accounting for 1,902/1,903 placements**, plus a one-placement **unresolved PC comma reference** `,viewmodel_default` pointing at **native root 7506**, whose native identity is the unprefixed owned `viewmodel_default` (frontier `NativeReference=False`). All 27 names/1,903 source occurrences are **accounted**, NOT all runtime-resolved or linked into GfxWorld. The 26 source FFs are SHA-cached and preserved. The separate combined native world FF is **NOT yet OAT-passing**.
+
+**First combined-corpus run failure (not an asset-conversion failure):** the new standalone graph extraction Unlinker returned **exit=0** for the next source model `foliage_dest_tree_jungle_02_fronds_dmg0`, but the staging script required a single, exact text line matching `^Finished with 0 warnings, 0 errors. The script falsely labeled this as failed OAT load without verifying whether the output graph physically existed. **Fixed** the OAT graph extraction gate to require exit=0, no ERROR/FATAL lines, and one exact real relocatable Xenon XModel graph whose schema, ABI, source name, unsupported count, material ownership and staged SHA are independently verified. If a terminal warning/error summary is present it must be zero warnings AND zero errors; a missing summary cannot by itself fail the extraction. An absent/malformed/ambiguous output graph still fails explicitly with its OAT log path.
+
+**Separate source-reference audit bug fixed:** PowerShell 5.1 rejected `"$zoneName: ..."` because a colon follows an undelimited variable. Use `"${zoneName}: ..."`; this restores the exact base-zone (`common.ff`/`code_post_gfx.ff`/`patch.ff`) stock reference audit without making any runtime-residency assumptions.
+
+**Rerun:** `git pull --ff-only`, then `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\oat-xenon\Build-AztecAllRealStaticModelWorldFF.ps1`. The prior first-six successfully staged corpus entries may be rebuilt from their cached model FFs; original 26 model conversions should be reused. If `foliage_dest_tree_jungle_02_fronds_dmg0` still fails, inspect `.deps\aztec8-all-static-xmodels\xmodel_006_oat.log`; the new error separates bad exit, OAT warnings/errors, missing graph and invalid graph. No claim of full map readiness, native gameplay or a finished 1,903-draw GfxWorld.
+
 ## fuck you 0x82168594
 
 PC2XB3 is a work-in-progress converter/linker for **Call of Duty: World at War** custom PC maps targeting **modified Xbox 360 consoles**.
