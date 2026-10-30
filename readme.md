@@ -1,5 +1,21 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Candidate first-run logging hotfix (FRUmansion stopped before the emitter)
+
+**Observed from user Windows Candidate run after 1a27fe5:** All-map discovery passed (11 maps), prioritization passed, and short-path candidate output was printed for FRUmansion. Then the batch error handler itself failed at line 431 writing `unexpected_map_failure.log` because Candidate mode created `%TEMP%/WMM_*/<mapid>` but had **not created** its persistent `output/multi_map_matrix/runs/<run>/<mapid>` log folder. `Start-Process -RedirectStandardOutput` requires a real parent directory, so the original command could not even start and its exception was masked by the log handler.
+
+**Commit 9f6af3e fix:** Always create/verify per-map run log folder before launching any stage (both short-path Candidate and other modes). Stage start lines announce exact command/log path. On per-map exception print the **original error and line/stack to console first**, then attempt normal logging and fallback safely to a short output-root log. A log write exception must never mask the original exception. This patch needs verification on the user's Windows install.
+
+**Run full-fleet Candidate:**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Candidate -OatVariants Primary
+```
+
+**Expected next meaningful evidence:** `[MULTIMAP-STAGE] START ... linker-v2-main-structural`, pass or blocked stage result for FRUmansion, and then subsequent Tower / other maps; where available, actual FF sizes and native OAT results. This patch does not itself prove any candidate native FF passed or that Xbox hardware can load it.
+
 ## October 30 — FIRST REAL MULTI-MAP Windows PASS: 11/11 maps, 22/22 source stages
 
 **Verified Windows run (Git be2a60a):** MapDiscovery decoded 11 real PC maps. Inventory 11/11; the subsequent full `-Mode Source` run independently returned PASS/exit 0 for BOTH `stage4-normal-analyze` and `linker-v2-source` across all 11 = **22/22 source-stage PASS**.
