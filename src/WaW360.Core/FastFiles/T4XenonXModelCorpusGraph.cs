@@ -33,18 +33,23 @@ internal sealed class T4XenonXModelCorpus
         var aztecCanary = bindingFormat == "WaW360.AztecPcSingleXModelBinding.v1";
         var aztecTwoModels = bindingFormat == "WaW360.AztecPcTwoXModelBinding.v1";
         var aztecFiveModels = bindingFormat == "WaW360.AztecGate8FiveSourceXModelBinding.v1";
-        if (!aztecCanary && !aztecTwoModels && !aztecFiveModels &&
+        var aztecFullStaticModels = bindingFormat == "WaW360.AztecGate8AllStaticXModelBinding.v1";
+        if (!aztecCanary && !aztecTwoModels && !aztecFiveModels && !aztecFullStaticModels &&
             bindingFormat != "WaW360.Nuclear4W.XModelRootBinding.v3")
             throw new InvalidDataException("Unexpected XModel root-binding manifest format.");
         if (!root.GetProperty("bindingPass").GetBoolean())
             throw new InvalidDataException("XModel root-binding manifest is not passing.");
 
         // The original 280 + 9 production corpus gate remains unchanged.
-        // Partial Aztec diagnostic shapes are restricted to exact 1-, 2-,
-        // or 5-source-model corpora. None authorizes hardware deployment,
-        // and each requires zero reference root upgrades.
-        var requiredOwned = aztecCanary ? 1 : aztecTwoModels ? 2 : aztecFiveModels ? 5 : expectedOwned;
-        var requiredRefs = (aztecCanary || aztecTwoModels || aztecFiveModels) ? 0 : expectedReferences;
+        // Source-only Aztec corpus progression is EXACTLY 1,2,5,29
+        // OAT-owned model bodies. The 29 graph shape is the existing two
+        // source canaries plus all 27 original-PC static draw model TYPES.
+        // Even with 29 bodies the 1903 GfxWorld draw records are NOT emitted.
+        var requiredOwned = aztecCanary ? 1 :
+            aztecTwoModels ? 2 : aztecFiveModels ? 5 :
+            aztecFullStaticModels ? 29 : expectedOwned;
+        var requiredRefs = (aztecCanary || aztecTwoModels || aztecFiveModels || aztecFullStaticModels)
+            ? 0 : expectedReferences;
         var ownedRows = root.GetProperty("ownedBindings").EnumerateArray().ToArray();
         var referenceRows = root.GetProperty("referenceBindings").EnumerateArray().ToArray();
         if (ownedRows.Length != requiredOwned)
@@ -127,6 +132,53 @@ internal sealed class T4XenonXModelCorpus
                 if (i >= 2 && row.GetProperty("NativeRootIndex").GetInt32() != expectedLastRoots[i - 2])
                     throw new InvalidDataException(
                         $"Gate 8 model '{name}' native root index is not the independently proven identity #{expectedLastRoots[i - 2]}.");
+            }
+        }
+
+        if (aztecFullStaticModels)
+        {
+            if (root.GetProperty("nativeRoots").GetInt32() != 8509 ||
+                root.GetProperty("nativeXModelRoots").GetInt32() != 284 ||
+                root.GetProperty("sourceStaticModels").GetInt32() != 27 ||
+                root.GetProperty("staticDrawsRepresented").GetInt32() != 1903 ||
+                !root.GetProperty("validationOnly").GetBoolean() ||
+                root.GetProperty("hardwareReady").GetBoolean())
+                throw new InvalidDataException(
+                    "All-27-static-model source manifest has incomplete identity/validation-only evidence.");
+
+            var firstFive = new[]
+            {
+                "zombie_x2_icon", "tag_origin", "foliage_oki2_tallgrass",
+                "foliage_pacific_grass01_large", "foliage_cod5_hedgerow04"
+            };
+            var knownFoliageRoots = new[] { 7502, 7634, 7465 };
+            var sourceNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var sourceRoots = new HashSet<int>();
+            for (var i = 0; i < ownedRows.Length; i++)
+            {
+                var row = ownedRows[i];
+                var corpusName = row.GetProperty("CorpusName").GetString() ?? "";
+                var nativeName = row.GetProperty("NativeName").GetString() ?? "";
+                var nativeRoot = row.GetProperty("NativeRootIndex").GetInt32();
+                if (row.GetProperty("CorpusOrdinal").GetInt32() != i ||
+                    string.IsNullOrWhiteSpace(corpusName) ||
+                    !NormalizeReferenceName(corpusName).Equals(
+                        NormalizeReferenceName(nativeName), StringComparison.OrdinalIgnoreCase) ||
+                    !sourceNames.Add(NormalizeReferenceName(corpusName)) ||
+                    !sourceRoots.Add(nativeRoot) ||
+                    nativeRoot < 0 || nativeRoot >= 8509)
+                    throw new InvalidDataException(
+                        $"All-static-model source graph #{i} has duplicate or mismatched native identity.");
+
+                if (i < firstFive.Length &&
+                    !NormalizeReferenceName(corpusName).Equals(
+                        firstFive[i], StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"All-static-model graph #{i} broke previously proven five-source-model order.");
+
+                if (i >= 2 && i < 5 && nativeRoot != knownFoliageRoots[i-2])
+                    throw new InvalidDataException(
+                        $"All-static-model graph #{i} native foliage root identity drifted.");
             }
         }
 
