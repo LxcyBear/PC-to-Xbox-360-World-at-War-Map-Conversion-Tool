@@ -644,3 +644,16 @@ foreach($r in $results){Write-Host ("[MULTIMAP] {0,-26} {1,-33} FF emitted={2}; 
 foreach($e in $summary.sharedFaults){Write-Host "[MULTIMAP] Shared blocker $($e.category) across $($e.maps) map(s)."}
 Write-Host "[MULTIMAP] JSON=$json"
 Write-Host "[MULTIMAP] CSV=$csv"
+# Refresh the evidence-driven native test-preflight after every Candidate
+# run. Readiness never copies FFs to Xbox, and its failure does not turn a
+# structural build into a release or conceal the matrix outcome.
+if($Mode -eq 'Candidate'){
+    $readiness=Join-Path $PSScriptRoot 'Run-WaWMultiMapNativeReadiness.ps1'
+    if(Test-Path -LiteralPath $readiness -PathType Leaf){
+        Write-Host '[MULTIMAP] Updating native test readiness and evidence gate history (read-only).'
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $readiness -MatrixJson $json
+        if($LASTEXITCODE -ne 0){
+            Write-Host "[MULTIMAP] WARNING: native readiness report failed with exit code $LASTEXITCODE. FF results unchanged."
+        }
+    }
+}
