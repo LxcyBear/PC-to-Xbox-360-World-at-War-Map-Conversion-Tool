@@ -2,10 +2,11 @@
 param([switch]$SkipPcModelConversion)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-# Source-owned real asset production work: convert all original-PC Aztec
-# static model TYPES to independently OAT-valid Xbox XModel bodies, then
-# aggregate those actual binary graphs into one relocatable native corpus.
-# FIRST TWO existing PC-owned XModels + 27 PC-owned static draw XModels=29.
+# Source-owned real asset production work: convert actual PC-owned Aztec
+# model TYPES into OAT-valid Xbox XModel bodies, then combine their verified
+# graphs. A comma-prefixed XModel is an EXTERNAL REFERENCE, not a PC-owned
+# mesh to fake/convert. Preserve all 27 source draw type identities.
+# Two original verified XModels + N actually owned PC static model types.
 # Does not claim final GfxWorld DPVS, 1903 draw links, images or runtime
 # source dependency closure. Never modifies the existing five-model PASS.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -21,6 +22,8 @@ $work=Join-Path $repo '.deps\aztec8-all-static-xmodels'
 $graphs=Join-Path $work 'graph'
 $bindingPath=Join-Path $work 'aztec_gate8_29_xmodel_binding.json'
 $reportPath=Join-Path $work 'aztec_gate8_29_xmodel_staging.json'
+# Historical filenames retained to avoid breaking local tooling.
+# Payload count in the JSON is authoritative, NEVER the filename.
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 function Norm([string]$name){
     $v=$name.Trim().Replace('\','/').TrimStart(',')
@@ -51,9 +54,13 @@ $caps=Get-Content -LiteralPath $cap -Raw|ConvertFrom-Json
 if([string]$wave.schema -ne 'WaW360.AztecGate8StandaloneXModelWave.v1' -or
    [string]$wave.status -ne 'AZTEC_GATE8_STATIC_MODEL_WAVE_STANDALONE_OAT_PASS' -or
    [int]$wave.sourceStaticModels -ne 27 -or
-   [int]$wave.modelOnlyOatProven -ne 27 -or
-   [int]$wave.modelOnlyOatRepresentedDraws -ne 1903 -or
-   @($wave.verifiedModels).Count -ne 27 -or
+   -not [bool]$wave.allStaticModelTypeIdentitiesClassified -or
+   [int]$wave.sourceNameTypesClassified -ne 27 -or
+   [int]$wave.modelOnlyOatProven -lt 3 -or
+   [int]$wave.modelOnlyOatProven+ [int]$wave.externalNativeReferenceModels -ne 27 -or
+   [int]$wave.modelOnlyOatRepresentedDraws + [int]$wave.externalNativeReferenceDraws -ne 1903 -or
+   @($wave.verifiedModels).Count -ne [int]$wave.modelOnlyOatProven -or
+   @($wave.explicitlyVerifiedNativeReferences).Count -ne [int]$wave.externalNativeReferenceModels -or
    [string]$five.status -ne 'AZTEC_GATE8_FIVE_SOURCE_XMODEL_GRAPHS_STAGED' -or
    [int]$five.modelCount -ne 5 -or
    @($bind5.ownedBindings).Count -ne 5 -or
@@ -160,7 +167,7 @@ for($i=0;$i -lt 5;$i++){
     Stage-One $i ([string]$b.CorpusName) ([int]$b.NativeRootIndex) $src ([string]$p.stagedGraph)
 }
 # Wave is sorted by source draw frequency: first 3 are known foliage.
-for($j=3;$j -lt 27;$j++){
+for($j=3;$j -lt @($wave.verifiedModels).Count;$j++){
     $w=$wave.verifiedModels[$j]
     $key=Norm ([string]$w.model)
     if($seenName.Contains($key)){throw "Unexpected duplicate prior static XModel $key"}
@@ -190,28 +197,54 @@ for($j=3;$j -lt 27;$j++){
         }
     }
 }
-if($rows.Count -ne 29 -or $seenName.Count -ne 29 -or $proofs.Count -ne 29){
-    throw 'Complete 27 original-PC static models plus original 2 source-owned XModels was not staged.'
+$realCount=2+[int]$wave.modelOnlyOatProven
+if($rows.Count -ne $realCount -or $seenName.Count -ne $realCount -or $proofs.Count -ne $realCount){
+    throw 'Source-owned verified XModel body count does not match the 27-name census minus explicitly verified native references.'
+}
+# Reference identities are retained in the 8509-root map by their native
+# root indices, but NO fake owned XModel graph payload is generated for them.
+# Do not claim they are runtime-resident: they may need stock zone resolution.
+foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
+    $name=[string]$reference.model
+    $root=[int]$reference.nativeRoot
+    $match=@($nativeModels|Where-Object {
+        [int]$_.Index -eq $root -and [string]$_.Name -ieq $name
+    })
+    if(-not $name.StartsWith(',') -or $match.Count -ne 1 -or
+       $seenRoot.Contains($root) -or $seenName.Contains((Norm $name)) -or
+       [bool]$reference.runtimeResidencyVerified){
+        throw "Native referenced XModel $name failed final unique root/residency classification."
+    }
 }
 $binding=[ordered]@{
-    format='WaW360.AztecGate8AllStaticXModelBinding.v1'
+    format='WaW360.AztecGate8AllStaticXModelBinding.v2'
     bindingPass=$true
     nativeRoots=8509
     nativeXModelRoots=284
     sourceStaticModels=27
+    realOwnedStaticModelTypes=[int]$wave.modelOnlyOatProven
+    nativeExternalReferenceModelTypes=[int]$wave.externalNativeReferenceModels
+    externalReferenceModels=@($wave.explicitlyVerifiedNativeReferences)
     staticDrawsRepresented=1903
+    ownedModelDraws=[int]$wave.modelOnlyOatRepresentedDraws
+    externallyReferencedDraws=[int]$wave.externalNativeReferenceDraws
+    actualOwnedModelBodies=$realCount
     validationOnly=$true
     hardwareReady=$false
     ownedBindings=@($rows.ToArray())
     referenceBindings=@()
-    note='29 real source-owned XModels, original 2 plus all 27 PC static-draw model types. Full model GRAPH ownership only; does not certify GfxWorld draw linkage, other assets or hardware.'
+    note="Actual original-PC owned XModel graph bodies: $realCount (2 known plus $($wave.modelOnlyOatProven) static types), with $($wave.externalNativeReferenceModels) independent comma-prefixed XModel references left as native roots. All 27 source names/1903 placements accounted for by owned-or-reference classification. No 1903 GfxWorld draws, external reference runtime residency, images/world closure or Xbox hardware certified."
 }
 $binding|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $bindingPath -Encoding UTF8
 $report=[ordered]@{
     schema='WaW360.AztecGate8AllStaticXModelStaging.v1'
-    status='AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_GRAPHS_STAGED'
+    status='AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED'
     sourceModels=27
-    modelCount=29
+    modelCount=$realCount
+    realOwnedStaticModelTypes=[int]$wave.modelOnlyOatProven
+    nativeExternalReferenceModelTypes=[int]$wave.externalNativeReferenceModels
+    nativeExternalReferenceDraws=[int]$wave.externalNativeReferenceDraws
+    nativeExternalReferences=@($wave.explicitlyVerifiedNativeReferences)
     rootCount=8509
     staticDrawsRepresented=1903
     graphRoot=$graphs
@@ -222,6 +255,7 @@ $report=[ordered]@{
     hardwareReady=$false
 }
 $report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $reportPath -Encoding UTF8
-Write-Host "[AZTEC-29X] status=$($report.status) modelGraphs=29/29 sourceDrawOccurrences=1903/1903"
+Write-Host "[AZTEC-29X] status=$($report.status) realOwnedModelGraphs=$realCount, nativeExternalReferences=$($wave.externalNativeReferenceModels)"
+Write-Host "[AZTEC-29X] typedSourcePlacements=1903/1903 (owned=$($wave.modelOnlyOatRepresentedDraws), nativeReference=$($wave.externalNativeReferenceDraws))"
 Write-Host "[AZTEC-29X] binding=$bindingPath"
 Write-Host '[AZTEC-29X] Real PC model graph payloads staged; next integrate into native world FF. No Xbox claim.'
