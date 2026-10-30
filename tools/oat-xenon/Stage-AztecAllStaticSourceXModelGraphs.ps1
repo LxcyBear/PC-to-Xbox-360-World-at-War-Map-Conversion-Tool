@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param([switch]$SkipPcModelConversion)
+param(
+    [switch]$SkipPcModelConversion,
+    [switch]$ReferenceCheckOnly
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 # Source-owned real asset production work: convert actual PC-owned Aztec
@@ -241,6 +244,14 @@ foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
         }
         Write-Host "[AZTEC-29X] STOCK_REFERENCE_MATCH PC=$name native=$($match[0].Name) root=$root baseZone=$($zoneList -join ',') runtimeResidency=UNPROVEN"
     }
+}
+if($ReferenceCheckOnly){
+    # Fast proof of ONLY the source comma/native root/stock base-FF
+    # identity assertions. The 26 source model FFs, 28 graph dumps,
+    # prior staging manifest and Xbox outputs are NOT touched.
+    Write-Host "[AZTEC-29X] REFERENCE_PREFLIGHT_PASS verifiedReferences=$(@($wave.explicitlyVerifiedNativeReferences).Count) unresolvedReferences=$(@($wave.unresolvedReferenceRows).Count) nativeXModelRoots=$($nativeModels.Count)"
+    Write-Host '[AZTEC-29X] OAT model extraction and native FF emission deliberately skipped by -ReferenceCheckOnly.'
+    return
 }
 # The 5-model reference is the exact preexisting verified source graph.
 # No modification to .deps/aztec8-five-xmodels is performed.
