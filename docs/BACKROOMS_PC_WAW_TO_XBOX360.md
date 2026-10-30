@@ -1,6 +1,6 @@
 # Backrooms — Call of Duty WaW PC to Xbox 360 intake
 
-This is a NEW map family. Branch xbox360/backrooms-intake starts from the last tested real-scalar FF pipeline (commit 3dd403bddfab48b7b0914670379e8ed3878f2f5a), separate from the user's exact playable Aztec Xbox package.
+This is a NEW map family. Branch xbox360/backrooms-intake starts from the last tested real-scalar FF pipeline (commit 3dd403bddfab48b7b0914670379e8ed3878f2f5a), separate from the Aztec diagnostic and reference-package staging artifacts; no original PC2XB3 Aztec fastfile has been verified playable on Xbox hardware.
 
 Different maps have used the Backrooms label. Examples are nz_backroom_prototype (Backroom Trapped) and nz_backroom_prototype1 (Backrooms Lost). Do not assume either is the user's selected map; identify the main FF from the local files.
 
@@ -29,6 +29,6 @@ Candidate uses the existing shared .NET engine, progress reporting, compressed F
 
 - No Aztec witness, scalar or ordinal environment variables can be imported into Backrooms. Intake temporarily clears and then restores them.
 - Do not copy unrelated Xbox donor/oracle bytes into production. Source provenance and native Xbox asset identity need independent proof.
-- Preserve the exact user-confirmed playable Aztec files and SHA before testing any new map.
+- Preserve the 451,050-byte OAT-extracted Aztec scalar diagnostic and its SHA separately from the native reference-package stage. No playable PC2XB3 Aztec build has been confirmed. Avoid accidental substitution of a staged retail/reference FF for converter output.
 - OAT listing or extraction is not full XModel/material/image/FX/WeaponDef/audio/RawFile closure; monitor all unresolved root types, runtime dependencies and Xbox memory budget.
 - Do not assert a map has never been converted based on its marketing name alone.
