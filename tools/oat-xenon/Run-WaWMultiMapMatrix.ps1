@@ -231,11 +231,12 @@ if($RetailRoots.Count -gt 0){
 }
 $failures=@{}
 $results=New-Object 'System.Collections.Generic.List[object]'
-# Linker V2 structural emitter ALREADY calls and validates SourceArchive,
-# RootPolicy, BlockPlan and ScriptStringMerge internally. Do not re-run
-# stage4 analyzer and SourceArchive ahead of it for every single map.
-# Independent Source-mode regression (11/11 PASS) remains available.
-$steps=if($Mode -eq 'Inventory'){@()}elseif($Mode -eq 'Analyze'){@('stage4-normal-analyze')}elseif($Mode -eq 'Source'){@('stage4-normal-analyze','linker-v2-source')}else{@('linker-v2-main-structural')}
+# Linker V2 source ALWAYS invokes NormalMapAnalyzer internally and writes
+# the same stage4 analysis artifacts. Calling stage4-normal-analyze as a
+# separate dotnet process in Source mode redundantly parses the same FF/IWD
+# inputs twice. Analyze mode remains available for standalone diagnostics.
+# The structural Candidate also calls SourceArchive/RootPolicy itself.
+$steps=if($Mode -eq 'Inventory'){@()}elseif($Mode -eq 'Analyze'){@('stage4-normal-analyze')}elseif($Mode -eq 'Source'){@('linker-v2-source')}else{@('linker-v2-main-structural')}
 $i=0
 foreach($m in $maps){
     $i++
@@ -355,6 +356,17 @@ foreach($m in $maps){
                 break
             }
             $status="PASSED_$step"
+            if($step -eq 'linker-v2-main-structural'){
+                # The CLI already prints these verified readback/recipe
+                # counters. Surface them immediately in the matrix console,
+                # so a map emitting an FF but applying 0 overrides is not
+                # mistaken for successful recipe conversion.
+                foreach($line in @((Get-Content -LiteralPath $log) | Where-Object {
+                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^BLOCKER: '
+                } | Select-Object -First 12)){
+                    Write-Host "[MULTIMAP-RECIPE] $($m.name): $line"
+                }
+            }
             if($step -eq 'linker-v2-source'){
                 # Source Step 1 is a real, read-only ZIP central-directory
                 # index. Print the recipe summary before the next map begins.
