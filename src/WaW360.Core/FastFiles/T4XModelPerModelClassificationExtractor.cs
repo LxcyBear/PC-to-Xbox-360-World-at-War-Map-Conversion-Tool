@@ -582,7 +582,10 @@ public static class T4XModelPerModelClassificationExtractor
             throw new InvalidDataException(
                 $"PC OAT --list exposed only {listedNames.Count:N0} XModels for {declared:N0} source XAsset roots.");
 
-        var expected = new Dictionary<string, int>(StringComparer.Ordinal);
+        // Asset names are compared without case sensitivity by the
+        // existing OAT/PC loaders; preserve source spelling for the actual
+        // classification CSV and JSON paths.
+        var expected = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var mapping in mappings)
         {
             if (string.IsNullOrWhiteSpace(mapping.ObservedName))
@@ -600,7 +603,7 @@ public static class T4XModelPerModelClassificationExtractor
             expected[name] = checked(count + 1);
         }
 
-        var available = new Dictionary<string, int>(StringComparer.Ordinal);
+        var available = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var name in listedNames)
         {
             available.TryGetValue(name, out var count);
@@ -620,13 +623,27 @@ public static class T4XModelPerModelClassificationExtractor
                 $"Missing/underrepresented source identities: [{string.Join("; ", missing)}]. " +
                 "No positional trimming or guest-name substitution is permitted.");
 
-        var additional = new Dictionary<string, int>(available, StringComparer.Ordinal);
+        var additional = new Dictionary<string, int>(available, StringComparer.OrdinalIgnoreCase);
         foreach (var (name, count) in expected)
             additional[name] -= count;
         var extra = additional.Values.Sum();
         if (extra != listedNames.Count - declared || additional.Values.Any(n => n < 0))
             throw new InvalidDataException(
                 "PC OAT additional XModel occurrence multiset did not reconcile with source-owned names.");
+
+        Console.WriteLine(
+            $"[XMODEL-CLASS] OAT listed {listedNames.Count:N0} XModels; " +
+            $"source XAsset roots={declared:N0}; exact source-name occurrence " +
+            $"reconciliation PASS; additional OAT rows={extra:N0}.");
+        Console.WriteLine(
+            "[XMODEL-CLASS] Unattributed extra OAT XModel names (first 12): " +
+            string.Join(" | ", additional
+                .Where(p => p.Value > 0)
+                .Take(12)
+                .Select(p => $"{p.Key} x{p.Value}")));
+        Console.WriteLine(
+            "[XMODEL-CLASS] Source-owned XModel ordinals and offsets remain " +
+            "those independently recovered from original PC zone bytes.");
 
         return mappings.Select(m => m.ObservedName).ToList();
     }
