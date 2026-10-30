@@ -86,6 +86,17 @@ if((ExecLog -ex 'dotnet' -arguments @('build',$project,'-c','Release','--nologo'
 }
 if(-not(Test-Path -LiteralPath $dll)){throw "Built CLI missing: $dll"}
 $rev=(& git -C $repo rev-parse HEAD).Trim()
+# Historic Jake reports are advisory and never release/fit validators.
+$rulesPath=Join-Path $PSScriptRoot 'multimap_conversion_rules.json'
+$jakePath=Join-Path $PSScriptRoot 'jake_reference_map_reports.json'
+$rules=Get-Content -LiteralPath $rulesPath -Raw | ConvertFrom-Json
+$jake=Get-Content -LiteralPath $jakePath -Raw | ConvertFrom-Json
+if([string]$rules.schema -ne 'WaW360.SharedConversionEvidenceRules.v1' -or
+   [string]$jake.schema -ne 'WaW360.JakeReferenceMapOutcomes.v1' -or
+   [int]$jake.reportCount -ne 39){
+    throw 'Portable rules/Jake reference report schema changed.'
+}
+Write-Host "[MULTIMAP] Loaded $(@($rules.gates).Count) scoped evidence rules and $(@($jake.reports).Count) historic Jake report samples."
 $found=New-Object 'System.Collections.Generic.List[object]'
 foreach($r in $SourceRoots){
     $root=[IO.Path]::GetFullPath($r)
@@ -163,6 +174,14 @@ foreach($m in $maps){
     $i++
     Write-Progress -Activity 'PC2XB3 multi-map conversion matrix' -Status "$i/$($maps.Count) $($m.name)" -PercentComplete ([int](100*($i-1)/$maps.Count))
     Write-Host "[MULTIMAP] [$i/$($maps.Count)] $($m.name) profile=$($m.profile)"
+    $jakeMatches=@($jake.reports | Where-Object {
+        [string]$_.map -ieq [string]$m.name
+    })
+    $jakeMatch=$null
+    if($jakeMatches.Count -eq 1){
+        $jakeMatch=$jakeMatches[0]
+        Write-Host "[MULTIMAP]   Jake historical reference: $($jakeMatch.jakeEstimatedZoneMemoryMiB) MiB ESTIMATE, $($jakeMatch.jakeHeuristicLoadProbabilityPct)% HEURISTIC, NOT Xbox verification."
+    }
     $folder=Join-Path $run $m.id
     $output=Join-Path $folder 'conversion'
     New-Item -ItemType Directory -Path $output -Force | Out-Null
@@ -330,6 +349,8 @@ foreach($m in $maps){
         previousOatDiagnosticBytes=$priorVerifiedBytes;verifiedDeltaBytes=$deltaVerifiedBytes
         candidateArtifactSetSha256=$candidateArtifactHash;sizeHistory=$historyFile
         hardwareReady=$false;retailFileIndex=$retailIndex;resultFolder=$folder
+        jakeHistoricEstimate=$jakeMatch
+        jakeEstimateIsHardwareProof=$false
     }
     $results.Add([pscustomobject]$r)
     $r|ConvertTo-Json -Depth 9|Set-Content -LiteralPath (Join-Path $folder 'result.json') -Encoding UTF8
@@ -350,7 +371,9 @@ $summary=[ordered]@{
     schema='WaW360.MultiMapConversionMatrix.v1'
     gitCommit=$rev;dateUtc=[DateTime]::UtcNow.ToString('o')
     mode=$Mode;sourceRoots=$SourceRoots;mapCount=$results.Count
-    sharedRulesLedger=(Join-Path $PSScriptRoot 'multimap_conversion_rules.json')
+    sharedRulesLedger=$rulesPath
+    jakeHistoricReportRegistry=$jakePath
+    sharedRuleCount=@($rules.gates).Count
     note='Jake evidence is guidance, not universal validated conversion rules. No native donor bytes, no fake minimum-size padding, no auto Xbox deployment. OAT PASS != playable.'
     sharedFaults=@($failures.GetEnumerator()|Sort-Object Name|ForEach-Object{[ordered]@{category=$_.Key;maps=$_.Value}})
     maps=@($results.ToArray())
