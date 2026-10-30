@@ -197,7 +197,7 @@ foreach($m in $maps){
         }
     }
     $finger=@()
-    foreach($p in @($m.main,$m.mod,$m.patch)|Where-Object{$_ -ne '' -and (Test-Path -LiteralPath $_ -PathType Leaf)}){
+    foreach($p in (@($m.main,$m.mod,$m.patch) | Where-Object{$_ -ne '' -and (Test-Path -LiteralPath $_ -PathType Leaf)})){
         $item=Get-Item -LiteralPath $p
         $finger+=("$($item.FullName)|$($item.Length)|$((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash)")
     }
@@ -209,7 +209,7 @@ foreach($m in $maps){
             $finger+=("$($iwd.FullName)|$($iwd.Length)|$((Get-FileHash -LiteralPath $iwd.FullName -Algorithm SHA256).Hash)")
         }
     }
-    $sourceHash=HashText ($finger -join [Environment]::NewLine)
+    $sourceHash=HashText (($finger | Sort-Object) -join [Environment]::NewLine)
     $historyDir=Join-Path $OutputRoot 'verified_size_history'
     New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
     $historyFile=Join-Path $historyDir ($m.id+'.json')
@@ -250,7 +250,7 @@ foreach($m in $maps){
     }
     $r=[ordered]@{
         map=$m.name;profile=$m.profile;sourceRoot=$m.root
-        main=$m.main;mainBytes=if($m.main -and(Test-Path $m.main)){[int64](Get-Item $m.main).Length}else{0}
+        main=$m.main;mainBytes=if($m.main -and (Test-Path -LiteralPath $m.main -PathType Leaf)){[int64](Get-Item -LiteralPath $m.main).Length}else{0}
         iwdCount=$m.iwds;sourceFingerprint=$sourceHash
         status=$status;mode=$Mode;stages=@($events.ToArray())
         oatPassDiagnosticCount=$oatPasses;oatPassDiagnosticBytes=$oatBytes
