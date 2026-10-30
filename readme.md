@@ -1,5 +1,23 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Windows PowerShell 5.1 parser hotfix + AST preflight
+
+**Observed:** first `Run-WaWMultiMapOatDifferential.ps1` invocation stopped at parse time, before any FF check, with `InvalidVariableReferenceWithDrive` at lines 56, 65 and 71 (`$mapName:` / `$variant:` directly followed by a colon within interpolated double-quoted strings). This does **not** mean the existing FFs changed or OAT failed.
+
+**Fix:** all three log strings now delimit the variable as `${mapName}:` or `${variant}:`; an explicit audit found no remaining plain `$identifier:` patterns in the differential script. `Test-WaWMultiMapScriptSyntax.ps1` now uses Windows PowerShell's own `System.Management.Automation.Language.Parser.ParseFile` to parse ALL WaW multi-map scripts and show line/column syntax errors without running any conversion code. GitHub edits have **not** yet been validated on Windows; run parser preflight first.
+
+**Fast no-rebuild retry:**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PowerShell syntax preflight failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1"
+```
+
+This reuses the prior 10-map emitted FF results from the original Candidate matrix and OAT-tests the reduced tracked-shell variant of FRUmansion, Tower, Backrooms and Aztec. It will not rebuild maps, and won't modify source or emitted FFs.
+
 ## October 30 — 11-map Candidate structural emission outcome + OAT differential follow-up
 
 **Observed user-run `ee481b7` 11-map matrix:** 10/11 Linker V2 structural emitters returned exit 0; Fortress alone returned BLOCKED_XANIM from a missing `mod.ff` versioned typed XAnim proof at `%TEMP%/WMM_*/fortress.../stage4_alpha4_xanim/mod_mod_ff.xbox_xanim_proof.bin`. **All 10 structural candidates emitted actual compressed FFs, but 0/10 passed native OAT.** No Xbox release authorized.
