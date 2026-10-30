@@ -12,8 +12,11 @@ $ErrorActionPreference='Stop'
 # Minimal first hardware test, NOT polished gameplay:
 # * Real 5-model / 735-GfxSurface / 39-Material GfxWorld main FF;
 # * Original-PC SELECTED and individually OAT-passing load FF;
-# * CoD Xe usermap metadata + streamed sounds preserved;
-# * Strict existing Approve-AztecNativeSmokeTest.ps1 release audit.
+# * CoD Xe metadata and streamed sounds copied IF actually present;
+# * Opt-in minimum native FastFile load-only approval with original
+#   strict complete-package approval still available by default in gate.
+#   Actual CoD Xe T4 SP fastfile.cpp uses usermaps/<map>/<name>.ff, not
+#   map.json/preview.dds, to resolve the first FF open.
 # Never copy an entire donor load FF, fake metadata, publish an unapproved FF,
 # or overwrite prior OAT-passing world/model artifacts.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -124,8 +127,25 @@ try{
         }
     }
 
-    # Preserve original/user-owned CoD Xe metadata and audio. Never
-    # invent map.json, DDS, XMA, or copy an opaque donor *.ff from template.
+    # Preserve any original/user-owned CoD Xe metadata and audio.
+    # For the first FF load-only test, CoD Xe resolves usermaps by .ff names,
+    # and does NOT require map.json, preview.dds or sounds/ to open an FF.
+    # Absence of those optional inputs is recorded, not represented as full
+    # audio/gameplay readiness. Never invent missing metadata/audio.
+    # Clear only our owned staging optional paths to prevent stale files
+    # being mistaken for source data on a later run.
+    foreach($name in @('map.json','preview.dds','description.txt','preview.png','mod.csv')){
+        $optional=Join-Path $stage $name
+        if(Test-Path -LiteralPath $optional -PathType Leaf){
+            Remove-Item -LiteralPath $optional -Force
+        }
+    }
+    foreach($name in @('sounds','highmip')){
+        $optional=Join-Path $stage $name
+        if(Test-Path -LiteralPath $optional -PathType Container){
+            Remove-Item -LiteralPath $optional -Recurse -Force
+        }
+    }
     $candidates=New-Object 'System.Collections.Generic.List[string]'
     if($PackageTemplateDirectory){
         $candidates.Add([IO.Path]::GetFullPath($PackageTemplateDirectory))
@@ -136,43 +156,43 @@ try{
         $candidates.Add((Join-Path $oneDrive ('Desktop\My Xbox\World at War\Converter\Converted Maps\'+$map)))
         $candidates.Add((Join-Path $oneDrive ('Desktop\My Xbox\My Projects\World at War\Converted Maps\'+$map)))
     }
+    # Each optional file/folder can have a different original source.
+    # Never require all three items to coexist in one directory.
+    $copied=New-Object 'System.Collections.Generic.List[string]'
     foreach($candidate in $candidates){
-        if((Test-Path -LiteralPath (Join-Path $candidate 'map.json') -PathType Leaf) -and
-           (Test-Path -LiteralPath (Join-Path $candidate 'preview.dds') -PathType Leaf) -and
-           (Test-Path -LiteralPath (Join-Path $candidate 'sounds') -PathType Container)){
-            $template=$candidate;break
-        }
-    }
-    if(-not $template){
-        Block ('Aztec CoD Xe map.json+preview.dds+sounds source missing. Re-run with -PackageTemplateDirectory <your known original package>. Checked: '+($candidates -join ' | '))
-    }else{
-        foreach($name in @('map.json','preview.dds')){
-            $h=CopySha (Join-Path $template $name) (Join-Path $stage $name)
+        if(-not(Test-Path -LiteralPath $candidate -PathType Container)){continue}
+        if(-not $template){$template=$candidate}
+        foreach($name in @('map.json','preview.dds','description.txt','preview.png','mod.csv')){
+            $src=Join-Path $candidate $name
+            $dst=Join-Path $stage $name
+            if((Test-Path -LiteralPath $src -PathType Leaf) -and
+               -not(Test-Path -LiteralPath $dst -PathType Leaf)){
+                $h=CopySha $src $dst
+                $copied.Add($name+' <- '+$candidate)
+            }
         }
         foreach($name in @('sounds','highmip')){
-            $sourcePath=Join-Path $template $name
-            if(Test-Path -LiteralPath $sourcePath -PathType Container){
-                $destination=Join-Path $stage $name
-                if(Test-Path -LiteralPath $destination -PathType Container){
-                    Remove-Item -LiteralPath $destination -Recurse -Force
-                }
-                Copy-Item -LiteralPath $sourcePath -Destination $stage -Recurse
+            $src=Join-Path $candidate $name
+            $dst=Join-Path $stage $name
+            if((Test-Path -LiteralPath $src -PathType Container) -and
+               -not(Test-Path -LiteralPath $dst -PathType Container)){
+                Copy-Item -LiteralPath $src -Destination $stage -Recurse
+                $copied.Add($name+'/ <- '+$candidate)
             }
         }
-        foreach($name in @('description.txt','preview.png','mod.csv')){
-            $from=Join-Path $template $name
-            if(Test-Path -LiteralPath $from -PathType Leaf){
-                $h=CopySha $from (Join-Path $stage $name)
-            }
-        }
-        Say "STAGED original map.json, preview.dds, sounds and optional metadata from $template"
+    }
+    Say "OPTIONAL package resources recovered=$($copied.Count)"
+    foreach($item in $copied){Say "PRESERVED $item"}
+    if($copied.Count -eq 0){
+        Say 'No metadata/preview/sounds was found; these are OPTIONAL for CoD Xe initial FF open.'
+        Say 'Missing external sounds may fail once playback starts; this remains a load-only smoke.'
     }
     if($blockers.Count -eq 0){
-        Say 'RUNNING EXISTING STRICT HARDWARE APPROVAL (two FFs + real 735-surface world + package).'
+        Say 'RUNNING ACTUAL OAT APPROVAL: two FFs + full 735-surface GfxWorld; MINIMAL LOAD-ONLY permits missing optional assets.'
         $old=$ErrorActionPreference
         try{
             $ErrorActionPreference='Continue'
-            $auditLines=@(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $approvalScript -PackageDirectory $stage -MapName $map -ReportDirectory $reports 2>&1)
+            $auditLines=@(& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $approvalScript -PackageDirectory $stage -MapName $map -ReportDirectory $reports -MinimumLoadSmokeTest 2>&1)
             $auditExit=[int]$LASTEXITCODE
         }finally{$ErrorActionPreference=$old}
         $auditLines|ForEach-Object {Say ([string]$_)}
@@ -181,12 +201,12 @@ try{
         }else{
             $release=Get-Content -LiteralPath $releaseReport -Raw|ConvertFrom-Json
             $releaseStatus=[string]$release.status
-            if($releaseStatus -ne 'HARDWARE_TEST_READY' -or
+            if($releaseStatus -notin @('HARDWARE_TEST_READY','HARDWARE_TEST_READY_MINIMAL_LOAD_ONLY') -or
                -not [bool]$release.bothFinalFastfilesOatPass -or
                -not [bool]$release.realMainGfxWorldAnd735MaterialReferencesOatPass -or
-               -not [bool]$release.completeCodxePackage -or
+               -not [bool]$release.minimalNativeFastFileLoadApproved -or
                -not [bool]$release.readyForFirstControlledHardwareSmokeTest){
-                Block 'Release script did not authorize the exact two-FF native hardware test.'
+                Block 'Two-FF/real GfxWorld OAT release did not authorize a minimum native loading smoke.'
             }
         }
     }
@@ -202,9 +222,14 @@ try{
             }
             Copy-Item -LiteralPath $stage -Destination $destRoot -Recurse
             foreach($name in @($mainName,$loadName,'map.json','preview.dds')){
-                if((Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash -ine
-                   (Get-FileHash -LiteralPath (Join-Path $dest $name) -Algorithm SHA256).Hash){
-                    throw "Published approved package checksum changed: $name"
+                $sourceItem=Join-Path $stage $name
+                $destItem=Join-Path $dest $name
+                if(Test-Path -LiteralPath $sourceItem -PathType Leaf){
+                    if(-not(Test-Path -LiteralPath $destItem -PathType Leaf) -or
+                       (Get-FileHash -LiteralPath $sourceItem -Algorithm SHA256).Hash -ine
+                       (Get-FileHash -LiteralPath $destItem -Algorithm SHA256).Hash){
+                        throw "Published approved package checksum changed: $name"
+                    }
                 }
             }
             Say "PUBLISHED approved test package to Converted Maps: $dest"
@@ -213,7 +238,8 @@ try{
 }
 catch{Block $_.Exception.Message}
 finally{
-    $approved=$blockers.Count -eq 0 -and $releaseStatus -eq 'HARDWARE_TEST_READY'
+    $approved=$blockers.Count -eq 0 -and
+        $releaseStatus -in @('HARDWARE_TEST_READY','HARDWARE_TEST_READY_MINIMAL_LOAD_ONLY')
     $result=[ordered]@{
         schema='WaW360.AztecMinimumNativeSmokePackage.v1'
         status=if($approved){'AZTEC_FIRST_NATIVE_SMOKE_PACKAGE_APPROVED'}else{'AZTEC_FIRST_NATIVE_SMOKE_PACKAGE_BLOCKED'}
@@ -225,14 +251,19 @@ finally{
         blockers=@($blockers.ToArray())
         fullGraphicsPolishRequired=$false
         hardwareReady=$approved;runtimeGameplayGuaranteed=$false
-        note='No borrowed complete Xbox _load.ff; source-selected load converter may use known local stock runtime assets. Real GfxWorld + both FF OAT pass + package metadata/sounds are the ONLY required first-test gates.'
+        minimumLoadOnlyApproval=($approved -and $releaseStatus -eq 'HARDWARE_TEST_READY_MINIMAL_LOAD_ONLY')
+        fullPackageMetadataAndSoundPresent=([bool](Test-Path -LiteralPath (Join-Path $stage 'map.json') -PathType Leaf) -and
+            [bool](Test-Path -LiteralPath (Join-Path $stage 'preview.dds') -PathType Leaf) -and
+            [bool](Test-Path -LiteralPath (Join-Path $stage 'sounds') -PathType Container))
+        note='Never borrowed an entire Xbox load.ff. Initial CoD Xe T4 SP fastfile lookup needs the two original-map-named FFs, not optional map.json/preview.dds/sounds. Both must individually OAT load with real 735-surface main GfxWorld. Missing optional resources limit audio/display but not initial FF-open test. This is not full asset, gameplay, or audio completion.'
     }
     $result|ConvertTo-Json -Depth 7|Set-Content -LiteralPath $reportPath -Encoding UTF8
     Say '=========================================================='
     Say "status=$($result.status) blockers=$($blockers.Count)"
     Say "report=$reportPath"
     if($approved){
-        Say "FIRST CONTROLLED NATIVE XBOX TEST APPROVED! Local package: $stage"
+        Say "FIRST CONTROLLED NATIVE XBOX LOAD-ONLY TEST APPROVED! Local package: $stage"
+        Say 'OPTIONAL METADATA / SOUND MAY BE MISSING. Capture FIRST exception, do not expect full gameplay.'
     }else{
         foreach($b in $blockers){Say "BLOCKER: $b"}
         Say 'NO XBOX COPY. Fix the exact blocker; not cosmetic model/lighting work.'
