@@ -211,9 +211,10 @@ namespace gfxworld
         // contain host-memory XModel* pointers and are never dumped verbatim.
         out << ",\"staticModelDrawNames\":[";
         if (world.dpvs.smodelDrawInsts &&
-            world.dpvs.smodelCount >= 0 && world.dpvs.smodelCount <= 4096)
+            world.dpvs.smodelCount <= 4096u)
         {
-            for (int i = 0; i < world.dpvs.smodelCount; ++i)
+            // smodelCount is unsigned in the pinned T4 PC ABI.
+            for (unsigned int i = 0; i < world.dpvs.smodelCount; ++i)
             {
                 if (i) out << ',';
                 const auto* model = world.dpvs.smodelDrawInsts[i].model;
