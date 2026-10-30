@@ -4,6 +4,7 @@ param(
     [string]$MainVariant='hardware_test_main_xanim_native_layout_weapon_real_scalars',
     [string]$PcMapsRoot='',
     [string]$SourceMapFolderName='nazi_zombie_aztec_V2.2',
+    [string]$MetadataDirectory='',
     [switch]$Stage
 )
 Set-StrictMode -Version Latest
@@ -197,13 +198,23 @@ try{
     # Original-PC text metadata is optional; no retail/reference FFs, PAKs,
     # highmips, DDS or audio files are borrowed or fabricated.
     $metadata=New-Object 'System.Collections.Generic.List[object]'
+    $metaRoots=@($pcMap)
+    if(-not [string]::IsNullOrWhiteSpace($MetadataDirectory)){
+        $extra=(Resolve-Path -LiteralPath $MetadataDirectory -ErrorAction Stop).Path
+        if(-not(Test-Path -LiteralPath $extra -PathType Container)){throw "Metadata directory is not a folder: $extra"}
+        $metaRoots+=,$extra
+    }
     foreach($name in @('map.arena','mod.arena','map.json')){
-        $src=Join-Path $pcMap $name
-        if(Test-Path -LiteralPath $src -PathType Leaf){
+        foreach($root in $metaRoots){
+            $src=Join-Path $root $name
             $dest=Join-Path $target $name
-            $h=Hash $src
-            CopyVerified $src $dest $h
-            $metadata.Add([pscustomobject]@{file=$name;source=$src;sha256=$h})
+            if((Test-Path -LiteralPath $src -PathType Leaf) -and
+                -not(Test-Path -LiteralPath $dest)){
+                $h=Hash $src
+                CopyVerified $src $dest $h
+                $metadata.Add([pscustomobject]@{file=$name;source=$src;sha256=$h;nonAssetMetadataOnly=$true})
+                break
+            }
         }
     }
     $manifest=Join-Path $run 'PROVENANCE_NATIVE_DEBUG_NOT_RELEASE.json'
@@ -238,6 +249,10 @@ try{
     Write-Host "[AZTEC-FIRST-EXCEPTION] MAIN: $mainSize B SHA256=$mainSha"
     Write-Host "[AZTEC-FIRST-EXCEPTION] LOAD: $((Get-Item $load).Length) B SHA256=$loadSha"
     Write-Host "[AZTEC-FIRST-EXCEPTION] Original selected PC load: $pcLoad"
+    if([bool]$l.DefeatReferenceDonorUsed){
+        Write-Host '[AZTEC-FIRST-EXCEPTION] PROVENANCE WARNING: load serializer declares a stock defeat reference donor. This is NOT zero-donor production.'
+    }
+    Write-Host "[AZTEC-FIRST-EXCEPTION] Non-FF metadata files=$($metadata.Count); any reference metadata is tracked but NO reference FF/PAK/audio was copied."
     Write-Host "[AZTEC-FIRST-EXCEPTION] Xbox-copy candidate folder: $target"
     Write-Host "[AZTEC-FIRST-EXCEPTION] Manifest: $manifest"
     Write-Host '[AZTEC-FIRST-EXCEPTION] No Xbox installation altered. Not a production release.'
