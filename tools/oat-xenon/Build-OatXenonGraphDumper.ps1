@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$TraceNativeAssetLoader
+    [switch]$TraceNativeAssetLoader,
+    [switch]$TraceWeaponNamePointers
 )
 
 Set-StrictMode -Version Latest
@@ -360,6 +361,27 @@ try {
         Write-Host '[OAT-GRAPH] Native loader first-exception index tracing enabled (diagnostic build).'
     }
 
+    if ($TraceWeaponNamePointers) {
+        # Original PC T4 loader witness. The raw pointers come from exact
+        # previously verified WeaponDef source-body proof labels.
+        $streamPath=Join-Path $oat 'src\ZoneLoading\Zone\Stream\ZoneInputStream.cpp'
+        $patchPath=Join-Path $graphSrc 'WeaponPointerDirectVirtualTrace.snippet.cpp'
+        if(-not(Test-Path -LiteralPath $patchPath -PathType Leaf)){throw 'Weapon pointer trace snippet missing.'}
+        $source=[IO.File]::ReadAllText($streamPath).Replace([string][char]13+[char]10,[string][char]10)
+        $inc='#include <cassert>'
+        $classAnchor='        [[nodiscard]] unsigned GetPointerBitCount() const override'
+        if($source.IndexOf($inc,[StringComparison]::Ordinal) -lt 0 -or
+           $source.IndexOf($inc,[StringComparison]::Ordinal) -ne $source.LastIndexOf($inc,[StringComparison]::Ordinal) -or
+           $source.IndexOf($classAnchor,[StringComparison]::Ordinal) -lt 0 -or
+           $source.IndexOf($classAnchor,[StringComparison]::Ordinal) -ne $source.LastIndexOf($classAnchor,[StringComparison]::Ordinal)){
+            throw 'Pinned ZoneInputStream PC trace anchors changed; fail closed before OAT build.'
+        }
+        $source=$source.Replace($inc,$inc+[char]10+'#include <algorithm>'+[char]10+'#include <cstdlib>'+[char]10+'#include <string>'+[char]10+'#include <unordered_set>')
+        $snippet=[IO.File]::ReadAllText($patchPath).Replace([string][char]13+[char]10,[string][char]10)
+        $source=$source.Replace($classAnchor,$snippet+[char]10+$classAnchor)
+        [IO.File]::WriteAllText($streamPath,$source.TrimEnd([char]13,[char]10)+[char]10,[Text.UTF8Encoding]::new($false))
+        Write-Host '[OAT-GRAPH] Experimental PC T4 loaded VIRTUAL pointer-to-string trace enabled.'
+    }
     & git diff --check
     if ($LASTEXITCODE -ne 0) { throw 'OAT graph patch failed git diff --check.' }
 
@@ -424,6 +446,9 @@ try {
     if ($TraceNativeAssetLoader) {
         $capabilities.capabilities += 't4xenon-asset-fault-trace-v1'
     }
+    if ($TraceWeaponNamePointers) {
+        $capabilities.capabilities += 't4-pc-weapon-virtual-pointer-direct-string-v1'
+    }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
 
@@ -439,6 +464,7 @@ finally {
             & git checkout -- 'src/ObjWriting/Game/T4Xenon/ObjWriterT4Xenon.cpp' 2>$null
             & git checkout -- 'src/ObjWriting/Game/T4/ObjWriterT4.cpp' 2>$null
             & git checkout -- 'src/ZoneLoading/Game/T4Xenon/ContentLoaderT4Xenon.cpp' 2>$null
+            & git checkout -- 'src/ZoneLoading/Zone/Stream/ZoneInputStream.cpp' 2>$null
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
