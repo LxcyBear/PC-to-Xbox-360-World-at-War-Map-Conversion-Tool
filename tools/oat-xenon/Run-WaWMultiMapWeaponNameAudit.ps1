@@ -61,136 +61,9 @@ function Read-WeaponNames([string]$path){
             $pointerRaw=$null
             $pointerBlock=$null
             $pointerOffset=$null
-            # Packed T4 pointer: 3 block bits, 29 offset bits, +1 bias.
-            # Decoding does not establish the pointed-to string identity.
-            $label=[regex]::Match($name,'^<packed-name@0x([0-9A-Fa-f]+):0x([0-9A-Fa-f]{8})>
-        }
-        if($fs.Position -ne $fs.Length){throw "Trailing data in $path"}
-    }finally{$fs.Dispose()}
-    return $list.ToArray()
-}
-
-$run=Split-Path -Path $MatrixJson -Parent
-$stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
-$rows=New-Object 'System.Collections.Generic.List[object]'
-Write-Host '[WEAPON-NAMES] ======================================================'
-Write-Host "[WEAPON-NAMES] Read-only original-PC + typed-proof audit. Matrix=$MatrixJson"
-foreach($m in $matrix.maps){
-    $selected=$false
-    foreach($pattern in $IncludeMaps){if([string]$m.map -like $pattern){$selected=$true;break}}
-    if(-not $selected){continue}
-    $mapName=[string]$m.map
-    $proofFolder=Join-Path ([string]$m.conversionOutputFolder) (Join-Path $mapName 'stage4_alpha7b_weapon_owned')
-    $proofFiles=@()
-    if(Test-Path -LiteralPath $proofFolder -PathType Container){
-        $proofFiles=@(Get-ChildItem -LiteralPath $proofFolder -File -Filter '*.xbox_weapon_owned_proof.bin')
-    }
-    $names=New-Object 'System.Collections.Generic.List[object]'
-    foreach($p in $proofFiles){
-        foreach($n in @(Read-WeaponNames $p.FullName)){
-            $names.Add([pscustomobject]@{
-                proof=$p.FullName;record=$n.record;offset=$n.offset;name=$n.name;synthetic=$n.synthetic
-                pointerRaw=$n.pointerRaw;pointerBlock=$n.pointerBlock;pointerOffset=$n.pointerOffset
-            })
-        }
-    }
-    $unresolved=@($names.ToArray() | Where-Object {$_.synthetic})
-    Write-Host "[WEAPON-NAMES] $mapName proof records=$($names.Count) | packed-name synthetic=$($unresolved.Count) | proof files=$($proofFiles.Count)"
-    foreach($n in @($unresolved | Select-Object -First 5)){
-        Write-Host "[WEAPON-NAMES]   unresolved: $($n.name) at PC body offset=$($n.offset) -> packed block=$($n.pointerBlock), blockOffset=$($n.pointerOffset)"
-    }
-
-    # The matrix's public per-map result has "main" and "sourceRoot",
-    # but deliberately does not persist "mod" or "patch". Under
-    # Set-StrictMode, reading $m.mod/$m.patch throws PropertyNotFoundStrict.
-    # The authoritative Linker V2 source-archive report already lists EVERY
-    # participating original PC FF (map, patch, mod, auxiliary), with
-    # GraphParticipation and its real source path. Read that inventory rather
-    # than inventing properties or silently dropping non-main sources.
-    $inputs=New-Object 'System.Collections.Generic.List[string]'
-    $archiveFile=Join-Path ([string]$m.conversionOutputFolder) (Join-Path $mapName (Join-Path 'linker_v2_source_archive' ($mapName+'_linker_v2_source_archive.json')))
-    if(Test-Path -LiteralPath $archiveFile -PathType Leaf){
-        $archive=Get-Content -LiteralPath $archiveFile -Raw | ConvertFrom-Json
-        if($null -eq $archive -or $null -eq $archive.PSObject.Properties['FastFiles']){
-            throw "Linker V2 source archive has no FastFiles inventory: $archiveFile"
-        }
-        foreach($source in @($archive.FastFiles)){
-            if($null -eq $source){continue}
-            if([string]$source.GraphParticipation -notin @('PRIMARY_GRAPH_SOURCE','AUXILIARY_GRAPH_SOURCE')){continue}
-            $original=[string]$source.Path
-            if([string]::IsNullOrWhiteSpace($original)){continue}
-            if(-not(Test-Path -LiteralPath $original -PathType Leaf)){
-                Write-Host "[WEAPON-NAMES]   Source FF no longer present: $original"
-                continue
-            }
-            if(-not $inputs.Contains($original)){$inputs.Add($original)}
-        }
-        Write-Host "[WEAPON-NAMES]   Source archive: $($inputs.Count) participating original PC FF(s), including mod/patch when present."
-    }else{
-        # Compatibility with historical matrix records whose short-TEMP
-        # Linker V2 archive may have been deleted. Do not pretend this
-        # single-main fallback includes the complete mod/patch source graph.
-        Write-Host "[WEAPON-NAMES]   WARNING: source archive missing; auditing main PC FF only: $archiveFile"
-        $mainProperty=$m.PSObject.Properties['main']
-        if($null -ne $mainProperty -and
-            -not [string]::IsNullOrWhiteSpace([string]$mainProperty.Value) -and
-            (Test-Path -LiteralPath ([string]$mainProperty.Value) -PathType Leaf)){
-            $inputs.Add([string]$mainProperty.Value)
-        }
-    }
-    $oatSources=New-Object 'System.Collections.Generic.List[object]'
-    $ix=0
-    foreach($path in $inputs){
-        $ix++
-        $temp=Join-Path ([IO.Path]::GetTempPath()) ('WNAME_'+[guid]::NewGuid().ToString('N').Substring(0,8))
-        New-Item -ItemType Directory -Path $temp -Force | Out-Null
-        $log=Join-Path $run ('weapon_pc_oat_'+$stamp+'_'+($mapName -replace '[^A-Za-z0-9_-]','_')+'_'+$ix+'.log')
-        $exit=-1
-        $sample=@()
-        try {
-            $copy=Join-Path $temp ([IO.Path]::GetFileName([string]$path))
-            Copy-Item -LiteralPath $path -Destination $copy
-            if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash){
-                throw 'Source FF short copy SHA mismatch'
-            }
-            $stdout=Join-Path $temp 'stdout.txt'
-            $stderr=Join-Path $temp 'stderr.txt'
-            $arguments=(@('--list','--no-color',$copy) | ForEach-Object {'"'+([string]$_).Replace('"','\"')+'"'}) -join ' '
-            $process=Start-Process -FilePath $oat -ArgumentList $arguments -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru -NoNewWindow -ErrorAction Stop
-            $exit=[int]$process.ExitCode
-            $all=[IO.File]::ReadAllText($stdout)+[Environment]::NewLine+[IO.File]::ReadAllText($stderr)
-            [IO.File]::WriteAllText($log,$all,[Text.UTF8Encoding]::new($false))
-            $sample=@($all -split '[\r\n]+' | Where-Object {$_ -match '(?i)\bweapon\b|weapons[/\\]'} | Select-Object -First 12)
-            Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix : exit=$exit; weapon-related lines=$($sample.Count); log=$log"
-            foreach($line in @($sample | Select-Object -First 3)){Write-Host "[WEAPON-NAMES]     $line"}
-        }catch{
-            [IO.File]::WriteAllText($log,[string]$_,[Text.UTF8Encoding]::new($false))
-            Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix ERROR: $([string]$_)"
-        }finally{
-            Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
-        }
-        $oatSources.Add([pscustomobject]@{path=$path;exit=$exit;log=$log;sample=@($sample)})
-    }
-    $rows.Add([pscustomobject]@{
-        map=$mapName
-        weaponProofRecords=$names.Count
-        syntheticPackedNameCount=$unresolved.Count
-        proofNames=@($names.ToArray())
-        pcSourceOatListings=@($oatSources.ToArray())
-        identitiesResolved=$false
-    })
-}
-if($rows.Count -eq 0){throw 'No maps matched -IncludeMaps'}
-$report=Join-Path $run ('weapon_name_provenance_'+$stamp+'.json')
-[ordered]@{
-    schema='WaW360.WeaponNameAudit.v1'
-    matrix=$MatrixJson;readOnly=$true
-    note='Synthetic <packed-name@...> weapon proof labels are NOT authentic weapon identities. OAT PC listings are evidence, not unverified one-to-one name matches.'
-    maps=@($rows.ToArray())
-}|ConvertTo-Json -Depth 11 | Set-Content -LiteralPath $report -Encoding UTF8
-Write-Host "[WEAPON-NAMES] JSON=$report"
-Write-Host '[WEAPON-NAMES] No original PC FFs, proof FFs, or Xbox candidate FFs modified.'
-)
+            # T4 packed pointer: 3 block bits, 29 offset bits, plus 1 bias.
+            # This is not an actual WeaponDef name-resolution algorithm.
+            $label=[regex]::Match($name,'^<packed-name@0x([0-9A-Fa-f]+):0x([0-9A-Fa-f]{8})>$')
             if($label.Success){
                 $bodyOffset=[Convert]::ToUInt32($label.Groups[1].Value,16)
                 if($bodyOffset -ne $offset){throw "Weapon proof body offset mismatch at record #$i"}
@@ -230,12 +103,17 @@ foreach($m in $matrix.maps){
     $names=New-Object 'System.Collections.Generic.List[object]'
     foreach($p in $proofFiles){
         foreach($n in @(Read-WeaponNames $p.FullName)){
-            $names.Add([pscustomobject]@{proof=$p.FullName;record=$n.record;offset=$n.offset;name=$n.name;synthetic=$n.synthetic})
+            $names.Add([pscustomobject]@{
+                proof=$p.FullName;record=$n.record;offset=$n.offset;name=$n.name;synthetic=$n.synthetic
+                pointerRaw=$n.pointerRaw;pointerBlock=$n.pointerBlock;pointerOffset=$n.pointerOffset
+            })
         }
     }
     $unresolved=@($names.ToArray() | Where-Object {$_.synthetic})
     Write-Host "[WEAPON-NAMES] $mapName proof records=$($names.Count) | packed-name synthetic=$($unresolved.Count) | proof files=$($proofFiles.Count)"
-    foreach($n in @($unresolved | Select-Object -First 4)){Write-Host "[WEAPON-NAMES]   unresolved: $($n.name) at PC source offset=$($n.offset)"}
+    foreach($n in @($unresolved | Select-Object -First 5)){
+        Write-Host "[WEAPON-NAMES]   unresolved: $($n.name) at PC body offset=$($n.offset) -> packed block=$($n.pointerBlock), blockOffset=$($n.pointerOffset)"
+    }
 
     # The matrix's public per-map result has "main" and "sourceRoot",
     # but deliberately does not persist "mod" or "patch". Under
