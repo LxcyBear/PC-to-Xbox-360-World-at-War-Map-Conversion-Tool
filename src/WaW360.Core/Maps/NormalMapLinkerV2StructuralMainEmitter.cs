@@ -68,6 +68,10 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public bool WeaponOrderProbeReady { get; init; }
     public int WeaponOrderProbeKnownNameAnchors { get; init; }
     public int WeaponOrderProbeUnverifiedOrdinalSubstitutions { get; init; }
+    public string? WeaponDirectProvenOutputFastFile { get; init; }
+    public bool WeaponDirectProvenReady { get; init; }
+    public int WeaponDirectProvenNames { get; init; }
+    public int WeaponDirectKnownNames { get; init; }
     public required string? NativeBlockOutputFastFile { get; init; }
     public required string? NativeBlockHardwarePackageDirectory { get; init; }
     public required bool NativeBlockCandidateReady { get; init; }
@@ -648,6 +652,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var realTechsetNamePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_real_techset_names");
         var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_script_closure");
         var weaponOrderProbeDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_weapon_order_probe");
+        var weaponDirectDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_weapon_direct_proven");
         var nativeBlockPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_native_blocks");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
@@ -655,6 +660,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         Directory.CreateDirectory(realTechsetNamePackageDir);
         Directory.CreateDirectory(scriptClosurePackageDir);
         Directory.CreateDirectory(weaponOrderProbeDir);
+        Directory.CreateDirectory(weaponDirectDir);
         Directory.CreateDirectory(nativeBlockPackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
@@ -668,6 +674,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var scriptClosureFfPath = Path.Combine(scriptClosurePackageDir, source.CanonicalBaseName + ".ff");
         var weaponOrderProbeZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".weapon_order_probe.zone");
         var weaponOrderProbeFfPath = Path.Combine(weaponOrderProbeDir, source.CanonicalBaseName + ".ff");
+        var weaponDirectZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".weapon_direct_proven.zone");
+        var weaponDirectFfPath = Path.Combine(weaponDirectDir, source.CanonicalBaseName + ".ff");
         var nativeBlockZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_blocks.zone");
         var nativeBlockFfPath = Path.Combine(nativeBlockPackageDir, source.CanonicalBaseName + ".ff");
 
@@ -688,6 +696,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(weaponOrderProbeFfPath);
         TryDelete(weaponOrderProbeZonePath);
         TryDelete(Path.Combine(weaponOrderProbeDir, "DO_NOT_DEPLOY_WEAPON_ORDER_PROBE.txt"));
+        TryDelete(weaponDirectZonePath);
+        TryDelete(weaponDirectFfPath);
+        TryDelete(Path.Combine(weaponDirectDir, "DO_NOT_DEPLOY_WEAPON_DIRECT_PROVEN.txt"));
         TryDelete(nativeBlockFfPath);
         TryDelete(nativeBlockZonePath);
         TryDelete(Path.Combine(nativeBlockPackageDir, "NATIVE_BLOCK_CAPACITY_AB_TEST.txt"));
@@ -976,6 +987,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var weaponOrderProbeReady = false;
         var weaponOrderProbeKnownAnchors = 0;
         var weaponOrderProbeOrdinalSubstitutions = 0;
+        var weaponDirectReady = false;
+        var weaponDirectProven = 0;
+        var weaponDirectKnown = 0;
         if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             try
@@ -1112,6 +1126,88 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                             $"WEAPON-ORDER-PROBE SKIPPED (main/script FF unchanged): {ex.GetType().Name}: {ex.Message}");
                                         TryDelete(weaponOrderProbeFfPath);
                                         TryDelete(weaponOrderProbeZonePath);
+                                    }
+                                }
+
+                                // Direct packed-pointer proof, never positional name inference.
+                                // This isolated variant keeps every non-WeaponDef script-closure
+                                // payload identical and uses inert 0x9AC name-bearing weapon
+                                // shells only. Original PC source hashes are rechecked at emission.
+                                var directWitnessPath = Environment.GetEnvironmentVariable(
+                                    "WAW360_WEAPON_DIRECT_WITNESS_JSON");
+                                if (!string.IsNullOrWhiteSpace(directWitnessPath) &&
+                                    map.Name.Equals("nazi_zombie_aztec_V2.2", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    try
+                                    {
+                                        var direct = await LinkerV2VerifiedWeaponDirectDiagnostic.ApplyAsync(
+                                            directWitnessPath,
+                                            outputRoot,
+                                            map.Name,
+                                            scriptVariant.Roots,
+                                            scriptVariant.Payloads,
+                                            cancellationToken);
+                                        var directZone = BuildZone(
+                                            scriptVariant.Roots,
+                                            direct.Payloads,
+                                            canonicalStrings,
+                                            blockPlan,
+                                            out var directHeader);
+                                        if (directHeader != checked((uint)(
+                                                directZone.Length - FastFileConstants.T4XFileHeaderSize)) ||
+                                            !VerifyBlockHeader(directZone, blockPlan))
+                                            throw new InvalidDataException(
+                                                "Direct WeaponDef diagnostic has invalid XFile header/block capacities.");
+
+                                        await File.WriteAllBytesAsync(
+                                            weaponDirectZonePath, directZone, cancellationToken);
+                                        var errors = VerifyReadBack(
+                                            weaponDirectZonePath, directZone,
+                                            scriptVariant.Roots, direct.Payloads,
+                                            canonicalStrings, blockPlan);
+                                        if (errors != 0)
+                                            throw new InvalidDataException(
+                                                $"Direct WeaponDef diagnostic readback failed: {errors} error(s).");
+
+                                        var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                                            weaponDirectFfPath, directZone,
+                                            preferNativeLevel6: true, cancellationToken: cancellationToken);
+                                        if (!write.RoundTripVerified)
+                                            throw new InvalidDataException(
+                                                "Direct WeaponDef diagnostic wrapper round-trip failed.");
+
+                                        var ffSha = await Sha256Async(weaponDirectFfPath, cancellationToken);
+                                        weaponDirectKnown = direct.KnownNames;
+                                        weaponDirectProven = direct.IndependentlyProvenNames;
+                                        weaponDirectReady = true;
+                                        await File.WriteAllTextAsync(
+                                            Path.Combine(weaponDirectDir, "DO_NOT_DEPLOY_WEAPON_DIRECT_PROVEN.txt"),
+                                            "DIAGNOSTIC ONLY / DO NOT DEPLOY TO XBOX" + Environment.NewLine +
+                                            $"Map: {map.Name}" + Environment.NewLine +
+                                            $"WeaponDef names: {direct.TotalWeaponRoots}/71" + Environment.NewLine +
+                                            $"Known source names: {direct.KnownNames}/61" + Environment.NewLine +
+                                            $"Independent Virtual-pointer names: {direct.IndependentlyProvenNames}/10" + Environment.NewLine +
+                                            $"Witness JSON SHA-256: {direct.WitnessSha256}" + Environment.NewLine +
+                                            $"Generated FF SHA-256: {ffSha}" + Environment.NewLine +
+                                            "The 71 WeaponDefs are still inert 0x9AC name-only diagnostic shells." + Environment.NewLine +
+                                            "No real weapon scalar/animation/audio content, no production release authorization." + Environment.NewLine,
+                                            new UTF8Encoding(false), cancellationToken);
+                                        notes.Add(
+                                            $"WEAPON-DIRECT 71/71 SOURCE-NAMED DIAGNOSTIC: " +
+                                            $"{weaponDirectKnown} original named bodies plus {weaponDirectProven} " +
+                                            $"independently matched virtual targets, output='{weaponDirectFfPath}'. " +
+                                            "INERT SHELLS; OAT VALIDATION PENDING; DO NOT DEPLOY.");
+                                        Console.WriteLine(
+                                            $"WEAPON-DIRECT 71/71: known={weaponDirectKnown}/61 direct={weaponDirectProven}/10; " +
+                                            $"readBack=0 wrapperRoundTrip=True; FF={weaponDirectFfPath}");
+                                    }
+                                    catch (Exception ex) when (ex is not OperationCanceledException)
+                                    {
+                                        notes.Add(
+                                            $"WEAPON-DIRECT FAIL-CLOSED (other variants unchanged): {ex.GetType().Name}: {ex.Message}");
+                                        Console.WriteLine($"WEAPON-DIRECT BLOCKED: {ex.GetType().Name}: {ex.Message}");
+                                        TryDelete(weaponDirectFfPath);
+                                        TryDelete(weaponDirectZonePath);
                                     }
                                 }
                             }
@@ -1327,6 +1423,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             WeaponOrderProbeOutputFastFile = weaponOrderProbeReady ? weaponOrderProbeFfPath : null,
             WeaponOrderProbeKnownNameAnchors = weaponOrderProbeKnownAnchors,
             WeaponOrderProbeUnverifiedOrdinalSubstitutions = weaponOrderProbeOrdinalSubstitutions,
+            WeaponDirectProvenReady = weaponDirectReady,
+            WeaponDirectProvenOutputFastFile = weaponDirectReady ? weaponDirectFfPath : null,
+            WeaponDirectProvenNames = weaponDirectProven,
+            WeaponDirectKnownNames = weaponDirectKnown,
             NativeBlockOutputFastFile = nativeBlockReady ? nativeBlockFfPath : null,
             NativeBlockHardwarePackageDirectory = nativeBlockReady ? nativeBlockPackageDir : null,
             NativeBlockCandidateReady = nativeBlockReady,
@@ -2641,6 +2741,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"output={r.OutputFastFile ?? "<none>"}");
         sb.AppendLine($"trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; trackedShellSha256={r.ConservativeFastFileSha256 ?? "<none>"}; trackedShellOutput={r.ConservativeOutputFastFile ?? "<none>"}");
         sb.AppendLine($"scriptClosureCandidate={r.ScriptClosureCandidateReady}; scriptClosureReadBackErrors={r.ScriptClosureReadBackErrors:N0}; scriptClosureRoundTrip={r.ScriptClosureWrapperRoundTripVerified}; residentMenusRemoved={r.ScriptClosureResidentMenusRemoved:N0}; iwdRawFilesPromoted={r.ScriptClosureRawFilesPromoted:N0}; scriptClosureSha256={r.ScriptClosureFastFileSha256 ?? "<none>"}; scriptClosureOutput={r.ScriptClosureOutputFastFile ?? "<none>"}");
+        sb.AppendLine($"weaponDirectProvenReady={r.WeaponDirectProvenReady}; knownNames={r.WeaponDirectKnownNames:N0}; directPointerNames={r.WeaponDirectProvenNames:N0}; weaponDirectOutput={r.WeaponDirectProvenOutputFastFile ?? "<none>"}");
         sb.AppendLine($"nativeBlockCandidate={r.NativeBlockCandidateReady}; nativeBlockReadBackErrors={r.NativeBlockReadBackErrors:N0}; nativeBlockRoundTrip={r.NativeBlockWrapperRoundTripVerified}; nativeBlockSha256={r.NativeBlockFastFileSha256 ?? "<none>"}; nativeBlockOutput={r.NativeBlockOutputFastFile ?? "<none>"}");
         sb.AppendLine();
         sb.AppendLine("SOURCE-DERIVED BLOCK CAPACITIES");
