@@ -75,6 +75,14 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Windows-confirmed lossless beta-layout STAGE PASS (44/44 SHA-256)
+
+User explicitly ran `Stage-CodXeT4BetaPackage.ps1 -Stage` against the existing Aztec native reference package after a successful dry-run. All **44/44 source files** were copied into a **new, unique** local flattened staging tree under `output/codxe_beta_stage/nazi_zombie_aztec_20261030_160821_79b25d10/_codxe/usermaps/nazi_zombie_aztec/`. The script independently checked exact file sizes and **SHA-256 digests** after each copy; final counters **120,068,964 / 120,068,964 bytes**, `Status: SHA_VERIFIED_REFERENCE_STAGE_NOT_RELEASE`. It wrote a distinct JSON report `output/codxe_beta_stage/reports/nazi_zombie_aztec_20261030_160821_79b25d10.json`, and verified no original map data was modified. The console progress advanced from `[=---------] 5/44` to `[==========] 44/44`.
+
+**Result:** separate reference-package staging with file preservation and integrity checks is now **Windows-verified**, including all 37 `highmip/` files. This is the success criterion for **packaging-tool staging**, not a native game-conversion or hardware readiness gate. Keep existing map source, old layouts and optional asset files intact. DO NOT DEPLOY this reference-stage FF or any diagnostic FF as a generated Xbox release. Only an actual CodXe beta installed-map sample/config can verify the predicted flat install directory, metadata requirements, and compatibility.
+
+Xbox-native Aztec conversion remains **3/10 independent readiness gates**, with 10 unresolved WeaponDef packed-name source-pointer targets, real typed asset ownership and complete primary OAT extraction still pending. Next technical work should target authenticated pointer-to-name provenance (not additional legacy-map copying).
+
 ## October 30 — Windows-confirmed beta staging DRY RUN PASS (9/9 WinPS syntax)
 
 User ran `Stage-CodXeT4BetaPackage.ps1` without `-Stage` against the existing native Aztec reference folder. PowerShell 5.1 parser preflight **9/9 PASS**, including the staging tool. Staging dry run reported `map=nazi_zombie_aztec`, **44 files**, **120,068,964 bytes**, expected relative target `_codxe\usermaps\nazi_zombie_aztec`, `Status: DRY_RUN_ONLY`, and a JSON report in `output/codxe_beta_stage/reports/`. **No map data was copied or modified.** The real `-Stage` operation and post-copy SHA verification have not yet been Windows-tested.
