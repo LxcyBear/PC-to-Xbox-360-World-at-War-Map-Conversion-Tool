@@ -130,14 +130,19 @@ try{
            @($r.smodelCacheIndex).Count -ne 4){
             throw "Original PC typed static draw source identity/shape drift at ordinal $i."
         }
-        foreach($val in @($r.cullDist,$r.scale) + @($r.origin) +
-            @($r.axis | ForEach-Object {$_}) +
-            @($r.axis | ForEach-Object {@($_) | ForEach-Object {$_}})){
-            if([double]::IsNaN([double]$val) -or [double]::IsInfinity([double]$val)){
+        $values=New-Object 'System.Collections.Generic.List[double]'
+        foreach($val in @($r.cullDist,$r.scale) + @($r.origin)){
+            $values.Add([double]$val)
+        }
+        foreach($axis in @($r.axis)){
+            if(@($axis).Count -ne 3){throw "Original PC rotation axis is not 3x3 at $i."}
+            foreach($val in @($axis)){$values.Add([double]$val)}
+        }
+        foreach($val in $values){
+            if([double]::IsNaN($val) -or [double]::IsInfinity($val)){
                 throw "Nonfinite source static draw transform at ordinal $i."
             }
         }
-        foreach($axis in @($r.axis)){if(@($axis).Count -ne 3){throw "Original PC rotation axis is not 3x3 at $i."}}
         if(-not $counts.ContainsKey($name)){$counts[$name]=0}
         $counts[$name]++
         if($topModels -ccontains $name){$top++}
