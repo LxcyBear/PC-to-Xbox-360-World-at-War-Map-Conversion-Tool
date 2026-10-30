@@ -1,7 +1,9 @@
 #include "GfxWorldMaterialCorpusDumperT4.h"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <format>
 #include <iomanip>
 #include <ostream>
@@ -222,6 +224,98 @@ namespace gfxworld
             }
         }
         out << "]}";
+
+        // Gate8C: export the actual original-PC 1903 static draw placement
+        // records AS TYPED FIELDS. Native PC XModel* process addresses MUST
+        // NEVER be serialized: each source model is identified by name.
+        // PC GfxPackedPlacement has a 3x3 FLOAT axis; Xenon uses three
+        // PackedUnitVec words instead. These are SOURCE-ONLY records,
+        // not yet a putative Xenon ABI or a safe 1903-draw graft.
+        const bool staticDrawAbi =
+            sizeof(GfxPackedPlacement) == 52 &&
+            sizeof(GfxStaticModelDrawInst) == 92 &&
+            offsetof(GfxStaticModelDrawInst, placement) == 4 &&
+            offsetof(GfxStaticModelDrawInst, model) == 56;
+        const auto drawPath=root+"/gate8_static_draws_pc_typed.json";
+        bool drawOk=gate8Shape && staticDrawAbi;
+        unsigned int drawSourceRows=0;
+        if(drawOk)
+        {
+            auto drawDest=context.OpenAssetFile(drawPath);
+            drawOk=static_cast<bool>(drawDest);
+            if(drawDest)
+            {
+                auto& dOut=*drawDest;
+                dOut << std::setprecision(std::numeric_limits<float>::max_digits10);
+                dOut << "{\"format\":\"WaW360.T4PcGate8StaticDrawSource.v1\"";
+                dOut << ",\"sourceType\":\"PC_T4_X86_LOADED_TYPED_FIELDS\"";
+                dOut << ",\"pcDrawSize\":" << sizeof(GfxStaticModelDrawInst);
+                dOut << ",\"pcPlacementSize\":" << sizeof(GfxPackedPlacement);
+                dOut << ",\"modelPointerOffset\":" << offsetof(GfxStaticModelDrawInst, model);
+                dOut << ",\"count\":" << world.dpvs.smodelCount;
+                dOut << ",\"records\":[";
+                for(unsigned int i=0;i<world.dpvs.smodelCount;i++)
+                {
+                    const auto& d=world.dpvs.smodelDrawInsts[i];
+                    const auto& p=d.placement;
+                    if(!d.model || !d.model->name || !std::isfinite(d.cullDist) ||
+                       !std::isfinite(p.scale))
+                    {
+                        drawOk=false;break;
+                    }
+                    bool finite=true;
+                    for(int a=0;a<3;a++)
+                    {
+                        finite=finite && std::isfinite(p.origin[a]);
+                        for(int b=0;b<3;b++)
+                            finite=finite && std::isfinite(p.axis[a][b]);
+                    }
+                    if(!finite){drawOk=false;break;}
+                    if(i)dOut<<',';
+                    dOut << "{\"ordinal\":" << i << ",\"model\":";
+                    JsonString(dOut,d.model->name);
+                    dOut << ",\"cullDist\":" << d.cullDist;
+                    dOut << ",\"origin\":[";
+                    for(int a=0;a<3;a++){if(a)dOut<<',';dOut<<p.origin[a];}
+                    dOut << "],\"axis\":[";
+                    for(int a=0;a<3;a++)
+                    {
+                        if(a)dOut<<',';
+                        dOut<<'[';
+                        for(int b=0;b<3;b++){if(b)dOut<<',';dOut<<p.axis[a][b];}
+                        dOut<<']';
+                    }
+                    dOut << "],\"scale\":" << p.scale;
+                    dOut << ",\"lodFade\":" << d.lodFade.value;
+                    dOut << ",\"cachedLightSettingIndex\":" << d.cachedLightSettingIndex;
+                    dOut << ",\"field44\":" << static_cast<unsigned>(static_cast<unsigned char>(d.field_44));
+                    dOut << ",\"field45\":" << static_cast<unsigned>(static_cast<unsigned char>(d.field_45));
+                    dOut << ",\"reflectionProbeIndex\":" << static_cast<unsigned>(d.reflectionProbeIndex);
+                    dOut << ",\"primaryLightIndex\":" << static_cast<unsigned>(d.primaryLightIndex);
+                    dOut << ",\"flags\":" << d.flags;
+                    dOut << ",\"smodelCacheIndex\":[";
+                    for(int a=0;a<4;a++){if(a)dOut<<',';dOut<<d.smodelCacheIndex[a];}
+                    dOut << "]}";
+                    ++drawSourceRows;
+                }
+                dOut << "]}";
+                drawOk=drawOk && dOut.good() && drawSourceRows==1903;
+            }
+        }
+        out << ",\"gate8StaticDrawSource\":{";
+        out << "\"status\":";
+        JsonString(out,drawOk
+            ? "T4_PC_GATE8_1903_TYPED_DRAWS_SOURCE_EXPORTED"
+            : "T4_PC_GATE8_STATIC_DRAW_ABI_OR_SOURCE_BLOCKED");
+        out << ",\"count\":" << drawSourceRows;
+        out << ",\"pcDrawSize\":" << sizeof(GfxStaticModelDrawInst);
+        out << ",\"pcPlacementSize\":" << sizeof(GfxPackedPlacement);
+        out << ",\"modelPointerOffset\":" << offsetof(GfxStaticModelDrawInst, model);
+        out << ",\"pointerBytesExported\":false";
+        out << ",\"xboxDrawRecordsWritten\":false";
+        out << ",\"recordsPath\":";
+        JsonString(out,drawPath);
+        out << '}';
 
         int exported=0,missing=0,totalTextures=0,totalConstants=0,
             totalState=0,unresolvedWater=0,errors=0;
