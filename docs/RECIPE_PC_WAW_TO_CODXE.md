@@ -47,6 +47,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 Check the matrix for `[MULTIMAP-RECIPE] ... scriptClosureReady=...`, `RECIPE IWD script-closure overrides=N`, emitted FF path/size, and OAT `--list` summary. A script-closure FF may be absent if typed closure cannot build or the index finds no applicable overrides; that is evidence to debug, not a PASS. Full OAT extraction and Xbox hardware testing are separate gates.
 
+## October 30 — Aztec exact 71/71 OAT weapon names; offline source-order witness
+
+**User Windows run on `f229a8c`:** 5/5 PS 5.1 syntax preflight PASS; packed uint32 self-check PASS; original Aztec WeaponDef proof corpus has 71 physical records (2 proof files), 10 synthetic packed-name placeholders. Original PC OAT `--list` success on all 3 participating FFs:
+
+- `map.ff`: **61** real named WeaponDefs, **61** proof bodies; **55** exact proof names and **6** unresolved packed-name proof bodies.
+- `map_patch.ff`: **0** real WeaponDefs, **0** proof bodies.
+- `mod.ff`: **10** real named WeaponDefs, **10** proof bodies; **6** exact proof names and **4** unresolved packed-name proof bodies.
+
+Counts now correspond 71/71, but **physical proof body order is not automatically equal to XAsset list order**, especially if packed/aliased references reorder objects. Do not assign names to pointers merely because an FF has the same count. The full genuine names and proof offsets are in `weapon_name_provenance_20261030_151256.json` under `output/multi_map_matrix/runs/run_20261030_024027_373fb3/`.
+
+**New zero-build witness:** `Run-WaWMultiMapWeaponNameOrderWitness.ps1` works entirely from that existing provenance JSON: it compares every already-known proof name at its same ordinal in the OAT weapon list for each *original source FF*. Only if counts, uniqueness, and ALL known name anchors match does it emit **unverified ordinal candidate pairings** for the 6+4 packed-name records. Any mismatches shut down inference and print exact conflicting positions. This does not rebuild anything, call OAT, read original FFs, or apply names to the emitted Xbox FF. The main `Run-WaWMultiMapWeaponNameAudit.ps1` has the same position-witness logic for future fresh evidence, but reruns OAT; this new tool is the faster first check.
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapWeaponNameOrderWitness.ps1'
+```
+
+**Next after witnessing:** if all known anchors align, independently prove packed Virtual-block pointer target resolution using original PC FF semantics before authorizing those names in production. If any anchors disagree, use pointer-directed resolver directly; do not pair by position.
+
 ## October 30 — real Aztec weapon pointer and original-PC name census
 
 **Windows-confirmed after 35fdb93:** PowerShell 5.1 syntax preflight PASS 5/5; unsigned-pointer self-test PASS. The **Aztec** typed-proof archive has 71 physical WeaponDef proof records from 2 proof files, with 10 synthetic `<packed-name@...>` placeholders. All five printed unresolved pointers decode into **Virtual block 4** with source-specific packed block offsets; this establishes *pointer provenance*, not the pointed-to string value.
