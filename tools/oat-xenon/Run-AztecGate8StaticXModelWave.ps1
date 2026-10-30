@@ -127,6 +127,7 @@ Write-Host '[AZTEC-GATE8-XMODEL-WAVE] Next: 456 grass -> 398 hedgerow. Model-onl
 $converted=0
 $blocked=''
 $referenced=New-Object 'System.Collections.Generic.List[object]'
+$unresolved=New-Object 'System.Collections.Generic.List[object]'
 function Resolve-ExplicitReference($row){
     $name=[string]$row.pcModelName
     if(-not $name.StartsWith(',',[StringComparison]::Ordinal)){return $null}
@@ -145,7 +146,41 @@ function Resolve-ExplicitReference($row){
         [bool]$_.NativeReference
     })
     if($roots.Count -ne 1 -or $bindings.Count -ne 1){
-        throw "XModel $name looks like an external reference, but native identity/provenance does NOT prove one. Refuse to convert or silently skip it."
+        # The PC world can name a comma-prefixed reference while the
+        # corresponding native identity is an OWNED root, an unprefixed
+        # name or a different alias. Do not infer stock runtime residency
+        # and do not fabricate a model body. Record all original evidence,
+        # continue converting the other 26 names, and keep release blocked.
+        $actualRoots=@($identity.entries | Where-Object {
+            [int]$_.Index -eq $rootIndex
+        } | ForEach-Object {
+            [pscustomobject]@{
+                index=[int]$_.Index
+                type=[string]$_.OatTypeName
+                name=[string]$_.Name
+            }
+        })
+        $actualBindings=@($front.nativeXModelIdentityBindings | Where-Object {
+            [int]$_.NativeRootIndex -eq $rootIndex
+        } | ForEach-Object {
+            [pscustomobject]@{
+                nativeName=[string]$_.NativeName
+                nativeReference=[bool]$_.NativeReference
+                matchingPcFastfileName=[bool]$_.MatchingPcFastfileName
+                pcSourceRoles=@($_.PcSourceRoles)
+            }
+        })
+        return [pscustomobject]@{
+            model=$name
+            draws=[int]$row.occurrences
+            nativeRoot=$rootIndex
+            classification='UNRESOLVED_PC_REFERENCE_NATIVE_IDENTITY'
+            runtimeResidencyVerified=$false
+            exactNativeReferenceRoots=$roots.Count
+            exactNativeFrontierReferenceBindings=$bindings.Count
+            actualRootRows=$actualRoots
+            actualFrontierBindings=$actualBindings
+        }
     }
     return [pscustomobject]@{
         model=$name
@@ -163,8 +198,19 @@ foreach($row in @($rows | Select-Object -Skip 1)){
     }
     $reference=Resolve-ExplicitReference $row
     if($null -ne $reference){
-        $referenced.Add($reference)
-        Write-Host "[AZTEC-GATE8-XMODEL-WAVE] EXTERNAL XMODEL REFERENCE (not a PC-owned mesh): $($reference.model), root=$($reference.nativeRoot), draws=$($reference.draws)"
+        if([string]$reference.classification -eq 'UNRESOLVED_PC_REFERENCE_NATIVE_IDENTITY'){
+            $unresolved.Add($reference)
+            Write-Host "[AZTEC-GATE8-XMODEL-WAVE] UNRESOLVED comma source reference '$($reference.model)' native root #$($reference.nativeRoot); continuing OTHER model conversions, no fake geometry."
+            foreach($rootProof in @($reference.actualRootRows)){
+                Write-Host "[AZTEC-GATE8-XMODEL-WAVE]   ACTUAL ROOT: index=$($rootProof.index) type='$($rootProof.type)' name='$($rootProof.name)'"
+            }
+            foreach($frontProof in @($reference.actualFrontierBindings)){
+                Write-Host "[AZTEC-GATE8-XMODEL-WAVE]   FRONTIER: name='$($frontProof.nativeName)' isReference=$($frontProof.nativeReference) pcNameMatch=$($frontProof.matchingPcFastfileName)"
+            }
+        }else{
+            $referenced.Add($reference)
+            Write-Host "[AZTEC-GATE8-XMODEL-WAVE] VERIFIED native external XModel reference: $($reference.model), root=$($reference.nativeRoot), draws=$($reference.draws)"
+        }
         continue
     }
     $path=Report-Path ([string]$row.pcModelName)
@@ -201,11 +247,17 @@ foreach($row in @($rows | Select-Object -Skip 1)){
 }
 $draws=[int](($verified.ToArray() | Measure-Object -Property draws -Sum).Sum)
 $referenceDraws=[int](($referenced.ToArray() | Measure-Object -Property draws -Sum).Sum)
+$unresolvedDraws=[int](($unresolved.ToArray() | Measure-Object -Property draws -Sum).Sum)
 $coveredTypes=$verified.Count+$referenced.Count
-$fullCensus=$coveredTypes -eq 27 -and $draws+$referenceDraws -eq 1903
+$accountedTypes=$coveredTypes+$unresolved.Count
+$fullCensus=$coveredTypes -eq 27 -and $draws+$referenceDraws -eq 1903 -and $unresolved.Count -eq 0
+$allNamesAccounted=$accountedTypes -eq 27 -and
+    ($draws+$referenceDraws+$unresolvedDraws -eq 1903)
 $result=[ordered]@{
     schema='WaW360.AztecGate8StandaloneXModelWave.v1'
     status=if($blocked){'AZTEC_GATE8_STATIC_MODEL_WAVE_STOPPED_ON_BLOCKER'}
+        elseif($unresolved.Count -gt 0){'AZTEC_GATE8_STATIC_MODEL_WAVE_UNRESOLVED_REFERENCE_IDENTITIES'}
+        elseif(-not $fullCensus){'AZTEC_GATE8_STATIC_MODEL_WAVE_INCOMPLETE_CENSUS'}
         else{'AZTEC_GATE8_STATIC_MODEL_WAVE_STANDALONE_OAT_PASS'}
     sourceStaticModels=27
     sourceStaticDraws=1903
@@ -214,10 +266,15 @@ $result=[ordered]@{
     externalNativeReferenceModels=$referenced.Count
     externalNativeReferenceDraws=$referenceDraws
     explicitlyVerifiedNativeReferences=@($referenced.ToArray())
+    unresolvedReferenceModelTypes=$unresolved.Count
+    unresolvedReferenceDraws=$unresolvedDraws
+    unresolvedReferenceRows=@($unresolved.ToArray())
     sourceNameTypesClassified=$coveredTypes
+    sourceNameTypesAccounted=$accountedTypes
+    allSourceNamesAndDrawsAccounted=$allNamesAccounted
     allStaticModelTypeIdentitiesClassified=$fullCensus
-    remainingModelNames=27-$coveredTypes
-    remainingRepresentedDraws=1903-$draws-$referenceDraws
+    remainingModelNames=27-$accountedTypes
+    remainingRepresentedDraws=1903-$draws-$referenceDraws-$unresolvedDraws
     verifiedModels=@($verified.ToArray())
     blocker=$blocked
     realBodiesIntegratedInto8509RootWorldFf=0
@@ -228,8 +285,11 @@ $result=[ordered]@{
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $report -Encoding UTF8
 Write-Host '[AZTEC-GATE8-XMODEL-WAVE] =========================================='
 Write-Host "[AZTEC-GATE8-XMODEL-WAVE] status=$($result.status)"
-Write-Host "[AZTEC-GATE8-XMODEL-WAVE] OWNED real model bodies=$($verified.Count); externally referenced model names=$($referenced.Count)"
-Write-Host "[AZTEC-GATE8-XMODEL-WAVE] original-PC placements classified=$($draws+$referenceDraws)/1903 (mesh=$draws, reference=$referenceDraws) distinct names=$coveredTypes/27"
+Write-Host "[AZTEC-GATE8-XMODEL-WAVE] OWNED real model bodies=$($verified.Count); verified external refs=$($referenced.Count); unresolved reference names=$($unresolved.Count)"
+Write-Host "[AZTEC-GATE8-XMODEL-WAVE] original-PC placements accounted=$($draws+$referenceDraws+$unresolvedDraws)/1903 (mesh=$draws, verified reference=$referenceDraws, unresolved=$unresolvedDraws) names=$accountedTypes/27"
+if($unresolved.Count -gt 0){
+    Write-Host '[AZTEC-GATE8-XMODEL-WAVE] UNRESOLVED references are NOT real XModel bodies, NOT native residency proofs, and NOT Xbox release approvals.'
+}
 Write-Host "[AZTEC-GATE8-XMODEL-WAVE] report=$report"
 Write-Host '[AZTEC-GATE8-XMODEL-WAVE] Independent model-only OAT evidence, not full FF integration.'
 if($blocked){throw $blocked}
