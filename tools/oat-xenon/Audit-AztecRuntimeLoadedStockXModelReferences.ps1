@@ -168,11 +168,20 @@ foreach($ref in $sourceReferences){
     $hasStub=$stockStubs.ContainsKey($stockName)
     $bodyZones=if($ownedByLoadedZone){@($stockBodies[$stockName].ToArray())}else{@()}
     $stubZones=if($hasStub){@($stockStubs[$stockName].ToArray())}else{@()}
+    # Reference resolution is PER ACTUAL BODY-OWNING ZONE. A missing
+    # unrelated patch.ff does not invalidate an exact owned XModel BODY
+    # independently OAT listed in common.ff. Still retain the incomplete
+    # three-zone census as a separate report field, and NEVER mark runtime
+    # hardware residency as proven by an offline name/identity match.
+    $verifiedBodyZones=@($zones.ToArray() | Where-Object {
+        [bool]$_.found -and [bool]$_.oatValid -and
+        ($_.zone -in $bodyZones)
+    })
     $exactProof=$rootMatches -and $ownedByLoadedZone -and
-        @($zones.ToArray()|Where-Object {-not $_.oatValid}).Count -eq 0
+        $verifiedBodyZones.Count -gt 0
     if($exactProof){$exactLoaded++}else{$unresolved++}
-    $state=if($exactProof){'STOCK_BODY_EXACT_NAME_IN_EXPECTED_PRELOADED_ZONE'}
-        elseif($ownedByLoadedZone){'STOCK_BODY_NAME_FOUND_BUT_NATIVE_ROOT_UNRECONCILED'}
+    $state=if($exactProof){'STOCK_BODY_EXACT_NAME_IN_INDIVIDUALLY_OAT_VERIFIED_BASE_ZONE'}
+        elseif($ownedByLoadedZone -and -not $rootMatches){'STOCK_BODY_NAME_FOUND_BUT_NATIVE_ROOT_UNRECONCILED'}
         elseif($hasStub){'ONLY_STOCK_REFERENCE_STUB_FOUND_NO_BODY_PROVEN'}
         else{'NO_STOCK_BODY_PROVEN'}
     $rows.Add([pscustomobject]@{
@@ -184,6 +193,8 @@ foreach($ref in $sourceReferences){
         expectedPreloadedStockBodyZones=$bodyZones
         onlyReferenceStubZones=$stubZones
         exactExpectedStockBodyFound=$exactProof
+        foundInIndividuallyVerifiedStockBaseZone=$verifiedBodyZones.Count -gt 0
+        expectedBaseZoneCensusComplete=$(@($zones.ToArray()|Where-Object {-not $_.oatValid}).Count -eq 0)
         runtimeHardwareValidated=$false
         status=$state
     })
@@ -192,6 +203,8 @@ foreach($ref in $sourceReferences){
 $allZonesAudited=@($zones.ToArray()|Where-Object {-not $_.oatValid}).Count -eq 0
 $status=if($allZonesAudited -and $unresolved -eq 0){
     'AZTEC_SOURCE_MODEL_STOCK_REFERENCE_EXACT_RESOLUTION_AUDIT_PASS'
+}elseif($unresolved -eq 0 -and $exactLoaded -eq $sourceReferences.Count){
+    'AZTEC_SOURCE_MODEL_STOCK_REFERENCE_INDIVIDUAL_BASE_ZONE_IDENTITY_MATCH_CENSUS_INCOMPLETE'
 }else{
     'AZTEC_SOURCE_MODEL_STOCK_REFERENCE_RESOLUTION_UNPROVEN'
 }
