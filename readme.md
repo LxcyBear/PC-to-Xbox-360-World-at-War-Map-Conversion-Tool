@@ -1,5 +1,20 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Gate 8E Windows PASS; next read-only original-Xbox draw ABI witness (Gate 8F)
+
+**Verified on Windows:** `AZTEC_GATE8_1903_NATIVE_60B_GEOMETRY_SKELETON_SOURCE_ONLY_PASS` — exact **1,903 × 60-byte = 114,180-byte** diagnostic, SHA256 `A9388650F9BDD4B4558F3895E0E339A3E3514BBE372CD723C47E3F3C4DB24D07`, all **5,709** packed-axis words endian-read back, **1,902** source-converted XModel occurrences and **1** independently stock-OAT-verified identity. Deliberately **all 28 bytes +32..+59** of every native record are ZERO/INVALID (unresolved pointers, lighting, flags, padding). The valid source geometry bridge is **NOT a native Xbox draw array** and it was not inserted into the map FF. Real-world FF stays ~**3.45 MiB**, Gate 10 still **0/1,903** physically linked, and full first-Xbox-test tracker stays **9/13 = 69% of milestone gates**.
+
+**New, not yet Windows tested (Gate 8F):** the existing pinned OAT Xenon native GfxWorld witness now contains C++ `static_assert` compiler-verified **60B GfxStaticModelDrawInst, 28B GfxPackedPlacement** and all field offsets, plus separate read-only metadata for the actual **1,903 native Xbox Aztec static draws**: model names, packed rotations, float origins/scales/cull distances, probe/primary lighting indices, 16-bit lighting handle, flags, nonzero padding count. `Run-AztecGate8NativeStaticDrawAbiWitness.ps1` checks the original-PC and 28-model PASS reports, requires a **new OAT capability** (to avoid silently trusting an old installed binary), runs the existing original Xbox OAT loader and compares native-vs-PC per-ordinal identities and transforms. It records lighting/flag histograms and a bounded set of differences, without donor body bytes or FF mutation. A mismatch is **diagnostic evidence to investigate**, not a reason to fabricate a field mapping or import native values. Exact Xbox stock reference runtime residency remains unverified.
+
+**Next command — one-time native OAT dumper rebuild only if the new capability is absent:**
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate8NativeStaticDrawAbiWitness.ps1" -BuildDumper
+```
+The `-BuildDumper` switch is optional on future runs after successful installation. This is another **witness only**, and actual FF size/history must not change. Follow-up implementation still requires a justified native lighting/flag policy, genuine relocated XModel pointers and a new OAT-accepted GfxWorld static-draw array before marking Gate 10 PASS.
+
+
 ## October 30 — Gate 8D packed rotations PASS; 60-byte Xenon draw ABI bridge next
 
 **Observed Windows PASS:** `AZTEC_GATE8_1903_PC_PLACEMENT_XENON_PACKED_AXES_PREFLIGHT_PASS` using **all 1,903** original-PC static-draw placements and **5,709/5,709 T4Xenon packed axis vectors**. Max component roundtrip error `0.00155460835` (limit 0.003); max source unit-axis length error `6.93529756E-08`; 0 invalid source axes, 0 components outside unit range. **1,902** placements correspond to owned source-converted model types and **1** to an independently stock-OAT-verified model identity, with **zero unresolved identity-only placements**. Hardware residency of that stock reference remains unproven. The separate first-Xbox-test tracker is still **9/13 milestones (69%)**; the axis preflight is not a physically linked draw FF.
