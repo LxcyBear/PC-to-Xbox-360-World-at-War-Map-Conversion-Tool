@@ -1618,6 +1618,15 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         return new CanonicalScriptTable(hasNull, values);
     }
 
+    private static uint GetXAssetRootPointerMarker(string xboxTypeName)
+    {
+        // Exact T4 zonecode exception; never infer the block from the
+        // presence/absence of asset children or from size.
+        return xboxTypeName.Equals("stringtable", StringComparison.OrdinalIgnoreCase)
+            ? T4ZonePointer.Following
+            : T4ZonePointer.Insert;
+    }
+
     private static byte[] BuildZone(
         IReadOnlyList<LinkerV2CanonicalRoot> roots,
         IReadOnlyList<StructuralPayload> payloads,
@@ -1662,12 +1671,17 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         {
             WriteU32(ms, checked((uint)root.XboxTypeId));
 
-            // T4 Xenon top-level XAssets are written through TEMP-block asset
-            // writers. OAT's ZoneOutputStream::MarkFollowing emits INSERT (-2)
-            // for TEMP pointers, not FOLLOWING (-1). INSERT lets the loader
-            // preserve the resolved asset reference instead of leaving callers
-            // pointed at the shared TEMP scratch buffer.
-            WriteU32(ms, T4ZonePointer.Insert);
+            // Most T4 Xenon asset writers explicitly use XFILE_BLOCK_TEMP
+            // and therefore require INSERT (-2) for top-level XAsset pointers.
+            // **StringTable is the sole T4 asset without 'set block TEMP'**
+            // in OAT's ZoneCode/Game/T4/XAssets/StringTable.txt:
+            //   use StringTable; set string name; set string values; ...
+            // Its loader uses the current/normal zone block, so its XAsset
+            // pointer MUST be FOLLOWING (-1), not TEMP INSERT (-2).
+            // Confirmed by independent OAT root bisections:
+            //   Backrooms root #6211 (stringtable) -> invalid block 7
+            //   Aztec root #5730 (stringtable) -> invalid block 7
+            WriteU32(ms, GetXAssetRootPointerMarker(root.XboxTypeName));
         }
 
         // IMPORTANT: do not serialize destination-block alignment padding.
@@ -1728,7 +1742,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         for (var i = 0; i < Math.Min(roots.Count, read.Assets.Count); i++)
         {
             if (read.Assets[i].TypeId != roots[i].XboxTypeId) errors++;
-            if (read.Assets[i].RawHeader != T4ZonePointer.Insert) errors++;
+            if (read.Assets[i].RawHeader != GetXAssetRootPointerMarker(roots[i].XboxTypeName)) errors++;
         }
 
         var cursor = checked((int)(read.AssetTableOffset + (long)read.AssetCount * 8));
