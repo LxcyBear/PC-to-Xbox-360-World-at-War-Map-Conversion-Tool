@@ -1,5 +1,34 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — confirmed two-map StringTable OAT root frontiers and root-pointer fix
+
+**Observed Windows bisection after commit `3d35696`:** both existing tracked-shell FFs had a passing zero-root control and a failing complete root list, then converged to the very last few StringTable roots:
+
+- Backrooms: 6,214 total roots, last-pass active=6,211, first-fail active=6,212; first failing 0-based root #6,211, type `stringtable` (Xbox type 0x22); OAT `Zone tried to reference invalid block 7`.
+- Aztec: 5,732 total roots, last-pass active=5,730, first-fail active=5,731; first failing 0-based root #5,730, type `stringtable` (0x22); identical OAT block-7 error.
+
+**Root cause backed by real T4 zone definitions:** OpenAssetTools upstream `src/ZoneCode/Game/T4/XAssets/StringTable.txt` explicitly notes `String table is not in the temp block for some reason`. All other inspected T4 XAsset declarations include `set block XFILE_BLOCK_TEMP;`. Existing Linker V2 `BuildZone` was emitting `T4ZonePointer.Insert` (-2, for TEMP) for EVERY root; that is incorrect for StringTable, which requires `T4ZonePointer.Following` (-1, non-TEMP). OAT root bisections isolate exactly this type as the first bad root in two independently converted maps. OAT upstream: https://github.com/Laupetin/OpenAssetTools/blob/main/src/ZoneCode/Game/T4/XAssets/StringTable.txt
+
+**Fix pushed to `src/WaW360.Core/Maps/NormalMapLinkerV2StructuralMainEmitter.cs`:** one narrowly scoped `GetXAssetRootPointerMarker` helper selects `Following` for StringTable, retains `Insert` for all other T4 asset types, and the emitted zone readback now verifies each root against this type-specific rule. The primary / tracked-shell / A-B variants share `BuildZone` so all benefit. **This is not a Windows-tested fix yet**, nor proof that other pointer/owned-child problems are absent.
+
+**Second issue from the same user run:** `-IncludeMaps nazi_zombie_FRUmansion,nazi_zombie_tower` arrived under `powershell.exe -File` as one literal comma-bearing string; no maps were selected. Fixed all three multi-map scripts to normalize comma-separated and array-style map filters before selection. This also enables a quick targeted structural rebuild of only the two known block-7 failures.
+
+**Next targeted Windows verification (two maps, not whole fleet):**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PowerShell syntax check failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Candidate -OatVariants Primary -IncludeMaps Backrooms,nazi_zombie_aztec_V2.2
+```
+
+If both primary FFs independently pass native Xenon OAT full-unlink, extend the updated engine to the remaining seven non-FRUmansion/Tower maps; if not, inspect new first-error lines. **Do not** claim playable Xbox hardware success from OAT, and do not padding-inflate output FF size. Rerun the corrected zero-build differential separately to check FRUmansion/Tower historical tracked-shell exit=0 outcomes.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1" -MatrixJson ".\output\multi_map_matrix\runs\run_20261030_024027_373fb3\multi_map_matrix.json" -IncludeMaps nazi_zombie_FRUmansion,nazi_zombie_tower
+```
+
 ## October 30 — OAT differential: two zero exits, two reproducible block-7 failures
 
 **User Windows differential run (after b1abcbf) PASS: 3/3 PowerShell scripts syntax-checked.** Existing emitted tracked-shell FFs were reused without any source rebuild.
