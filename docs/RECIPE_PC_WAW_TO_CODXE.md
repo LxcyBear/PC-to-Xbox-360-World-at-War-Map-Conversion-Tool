@@ -75,6 +75,31 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Windows verified beta-reference FF discovery + same-run 3/10 restoration
+
+User ran commit `9c48f39` with PS 5.1 AST **8/8 PASS**, including `Test-CodXeT4BetaLayout.ps1`. Scanned 50 directories in the selected `codxe latest (working map references)` folder. No installed `usermaps/` tree was present, but the script found many **direct `<map>/<map>.ff` reference packages**, including:
+
+- `nazi_zombie_aztec/nazi_zombie_aztec.ff` **80,309,061 bytes**, `_load.ff` **364,367 bytes**, `_patch.ff` **5,964,034 bytes**;
+- `backlot_zm/backlot_zm.ff` **112,343,793 bytes** with matching `_load.ff`/`_patch.ff`;
+- `bcast`, `cargoship`, `kinodertoten`, `mario`, etc. each had native-sized reference FFs.
+
+**Interpretation:** this folder is a useful native-map **reference collection**, not by itself evidence of how the new CodXe beta installs maps. The 80.3 MB Aztec native reference is NOT interchangeable with the 449,743-byte inert WeaponDef A/B diagnostic; size alone is not proof of matching source versions or production fidelity. Do not use native reference payload bytes as production donors.
+
+The inspector now inventories any map-shaped directory whose actual basename `.ff` exists, even if its parent is not `usermaps`. It reports source main/load/patch FF presence and sizes; `map.json`, `preview.dds`; extra sibling directories and all file counts; it explicitly marks the results as **REFERENCE_COLLECTION_OR_UNVERIFIED_INSTALL**, never a verified beta installation or an Xbox-ready package.
+
+The same Windows test ran `Run-WaWMultiMapOatDifferential.ps1 -OatMode List` on the current script-closure FF: SHA-matched **OAT_LIST_CLEAN_DIAGNOSTIC**, **0 warnings, 0 errors**, and **readiness rose 2/10 → 3/10** for the current Candidate matrix. Source index 74 entries and six real RawFile script overrides remain intact. OAT full-extract and production native graph remain unresolved; 3/10 is a gate count, not 30% gameplay completion.
+
+To inspect just the now-detected Aztec reference package with the next code revision, without touching any FF:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-CodXeT4BetaLayout.ps1' -Root 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\codxe latest (working map references)' -MapName nazi_zombie_aztec
+```
+
+Beta migration/export rules still require actual beta source or an installed beta map as proof. Never automatically relocate/delete old packages solely from reference-map folder names.
+
 ## CodXe upcoming beta — flat shared T4 usermap layout (October 30)
 
 Michael's beta changelog announces: **'New map layout, nested t4 dir gone (sorry)'** and reports that prior converted map packages need layout updates. This is a packaging/installation compatibility requirement *separate from* the Xbox FF binary conversion. Do not assume old converted `.ff` bytes need re-encoding solely due to the directory change.
