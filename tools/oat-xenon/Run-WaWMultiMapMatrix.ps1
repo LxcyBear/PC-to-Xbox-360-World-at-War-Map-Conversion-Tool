@@ -155,7 +155,7 @@ foreach($m in $maps){
             [string]$cached.mapId -eq $m.id -and
             (Test-Path -LiteralPath ([string]$cached.result.resultFolder) -PathType Container)
         if($reuse){
-            foreach($artifact in @($cached.verifiedOatArtifacts)){
+            foreach($artifact in @($cached.verifiedOatArtifacts | Where-Object { $null -ne $_ })){
                 if(-not(Test-Path -LiteralPath ([string]$artifact.file) -PathType Leaf) -or
                    (Get-FileHash -LiteralPath ([string]$artifact.file) -Algorithm SHA256).Hash -ine [string]$artifact.sha256){
                     $reuse=$false
