@@ -1,5 +1,24 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — WinPS 5.1 multi-map discovery Object[] hotfix (user run #2)
+
+**First batch engine/build proved PASS**, and the driver loaded **30 scoped conversion rules + 39 historic Jake report samples**, but the user's second Source run stopped during map enumeration: `Run-WaWMultiMapMatrix.ps1:119` tried to coerce a **System.Object[] into a single Int32** while creating a map record. Cause: Windows PowerShell 5.1 `ConvertFrom-Json` can yield the top-level JSON map array as one pipeline object, and `@(... | ConvertFrom-Json)` can preserve a nested array. Then PowerShell member-enumerates `$m.iwdCount` across all discovered maps as an `Object[]`. **No map serializer ran and no source FF was modified.**
+
+**Fix:** recursively flatten the decoded discovery JSON into genuine individual PSCustomObject map entries, check map names/IWD count as scalar and valid nonnegative Int32, preserve per-map source folder paths, and print the detected map count before running stages. The new proof is waiting for a Windows run, not yet claimed PASS. FRUmansion and `nazi_zombie_tower` remain priority maps; afterward other PC Maps folder contents run automatically.
+
+**Fast check to prove discovery before expensive per-map work:**
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Inventory
+```
+**Then actual shared conversion Source pass:**
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Source
+```
+Both modes use separate run directories and don't change any PC source files or deploy to Xbox. We only raise milestone or FF-size claims after actual output evidence.
+
+
 ## October 30 — Multi-map Windows first-run PowerShell fix + Jake archive evidence + FRUmansion/Tower priority
 
 **User's first Windows Source batch failed before map enumeration** at the shared engine build with `Cannot convert the System.Object[] value ... to System.Int32`. Fixed `ExecLog` in `Run-WaWMultiMapMatrix.ps1` to use `Start-Process -PassThru -Wait` and a single typed `Process.ExitCode` instead of coercing a PowerShell native-command pipeline result. All invocations now use named arguments and individually quoted paths; stdout/stderr are saved to logs. A global script failure handler prints the exact PowerShell source position if another issue appears. **Fix is untested on Windows until rerun.**
