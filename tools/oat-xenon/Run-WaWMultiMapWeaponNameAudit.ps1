@@ -234,7 +234,61 @@ foreach($m in $matrix.maps){
             -not @($knownProofNames | Where-Object {$_ -ieq $n}).Count
         })
         Write-Host "[WEAPON-NAMES]   source=$sourceRole actualWeaponAssets=$($actualWeaponNames.Count) knownProofNames=$($knownProofNames.Count) unresolvedProofBodies=$(@($sourceProofRecords | Where-Object {$_.synthetic}).Count) unmatchedOatNameCandidates=$($oatNotInKnownProof.Count)"
-        Write-Host '[WEAPON-NAMES]   NOTE: unmatched names are candidates only. XAsset aliases and table order forbid automatic record-to-name assignments.'
+        # Read-only positional witness: OAT lists XAssets in table order,
+        # whereas proof records are sorted by PHYSICAL WeaponDef offset.
+        # Matching counts alone does not prove these orders are identical.
+        # Check EVERY known, exact source-owned proof name at its position
+        # before even suggesting a candidate for an unresolved record.
+        $orderConflicts=New-Object 'System.Collections.Generic.List[object]'
+        $orderCandidates=New-Object 'System.Collections.Generic.List[object]'
+        $anchorCount=0
+        $sameCount=($exit -eq 0 -and $actualWeaponNames.Count -eq $sourceProofRecords.Count)
+        $namesUnique=$true
+        $uniqueNames=[System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach($actualName in $actualWeaponNames){
+            if(-not $uniqueNames.Add([string]$actualName)){$namesUnique=$false}
+        }
+        if($sameCount){
+            for($ordinal=0;$ordinal -lt $sourceProofRecords.Count;$ordinal++){
+                $proof=$sourceProofRecords[$ordinal]
+                if($proof.synthetic){continue}
+                $anchorCount++
+                if(-not [string]::Equals([string]$proof.name,[string]$actualWeaponNames[$ordinal],
+                    [StringComparison]::OrdinalIgnoreCase)){
+                    $orderConflicts.Add([pscustomobject]@{
+                        ordinal=$ordinal;physicalProofName=[string]$proof.name
+                        oatListedName=[string]$actualWeaponNames[$ordinal]
+                        proofBodyOffset=[long]$proof.offset
+                    })
+                }
+            }
+        }
+        $allKnownAnchorsMatch=($sameCount -and $namesUnique -and
+            $anchorCount -gt 0 -and $orderConflicts.Count -eq 0)
+        if($allKnownAnchorsMatch){
+            for($ordinal=0;$ordinal -lt $sourceProofRecords.Count;$ordinal++){
+                $proof=$sourceProofRecords[$ordinal]
+                if(-not $proof.synthetic){continue}
+                $orderCandidates.Add([pscustomobject]@{
+                    status='ORDER_ONLY_UNVERIFIED_DO_NOT_APPLY'
+                    ordinal=$ordinal
+                    packedPointer=[string]$proof.name
+                    proofBodyOffset=[long]$proof.offset
+                    pointerBlock=$proof.pointerBlock
+                    pointerOffset=$proof.pointerOffset
+                    oatNameAtSameOrdinal=[string]$actualWeaponNames[$ordinal]
+                    assertion='Positional candidate only. Packed-pointer target not independently decoded.'
+                })
+            }
+        }
+        Write-Host "[WEAPON-NAMES]   ORDER WITNESS $sourceRole : equalCounts=$sameCount uniqueOatNames=$namesUnique knownAnchors=$anchorCount conflicts=$($orderConflicts.Count) orderOnlyCandidates=$($orderCandidates.Count)"
+        foreach($conflict in @($orderConflicts.ToArray() | Select-Object -First 4)){
+            Write-Host "[WEAPON-NAMES]     ORDER CONFLICT #$($conflict.ordinal): proof=$($conflict.physicalProofName), OAT=$($conflict.oatListedName)"
+        }
+        foreach($candidate in @($orderCandidates.ToArray() | Select-Object -First 8)){
+            Write-Host "[WEAPON-NAMES]     UNVERIFIED ORDINAL CANDIDATE #$($candidate.ordinal): $($candidate.packedPointer) => $($candidate.oatNameAtSameOrdinal)"
+        }
+        Write-Host '[WEAPON-NAMES]   NOTE: even a 100% known-name order witness is not pointer-to-name proof; aliases/reordering may remain. No candidate is applied to a converted FF.'
         $oatSources.Add([pscustomobject]@{
             path=$path;sourceRole=$sourceRole;exit=$exit;log=$log
             weaponNameEvidenceSource='OAT original PC --list; exact top-level weapon assets only'
@@ -246,6 +300,15 @@ foreach($m in $matrix.maps){
             sourceProofKnownNames=@($knownProofNames)
             proofKnownNamesNotInOat=@($knownProofNotInOat)
             oatWeaponNamesNotInKnownProof=@($oatNotInKnownProof)
+            ordinalWitness=[pscustomobject]@{
+                equalCounts=$sameCount
+                uniqueOatNames=$namesUnique
+                knownAnchorNamesAtSameOrdinal=$anchorCount
+                knownNameOrderConflicts=@($orderConflicts.ToArray())
+                allKnownNamesAligned=$allKnownAnchorsMatch
+                orderOnlyUnverifiedCandidates=@($orderCandidates.ToArray())
+                canBeAppliedToXenonPayload=$false
+            }
             exactPointerToNameMappingEstablished=$false
         })
     }
