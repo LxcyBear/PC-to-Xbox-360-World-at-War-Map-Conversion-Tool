@@ -202,6 +202,14 @@ foreach($m in @($matrix.maps)){
         }
     }
     $gates.Add((New-Gate 'WEAPON_NAMES' 'All real WeaponDef identities proven' $weaponState $weaponReason))
+    # Diagnostic ONLY: a positional WeaponDef name probe can establish
+    # whether OAT extraction moves beyond forbidden placeholder filenames,
+    # but must NEVER count as real source-pointer proof or Xbox readiness.
+    $weaponProbeVariant='hardware_test_main_xanim_native_layout_weapon_order_probe'
+    $weaponProbe=Find-Variant $artifacts $weaponProbeVariant
+    $weaponProbeValid=Get-ShaMatch $weaponProbe
+    $weaponProbeExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $weaponProbeVariant 'Extract' $weaponProbe
+    $weaponProbeState=if($weaponProbeExtractOk){'OAT_EXTRACT_CLEAN_DIAGNOSTIC'}elseif($weaponProbeValid){'EMITTED_OAT_EXTRACT_NOT_PROVEN'}else{'NOT_EMITTED'}
     # Keep each New-Gate command invocation on one logical line. In WinPS
     # 5.1 a newline between positional string arguments terminates the
     # command, even when it appears inside an enclosing method expression.
@@ -239,6 +247,9 @@ foreach($m in @($matrix.maps)){
     foreach($gate in $gates){
         Write-Host "[READINESS]   $($gate.status.PadRight(7)) $($gate.id.PadRight(16)) $($gate.reason)"
     }
+    if($weaponProbeValid){
+        Write-Host "[READINESS]   EXPERIMENTAL ONLY: weapon-order probe FF=$($weaponProbe.bytes)B, full OAT extraction=$weaponProbeState. No gate credited."
+    }
     Write-Host '[READINESS]   VERDICT: HOLD_DIAGNOSTIC_ONLY. No automated Xbox deployment or release approval.'
     $stateSignature=(@($gates.ToArray() | ForEach-Object {$_.id+'='+$_.status}) -join ';')+
         '|'+[string]$matrix.gitCommit+'|'+[string]$m.sourceFingerprint+
@@ -261,6 +272,14 @@ foreach($m in @($matrix.maps)){
         gitCommit=[string]$matrix.gitCommit
         passedEvidenceGates=$passed;totalEvidenceGates=$total
         scriptOverrides=$scriptOverridden
+        experimentalWeaponOrderProbe=[pscustomobject]@{
+            isDiagnosticOnly=$true
+            canAuthorizeXboxRelease=$false
+            emitted=$weaponProbeValid
+            ffBytes=if($weaponProbeValid){[long]$weaponProbe.bytes}else{$null}
+            oatFullExtractState=$weaponProbeState
+            ordinalNamesIndependentlyProven=$false
+        }
         scriptClosureFFBytes=if($scriptValid){[long]$script.bytes}else{$null}
         primaryFFBytes=if($primaryValid){[long]$primary.bytes}else{$null}
         sourceIndex=$sourceIndex
