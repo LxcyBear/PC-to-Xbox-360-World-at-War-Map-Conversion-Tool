@@ -99,19 +99,36 @@ foreach($m in $matrix.maps){
                 $err=if(Test-Path -LiteralPath $stderr){[IO.File]::ReadAllText($stderr)}else{''}
                 $all=$std+[Environment]::NewLine+$err
                 [IO.File]::WriteAllText($log,$all,[Text.UTF8Encoding]::new($false))
-                $zero=$all -match '(?im)(Finished|Succeeded|Completed)\s+with\s+0\s+warnings?\s*,\s*0\s+errors?'
-                $bad=$all -match '(?im)(Failed\s+with|^\s*ERROR\s*:|^\s*FATAL\s*:|Unhandled exception)'
+                # "Dumped weapon" is informational output and is NOT a
+                # missing-asset failure. Differentiate it from the actual
+                # "[STDERR] ERROR: Failed to open file weapons/..." case.
+                $zero=$all -match '(?im)^\s*(?:Finished|Succeeded|Completed|Success(?:fully)?)\s+(?:with\s+)?0\s+warnings?\s*[,;]|^\s*(?:Finished|Succeeded|Completed|Success(?:fully)?)\s+(?:with\s+)?0\s+warnings?\s+and\s+0\s+errors?'
+                if($zero -and $all -notmatch '(?i)0\s+errors?'){
+                    $zero=$false
+                }
+                $bad=$all -match '(?im)(^\s*(?:\[STDERR\]\s*)?(?:ERROR\s*:|FATAL\s*:)|^\s*Failed\s+with|Unhandled exception|Loading fastfile failed)'
                 if($code -eq 0 -and $zero -and -not $bad){
                     $status='OAT_PASS_DIAGNOSTIC_ONLY'
+                }elseif($code -eq 0 -and -not $bad){
+                    $status='OAT_ZERO_EXIT_SUMMARY_UNCONFIRMED'
                 }elseif($all -match 'Zone tried to reference invalid block 7'){
                     $status='INVALID_BLOCK_7'
-                }elseif($all -match 'weapons/<packed-name@'){
-                    $status='PACKED_WEAPON_NAME'
+                }elseif($all -match '(?i)ERROR\s*:\s*Failed to open file.*weapons/'){
+                    $status='WEAPON_OUTPUT_PATH_ERROR'
                 }else{$status='OAT_FAILURE_OTHER'}
-                Write-Host ("[OAT-DIFF] {0,-24} {1,-53} {2,-25} exit={3} bytes={4}" -f $mapName,$variant,$status,$code,$bytes)
-                foreach($line in @($all -split '[\r\n]+' | Where-Object {
-                    $_ -match '(?i)(invalid block|packed-name|Failed with|Finished with|error:|fatal:|0 errors)'
-                } | Select-Object -First 5)){Write-Host "[OAT-DIFF]   $line"}
+                Write-Host ("[OAT-DIFF] {0,-24} {1,-53} {2,-31} exit={3} bytes={4}" -f $mapName,$variant,$status,$code,$bytes)
+                $reportLines=@($all -split '[\r\n]+' | Where-Object {
+                    $_ -match '(?i)(invalid block|Failed with|Finished with|Succeeded with|Completed with|Success|ERROR:|FATAL:|0 errors|Failed to open file)'
+                })
+                if($reportLines.Count -eq 0){
+                    $reportLines=@($all -split '[\r\n]+' | Where-Object {$_ -match '\S'} | Select-Object -Last 7)
+                }
+                foreach($line in @($reportLines | Select-Object -Last 10)){
+                    Write-Host "[OAT-DIFF]   $line"
+                }
+                if($all -match '(?i)Dumped weapon') {
+                    Write-Host '[OAT-DIFF]   NOTE: Dumped weapon is informational; only ERROR/failed summaries indicate a failure.'
+                }
             }catch{
                 $msg=[string]$_
                 [IO.File]::WriteAllText($log,$msg,[Text.UTF8Encoding]::new($false))
