@@ -1,5 +1,26 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — OAT-verified FF size-growth tracker + two progress bars; start 1,903 original-PC draw source bridge
+
+**New actual-size history, no dummy payloads:** the verified 28-XModel/8,509-root diagnostic baseline from the user's console log is exactly **3,615,230 bytes (3.45 MiB)**, SHA256 `0CBD019ABB5D702429B9EECA9B04A843311FF118DDEDBD5CF012C757F757CF82`. `Build-AztecAllRealStaticModelWorldFF.ps1` now records **only FF builds that independently pass the same strict OAT emitter manifest and physical SHA checks** in `output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping\pc_gate8_29x_ff\build_logs\aztec_ff_size_history.json`. The new `Record-AztecOatFastFileSize.ps1` prints total bytes / MiB, signed byte delta from previous distinct verified FF, whether this is a new peak, real XModel/GfxSurface/Material body counts, physical static-draw link count (currently **0/1,903**), SHA, and ledger path. Records are persisted on distinct hash changes; unchanged rebuilds do not generate fake growth. The baseline comes from the user's proven prior log; this size history never uses artificial size padding and **bytes != map completeness**.
+
+**Live build operation bar:** `Build-AztecAllRealStaticModelWorldFF.ps1` now emits `[AZTEC-BUILD-PROGRESS] [######--------------] NN% | STEP` plus native PowerShell `Write-Progress` as stock audit completes, each **of 28 actual SHA-checked and independently OAT-extracted Xenon XModel graphs** stages, .NET emission builds, and the integrated FF completes independent OAT verification. This percentage measures **only the actions in the current build**, not playable-map completion. A successful output additionally displays the *separate*, preexisting `Show-AztecFirstXboxFFProgress.ps1` bar. Its new evidence-backed milestones include **28 actual source-backed XModels in one 8,509-root OAT FF**, **1,903 original PC typed draw transforms exported**, and (still pending) **1,903 real Xenon GfxStaticModelDrawInst pointers physically emitted/OAT loaded**. The release/hardware gates remain strict and incomplete. The approved final output path remains `C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\Xbox Maps\Converter Current Test Map`, untouched by an incomplete diagnostic.
+
+**Next real 1,903-draw frontier:** `Run-AztecGate8PcStaticDrawSource.ps1` gained opt-in `-Use28ModelWorld`, requiring the just-completed combined 28-XModel OAT PASS instead of the old five-model canary. It invokes the pinned x86 PC OAT source exporter for all **1,903 original PC GfxStaticModelDrawInst source records** (92-byte PC typed draws; 52-byte PC placement subset), validates exact model-name histogram 27/27 plus transforms/axes/scale/LOD/metadata, and produces a SHA-backed sanitized JSON corpus at `...\pc_gate8_static_draw_source\aztec_1903_original_pc_static_draws.json`. NO raw PC `XModel*` pointers transferred and NO 1,903 Xbox draw records claimed yet. Requires the pinned OAT capability `t4-pc-gfxworld-gate8-static-draw-source-v1`; if absent, the source tool specifically requests a one-time `-BuildDumper`. **Windows result pending.**
+
+**Run from repo root:**
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+# Quick milestone bar, NO FF rebuild:
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Show-AztecFirstXboxFFProgress.ps1"
+# NEXT actual original-PC source work, NO map FF modification:
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate8PcStaticDrawSource.ps1" -Use28ModelWorld
+# WHEN another native FF build is desired: animated live build progress and
+# verified byte growth/difference are recorded automatically:
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Build-AztecAllRealStaticModelWorldFF.ps1" -SkipPcModelConversion
+```
+
 ## Aztec 28-model source corpus preflight — exact Xbox stock reference comparison fixed
 
 After the second all-28-graph Windows extraction (user's `Pasted text(20261030-050014).txt`), the user verified that every single **28 / 28** source-derived Xenon XModel graph was emitted, while the very last `,viewmodel_default` validation again failed. The original-PC census is still **26 real source-owned static model types / 1,902 static draws**, plus **1 comma-marked stock reference / 1 draw**, with two earlier verified model canaries accounting for 28 owned model graph bodies. Independent stock audit found unprefixed native XModel `viewmodel_default` root `7506` and the Xbox `common.ff` OAT body. `patch.ff` absent in local stock scan, so this is **only a proven stock name/type identity**, not runtime hardware residency.
