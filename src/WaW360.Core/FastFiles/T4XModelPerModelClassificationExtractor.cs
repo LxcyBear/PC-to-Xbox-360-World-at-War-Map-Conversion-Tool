@@ -134,9 +134,14 @@ public static class T4XModelPerModelClassificationExtractor
         }
 
         var listedNames = ParseXModelNames(await File.ReadAllTextAsync(pcOatListLog, cancellationToken));
-        if (listedNames.Count != declared)
-            throw new InvalidDataException(
-                $"PC OAT --list exposed {listedNames.Count:N0} XModels, but the source XAsset table declares {declared:N0}.");
+        // OAT --list can enumerate XModels outside the source root XAsset table
+        // (e.g. models brought in by other loaded assets). For the exact
+        // N==N case, preserve the established original source/OAT ordinal path.
+        // For N>declared, do NOT trim 14 entries or shift source ordinals:
+        // the typed mixed-order probe has already recovered each source-owned
+        // XModel's exact zone offset AND source name, which must be present in
+        // OAT's full list with at least the same occurrence multiplicity.
+        var rootNames = ReconcileSourceModelNames(mappings, listedNames, declared);
 
         var resolvedSidecars = LoadResolvedClassificationCorpus(pcDumpRoot);
 
@@ -150,7 +155,7 @@ public static class T4XModelPerModelClassificationExtractor
             cancellationToken.ThrowIfCancellationRequested();
 
             var mapping = mappings[ordinal];
-            var name = listedNames[ordinal];
+            var name = rootNames[ordinal];
             var modelDir = Path.Combine(outputDirectory, $"{ordinal:D3}_{SanitizeFileName(name)}");
             Directory.CreateDirectory(modelDir);
             var csvFile = Path.Combine(modelDir, "partclassification.csv");
@@ -553,6 +558,77 @@ public static class T4XModelPerModelClassificationExtractor
                 $"GLTF for '{assetName}' did not form a complete XModel-compatible joint forest.");
 
         return reordered.Select(i => names[i]).ToArray();
+    }
+
+    /// <summary>
+    /// Assign source-root names using the exact PC XModel mapping recovered
+    /// from source bytes, not raw OAT asset-list position when additional
+    /// models are printed by the PC Unlinker. This does NOT infer an identity
+    /// from the unordered extras or authorize a missing source root.
+    /// </summary>
+    private static List<string> ReconcileSourceModelNames(
+        IReadOnlyList<T4AlignedXModelMapping> mappings,
+        IReadOnlyList<string> listedNames,
+        int declared)
+    {
+        if (mappings.Count != declared)
+            throw new InvalidDataException(
+                $"PC source XModel mapping cardinality changed: mapped={mappings.Count}, declared={declared}.");
+
+        if (listedNames.Count == declared)
+            return listedNames.ToList(); // retain historical exact source/OAT order
+
+        if (listedNames.Count < declared)
+            throw new InvalidDataException(
+                $"PC OAT --list exposed only {listedNames.Count:N0} XModels for {declared:N0} source XAsset roots.");
+
+        var expected = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var mapping in mappings)
+        {
+            if (string.IsNullOrWhiteSpace(mapping.ObservedName))
+                throw new InvalidDataException(
+                    $"Source XModel at asset #{mapping.AssetIndex} / 0x{mapping.Offset:X8} has no recovered name; " +
+                    "cannot reconcile additional OAT-listed models.");
+
+            if (mapping.Offset < 0 || mapping.End <= mapping.Offset ||
+                string.IsNullOrWhiteSpace(mapping.Source))
+                throw new InvalidDataException(
+                    $"Source XModel at asset #{mapping.AssetIndex} has an incomplete typed source witness.");
+
+            var name = mapping.ObservedName;
+            expected.TryGetValue(name, out var count);
+            expected[name] = checked(count + 1);
+        }
+
+        var available = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var name in listedNames)
+        {
+            available.TryGetValue(name, out var count);
+            available[name] = checked(count + 1);
+        }
+
+        var missing = expected
+            .Where(p => !available.TryGetValue(p.Key, out var count) || count < p.Value)
+            .Select(p => p.Key + " expected=" + p.Value +
+                " listed=" + (available.TryGetValue(p.Key, out var count) ? count : 0))
+            .Take(12)
+            .ToArray();
+        if (missing.Length != 0)
+            throw new InvalidDataException(
+                $"PC source-owned XModel names cannot be matched to OAT --list " +
+                $"({listedNames.Count:N0} listed vs {declared:N0} actual roots). " +
+                $"Missing/underrepresented source identities: [{string.Join("; ", missing)}]. " +
+                "No positional trimming or guest-name substitution is permitted.");
+
+        var additional = new Dictionary<string, int>(available, StringComparer.Ordinal);
+        foreach (var (name, count) in expected)
+            additional[name] -= count;
+        var extra = additional.Values.Sum();
+        if (extra != listedNames.Count - declared || additional.Values.Any(n => n < 0))
+            throw new InvalidDataException(
+                "PC OAT additional XModel occurrence multiset did not reconcile with source-owned names.");
+
+        return mappings.Select(m => m.ObservedName).ToList();
     }
 
     private static List<string> ParseXModelNames(string log)
