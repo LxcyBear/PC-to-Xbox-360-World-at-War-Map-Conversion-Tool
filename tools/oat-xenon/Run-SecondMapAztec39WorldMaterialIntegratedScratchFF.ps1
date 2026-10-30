@@ -3,7 +3,9 @@ param([switch]$IntegrateWorld,
       [ValidateSet('Root','Indices','Surfaces','MaterialMemory','Full')]
       [string]$ProbeLevel='Full',
       [switch]$DpvsStaticProbe,
-      [switch]$Gate8ChildProbe)
+      [switch]$Gate8ChildProbe,
+      [ValidateSet('Planes','Nodes','All')]
+      [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if(-not $IntegrateWorld -and $ProbeLevel -ne 'Full'){
@@ -14,6 +16,9 @@ if($DpvsStaticProbe -and (-not $IntegrateWorld -or $ProbeLevel -ne 'Full')){
 }
 if($Gate8ChildProbe -and (-not $DpvsStaticProbe -or -not $IntegrateWorld -or $ProbeLevel -ne 'Full')){
     throw 'Gate 8 typed PC plane/node/layer probe requires -IntegrateWorld -ProbeLevel Full -DpvsStaticProbe.'
+}
+if(-not $Gate8ChildProbe -and $Gate8ChildLevel -ne 'All'){
+    throw '-Gate8ChildLevel applies only to -Gate8ChildProbe.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -38,7 +43,10 @@ if($Gate8ChildProbe -and -not(Test-Path -LiteralPath $gate8Source -PathType Leaf
     throw "Missing typed original-PC Gate8 source corpus. Run Run-SecondMapAztecGate8PcChildCorpus.ps1 first: $gate8Source"
 }
 $work=Join-Path $base $(if($IntegrateWorld){
-    if($Gate8ChildProbe){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_planes_nodes_layer'}
+    if($Gate8ChildProbe){
+        if($Gate8ChildLevel -eq 'All'){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_planes_nodes_layer'}
+        else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_'+$Gate8ChildLevel.ToLowerInvariant()}
+    }
     elseif($DpvsStaticProbe){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static'}
     elseif($ProbeLevel -eq 'Full'){'pc_735_39_gfxworld_integrated_ff_oat_run'}
     else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_'+$ProbeLevel.ToLowerInvariant()}
@@ -127,7 +135,7 @@ if($IntegrateWorld){
         Write-Host '[AZTEC-WORLD39-FF] STATIC DPVS PROBE: source 613 sorted surface indices + original PC static model instances, OAT scratch gate only'
     }
     if($Gate8ChildProbe){
-        Write-Host '[AZTEC-WORLD39-FF] GATE8 SOURCE CHILD PROBE: 3447 PC planes + 24511 PC nodes + source vertex-layer bytes in exact Xenon order'
+        Write-Host "[AZTEC-WORLD39-FF] GATE8 SOURCE CHILD PROBE: level=$Gate8ChildLevel (Planes -> Nodes -> All)"
     }
     Write-Host '[AZTEC-WORLD39-FF] Only partial DPVS scalar+surface graph: other DPVS/cell/lightmap/runtime children remain incomplete'
 }else{
@@ -165,6 +173,7 @@ try{
     $priorProbe=$env:WAW360_AZTEC_WORLD_CHILD_PROBE
     $priorDpvs=$env:WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE
     $priorGate8=$env:WAW360_AZTEC_GATE8_CHILD_CORPUS
+    $priorGate8Level=$env:WAW360_AZTEC_GATE8_CHILD_LEVEL
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -174,8 +183,10 @@ try{
         }
         if($Gate8ChildProbe){
             $env:WAW360_AZTEC_GATE8_CHILD_CORPUS=$gate8Source
+            $env:WAW360_AZTEC_GATE8_CHILD_LEVEL=$Gate8ChildLevel
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_CORPUS -ErrorAction SilentlyContinue
+            Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_LEVEL -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -195,6 +206,11 @@ try{
             Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_CORPUS -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_GATE8_CHILD_CORPUS=$priorGate8
+        }
+        if($null -eq $priorGate8Level){
+            Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_LEVEL -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE8_CHILD_LEVEL=$priorGate8Level
         }
     }
 }finally{$ErrorActionPreference=$save}
@@ -229,6 +245,7 @@ if($IntegrateWorld){
         probeLevel=$ProbeLevel
         sourceBackedStaticDpvsProbe=[bool]$DpvsStaticProbe
         sourceBackedGate8PlaneNodeLayerProbe=[bool]$Gate8ChildProbe
+        sourceBackedGate8ProbeLevel=if($Gate8ChildProbe){$Gate8ChildLevel}else{''}
         realOriginalPcGfxWorldCoreEmitted=($core -and -not $diagnosticProbe)
         allOriginalPcGfxWorldDpvsChildrenComplete=[bool]$e.OriginalPcGfxWorldFullDpvsGraphComplete
         realPcGfxSurfaceCount=if($ProbeLevel -in @('Surfaces','MaterialMemory','Full')){735}else{0}
@@ -254,12 +271,22 @@ if($IntegrateWorld){
         }
     }
     $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $report -Encoding UTF8
-    Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel sourceDpvsProbe=$DpvsStaticProbe gate8ChildProbe=$Gate8ChildProbe fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
+    Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel sourceDpvsProbe=$DpvsStaticProbe gate8ChildProbe=$Gate8ChildProbe gate8Level=$Gate8ChildLevel fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
     Write-Host "[AZTEC-WORLD-INTEGRATED] OAT PASS=$candidateOatPass originalPcWorldFF=$($e.OutputFastFile)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] status=$($result.status)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] report=$report"
     if(-not $core -or -not $candidateOatPass){
-        Get-Content -LiteralPath $log -Tail 45 | ForEach-Object {Write-Host "[AZTEC-WORLD-INTEGRATED] TRACE $_"}
+        # Show the actual OAT loader's stdout/stderr, not just the
+        # downstream 0/8509 root-identity reconciliation summary.
+        $oatList=Join-Path $out 'oat_hard_gate\nazi_zombie_aztec_oat_xenon_list.log'
+        if(Test-Path -LiteralPath $oatList -PathType Leaf){
+            Write-Host "[AZTEC-WORLD-INTEGRATED] OAT REAL LOADER LOG: $oatList"
+            Get-Content -LiteralPath $oatList -Tail 45 |
+                ForEach-Object {Write-Host "[AZTEC-WORLD-INTEGRATED] OAT $_"}
+        }else{
+            Write-Host "[AZTEC-WORLD-INTEGRATED] OAT list log not found at $oatList"
+        }
+        Get-Content -LiteralPath $log -Tail 28 | ForEach-Object {Write-Host "[AZTEC-WORLD-INTEGRATED] TRACE $_"}
         throw "Direct integrated world OAT failure; fix this real FF loader evidence next: $log"
     }
     if($diagnosticProbe){
