@@ -202,7 +202,7 @@ try{
     if(-not [string]::IsNullOrWhiteSpace($MetadataDirectory)){
         $extra=(Resolve-Path -LiteralPath $MetadataDirectory -ErrorAction Stop).Path
         if(-not(Test-Path -LiteralPath $extra -PathType Container)){throw "Metadata directory is not a folder: $extra"}
-        $metaRoots+=,$extra
+        $metaRoots += $extra
     }
     foreach($name in @('map.arena','mod.arena','map.json')){
         foreach($root in $metaRoots){
