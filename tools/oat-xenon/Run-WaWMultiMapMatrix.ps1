@@ -11,6 +11,11 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+trap {
+    Write-Host "[MULTIMAP-ERROR] $($_.Exception.Message)"
+    Write-Host "[MULTIMAP-ERROR] $($_.InvocationInfo.PositionMessage)"
+    throw
+}
 # ONE build, all maps, isolated outputs. Candidate mode is a diagnostic
 # build plus real OAT checks. NEVER deploy FFs to any Xbox folder.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
