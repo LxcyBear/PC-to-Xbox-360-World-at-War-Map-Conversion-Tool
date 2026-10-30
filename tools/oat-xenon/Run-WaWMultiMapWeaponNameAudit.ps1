@@ -37,6 +37,18 @@ function Read-Be32([IO.BinaryReader]$reader){
     if($b.Length -ne 4){throw 'Truncated weapon proof integer'}
     return [uint32](([uint64]$b[0]*16777216)+([uint64]$b[1]*65536)+([uint64]$b[2]*256)+[uint64]$b[3])
 }
+# Guard the unsigned/sentinel behavior using a REAL synthetic proof
+# label pointer from the preceding Aztec OAT run. No files are touched.
+$knownAztecPointer=[Convert]::ToUInt32('83445D65',16)
+$knownUnbiased=[uint64]$knownAztecPointer-1
+if($knownAztecPointer -eq [Convert]::ToUInt32('FFFFFFFE',16) -or
+   $knownAztecPointer -eq [uint32]::MaxValue -or
+   [int]($knownUnbiased -shr 29) -ne 4 -or
+   [long]($knownUnbiased -band 0x1FFFFFFF) -ne 54812004){
+    throw 'Packed WeaponDef pointer decoding regression: known Aztec pointer should be Virtual block 4, offset 0x03445D64.'
+}
+Write-Host '[WEAPON-NAMES] PS5.1 UInt32 pointer/sentinel regression: PASS (Aztec 0x83445D65 => Virtual block 4).'
+
 function Read-WeaponNames([string]$path){
     $list=New-Object 'System.Collections.Generic.List[object]'
     $fs=[IO.File]::OpenRead($path)
@@ -68,8 +80,17 @@ function Read-WeaponNames([string]$path){
                 $bodyOffset=[Convert]::ToUInt32($label.Groups[1].Value,16)
                 if($bodyOffset -ne $offset){throw "Weapon proof body offset mismatch at record #$i"}
                 $pointerRaw=[Convert]::ToUInt32($label.Groups[2].Value,16)
-                if($pointerRaw -eq 0 -or $pointerRaw -ge 0xFFFFFFFE){
-                    throw "Weapon proof pointer is null or special sentinel at record #$i"
+                # PS 5.1 parses 0xFFFFFFFE as signed -2. A UInt32
+                # comparison with ">= 0xFFFFFFFE" therefore rejected EVERY
+                # normal high-bit Xbox packed pointer (e.g. 0x83445D65).
+                # Compare exact unsigned sentinels, never an ordered range
+                # against a signed hexadecimal literal.
+                $insertSentinel=[Convert]::ToUInt32('FFFFFFFE',16)
+                $followingSentinel=[uint32]::MaxValue
+                if($pointerRaw -eq [uint32]0 -or
+                   $pointerRaw -eq $insertSentinel -or
+                   $pointerRaw -eq $followingSentinel){
+                    throw "Weapon proof pointer is null or special sentinel at record #$i (raw=0x$($pointerRaw.ToString('X8')))"
                 }
                 $unbiased=[uint64]$pointerRaw-1
                 $pointerBlock=[int]($unbiased -shr 29)
