@@ -15,6 +15,15 @@ function Read-Report([string]$relativePath){
     try{return (ConvertFrom-Json -InputObject (Get-Content -LiteralPath $path -Raw))}
     catch{return $null}
 }
+# Older on-disk diagnostic manifests may predate a new progress milestone.
+# A missing field means PENDING, never a terminating StrictMode error or PASS.
+function Test-ReportFields($report,[string[]]$fields){
+    if($null -eq $report){return $false}
+    foreach($field in $fields){
+        if($null -eq $report.PSObject.Properties[$field]){return $false}
+    }
+    return $true
+}
 function Add-Gate([string]$name,[bool]$passed,[string]$evidence){
     $gates.Add([pscustomobject]@{Name=$name;Passed=$passed;Evidence=$evidence})
 }
@@ -185,7 +194,14 @@ Add-Gate '28 source-derived XModels integrated in one 8,509-root OAT FF' $models
 # relocation. It is NOT an Xbox GfxWorld draw-array and never upgrades
 # the 1,903 physical placement-link gate by itself.
 $typedDrawSourcePass=$false
-if($modelsInOneFf -and $null -ne $pc1903Source -and
+if($modelsInOneFf -and
+   (Test-ReportFields $pc1903Source @(
+       'schema','status','sourceDrawCount','distinctSourceModels',
+       'verifiedSourceWorldModelBodies',
+       'sourceDrawOccurrencesCoveredByRealConvertedModelTypes',
+       'convertedXenonDrawRecords','pcModelPointerBytesCopied',
+       'hardwareReady','typedDrawFile','typedDrawSha256'
+   )) -and
    [string]$pc1903Source.schema -eq 'WaW360.AztecGate8PcStaticDrawSourceProof.v1' -and
    [string]$pc1903Source.status -eq 'AZTEC_GATE8_1903_PC_TYPED_STATIC_DRAWS_SOURCE_PASS' -and
    [int]$pc1903Source.sourceDrawCount -eq 1903 -and
