@@ -39,7 +39,7 @@ if(-not $SkipPcModelConversion){
             ForEach-Object {Write-Host "[AZTEC-29X] $_"}
         $exitCode=[int]$LASTEXITCODE
     }finally{$ErrorActionPreference=$prior}
-    if($exitCode -ne 0){throw "Original-PC XModel conversion wave stopped at a real conversion blocker. See $wavePath; no main FF was overwritten."}
+    if($exitCode -ne 0){throw "Aztec source-model wave script failed (exit=$exitCode). Check the FIRST error above, which may be PowerShell bookkeeping rather than a failed model conversion. Wave evidence: $wavePath. Existing five-model FF was not overwritten."}
 }
 foreach($file in @($wavePath,$fivePath,$fiveBindingPath,$identityPath,$oat,$cap)){
     if(-not(Test-Path -LiteralPath $file -PathType Leaf)){
