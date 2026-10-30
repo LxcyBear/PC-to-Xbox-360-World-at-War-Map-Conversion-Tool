@@ -260,13 +260,17 @@ foreach($m in $maps){
     }
     $sourceHash=HashText (($finger | Sort-Object -Unique) -join [Environment]::NewLine)
     $cacheDir=Join-Path $OutputRoot 'pass_cache'
-    $cacheFile=Join-Path $cacheDir ($m.id+'_'+$Mode+'.json')
+    # Different OAT variant policies must never reuse each other's PASS.
+    $cacheMode=$Mode
+    if($Mode -eq 'Candidate'){$cacheMode=$Mode+'_'+$OatVariants}
+    $cacheFile=Join-Path $cacheDir ($m.id+'_'+$cacheMode+'.json')
     if(-not $Force -and (Test-Path -LiteralPath $cacheFile -PathType Leaf)){
         $cached=Get-Content -LiteralPath $cacheFile -Raw | ConvertFrom-Json
         $reuse=[string]$cached.schema -eq 'WaW360.MultiMapPassCache.v1' -and
             [string]$cached.gitCommit -eq $rev -and
             [string]$cached.sourceFingerprint -eq $sourceHash -and
             [string]$cached.mode -eq $Mode -and
+            [string]$cached.oatVariantPolicy -eq $OatVariants -and
             [string]$cached.mapId -eq $m.id -and
             (Test-Path -LiteralPath ([string]$cached.result.resultFolder) -PathType Container)
         if($reuse){
@@ -461,7 +465,8 @@ foreach($m in $maps){
             ForEach-Object{[ordered]@{file=$_.file;sha256=$_.sha256}})
         [ordered]@{
             schema='WaW360.MultiMapPassCache.v1'
-            gitCommit=$rev;mode=$Mode;mapId=$m.id;sourceFingerprint=$sourceHash
+            gitCommit=$rev;mode=$Mode;oatVariantPolicy=$OatVariants
+            mapId=$m.id;sourceFingerprint=$sourceHash
             verifiedOatArtifacts=$oatVerified;result=$r
         }|ConvertTo-Json -Depth 11|Set-Content -LiteralPath $cacheFile -Encoding UTF8
     }
@@ -471,7 +476,8 @@ Write-Progress -Activity 'PC2XB3 multi-map conversion matrix' -Completed
 $summary=[ordered]@{
     schema='WaW360.MultiMapConversionMatrix.v1'
     gitCommit=$rev;dateUtc=[DateTime]::UtcNow.ToString('o')
-    mode=$Mode;sourceRoots=$SourceRoots;mapCount=$results.Count
+    mode=$Mode;oatVariantPolicy=$OatVariants
+    sourceRoots=$SourceRoots;mapCount=$results.Count
     sharedRulesLedger=$rulesPath
     jakeHistoricReportRegistry=$jakePath
     sharedRuleCount=@($rules.gates).Count
