@@ -47,6 +47,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 Check the matrix for `[MULTIMAP-RECIPE] ... scriptClosureReady=...`, `RECIPE IWD script-closure overrides=N`, emitted FF path/size, and OAT `--list` summary. A script-closure FF may be absent if typed closure cannot build or the index finds no applicable overrides; that is evidence to debug, not a PASS. Full OAT extraction and Xbox hardware testing are separate gates.
 
+## October 30 — packed WeaponDef name-audit UInt32 hotfix
+
+User ran `Run-WaWMultiMapWeaponNameAudit.ps1` after `cf2a3ed`; syntax preflight PASS 5/5. Audit stopped at proof record #3 with `Weapon proof pointer is null or special sentinel at record #3` BEFORE inspecting original PC FFs. This was a **Windows PowerShell 5.1 diagnostic arithmetic bug**, not a demonstrated invalid source pointer. The code compared a `UInt32` pointer against `0xFFFFFFFE` using `-ge`; WinPS 5.1 parses the high-bit hex literal as signed **-2**, making valid high-bit block 4 pointers compare greater than -2.
+
+Fix: compare against exact unsigned sentinels parsed via `[Convert]::ToUInt32('FFFFFFFE',16)` and `[uint32]::MaxValue`, rather than an ordered comparison. Added a no-I/O decoder regression on known Aztec raw pointer `0x83445D65` => `Virtual block 4`, offset `0x03445D64`. This is still not actual name-string recovery. No original map/weapon source files are altered. New Windows runtime validation pending.
+
+Use the existing read-only command after `git pull --ff-only`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapWeaponNameAudit.ps1' -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
 ## Windows verification — actual Aztec IWD script payload conversion (October 30)
 
 User ran commit `afbffb5` on Windows 10 with **one-map Candidate** `nazi_zombie_aztec_V2.2` after recipe Source PASS:
