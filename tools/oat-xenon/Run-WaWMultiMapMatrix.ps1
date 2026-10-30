@@ -355,6 +355,22 @@ foreach($m in $maps){
                 break
             }
             $status="PASSED_$step"
+            if($step -eq 'linker-v2-source'){
+                # Source Step 1 is a real, read-only ZIP central-directory
+                # index. Print the recipe summary before the next map begins.
+                $recipeText=Join-Path $output (Join-Path $m.name (
+                    Join-Path 'recipe_source_precedence' ($m.name+'_recipe_iwd_precedence.txt')))
+                if(Test-Path -LiteralPath $recipeText -PathType Leaf){
+                    $head=@(Get-Content -LiteralPath $recipeText -TotalCount 6)
+                    $summary=@($head | Where-Object { $_ -match '^IWDs=' } | Select-Object -First 1)
+                    if($summary.Count -gt 0){
+                        Write-Host "[MULTIMAP-RECIPE] $($m.name): $($summary[0]) | INDEXED ONLY; FF script override NOT yet applied"
+                    }
+                    Write-Host "[MULTIMAP-RECIPE] Provenance: $recipeText"
+                }else{
+                    Write-Host "[MULTIMAP-RECIPE] WARNING: source stage returned PASS but recipe IWD precedence report is missing: $recipeText"
+                }
+            }
             if($step -eq 'linker-v2-main-structural'){
                 foreach($f in (Get-ChildItem -LiteralPath $output -File -Recurse -Filter '*.ff' -ErrorAction SilentlyContinue)){
                     $stamp="$($f.Length)/$($f.LastWriteTimeUtc.Ticks)"
