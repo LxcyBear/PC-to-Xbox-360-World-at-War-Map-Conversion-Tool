@@ -2,6 +2,32 @@
 
 **Single technical reference:** user-supplied `WaW_PC_to_Xbox360_codxe_porting_knowledge.txt`, documenting the WaW360Tool's Xbox 360 + CodXe rules. Follow detailed Part 2 when it differs from Part 1. This checklist tracks PC2XB3, not WaW360Tool: the source's `[AUTO]` tags do not signify a working PC2XB3 feature.
 
+## Live native Xbox test-readiness progression (implemented)
+
+`Run-WaWMultiMapNativeReadiness.ps1` reads an existing Candidate matrix and its SHA-matched OAT differential reports. It records **10 discrete evidence gates** per map (not an estimate of how much conversion is complete), uses a durable `==========`-style console bar, prints a reason for every PASS / PENDING / BLOCKED, shows movement since the previous evidence check, and persists JSON and per-map history. The Candidate runner now invokes this automatically at the end of each run; OAT differential invokes it whenever new validation evidence is saved. It **never builds or deploys FFs, nor declares native hardware test authorization**.
+
+The ten gates are: recipe source-precedence indexed; real IWD script payload overrides with FF readback; script-closure OAT `--list`; script-closure full OAT extraction; primary FF full OAT extraction; genuine WeaponDef names resolved; real typed asset graph (renderer/FX/audio/collision) without placeholders; reachable gameplay/script/world dependency closure; Xbox RAM/asset-pool admission; complete native CodXe package with all required files and sound/texture dependencies. OAT `--list` is deliberately distinct from OAT full extraction.
+
+For Aztec's last Windows evidence, the expected **initial** tally is approximately **3 of 10 independently evidenced gates** (source index, 6 script overrides/readback, script-closure OAT listing), and full primary extraction and the 10 packed WeaponDef identities remain blocked. This is an anticipated outcome to verify on Windows, not a claim that the new tracker has been tested.
+
+Run the tracker without recompiling or invoking OAT:
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapNativeReadiness.ps1' -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
+To advance the **next independently measurable gate**, run OAT **full extraction of the already-generated script-closure FF** (not the primary FF) on the same Candidate matrix. This does not rebuild an FF or copy anything to Xbox. It can reveal downstream serialization errors even when OAT listing is clean:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1' -OatMode Extract -IncludeMaps nazi_zombie_aztec_V2.2 -VariantNames hardware_test_main_xanim_native_layout_script_closure
+```
+
+The differential tool saves exact FF SHA, OAT exit code, and full extractor warnings/errors. Its automatic readiness refresh will mark the script-closure extraction gate PASS only when the matching FF digest is unchanged and OAT returns a clean full extract; a new failure instead gives us the next technical blocker. **Neither outcome authorizes an Xbox test**; the primary asset graph and other safety gates remain open.
+
 ## Required gates
 
 | Step | Requirement | PC2XB3 status |
