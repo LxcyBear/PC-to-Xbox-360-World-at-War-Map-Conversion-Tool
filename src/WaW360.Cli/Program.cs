@@ -1159,6 +1159,39 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
             }
+            case "aztec-native-test-load-emit" when args.Length == 4:
+            {
+                // Deliberately no reference-native or opaque load.ff argument:
+                // select the original PC load candidate in the source archive.
+                // The existing V2 seven-node serializer writes only that
+                // selected source, never a borrowed full Xbox _load.ff.
+                var sourceRoot = args[1];
+                var mapFolderName = args[2];
+                var outputRoot = args[3];
+                var candidates = MapDiscovery.DiscoverSourceFolder(sourceRoot);
+                var map = candidates.FirstOrDefault(m =>
+                    m.Name.Equals(mapFolderName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException(
+                        $"Original PC Aztec map source '{mapFolderName}' not found under '{sourceRoot}'.");
+                var selected = await NormalMapLinkerV2SourceArchive.RunAsync(map, outputRoot);
+                if (selected.SelectedLoadSource is null)
+                {
+                    Console.WriteLine("[AZTEC-NATIVE-LOAD] SOURCE_LOAD_NOT_FOUND: no original-PC selected load.ff; borrowed Xbox _load.ff forbidden.");
+                    Console.WriteLine($"[AZTEC-NATIVE-LOAD] archive={selected.JsonReportFile}");
+                    return 4;
+                }
+                var result = await NormalMapLinkerV2LoadEmitter.RunAsync(map, outputRoot, selected);
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] selectedPcSource={result.SelectedSourceFastFile}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] originalPcSelectedLoadConverted={result.Verified && result.HardwareReady}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] convertedLoad={result.OutputFastFile ?? "<missing>"}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] sha256={result.FastFileSha256 ?? "<none>"}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] report={result.JsonReportFile}");
+                return result.Verified && result.HardwareReady && result.GraphOrderVerified &&
+                    result.ZoneReadBackVerified && result.WrapperRoundTripVerified &&
+                    result.OutputFastFile is not null &&
+                    File.Exists(result.OutputFastFile) ? 0 : 4;
+            }
             case "native-oat-identity" when args.Length >= 3:
             {
                 var nativeFastFile = args[1];
