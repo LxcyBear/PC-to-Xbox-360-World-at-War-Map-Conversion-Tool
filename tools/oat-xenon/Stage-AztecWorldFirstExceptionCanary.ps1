@@ -148,13 +148,13 @@ function OatCheck([string]$fastfile,[string]$baseName,[string]$expectedSha){
             $stdout=Join-Path $run ($baseName+'_'+$mode+'.stdout.log')
             $stderr=Join-Path $run ($baseName+'_'+$mode+'.stderr.log')
             if($mode -eq 'List'){
-                $args=@('--list','--no-color',$short)
+                $oatArguments=@('--list','--no-color',$short)
             }else{
                 $oatFolder=Join-Path $temp 'extracted'
                 New-Item -ItemType Directory -Path $oatFolder -Force | Out-Null
-                $args=@('--no-color','--output-folder',$oatFolder,$short)
+                $oatArguments=@('--no-color','--output-folder',$oatFolder,$short)
             }
-            $quoted=(@($args | ForEach-Object {'"'+([string]$_).Replace('"','\"')+'"'})) -join ' '
+            $quoted=(@($oatArguments | ForEach-Object {'"'+([string]$_).Replace('"','\"')+'"'})) -join ' '
             $proc=Start-Process -FilePath $UnlinkerExe -ArgumentList $quoted -RedirectStandardOutput $stdout -RedirectStandardError $stderr -NoNewWindow -PassThru -Wait -ErrorAction Stop
             $outText=if(Test-Path -LiteralPath $stdout){[IO.File]::ReadAllText($stdout)}else{''}
             $errText=if(Test-Path -LiteralPath $stderr){[IO.File]::ReadAllText($stderr)}else{''}
