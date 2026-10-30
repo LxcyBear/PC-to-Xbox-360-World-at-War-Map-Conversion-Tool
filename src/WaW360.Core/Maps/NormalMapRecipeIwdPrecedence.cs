@@ -132,8 +132,13 @@ public static class NormalMapRecipeIwdPrecedence
 
         var winningIndices = new HashSet<(int ArchiveOrder, int EntryOrder)>();
         var scriptWinners = new List<RecipeIwdScriptResolution>();
+        // Only actual GSC/CSC script bodies override their compiled FF
+        // RawFile. Config, text and ATR files are inventory inputs; marking
+        // them as loose script overrides would overstate conversion coverage.
         var scriptGroups = candidates
-            .Where(x => x.Category == "script/raw")
+            .Where(x => x.Category == "script/raw" &&
+                (x.VirtualPath.EndsWith(".gsc", StringComparison.OrdinalIgnoreCase) ||
+                 x.VirtualPath.EndsWith(".csc", StringComparison.OrdinalIgnoreCase)))
             .GroupBy(x => x.VirtualPath, StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase);
         var collisions = 0;
@@ -159,7 +164,10 @@ public static class NormalMapRecipeIwdPrecedence
             .Select(x =>
             {
                 var selected = winningIndices.Contains((x.ArchiveOrder, x.EntryOrder));
-                var decision = x.Category == "script/raw"
+                var eligible = x.Category == "script/raw" &&
+                    (x.VirtualPath.EndsWith(".gsc", StringComparison.OrdinalIgnoreCase) ||
+                     x.VirtualPath.EndsWith(".csc", StringComparison.OrdinalIgnoreCase));
+                var decision = eligible
                     ? selected ? "LOOSE_SCRIPT_WINNER_OVERRIDES_FF" : "SUPERSEDED_LOOSE_SCRIPT"
                     : "SOURCE_ASSET_CANDIDATE_NOT_YET_RESOLVED";
                 return new RecipeIwdEntry(
