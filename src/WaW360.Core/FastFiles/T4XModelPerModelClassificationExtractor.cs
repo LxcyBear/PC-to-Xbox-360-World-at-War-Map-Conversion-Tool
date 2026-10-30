@@ -23,6 +23,8 @@ public sealed class T4XModelPerModelClassificationResult
     public required string PcOatListLog { get; init; }
     public required int DeclaredXModels { get; init; }
     public required int ListedXModels { get; init; }
+    public int AdditionalOatXModelListings { get; init; }
+    public bool SourceXModelNameOccurrenceReconciliationPass { get; init; }
     public required int AlignedXModels { get; init; }
     public required int CompleteModels { get; init; }
     public required int FailedModels { get; init; }
@@ -316,6 +318,8 @@ public static class T4XModelPerModelClassificationExtractor
             PcOatListLog = pcOatListLog,
             DeclaredXModels = declared,
             ListedXModels = listedNames.Count,
+            AdditionalOatXModelListings = listedNames.Count - declared,
+            SourceXModelNameOccurrenceReconciliationPass = true,
             AlignedXModels = mappings.Count,
             CompleteModels = entries.Count - failed,
             FailedModels = failed,
