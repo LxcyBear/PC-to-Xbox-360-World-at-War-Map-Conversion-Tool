@@ -258,11 +258,18 @@ public static class NormalMapLinkerV2SourceArchive
             packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- REQUIRED: Xbox stock load template with PC loading picture from " + selectedLoad.FileName);
         else
             packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- REQUIRED: Xbox stock load template with generated title card");
-        packagePlan.Add(canonicalBase + "\\map.json <- CodXe r351+ map menu metadata");
-        packagePlan.Add(canonicalBase + "\\preview.dds <- CodXe r351+ map preview");
+        // Public CodXe T4 UI falls back to the directory name if map.json is
+        // absent and uses a default preview if preview.dds is absent. The
+        // upcoming PRIVATE BETA may change this contract. Recommend both for
+        // the final packaged map, but do not misdiagnose an existing reference
+        // without metadata as corrupt.
+        packagePlan.Add(canonicalBase + "\\map.json <- RECOMMENDED menu metadata; optional in current PUBLIC CodXe T4 SP UI (folder-name fallback); verify upcoming beta");
+        packagePlan.Add(canonicalBase + "\\preview.dds <- RECOMMENDED DXT1 DDS menu preview; optional in current PUBLIC CodXe T4 SP UI; verify upcoming beta");
+        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_patch.ff <- CONDITIONAL: if beta/native map requires patch zone, emit Xbox-native bytes; NEVER copy PC or donor fastfile");
+        packagePlan.Add(canonicalBase + "\\highmip\\ <- CONDITIONAL: preserve legitimate Xbox-compatible reference assets, not a global requirement");
         if (externalSoundsExpected)
             packagePlan.Add(canonicalBase + "\\sounds\\**\\*.xma <- SDNS/XMA streamed audio when needed; only these may stay loose");
-        notes.Add("RECIPE PACKAGE CONTRACT: FF + required load FF + CodXe map.json/preview.dds; SDNS/XMA streamed sounds under sounds\\ when needed. PC IWDs are never Xbox runtime files. No highmip/.pak/BIK requirement inferred from this recipe.");
+        notes.Add("RECIPE PACKAGE CONTRACT: final native main/load FF and recommended CodXe metadata/preview. Public CodXe T4 SP UI has name/preview fallback when metadata is missing; unpublished beta may differ. Native patch.ff, highmip/, and other extras remain conditional. Preserve any verified extras in existing packages; do not graft reference/oracle payloads into production. External SDNS/XMA sounds remain a distinct native conversion gate.");
 
         var blockers = new List<string>();
         foreach (var error in recipe.Errors)
