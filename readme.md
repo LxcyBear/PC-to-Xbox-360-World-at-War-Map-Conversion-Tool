@@ -1,5 +1,13 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## Aztec OAT XModel graph staging MAX_PATH fix — original PC assets preserved
+
+**Root cause observed in user's `xmodel_006_oat.log`:** the **26/26 original-PC source-owned static model bodies** and their 1,902/1,903 drawn-placement source-type coverage OAT passed independently. However, stage 29X attempted to open a cached FF at `...pc_gate8_static_xmodel_foliage_dest_tree_jungle_02_fronds_dmg0\original_pc_xenon_model_standalone.ff`, which is **261 characters long**. The x86 OAT Unlinker logged `ERROR: Could not find file` with `Finished with 0 warnings, 1 errors` despite its process returning exit code 0. The earlier SHA-backed PowerShell path validation was fine; legacy Win32 native MAX_PATH is the leading explanation. **Do not reconvert or discard the 26 source model bodies to fix this.**
+
+**Implemented** `Stage-AztecAllStaticSourceXModelGraphs.ps1` now verifies each persistent original PC-derived Xenon model FF's SHA256, copies it to a short `%TEMP%\AzG829_*\source.ff` path, rechecks SHA256, invokes the native OAT Unlinker using ONLY that short path, and continues requiring no real OAT errors, one actual relocatable Xenon XModel graph, exact name, ABI, zero unsupported aliases and owned Material root identity. Short copy is deleted after each model; the persistent cache and passing five-model baseline remain untouched. The user-selected `Xbox Maps\Converter Current Test Map` destination remains reserved for full-content production approval, not automatically overwritten by this still-incomplete world FF.
+
+**Run FIRST, without any full map build:** `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\oat-xenon\Test-AztecCachedXModelShortPath.ps1`. It tests ONLY the previously blocked model `foliage_dest_tree_jungle_02_fronds_dmg0`, checking SHA identity, native zero-error OAT extraction, a real 212-byte ABI Xenon model graph, and preserving the real log at `.deps\aztec8-all-static-xmodels\aztec_short_path_single_model_probe.log`. This isolated probe doesn't modify/overwrite any source FF, five-model world or final map. **Outcome pending Windows execution.** Once this returns `[AZTEC-SHORT-OAT] PASS`, rerun `Build-AztecAllRealStaticModelWorldFF.ps1` for the combined 28 genuine source XModels. Even a full 28-XModel OAT pass is **not** a complete or hardware-ready map until 1,903 draw links/DPVS/other assets are integrated.
+
 ## October 30 — Requested current test-map destination (final output path)
 
 **Exact user-selected Windows output root:**
