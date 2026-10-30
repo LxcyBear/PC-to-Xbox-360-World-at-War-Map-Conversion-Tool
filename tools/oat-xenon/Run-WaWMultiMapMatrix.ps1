@@ -404,6 +404,47 @@ foreach($m in $maps){
         Write-Host "[MULTIMAP] MAP ERROR: $($m.name) => $($errorText)"
         Write-Host "[MULTIMAP] Continuing next map; exception log=$errLog"
     }
+    # Track EACH real candidate FF size across builds, including OAT failures.
+    # Separate from the OAT-verified history: a larger FF is not success.
+    $emittedHistoryFile=''
+    if($emittedFFs.Count -gt 0){
+        $sizeRoot=Join-Path $OutputRoot 'emitted_candidate_size_history'
+        New-Item -ItemType Directory -Path $sizeRoot -Force | Out-Null
+        $emittedHistoryFile=Join-Path $sizeRoot ($m.id+'.json')
+        $past=@()
+        if(Test-Path -LiteralPath $emittedHistoryFile -PathType Leaf){
+            $oldReport=Get-Content -LiteralPath $emittedHistoryFile -Raw | ConvertFrom-Json
+            if([string]$oldReport.schema -ne 'WaW360.EmittedCandidateSizeHistory.v1' -or
+               [string]$oldReport.mapId -ne [string]$m.id){
+                throw "Historical candidate size schema/identity mismatch: $emittedHistoryFile"
+            }
+            $past=@($oldReport.entries | Where-Object {$null -ne $_})
+        }
+        foreach($current in $emittedFFs){
+            $basePath=(Split-Path -Path ([string]$current.path) -Parent)
+            $variant=Split-Path -Path $basePath -Leaf
+            $previous=@($past | Where-Object { [string]$_.variant -eq $variant })
+            $prevBytes=$null
+            if($previous.Count -gt 0){$prevBytes=[long]$previous[-1].bytes}
+            $delta=$null
+            if($null -ne $prevBytes){$delta=[long]$current.bytes-$prevBytes}
+            Write-Host "[MULTIMAP-SIZE] $($m.name) / $variant : $($current.bytes) B | old=$prevBytes | delta=$delta | OAT status is separate."
+            if($previous.Count -eq 0 -or
+               [string]$previous[-1].sha256 -ine [string]$current.sha256){
+                $past+=([pscustomobject]@{
+                    utc=[DateTime]::UtcNow.ToString('o')
+                    gitCommit=$rev;sourceFingerprintSha256=$sourceHash
+                    variant=$variant;bytes=[long]$current.bytes
+                    deltaBytes=$delta;sha256=[string]$current.sha256
+                    note='EMITTED DIAGNOSTIC ONLY; separate OAT validation required'
+                })
+            }
+        }
+        [ordered]@{
+            schema='WaW360.EmittedCandidateSizeHistory.v1'
+            mapId=$m.id;entries=@($past)
+        }|ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $emittedHistoryFile -Encoding UTF8
+    }
     $historyDir=Join-Path $OutputRoot 'verified_size_history'
     New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
     $historyFile=Join-Path $historyDir ($m.id+'.json')
@@ -449,6 +490,7 @@ foreach($m in $maps){
         status=$status;mode=$Mode;stages=@($events.ToArray())
         emittedCandidateFFCount=$emittedFfCount;emittedCandidateFFBytes=$emittedFfBytes
         emittedCandidates=@($emittedFFs.ToArray())
+        emittedCandidateSizeHistory=$emittedHistoryFile
         oatVariantPolicy=$OatVariants
         oatPassDiagnosticCount=$oatPasses;oatPassDiagnosticBytes=$oatBytes
         previousOatDiagnosticBytes=$priorVerifiedBytes;verifiedDeltaBytes=$deltaVerifiedBytes
