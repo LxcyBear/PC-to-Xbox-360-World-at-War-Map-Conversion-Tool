@@ -7,6 +7,7 @@ $ErrorActionPreference='Stop'
 # isolated production-asset-development candidate, NOT a released map.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $stage=Join-Path $PSScriptRoot 'Stage-AztecAllStaticSourceXModelGraphs.ps1'
+$stockAudit=Join-Path $PSScriptRoot 'Audit-AztecRuntimeLoadedStockXModelReferences.ps1'
 $builder=Join-Path $PSScriptRoot 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1'
 $n=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $report=Join-Path $n 'pc_gate8_29x_ff\aztec_pc_world_core_integrated_oat_run.json'
@@ -17,6 +18,25 @@ Write-Host '[AZTEC-REAL-FF] CLASSIFY 27 SOURCE MODEL TYPES: CONVERT REAL OWNED B
 Write-Host '[AZTEC-REAL-FF] Recompile REAL model graphs into 8509-root Xbox FF; OAT readback.'
 Write-Host '[AZTEC-REAL-FF] Preserve existing PC source and passing 5-model baseline.'
 Write-Host '[AZTEC-REAL-FF] NO ARTIFICIAL SIZE PADDING OR DONOR MODEL BYTES.'
+# Resolve source comma references from the REAL Xbox expected-preloaded
+# common/code_post_gfx/patch zones before classifying model owners.
+# A missing Xbox retail folder is NOT permission to fabricate stock proof:
+# the model wave will keep those names explicitly UNRESOLVED instead.
+if(Test-Path -LiteralPath $stockAudit -PathType Leaf){
+    Write-Host '[AZTEC-REAL-FF] Auditing expected preloaded Xbox stock XModel bodies (three FFs only; cached when available).'
+    try{
+        $ErrorActionPreference='Continue'
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stockAudit 2>&1 |
+            ForEach-Object {Write-Host "[AZTEC-REAL-FF] $_"}
+        $stockExit=[int]$LASTEXITCODE
+    }catch{
+        $stockExit=4
+        Write-Host "[AZTEC-REAL-FF] WARNING: retail stock audit was unavailable: $_"
+    }finally{$ErrorActionPreference=$old}
+    if($stockExit -ne 0){
+        Write-Host '[AZTEC-REAL-FF] WARNING: stock residency unproven. Continuing PC-owned conversion, retaining explicit unresolved references.'
+    }
+}
 try{
     $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$stage)
     if($SkipPcModelConversion){$params+='-SkipPcModelConversion'}
