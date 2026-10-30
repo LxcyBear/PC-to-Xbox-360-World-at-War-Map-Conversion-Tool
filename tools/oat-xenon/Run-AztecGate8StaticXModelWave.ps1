@@ -7,13 +7,17 @@ $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $n=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $auditPath=Join-Path $n 'pc_gate8_static_model_dependency_audit\aztec_gate8_static_draw_xmodel_dependencies.json'
 $firstPath=Join-Path $n 'pc_gate8_first_static_xmodel\aztec_first_static_draw_xmodel_canary.json'
+$identityPath=Join-Path $n 'main_native_closure\native_identity\nazi_zombie_aztec_native_identity_manifest.json'
+$frontPath=Join-Path $n 'pc_model_world_source_frontier\aztec_pc_model_world_source_frontier.json'
 $script=Join-Path $PSScriptRoot 'Run-AztecGate8FirstStaticDrawXModelCanary.ps1'
 $out=Join-Path $n 'pc_gate8_static_model_wave'
 $report=Join-Path $out 'aztec_gate8_static_model_wave.json'
-foreach($p in @($auditPath,$firstPath,$script)){
+foreach($p in @($auditPath,$firstPath,$identityPath,$frontPath,$script)){
     if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw "Missing Gate8 priority-model prerequisite: $p"}
 }
 $audit=Get-Content -LiteralPath $auditPath -Raw | ConvertFrom-Json
+$identity=Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+$front=Get-Content -LiteralPath $frontPath -Raw | ConvertFrom-Json
 if([string]$audit.schema -ne 'WaW360.AztecGate8StaticDrawModelDependencyAudit.v1' -or
    [string]$audit.status -ne 'AZTEC_GATE8_1903_STATIC_DRAWS_27_NAMES_NATIVE_ROOT_RECONCILIATION_COMPLETE_DIAGNOSTIC' -or
    [int]$audit.sourceDrawInstances -ne 1903 -or
@@ -21,6 +25,13 @@ if([string]$audit.schema -ne 'WaW360.AztecGate8StaticDrawModelDependencyAudit.v1
    [int]$audit.distinctModelsWithoutProvenRealGraph -ne 27 -or
    [bool]$audit.hardwareReady){
     throw 'Static draw source-name/XModel dependency audit changed.'
+}
+if([string]$identity.format -ne 'WaW360.T4Xenon.NativeIdentityManifest.v1' -or
+   [int]$identity.assets -ne 8509 -or -not [bool]$identity.typeSequenceVerified -or
+   [string]$front.schema -ne 'WaW360.AztecPcModelWorldSourceFrontier.v1' -or
+   [string]$front.status -ne 'AZTEC_PC_MODEL_WORLD_SOURCE_FRONTIER_PASS' -or
+   [int]$front.nativeXModelRoots -ne 284){
+    throw 'Original-PC 8509-root model-reference/native identity evidence changed.'
 }
 $rows=@($audit.modelDependencyRows | Sort-Object occurrences -Descending)
 if($rows.Count -ne 27 -or
@@ -79,11 +90,46 @@ Write-Host '[AZTEC-GATE8-XMODEL-WAVE] 718-draw tallgrass standalone Xenon FF: VE
 Write-Host '[AZTEC-GATE8-XMODEL-WAVE] Next: 456 grass -> 398 hedgerow. Model-only FFs.'
 $converted=0
 $blocked=''
+$referenced=New-Object 'System.Collections.Generic.List[object]'
+function Resolve-ExplicitReference($row){
+    $name=[string]$row.pcModelName
+    if(-not $name.StartsWith(',',[StringComparison]::Ordinal)){return $null}
+    if(@($row.nativeRootIndices).Count -ne 1){
+        throw "Comma-prefixed XModel must have exactly one matching native root: $name"
+    }
+    $rootIndex=[int]$row.nativeRootIndices[0]
+    $roots=@($identity.entries | Where-Object {
+        [int]$_.Index -eq $rootIndex -and
+        [string]$_.OatTypeName -ieq 'xmodel' -and
+        [string]$_.Name -ieq $name
+    })
+    $bindings=@($front.nativeXModelIdentityBindings | Where-Object {
+        [int]$_.NativeRootIndex -eq $rootIndex -and
+        [string]$_.NativeName -ieq $name -and
+        [bool]$_.NativeReference
+    })
+    if($roots.Count -ne 1 -or $bindings.Count -ne 1){
+        throw "XModel $name looks like an external reference, but native identity/provenance does NOT prove one. Refuse to convert or silently skip it."
+    }
+    return [pscustomobject]@{
+        model=$name
+        draws=[int]$row.occurrences
+        nativeRoot=$rootIndex
+        classification='XBOX_NATIVE_REFERENCE_NO_OWNED_MESH'
+        runtimeResidencyVerified=$false
+    }
+}
 foreach($row in @($rows | Select-Object -Skip 1)){
     if($converted -ge $MaxAdditionalModels){break}
     if([string]$row.status -ne 'NATIVE_IDENTITY_ONLY_NO_REAL_GRAPH' -or
        @($row.nativeRootIndices).Count -ne 1){
         throw "Source/native XModel mapping drifted for $($row.pcModelName)."
+    }
+    $reference=Resolve-ExplicitReference $row
+    if($null -ne $reference){
+        $referenced.Add($reference)
+        Write-Host "[AZTEC-GATE8-XMODEL-WAVE] EXTERNAL XMODEL REFERENCE (not a PC-owned mesh): $($reference.model), root=$($reference.nativeRoot), draws=$($reference.draws)"
+        continue
     }
     $path=Report-Path ([string]$row.pcModelName)
     $m=Read-Pass $row $path
@@ -118,26 +164,36 @@ foreach($row in @($rows | Select-Object -Skip 1)){
     $converted++
 }
 $draws=[int](($verified.ToArray() | Measure-Object -Property draws -Sum).Sum)
+$referenceDraws=[int](($referenced.ToArray() | Measure-Object -Property draws -Sum).Sum)
+$coveredTypes=$verified.Count+$referenced.Count
+$fullCensus=$coveredTypes -eq 27 -and $draws+$referenceDraws -eq 1903
 $result=[ordered]@{
     schema='WaW360.AztecGate8StandaloneXModelWave.v1'
-    status=if($blocked){'AZTEC_GATE8_STATIC_MODEL_WAVE_STOPPED_ON_BLOCKER'}else{'AZTEC_GATE8_STATIC_MODEL_WAVE_STANDALONE_OAT_PASS'}
+    status=if($blocked){'AZTEC_GATE8_STATIC_MODEL_WAVE_STOPPED_ON_BLOCKER'}
+        else{'AZTEC_GATE8_STATIC_MODEL_WAVE_STANDALONE_OAT_PASS'}
     sourceStaticModels=27
     sourceStaticDraws=1903
     modelOnlyOatProven=$verified.Count
     modelOnlyOatRepresentedDraws=$draws
-    remainingModelNames=27-$verified.Count
-    remainingRepresentedDraws=1903-$draws
+    externalNativeReferenceModels=$referenced.Count
+    externalNativeReferenceDraws=$referenceDraws
+    explicitlyVerifiedNativeReferences=@($referenced.ToArray())
+    sourceNameTypesClassified=$coveredTypes
+    allStaticModelTypeIdentitiesClassified=$fullCensus
+    remainingModelNames=27-$coveredTypes
+    remainingRepresentedDraws=1903-$draws-$referenceDraws
     verifiedModels=@($verified.ToArray())
     blocker=$blocked
     realBodiesIntegratedInto8509RootWorldFf=0
     staticDrawGraphComplete=$false
     xboxReady=$false
-    note='Each independently passing FF contains one PC-owned converted XModel. Zero new GfxStaticModelDrawInst pointers have been added to the full 8509-root map FF. No Xbox deployment.'
+    note='Each verifiedModels row owns and OAT-proves actual source PC model geometry. Comma-prefixed explicitlyVerifiedNativeReferences rows are native reference identities, NOT owned/converted mesh bodies; Xbox runtime residency is unproven. Exact full 27-name/1903-draw source census is tracked separately. Zero static draw pointers added to main map FF. No Xbox release.'
 }
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $report -Encoding UTF8
 Write-Host '[AZTEC-GATE8-XMODEL-WAVE] =========================================='
 Write-Host "[AZTEC-GATE8-XMODEL-WAVE] status=$($result.status)"
-Write-Host "[AZTEC-GATE8-XMODEL-WAVE] standalone models=$($verified.Count)/27, represented placements=$draws/1903"
+Write-Host "[AZTEC-GATE8-XMODEL-WAVE] OWNED real model bodies=$($verified.Count); externally referenced model names=$($referenced.Count)"
+Write-Host "[AZTEC-GATE8-XMODEL-WAVE] original-PC placements classified=$($draws+$referenceDraws)/1903 (mesh=$draws, reference=$referenceDraws) distinct names=$coveredTypes/27"
 Write-Host "[AZTEC-GATE8-XMODEL-WAVE] report=$report"
 Write-Host '[AZTEC-GATE8-XMODEL-WAVE] Independent model-only OAT evidence, not full FF integration.'
 if($blocked){throw $blocked}
