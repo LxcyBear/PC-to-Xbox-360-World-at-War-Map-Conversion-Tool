@@ -201,6 +201,42 @@ foreach($m in @($matrix.maps)){
             $weaponReason="$missing synthetic packed-name proof labels in latest historical audit; ordinal names are not pointer proofs"
         }
     }
+    # New evidence is separate from the historical (intentionally synthetic) audit.
+    # Count WeaponDef identity ONLY for this exact, hash-matched Candidate FF.
+    # The 0x9AC bodies remain diagnostic shells, never release proof.
+    $directVariant='hardware_test_main_xanim_native_layout_weapon_direct_proven'
+    $directArtifact=Find-Variant $artifacts $directVariant
+    $directIdentityVerified=$false
+    if(Get-ShaMatch $directArtifact){
+        $structuralReport=Join-Path ([string]$m.conversionOutputFolder) (
+            Join-Path $mapName (Join-Path 'linker_v2_main_xanim_native_layout' (
+                $mapName+'_linker_v2_main_structural.json')))
+        $guard=Join-Path (Split-Path -Path ([string]$directArtifact.path) -Parent) 'DO_NOT_DEPLOY_WEAPON_DIRECT_PROVEN.txt'
+        if((Test-Path -LiteralPath $structuralReport -PathType Leaf) -and
+           (Test-Path -LiteralPath $guard -PathType Leaf)){
+            try{
+                $stage=Get-Content -LiteralPath $structuralReport -Raw | ConvertFrom-Json
+                $guardLines=@(Get-Content -LiteralPath $guard)
+                $sha=[string]$directArtifact.sha256
+                $expected='Generated FF SHA-256: '+$sha
+                $directIdentityVerified=(
+                    [bool]$stage.WeaponDirectProvenReady -and
+                    [int]$stage.WeaponDirectKnownNames -eq 61 -and
+                    [int]$stage.WeaponDirectProvenNames -eq 10 -and
+                    [string]$stage.WeaponDirectProvenOutputFastFile -ieq [string]$directArtifact.path -and
+                    $guardLines -contains $expected -and
+                    @($guardLines | Where-Object {([string]$_).StartsWith('Witness JSON SHA-256: ')}).Count -eq 1
+                )
+            }catch{
+                $directIdentityVerified=$false
+                Write-Host '[READINESS] Direct WeaponDef identity report could not be verified; preserving historical gate.'
+            }
+        }
+    }
+    if($directIdentityVerified){
+        $weaponState='PASS'
+        $weaponReason='71/71 source WeaponDef identities: 61 known and 10 independently traced Virtual-pointer targets. Inert name-only Xbox shells; actual weapon bodies not proven.'
+    }
     $gates.Add((New-Gate 'WEAPON_NAMES' 'All real WeaponDef identities proven' $weaponState $weaponReason))
     # Diagnostic ONLY: a positional WeaponDef name probe can establish
     # whether OAT extraction moves beyond forbidden placeholder filenames,
