@@ -194,7 +194,7 @@ function OatCheck([string]$fastfile,[string]$baseName,[string]$expectedSha){
                 ($zeroWarnings -or $allowedSoundWarnings))
             if($passed -and $allowedSoundWarnings){
                 $script:worldXmaWarningsAccepted=$summaryWarnings
-                Write-Host "[AZTEC-WORLD-NATIVE] $baseName OAT $mode: DEBUG-ONLY PASS ($summaryWarnings/$($warningLines.Count) strictly matching missing-sound-XMA warnings; errors=0; other warnings=0)."
+                Write-Host "[AZTEC-WORLD-NATIVE] $baseName OAT ${mode}: DEBUG-ONLY PASS ($summaryWarnings/$($warningLines.Count) strictly matching missing-sound-XMA warnings; errors=0; other warnings=0)."
                 Write-Host '[AZTEC-WORLD-NATIVE] WARNING: audio data unavailable inside this diagnostic FF; Xbox external/retail streamed audio remains unverified.'
             }
             if(-not $passed){
