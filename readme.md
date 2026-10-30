@@ -1,5 +1,17 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## Upcoming CodXe beta: `_codxe/t4` directory removed
+
+Michael's announced `New map layout, nested t4 dir gone (sorry)` means upcoming builds are expected to look under `<WaW game>/_codxe/usermaps/<map>/<map>.ff` instead of legacy `<WaW game>/_codxe/t4/usermaps/<map>/<map>.ff`. This is a **package/install path compatibility change**, not proof that every old Xbox `.ff` must be recompiled. Beta file expectations may include more changes and must be verified using an actual beta reference folder.
+
+PC2XB3 Linker V2 SourceArchive now states the flat installation target explicitly in its package plan. Read-only inventory is available without builds:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-CodXeT4BetaLayout.ps1' -Root '<WaW game or CodXe beta reference directory>'
+```
+
+This reports legacy vs flat roots, relative files, metadata, and a JSON audit in `output/codxe_beta_layout_audit/`; it **never moves any files or approves an Xbox release**. See [`docs/RECIPE_PC_WAW_TO_CODXE.md`](docs/RECIPE_PC_WAW_TO_CODXE.md) for the beta acceptance gate. The tool is not yet Windows-verified.
+
 ## Native Xbox test-readiness progress (per build)
 
 `tools/oat-xenon/Run-WaWMultiMapNativeReadiness.ps1` reports **10 evidence-backed, fail-closed readiness gates per map**, a persistent console progress bar, FF sizes, gate changes since the previous check, and why each gate remains blocked. It runs **automatically after every Candidate matrix build and OAT differential check**. Historical evidence is not treated as proof for a different build: the checker matches candidate hashes and the originating matrix before accepting OAT results. A 3/10 tally is **not 30% playable** and never authorizes Xbox deployment.
