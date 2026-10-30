@@ -75,6 +75,24 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Back to the real converter: non-ordinal WeaponDef scalar fingerprint groundwork
+
+**New code, Windows validation pending:** `tools/oat-xenon/Run-WaWMultiMapWeaponScalarWitness.ps1` reads the existing **original-PC-derived Stage 4 alpha7b owned WeaponDef proof files** for the newest selected Candidate matrix. It does not rebuild FFs or run OAT. From each weapon's independently verified big-endian `0x9AC` fixed body, compute a SHA-256 fingerprint from **59 fixed scalar-field locations** already constrained by `T4WeaponSerializerProof` (weapon type/class and other enums, numerous validated booleans and count fields). No `szInternalName`, file position, root ordinal, packed pointer, or source name is included in the fingerprint.
+
+For each unresolved `<packed-name@...>` proof body, the witness reports `uniqueAgainstAllPhysicalProofBodies`, exact `scalarFingerprintSha256`, and any colliding proof labels, alongside the 71-body source corpus and map/mod proof boundaries. The JSON is written under `output/multi_map_matrix/runs/<current>/weapon_scalar_witness_*.json`. Crucially **this is a distinctness/feasibility test only**: no new names are resolved from unique fingerprints alone and all Xbox readiness gates remain unchanged. The next step is collecting the same scalar values from independently loaded **original PC OAT `WeaponDef*`** objects (e.g. with our pinned native graph-dumper pattern), then matching and requiring unique signatures plus known-name/struct-offset controls. Direct packed VIRTUAL pointer target proof is still a separate stronger requirement.
+
+Run this without recompiling or invoking OAT:
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapWeaponScalarWitness.ps1' -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
+**Expected 10 synthetic-name proof bodies, but uniqueness is unknown until Windows output.** No auto-promotion of any ordinal candidate, no FF name replacement, and no Xbox test.
+
 ## October 30 — Windows-confirmed lossless beta-layout STAGE PASS (44/44 SHA-256)
 
 User explicitly ran `Stage-CodXeT4BetaPackage.ps1 -Stage` against the existing Aztec native reference package after a successful dry-run. All **44/44 source files** were copied into a **new, unique** local flattened staging tree under `output/codxe_beta_stage/nazi_zombie_aztec_20261030_160821_79b25d10/_codxe/usermaps/nazi_zombie_aztec/`. The script independently checked exact file sizes and **SHA-256 digests** after each copy; final counters **120,068,964 / 120,068,964 bytes**, `Status: SHA_VERIFIED_REFERENCE_STAGE_NOT_RELEASE`. It wrote a distinct JSON report `output/codxe_beta_stage/reports/nazi_zombie_aztec_20261030_160821_79b25d10.json`, and verified no original map data was modified. The console progress advanced from `[=---------] 5/44` to `[==========] 44/44`.
