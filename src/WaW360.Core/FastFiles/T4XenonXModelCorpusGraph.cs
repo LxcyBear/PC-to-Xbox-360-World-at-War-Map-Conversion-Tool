@@ -32,7 +32,8 @@ internal sealed class T4XenonXModelCorpus
         var bindingFormat = format.GetString();
         var aztecCanary = bindingFormat == "WaW360.AztecPcSingleXModelBinding.v1";
         var aztecTwoModels = bindingFormat == "WaW360.AztecPcTwoXModelBinding.v1";
-        if (!aztecCanary && !aztecTwoModels &&
+        var aztecFiveModels = bindingFormat == "WaW360.AztecGate8FiveSourceXModelBinding.v1";
+        if (!aztecCanary && !aztecTwoModels && !aztecFiveModels &&
             bindingFormat != "WaW360.Nuclear4W.XModelRootBinding.v3")
             throw new InvalidDataException("Unexpected XModel root-binding manifest format.");
         if (!root.GetProperty("bindingPass").GetBoolean())
@@ -42,8 +43,8 @@ internal sealed class T4XenonXModelCorpus
         // The only partial Aztec diagnostic shapes are the pinned one-model
         // canary and the explicitly enumerated two-model canary. Neither
         // authorizes hardware deployment, and both require zero ref upgrades.
-        var requiredOwned = aztecCanary ? 1 : aztecTwoModels ? 2 : expectedOwned;
-        var requiredRefs = (aztecCanary || aztecTwoModels) ? 0 : expectedReferences;
+        var requiredOwned = aztecCanary ? 1 : aztecTwoModels ? 2 : aztecFiveModels ? 5 : expectedOwned;
+        var requiredRefs = (aztecCanary || aztecTwoModels || aztecFiveModels) ? 0 : expectedReferences;
         var ownedRows = root.GetProperty("ownedBindings").EnumerateArray().ToArray();
         var referenceRows = root.GetProperty("referenceBindings").EnumerateArray().ToArray();
         if (ownedRows.Length != requiredOwned)
@@ -85,6 +86,47 @@ internal sealed class T4XenonXModelCorpus
                     !indices.Add(row.GetProperty("NativeRootIndex").GetInt32()))
                     throw new InvalidDataException(
                         $"Aztec two-XModel binding #{i} is not the expected unique {name} native root.");
+            }
+        }
+
+        if (aztecFiveModels)
+        {
+            // Partial Aztec Gate 8 is deliberately an EXACT five-model shape:
+            // two historically OAT-verified real source XModels plus three
+            // independently OAT-proven foliage meshes. No arbitrary subset
+            // of the 284 native root identities is accepted.
+            if (root.GetProperty("nativeRoots").GetInt32() != 8509 ||
+                root.GetProperty("nativeXModelRoots").GetInt32() != 284 ||
+                !root.GetProperty("validationOnly").GetBoolean() ||
+                root.GetProperty("hardwareReady").GetBoolean())
+                throw new InvalidDataException("Aztec five-XModel diagnostic evidence is not properly fenced.");
+
+            var expectedNames = new[]
+            {
+                "zombie_x2_icon",
+                "tag_origin",
+                "foliage_oki2_tallgrass",
+                "foliage_pacific_grass01_large",
+                "foliage_cod5_hedgerow04"
+            };
+            var expectedLastRoots = new[] { 7502, 7634, 7465 };
+            var indices = new HashSet<int>();
+            for (var i = 0; i < expectedNames.Length; i++)
+            {
+                var row = ownedRows[i];
+                var name = expectedNames[i];
+                if (row.GetProperty("CorpusOrdinal").GetInt32() != i ||
+                    !string.Equals(row.GetProperty("CorpusName").GetString(), name,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !NormalizeReferenceName(row.GetProperty("NativeName").GetString() ?? "")
+                        .Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                    !indices.Add(row.GetProperty("NativeRootIndex").GetInt32()))
+                    throw new InvalidDataException(
+                        $"Gate 8 five-XModel binding #{i} is not the exact source-backed {name} native owner.");
+
+                if (i >= 2 && row.GetProperty("NativeRootIndex").GetInt32() != expectedLastRoots[i - 2])
+                    throw new InvalidDataException(
+                        $"Gate 8 model '{name}' native root index is not the independently proven identity #{expectedLastRoots[i - 2]}.");
             }
         }
 
