@@ -5,11 +5,20 @@ param(
     [string]$MapName = 'nazi_zombie_aztec',
     [string]$UnlinkerExe,
     [string]$ReportDirectory,
-    [switch]$SkipWorldGfxWorldCheck
+    [switch]$SkipWorldGfxWorldCheck,
+    [switch]$MinimumLoadSmokeTest
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
+# Standard complete-package approval remains unchanged by default.
+# The separately OPTED-IN -MinimumLoadSmokeTest is first native file-open/
+# DB-load instrumentation only: missing CoD Xe optional map.json/preview.dds
+# and loose sounds/ do not block FastFile lookup. This is grounded in:
+# https://github.com/michaeloliverx/codxe/blob/main/src/game/t4/sp/components/fastfiles.cpp
+# where GetUsermapFastfilePath resolves usermaps/<map>/<zone>.ff directly
+# and ResolveLooseSoundPath searches sounds/ only on redirected sound opens.
+# Never waive either individual OAT FF parse or source GfxWorld witness.
 # SINGLE STRICT HARDWARE-TEST RELEASE RULE:
 # (1) FINAL map.ff and map_load.ff BOTH pass native T4Xenon OAT loading,
 #     exit 0, and OAT prints 0 warnings and 0 errors.
@@ -53,7 +62,13 @@ foreach($candidate in $candidates){
 if($null -eq $exe){throw 'Pinned native Xenon OAT Unlinker.exe not found. Supply -UnlinkerExe.'}
 
 Write-Host '[AZTEC-HARDWARE-GATE] ====================================================='
-Write-Host '[AZTEC-HARDWARE-GATE] STRICT RELEASE RULE: BOTH FINAL FFs OAT PASS + COMPLETE CODEXE PACKAGE'
+Write-Host '[AZTEC-HARDWARE-GATE] STRICT FF LOADER RULE: BOTH FINAL FFs OAT PASS + REAL PC-OWNED GFXWORLD'
+if($MinimumLoadSmokeTest){
+    Write-Host '[AZTEC-HARDWARE-GATE] MINIMUM LOAD-ONLY: optional metadata/sounds do not block CoD Xe FF lookup'
+    Write-Host '[AZTEC-HARDWARE-GATE] This DOES NOT certify complete audio/assets/scripts, full usermap packaging, or gameplay.'
+}else{
+    Write-Host '[AZTEC-HARDWARE-GATE] FULL PACKAGE MODE: requires map.json, preview.dds and sounds/'
+}
 Write-Host "[AZTEC-HARDWARE-GATE] package=$package"
 Write-Host "[AZTEC-HARDWARE-GATE] oat=$exe"
 Write-Host '[AZTEC-HARDWARE-GATE] This approves the FIRST XBOX TEST, not guaranteed gameplay.'
@@ -165,10 +180,15 @@ if($SkipWorldGfxWorldCheck){
     $worldReason='World check skipped explicitly; hardware approval forbidden.'
 }
 $complete=$hasSounds -and $metadataPresent -and $fullFF
-$pass=$complete -and $worldProof -and -not $SkipWorldGfxWorldCheck
+$realFfProof=$fullFF -and $worldProof -and -not $SkipWorldGfxWorldCheck
+$fullPackageApproval=$complete -and $realFfProof
+$minimalLoadApproval=[bool]$MinimumLoadSmokeTest -and $realFfProof
+$pass=$fullPackageApproval -or $minimalLoadApproval
 $result=[ordered]@{
     schema='WaW360.AztecNativeSmokeTestReleaseGate.v1'
-    status=if($pass){'HARDWARE_TEST_READY'}else{'HARDWARE_TEST_BLOCKED'}
+    status=if($fullPackageApproval){'HARDWARE_TEST_READY'}
+        elseif($minimalLoadApproval){'HARDWARE_TEST_READY_MINIMAL_LOAD_ONLY'}
+        else{'HARDWARE_TEST_BLOCKED'}
     map=$MapName
     package=$package
     nativeOatUnlinker=$exe
@@ -177,7 +197,12 @@ $result=[ordered]@{
     soundsFolderPresent=$hasSounds
     streamedSoundFileCount=@($soundFiles).Count
     associatedMetadata=$metadata
-    metadataBlocking=$true
+    metadataBlocking=(-not [bool]$MinimumLoadSmokeTest)
+    minimalLoadSmokeTestRequested=[bool]$MinimumLoadSmokeTest
+    minimalNativeFastFileLoadApproved=$minimalLoadApproval
+    fullPackageApproval=$fullPackageApproval
+    externalSoundResourcesComplete=$hasSounds
+    soundFileOpenFailuresPossible=(-not $hasSounds)
     realMainGfxWorldAnd735MaterialReferencesOatPass=$worldProof
     realMainGfxWorldAuditResult=$worldReason
     realMainGfxWorldAuditFile=$worldEvidence
@@ -186,15 +211,24 @@ $result=[ordered]@{
     runtimeGameplayGuaranteed=$false
     originalFilesUntouched=$true
     oatAuditLog=$logFile
-    note='First hardware TEST approval requires two criteria: (1) both FINAL Xbox .ff files individually pass native T4Xenon OAT with exit 0 and zero warnings/errors, including genuine non-shell source GfxWorld and 735 real Material references in main FF; (2) Aztec CoD Xe package contains both FastFiles, streamed sounds folder and its known map.json / preview.dds metadata. No standalone canary, gameplay perfection, weapon/GSC-script error fix, or crash-free guarantee is required. Preserves optional highmip/other package contents.'
+    note=if($MinimumLoadSmokeTest){
+        'OPT-IN first native FastFile loading smoke only: exact two FFs independently OAT load, actual PC-derived Xbox GfxWorld with 735 live Material refs passes native loader witness. CoD Xe T4 SP resolves FFs from usermaps by filename; map.json/preview.dds are optional for opening FFs, and missing streamed XMA may fail later sound requests. Does not prove all XModels, scripts, gameplay, graphics or audio; preserve resources when available.'
+    }else{
+        'STANDARD complete usermap gate: two independently OAT-passing final FFs with source GfxWorld/735 linked material refs plus existing map.json preview.dds and sounds folder. No polished graphics or crash-free runtime required.'
+    }
 }
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportFile -Encoding UTF8
 Write-Host "[AZTEC-HARDWARE-GATE] soundsPresent=$hasSounds streamedFiles=$(@($soundFiles).Count) map.json=$($metadata[0].present) preview.dds=$($metadata[1].present)"
 Write-Host "[AZTEC-HARDWARE-GATE] MAIN_FF_SOURCE_GFXWORLD_OAT_PASS=$worldProof reason=$worldReason"
-Write-Host "[AZTEC-HARDWARE-GATE] BOTH_FINAL_FFS_OAT_PASS=$fullFF COMPLETE_CODEXE_PACKAGE=$complete"
+Write-Host "[AZTEC-HARDWARE-GATE] BOTH_FINAL_FFS_OAT_PASS=$fullFF COMPLETE_CODEXE_PACKAGE=$complete MINIMAL_LOAD_ONLY=$MinimumLoadSmokeTest"
 Write-Host "[AZTEC-HARDWARE-GATE] status=$($result.status)"
 Write-Host "[AZTEC-HARDWARE-GATE] report=$reportFile"
 if(-not $pass){
-    throw 'Native hardware test BLOCKED: final two FastFiles must each OAT load, main must contain the real linked GfxWorld (not a shell), and sounds\ + map.json + preview.dds must be present. Review audit report.'
+    throw 'Native test BLOCKED: both final FFs must OAT load, and the main FF must pass the real 735-surface linked GfxWorld witness. In full-package mode, map.json preview.dds and sounds/ are additionally required. See report.'
 }
-Write-Host '[AZTEC-HARDWARE-GATE] FIRST CONTROLLED NATIVE XBOX TEST APPROVED. Do not delay for more canaries.'
+if($fullPackageApproval){
+    Write-Host '[AZTEC-HARDWARE-GATE] COMPLETE PACKAGE: FIRST CONTROLLED NATIVE XBOX TEST APPROVED.'
+}else{
+    Write-Host '[AZTEC-HARDWARE-GATE] MINIMUM FASTFILE LOADING SMOKE APPROVED (optional audio/metadata absent).'
+    Write-Host '[AZTEC-HARDWARE-GATE] STOP ON FIRST EXCEPTION; DO NOT EXPECT COMPLETE GAMEPLAY OR AUDIO.'
+}
