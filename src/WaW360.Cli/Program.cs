@@ -1128,6 +1128,7 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"wrapperRoundTrip={result.WrapperRoundTripVerified}; structuralReady={result.StructuralNativeCandidateReady}; productionReady={result.ProductionMainReady}");
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<none>"}");
                 Console.WriteLine($"trackedShellReady={result.ConservativeCandidateReady}; readBackErrors={result.ConservativeReadBackErrors:N0}; wrapperRoundTrip={result.ConservativeWrapperRoundTripVerified}");
+                Console.WriteLine($"RECIPE IWD script-closure overrides={result.ScriptClosureIwdScriptsOverridden:N0}; indexed precedence is not full Xbox asset closure.");
                 Console.WriteLine($"tracked-shell package: {result.ConservativeHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"scriptClosureReady={result.ScriptClosureCandidateReady}; residentMenusRemoved={result.ScriptClosureResidentMenusRemoved:N0}; rawFilesPromoted={result.ScriptClosureRawFilesPromoted:N0}; readBackErrors={result.ScriptClosureReadBackErrors:N0}; wrapperRoundTrip={result.ScriptClosureWrapperRoundTripVerified}");
                 Console.WriteLine($"script-closure package: {result.ScriptClosureHardwarePackageDirectory ?? "<not emitted>"}");
@@ -1153,6 +1154,7 @@ static async Task<int> MainAsync(string[] args)
                 var result = await NormalMapLinkerV2SourceArchive.RunAsync(map, output);
                 Console.WriteLine($"Linker V2 canonical source graph: {result.CanonicalBaseName}");
                 Console.WriteLine($"rawRoots={result.PrimaryGraphSourceRoots:N0}; IWD={result.IwdFiles:N0}/{result.IwdEntries:N0}; selectedLoad={Path.GetFileName(result.SelectedLoadSource ?? "<none>")}; blockers={result.Blockers.Count:N0}");
+                Console.WriteLine($"RECIPE IWD PRECEDENCE: indexed={result.RecipeIwdPrecedenceIndexed}; uniqueScriptWinners={result.RecipeIwdScriptWinners:N0}; collisions={result.RecipeIwdScriptCollisions:N0}; appliedToXenonPayload={result.RecipeIwdPrecedenceAppliedToXenonPayload}");
                 Console.WriteLine($"Package main={result.PrimaryOutputFastFile}; load={result.LoadOutputFastFile ?? "<none>"}; externalSounds={result.ExternalSoundsExpected}");
                 if (result.GoldenOracleApplied)
                     Console.WriteLine($"Golden oracle: {result.GoldenOracleName}; mainAssets={result.GoldenMainAssetCount:N0}");
