@@ -113,16 +113,59 @@ foreach($r in $SourceRoots){
     if((ExecLog -ex 'dotnet' -arguments @($dll,'scan-maps-json',$root) -log $list) -ne 0){
         throw "Map discovery failed: $list"
     }
-    $maps=@(Get-Content -LiteralPath $list -Raw | ConvertFrom-Json)
-    foreach($m in $maps){
-        if($IncludeMaps.Count -gt 0 -and @($IncludeMaps|Where-Object{[string]$m.name -like [string]$_}).Count -eq 0){continue}
-        $found.Add([pscustomobject]@{
+    # Windows PowerShell 5.1 ConvertFrom-Json can emit a whole JSON array
+    # as a SINGLE pipeline object. Wrapping it in @(... | ConvertFrom-Json)
+    # produces Object[][]; $m.iwdCount then member-enumerates ALL map
+    # counts as Object[], which cannot be converted to one Int32.
+    # Explicitly unwrap nested arrays before accessing any map property.
+    $decoded=Get-Content -LiteralPath $list -Raw | ConvertFrom-Json
+    $flatMaps=New-Object 'System.Collections.Generic.List[object]'
+    function Add-DiscoveredMap([object]$entry,[System.Collections.Generic.List[object]]$sink){
+        if($null -eq $entry){return}
+        if($entry -is [System.Array]){
+            foreach($child in $entry){Add-DiscoveredMap -entry $child -sink $sink}
+            return
+        }
+        if($entry -isnot [pscustomobject]){
+            throw "Map discovery returned unexpected element type: $($entry.GetType().FullName)"
+        }
+        $sink.Add($entry)
+    }
+    Add-DiscoveredMap -entry $decoded -sink $flatMaps
+    Write-Host "[MULTIMAP-DISCOVERY] source=$root | decoded maps=$($flatMaps.Count)"
+    foreach($m in $flatMaps){
+        if([string]::IsNullOrWhiteSpace([string]$m.name)){
+            throw "Discovery returned a record without a map name in $list"
+        }
+        if($IncludeMaps.Count -gt 0 -and @($IncludeMaps | Where-Object {
+            [string]$m.name -like [string]$_
+        }).Count -eq 0){continue}
+        if($null -eq $m.iwdCount -or $m.iwdCount -is [System.Array]){
+            throw "Discovery returned non-scalar iwdCount for $($m.name); report: $list"
+        }
+        $rawIwdCount=[string]$m.iwdCount
+        $iwdCountValue=0
+        if(-not [int]::TryParse($rawIwdCount,[ref]$iwdCountValue) -or $iwdCountValue -lt 0){
+            throw "Discovery returned invalid iwdCount '$rawIwdCount' for $($m.name); report: $list"
+        }
+        $folderList=@()
+        foreach($sf in @($m.sourceFolders)){
+            if($sf -is [System.Array]){
+                foreach($entry in $sf){$folderList+=([string]$entry)}
+            }elseif($null -ne $sf){$folderList+=([string]$sf)}
+        }
+        $record=[pscustomobject]@{
             id=(SafeName ([string]$m.name))+'_'+(HashText $root).Substring(0,8)
-            name=[string]$m.name;root=$root;profile=[string]$m.profile
-            main=[string]$m.mainFastFile;mod=[string]$m.modFastFile
-            patch=[string]$m.patchFastFile;iwds=[int]$m.iwdCount
-            sourceFolders=@($m.sourceFolders)
-        })
+            name=[string]$m.name
+            root=$root
+            profile=[string]$m.profile
+            main=[string]$m.mainFastFile
+            mod=[string]$m.modFastFile
+            patch=[string]$m.patchFastFile
+            iwds=$iwdCountValue
+            sourceFolders=$folderList
+        }
+        $found.Add($record)
     }
 }
 $maps=@($found.ToArray()|Sort-Object id -Unique)
