@@ -63,6 +63,7 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required string? ScriptClosureFastFileSha256 { get; init; }
     public required int ScriptClosureResidentMenusRemoved { get; init; }
     public required int ScriptClosureRawFilesPromoted { get; init; }
+    public required int ScriptClosureIwdScriptsOverridden { get; init; }
     public required string? NativeBlockOutputFastFile { get; init; }
     public required string? NativeBlockHardwarePackageDirectory { get; init; }
     public required bool NativeBlockCandidateReady { get; init; }
@@ -959,23 +960,32 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         string? scriptClosureSha = null;
         var scriptClosureMenusRemoved = 0;
         var scriptClosureRawPromoted = 0;
+        var scriptClosureIwdOverridden = 0;
         var scriptClosureSkipReason = string.Empty;
         if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             try
             {
                 var typedClosure = await LoadTypedClosureAsync(map, outputRoot, source, cancellationToken);
+                var recipeIwd = JsonSerializer.Deserialize<NormalMapRecipeIwdPrecedenceResult>(
+                    await File.ReadAllTextAsync(source.RecipeIwdPrecedenceJsonFile, cancellationToken))
+                    ?? throw new InvalidDataException("Recipe IWD precedence JSON could not be decoded.");
+                if (!recipeIwd.PrecedenceIndexed)
+                    throw new InvalidDataException("Recipe IWD source precedence has errors; refusing a script-closure FF.");
                 var trackedShellPayloads = BuildTrackedShellVariant(rootPayloads);
                 var scriptVariant = await BuildScriptClosureVariantAsync(
                     emissionRoots,
                     trackedShellPayloads,
                     typedClosure,
+                    recipeIwd,
                     cancellationToken);
 
                 scriptClosureMenusRemoved = scriptVariant.ResidentMenusRemoved;
                 scriptClosureRawPromoted = scriptVariant.RawFilesPromoted;
+                scriptClosureIwdOverridden = scriptVariant.RawFilesOverridden;
+                notes.Add($"RECIPE LOOSE-SCRIPT OVERRIDES: {scriptClosureIwdOverridden:N0} matching FF RawFile(s) replaced with exact IWD body; {scriptClosureRawPromoted:N0} missing scripts promoted with recipe precedence. This is a diagnostic variant, not a production release.");
 
-                if (scriptClosureMenusRemoved != 0 || scriptClosureRawPromoted != 0)
+                if (scriptClosureMenusRemoved != 0 || scriptClosureRawPromoted != 0 || scriptClosureIwdOverridden != 0)
                 {
                     var scriptZone = BuildZone(
                         scriptVariant.Roots,
@@ -1063,6 +1073,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 $"Reason: {scriptClosureSkipReason}" + Environment.NewLine +
                 $"residentMenusRemoved={scriptClosureMenusRemoved:N0}" + Environment.NewLine +
                 $"rawFilesPromoted={scriptClosureRawPromoted:N0}" + Environment.NewLine +
+                $"iwdScriptsOverridden={scriptClosureIwdOverridden:N0}" + Environment.NewLine +
                 $"readBackErrors={scriptClosureReadBackErrors:N0}" + Environment.NewLine +
                 $"wrapperRoundTrip={scriptClosureRoundTrip}" + Environment.NewLine,
                 new UTF8Encoding(false),
@@ -1223,6 +1234,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ScriptClosureFastFileSha256 = scriptClosureSha,
             ScriptClosureResidentMenusRemoved = scriptClosureMenusRemoved,
             ScriptClosureRawFilesPromoted = scriptClosureRawPromoted,
+            ScriptClosureIwdScriptsOverridden = scriptClosureIwdOverridden,
             NativeBlockOutputFastFile = nativeBlockReady ? nativeBlockFfPath : null,
             NativeBlockHardwarePackageDirectory = nativeBlockReady ? nativeBlockPackageDir : null,
             NativeBlockCandidateReady = nativeBlockReady,
@@ -1831,7 +1843,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         IReadOnlyList<LinkerV2CanonicalRoot> Roots,
         IReadOnlyList<StructuralPayload> Payloads,
         int ResidentMenusRemoved,
-        int RawFilesPromoted);
+        int RawFilesPromoted,
+        int RawFilesOverridden);
 
     private static Task<NormalMapLinkerV2TypedClosurePlanResult> LoadTypedClosureAsync(
         MapCandidate map,
