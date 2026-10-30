@@ -291,6 +291,20 @@ foreach($m in $maps){
             $finger+=("$($file.FullName)|$($file.Length)|$stamp")
         }
     }
+    # An opt-in DIRECT WeaponDef witness is part of the Candidate identity.
+    # Never reuse a cached candidate built without it, or from an older
+    # witness JSON (OAT/native FF creation remains a separate verification).
+    if($Mode -eq 'Candidate'){
+        $directEvidence=[Environment]::GetEnvironmentVariable('WAW360_WEAPON_DIRECT_WITNESS_JSON','Process')
+        if(-not [string]::IsNullOrWhiteSpace($directEvidence)){
+            if(-not(Test-Path -LiteralPath $directEvidence -PathType Leaf)){
+                throw "Direct WeaponDef witness JSON missing: $directEvidence"
+            }
+            $finger+=('WEAPON_DIRECT_WITNESS|'+(Get-FileHash -LiteralPath $directEvidence -Algorithm SHA256).Hash)
+        }else{
+            $finger+='WEAPON_DIRECT_WITNESS|NONE'
+        }
+    }
     $sourceHash=HashText (($finger | Sort-Object -Unique) -join [Environment]::NewLine)
     $cacheDir=Join-Path $OutputRoot 'pass_cache'
     # Different OAT variant policies must never reuse each other's PASS.
@@ -362,7 +376,7 @@ foreach($m in $maps){
                 # so a map emitting an FF but applying 0 overrides is not
                 # mistaken for successful recipe conversion.
                 foreach($line in @((Get-Content -LiteralPath $log) | Where-Object {
-                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^WEAPON ORDINAL A/B|^BLOCKER: '
+                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^WEAPON ORDINAL A/B|^WEAPON-DIRECT |^BLOCKER: '
                 } | Select-Object -First 12)){
                     Write-Host "[MULTIMAP-RECIPE] $($m.name): $line"
                 }
