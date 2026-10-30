@@ -116,9 +116,12 @@ function Write-F32BE([byte[]]$bytes,[int]$at,[double]$value){
     [array]::Copy($f,0,$bytes,$at,4)
 }
 function Read-U32BE([byte[]]$bytes,[int]$at){
-    return ([uint32]$bytes[$at] -shl 24) -bor
-       ([uint32]$bytes[$at+1] -shl 16) -bor
-       ([uint32]$bytes[$at+2] -shl 8) -bor [uint32]$bytes[$at+3]
+    # Explicit intermediate expressions retain WinPS 5.1 parser support.
+    [uint32]$value=([uint32]$bytes[$at] -shl 24)
+    $value=$value -bor ([uint32]$bytes[$at+1] -shl 16)
+    $value=$value -bor ([uint32]$bytes[$at+2] -shl 8)
+    $value=$value -bor [uint32]$bytes[$at+3]
+    return $value
 }
 $size=60
 $buffer=New-Object byte[] (1903*$size)
