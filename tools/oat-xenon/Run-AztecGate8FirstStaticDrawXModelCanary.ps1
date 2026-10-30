@@ -16,7 +16,18 @@ $frontPath=Join-Path $n 'pc_model_world_source_frontier\aztec_pc_model_world_sou
 $baselinePath=Join-Path $base 'second_map_baseline.json'
 $bridge=Join-Path $PSScriptRoot 'Run-FRUmansionOatXModelBridge.ps1'
 $cap=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\waw360-graph-dumper-capabilities.json'
-$work=Join-Path $n 'pc_gate8_first_static_xmodel'
+# Preserve the first 718-draw proof at its existing path. Every additional
+# source model gets a distinct, resumable diagnostic report/log and never
+# overwrites the proven tallgrass canary.
+$staticSlug=($ModelName.Trim().ToLowerInvariant() -replace '[^a-z0-9_-]','_')
+if([string]::IsNullOrWhiteSpace($staticSlug) -or $staticSlug.Length -gt 90){
+    throw 'Invalid static model name for isolated PC XModel evidence output.'
+}
+$work=Join-Path $n $(if($staticSlug -eq 'foliage_oki2_tallgrass'){
+    'pc_gate8_first_static_xmodel'
+}else{
+    'pc_gate8_static_xmodel_'+$staticSlug
+})
 $report=Join-Path $work 'aztec_first_static_draw_xmodel_canary.json'
 $log=Join-Path $work 'static_draw_xmodel_bridge.log'
 foreach($p in @($dependencyPath,$frontPath,$baselinePath,$bridge,$cap)){
