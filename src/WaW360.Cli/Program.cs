@@ -1950,6 +1950,7 @@ static void PrintHelp()
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
     Console.WriteLine("  oat-root-bisect <candidate.ff> <Unlinker.exe> <output-dir>  Binary-search first top-level root that makes OAT fail");
+    Console.WriteLine("  aztec-native-test-load-emit <pc-root> <source-folder-name> <output>    Convert ONLY canonical original-PC-selected Aztec load FF for first native test");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  native-oat-identity <native.ff> <output-dir> [Unlinker.exe]  Extract exact native Xbox (index,type,name) sequence through pinned OAT Xenon");
