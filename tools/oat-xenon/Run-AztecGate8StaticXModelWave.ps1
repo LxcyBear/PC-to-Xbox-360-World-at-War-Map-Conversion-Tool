@@ -313,9 +313,9 @@ function Get-ExactDrawSum([object[]]$items,[string]$label){
     }
     return [int]$sum
 }
-$draws=Get-ExactDrawSum -items $verified.ToArray() -label 'PC-owned XModel bodies'
-$referenceDraws=Get-ExactDrawSum -items $referenced.ToArray() -label 'Verified native reference names'
-$unresolvedDraws=Get-ExactDrawSum -items $unresolved.ToArray() -label 'Unresolved PC reference names'
+$draws=Get-ExactDrawSum -items ($verified.ToArray()) -label 'PC-owned XModel bodies'
+$referenceDraws=Get-ExactDrawSum -items ($referenced.ToArray()) -label 'Verified native reference names'
+$unresolvedDraws=Get-ExactDrawSum -items ($unresolved.ToArray()) -label 'Unresolved PC reference names'
 $coveredTypes=$verified.Count+$referenced.Count
 $accountedTypes=$coveredTypes+$unresolved.Count
 $fullCensus=$coveredTypes -eq 27 -and $draws+$referenceDraws -eq 1903 -and $unresolved.Count -eq 0
