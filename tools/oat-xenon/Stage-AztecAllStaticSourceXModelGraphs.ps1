@@ -214,10 +214,25 @@ foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
     $match=@($nativeModels|Where-Object {
         [int]$_.Index -eq $root -and [string]$_.Name -ieq $name
     })
-    if(-not $name.StartsWith(',') -or $match.Count -ne 1 -or
+    $refClass=[string]$reference.classification
+    $stockProven=$refClass -eq 'STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME'
+    $nativeProven=$refClass -eq 'XBOX_NATIVE_REFERENCE_NO_OWNED_MESH'
+    $refAliasMatches=$match.Count -eq 1 -and
+        (Norm ([string]$match[0].Name)) -eq (Norm $name)
+    if(-not $name.StartsWith(',') -or -not $refAliasMatches -or
+       (-not $nativeProven -and -not $stockProven) -or
        $seenRoot.Contains($root) -or $seenName.Contains((Norm $name)) -or
        [bool]$reference.runtimeResidencyVerified){
-        throw "Native referenced XModel $name failed final unique root/residency classification."
+        throw "Reference-only XModel $name failed exact unique native root identity and provenance checks."
+    }
+    if($stockProven){
+        $zoneList=@($reference.stockBodyZones)
+        if(-not [bool]$reference.stockOatExactBodyMatch -or
+           $zoneList.Count -eq 0 -or
+           @($zoneList | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -gt 0 -or
+           -not(Test-Path -LiteralPath ([string]$reference.exactOatEvidenceManifest) -PathType Leaf)){
+            throw "Stock-resolved source reference $name is missing its exact Xbox base-FF OAT proof."
+        }
     }
 }
 # Refused source-body synthesis: the PC FF's leading-comma reference
