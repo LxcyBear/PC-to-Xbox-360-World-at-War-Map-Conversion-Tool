@@ -1,5 +1,23 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — recipe-first conversion implementation begins
+
+The canonical requirements are the user-supplied `WaW_PC_to_Xbox360_codxe_porting_knowledge.txt`, especially its detailed Part 2 rules. See [`docs/RECIPE_PC_WAW_TO_CODXE.md`](docs/RECIPE_PC_WAW_TO_CODXE.md) for the eight implementation gates and exact Windows test.
+
+**First implemented change (not yet Windows-tested):** `NormalMapRecipeIwdPrecedence.cs` scans map-owned IWD ZIP central directories, preserving each raw virtual path, archive, sizes, source rank, and exact GSC/CSC script winner. Later alphabetically named map IWDs take precedence for the same loose script, and any loose script takes priority over the matching FF RawFile. It produces JSON and text evidence under `<conversion>/<map>/recipe_source_precedence/`; malformed archives and unsafe virtual paths are reported as errors, not silently ignored.
+
+**Integrated:** Linker V2 SourceArchive runs the new index and records its counts, paths, and explicit `AppliedToXenonPayload=false` preflight gate. The existing multi-map Source runner prints `[MULTIMAP-RECIPE]` counts without any OAT or Xbox FF build. The separate diagnostic script-closure emitter uses those exact IWD GSC/CSC winners to replace matching FF RawFile bodies and to promote only its existing typed-closure selected missing scripts. It records `ScriptClosureIwdScriptsOverridden`. This does not make the proof-heavy primary FF, map world, shader/audio, dependency closure or gameplay production-ready.
+
+**Fast targeted Windows validation (two maps only):**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1' -Mode Source -IncludeMaps nazi_zombie_FRUmansion,nazi_zombie_aztec_V2.2
+```
+
+**Next after this PASS:** test the recipe-overridden script-closure diagnostic FF without re-running full 11-map builds; then implement full Xbox/PC source asset indexes and evidence-based source priority across each typed dependency family. No release authorization from source/index/OAT checks alone.
+
 ## October 30 — Windows verified StringTable A/B OAT list passes + weapon audit source property fix
 
 **Latest user Windows run:** WinPS syntax PASS 5/5 scripts. Existing Backrooms tracked-shell FF (329,515 B) and Aztec tracked-shell FF (449,763 B) both produced OAT `--list` **exit=0, Finished with 0 warnings, 0 errors**. This verifies native OAT listing of the reduced diagnostic FFs after the StringTable correction. It does **not** verify full extraction, primary asset payloads, or Xbox playability.
