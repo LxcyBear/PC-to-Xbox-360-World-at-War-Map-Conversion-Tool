@@ -72,6 +72,29 @@ function Read-Pass($row,[string]$path){
            [string]$m.standaloneXenonFFSha256){
         throw "Previously passing source-owned XModel FF changed: $path"
     }
+    # Permanently cache the already OAT-proven model FF in the per-model
+    # output directory. Older wave results used %TEMP% and could disappear
+    # between Windows sessions even though the conversion had PASSED.
+    $source=[string]$m.standaloneXenonFF
+    $durable=Join-Path (Split-Path -Parent $path) 'original_pc_xenon_model_standalone.ff'
+    if([IO.Path]::GetFullPath($source) -ine [IO.Path]::GetFullPath($durable)){
+        if(Test-Path -LiteralPath $durable -PathType Leaf){
+            if((Get-FileHash -LiteralPath $durable -Algorithm SHA256).Hash -ine
+                [string]$m.standaloneXenonFFSha256){
+                throw "Cached OAT model FF SHA changed: $durable"
+            }
+        }else{
+            Copy-Item -LiteralPath $source -Destination $durable -Force
+            if((Get-FileHash -LiteralPath $durable -Algorithm SHA256).Hash -ine
+                [string]$m.standaloneXenonFFSha256){
+                throw "Caching source-derived OAT model FF changed its bytes: $durable"
+            }
+        }
+        $m.standaloneXenonFF=$durable
+        $m | ConvertTo-Json -Depth 9 |
+            Set-Content -LiteralPath $path -Encoding UTF8
+        Write-Host "[AZTEC-GATE8-XMODEL-WAVE] PRESERVED actual source-owned OAT FF at $durable"
+    }
     return $m
 }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
