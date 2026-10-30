@@ -201,6 +201,247 @@ foreach($m in @($matrix.maps)){
             $weaponReason="$missing synthetic packed-name proof labels in latest historical audit; ordinal names are not pointer proofs"
         }
     }
+    # This historic audit intentionally still shows original synthetic labels.
+    # The direct-pointer diagnostic checks source hashes and all ten loaded
+    # VIRTUAL targets. Accept the new evidence only for the exact current-run
+    # FF, matched against the emitter's 71/71 report and release guard marker.
+    $directVariant='hardware_test_main_xanim_native_layout_weapon_direct_proven'
+    $directArtifact=Find-Variant $artifacts $directVariant
+    $directValid=Get-ShaMatch $directArtifact
+    $directReport=Join-Path ([string]$m.conversionOutputFolder) (
+        Join-Path $mapName (Join-Path 'linker_v2_main_xanim_native_layout' (
+            $mapName+'_linker_v2_main_structural.json')))
+    $directEvidencePass=$false
+    if($directValid -and (Test-Path -LiteralPath $directReport -PathType Leaf)){
+        try {
+            $dr=Get-Content -LiteralPath $directReport -Raw | ConvertFrom-Json
+            $guard=Join-Path (Split-Path -Path ([string]$directArtifact.path) -Parent) 'DO_NOT_DEPLOY_WEAPON_DIRECT_PROVEN.txt'
+            if($null -ne $dr.PSObject.Properties['WeaponDirectProvenReady'] -and
+               [bool]$dr.WeaponDirectProvenReady -and
+               [int]$dr.WeaponDirectKnownNames -eq 61 -and
+               [int]$dr.WeaponDirectProvenNames -eq 10 -and
+               [string]$dr.WeaponDirectProvenOutputFastFile -ieq [string]$directArtifact.path -and
+               (Test-Path -LiteralPath $guard -PathType Leaf)){
+                $guardText=Get-Content -LiteralPath $guard -Raw
+                $actual=(Get-FileHash -LiteralPath ([string]$directArtifact.path) -Algorithm SHA256).Hash
+                $guardHash=[regex]::Match($guardText,'(?im)^Generated FF SHA-256:\s*([a-f0-9]{64})\s*
+    # Diagnostic ONLY: a positional WeaponDef name probe can establish
+    # whether OAT extraction moves beyond forbidden placeholder filenames,
+    # but must NEVER count as real source-pointer proof or Xbox readiness.
+    $weaponProbeVariant='hardware_test_main_xanim_native_layout_weapon_order_probe'
+    $weaponProbe=Find-Variant $artifacts $weaponProbeVariant
+    $weaponProbeValid=Get-ShaMatch $weaponProbe
+    $weaponProbeExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $weaponProbeVariant 'Extract' $weaponProbe
+    $weaponProbeState=if($weaponProbeExtractOk){'OAT_EXTRACT_CLEAN_DIAGNOSTIC'}elseif($weaponProbeValid){'EMITTED_OAT_EXTRACT_NOT_PROVEN'}else{'NOT_EMITTED'}
+    # Keep each New-Gate command invocation on one logical line. In WinPS
+    # 5.1 a newline between positional string arguments terminates the
+    # command, even when it appears inside an enclosing method expression.
+    $gates.Add((New-Gate 'ASSETS' 'Typed renderer, FX, audio, collision assets complete' 'PENDING' 'Structural/placeholder roots remain; no complete production graph manifest'))
+    $gates.Add((New-Gate 'DEPENDENCIES' 'Required script, world and gameplay dependency closure' 'PENDING' 'No independently verified production runtime-reachability closure'))
+    $gates.Add((New-Gate 'MEMORY' 'Xbox 360 memory and asset-pool limits verified' 'PENDING' 'No production-sized Xbox arena/pool admission result'))
+    $gates.Add((New-Gate 'PACKAGE' 'Native FF, load FF, metadata, textures/sound dependencies validated' 'PENDING' 'No independently verified complete CodXe native release package'))
+
+    $passed=@($gates.ToArray() | Where-Object {$_.status -eq 'PASS'}).Count
+    $total=$gates.Count
+    $bar=('=' * $passed)+('-' * ($total-$passed))
+    # Preserve both map identity and the discovered source-root discriminator,
+    # avoiding collisions when multiple source roots have identical map names.
+    $key=([IO.Path]::GetFileName([string]$m.resultFolder) -replace '[^a-zA-Z0-9_-]','_')
+    $historical=Join-Path $historyRoot ($key+'.json')
+    $oldCount=$null
+    $history=@()
+    if(Test-Path -LiteralPath $historical -PathType Leaf){
+        try{
+            $old=Get-Content -LiteralPath $historical -Raw | ConvertFrom-Json
+            if([string]$old.schema -eq 'WaW360.NativeTestReadinessHistory.v1'){
+                $history=@($old.entries | Where-Object {$null -ne $_})
+                if($history.Count -gt 0){$oldCount=[int]$history[-1].passed}
+            }
+        }catch{Write-Host "[READINESS] Ignoring invalid prior readiness history: $historical"}
+    }
+    $delta=if($null -eq $oldCount){'first evidence baseline'}else{
+        $d=$passed-$oldCount
+        if($d -gt 0){"+$d gates since previous check"}elseif($d -lt 0){
+            "$d gates since previous check"
+        }else{'no gate-count change since previous check'}
+    }
+    Write-Host "[READINESS] $mapName [$bar] $passed/$total independently evidenced gates | $delta"
+    Write-Progress -Activity 'PC2XB3 native test readiness' -Status "$mapName $passed/$total evidence gates" -PercentComplete ([int](100*$passed/$total))
+    foreach($gate in $gates){
+        Write-Host "[READINESS]   $($gate.status.PadRight(7)) $($gate.id.PadRight(16)) $($gate.reason)"
+    }
+    if($weaponProbeValid){
+        Write-Host "[READINESS]   EXPERIMENTAL ONLY: weapon-order probe FF=$($weaponProbe.bytes)B, full OAT extraction=$weaponProbeState. No gate credited."
+    }
+    Write-Host '[READINESS]   VERDICT: HOLD_DIAGNOSTIC_ONLY. No automated Xbox deployment or release approval.'
+    $stateSignature=(@($gates.ToArray() | ForEach-Object {$_.id+'='+$_.status}) -join ';')+
+        '|'+[string]$matrix.gitCommit+'|'+[string]$m.sourceFingerprint+
+        '|scriptSha='+$(if($null -ne $script){[string]$script.sha256}else{'none'})
+    if($history.Count -eq 0 -or [string]$history[-1].signature -ne $stateSignature){
+        $history+=([pscustomobject]@{
+            utc=[DateTime]::UtcNow.ToString('o')
+            gitCommit=[string]$matrix.gitCommit
+            matrix=$MatrixJson;signature=$stateSignature
+            passed=$passed;total=$total
+            state='HOLD_DIAGNOSTIC_ONLY'
+        })
+        [ordered]@{
+            schema='WaW360.NativeTestReadinessHistory.v1'
+            map=$mapName;entries=@($history)
+        }|ConvertTo-Json -Depth 9|Set-Content -LiteralPath $historical -Encoding UTF8
+    }
+    $reports.Add([pscustomobject]@{
+        map=$mapName;matrix=$MatrixJson;sourceFingerprint=[string]$m.sourceFingerprint
+        gitCommit=[string]$matrix.gitCommit
+        passedEvidenceGates=$passed;totalEvidenceGates=$total
+        scriptOverrides=$scriptOverridden
+        experimentalWeaponOrderProbe=[pscustomobject]@{
+            isDiagnosticOnly=$true
+            canAuthorizeXboxRelease=$false
+            emitted=$weaponProbeValid
+            ffBytes=if($weaponProbeValid){[long]$weaponProbe.bytes}else{$null}
+            oatFullExtractState=$weaponProbeState
+            ordinalNamesIndependentlyProven=$false
+        }
+        scriptClosureFFBytes=if($scriptValid){[long]$script.bytes}else{$null}
+        primaryFFBytes=if($primaryValid){[long]$primary.bytes}else{$null}
+        sourceIndex=$sourceIndex
+        gates=@($gates.ToArray())
+        verdict='HOLD_DIAGNOSTIC_ONLY'
+        xboxReleaseAuthorized=$false
+        history=$historical
+    })
+}
+Write-Progress -Activity 'PC2XB3 native test readiness' -Completed
+if($reports.Count -eq 0){throw 'No maps matched. Specify -IncludeMaps or -MatrixJson.'}
+[ordered]@{
+    schema='WaW360.NativeTestReadiness.v1'
+    generatedUtc=[DateTime]::UtcNow.ToString('o')
+    candidateMatrix=$MatrixJson
+    allMapsAuthorizedForXboxTest=$false
+    note='Evidence counts are discrete preflight gates, NOT percent completion; production release requires full native asset closure and separate human-controlled hardware approval.'
+    maps=@($reports.ToArray())
+}|ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $progressFile -Encoding UTF8
+Write-Host '[READINESS] ========================================================='
+Write-Host "[READINESS] JSON=$progressFile"
+Write-Host '[READINESS] A diagnostic FF is never a safe native Xbox release merely because these checks pass.'
+)
+                $witnessHash=[regex]::Match($guardText,'(?im)^Witness JSON SHA-256:\s*([a-f0-9]{64})\s*
+    # Diagnostic ONLY: a positional WeaponDef name probe can establish
+    # whether OAT extraction moves beyond forbidden placeholder filenames,
+    # but must NEVER count as real source-pointer proof or Xbox readiness.
+    $weaponProbeVariant='hardware_test_main_xanim_native_layout_weapon_order_probe'
+    $weaponProbe=Find-Variant $artifacts $weaponProbeVariant
+    $weaponProbeValid=Get-ShaMatch $weaponProbe
+    $weaponProbeExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $weaponProbeVariant 'Extract' $weaponProbe
+    $weaponProbeState=if($weaponProbeExtractOk){'OAT_EXTRACT_CLEAN_DIAGNOSTIC'}elseif($weaponProbeValid){'EMITTED_OAT_EXTRACT_NOT_PROVEN'}else{'NOT_EMITTED'}
+    # Keep each New-Gate command invocation on one logical line. In WinPS
+    # 5.1 a newline between positional string arguments terminates the
+    # command, even when it appears inside an enclosing method expression.
+    $gates.Add((New-Gate 'ASSETS' 'Typed renderer, FX, audio, collision assets complete' 'PENDING' 'Structural/placeholder roots remain; no complete production graph manifest'))
+    $gates.Add((New-Gate 'DEPENDENCIES' 'Required script, world and gameplay dependency closure' 'PENDING' 'No independently verified production runtime-reachability closure'))
+    $gates.Add((New-Gate 'MEMORY' 'Xbox 360 memory and asset-pool limits verified' 'PENDING' 'No production-sized Xbox arena/pool admission result'))
+    $gates.Add((New-Gate 'PACKAGE' 'Native FF, load FF, metadata, textures/sound dependencies validated' 'PENDING' 'No independently verified complete CodXe native release package'))
+
+    $passed=@($gates.ToArray() | Where-Object {$_.status -eq 'PASS'}).Count
+    $total=$gates.Count
+    $bar=('=' * $passed)+('-' * ($total-$passed))
+    # Preserve both map identity and the discovered source-root discriminator,
+    # avoiding collisions when multiple source roots have identical map names.
+    $key=([IO.Path]::GetFileName([string]$m.resultFolder) -replace '[^a-zA-Z0-9_-]','_')
+    $historical=Join-Path $historyRoot ($key+'.json')
+    $oldCount=$null
+    $history=@()
+    if(Test-Path -LiteralPath $historical -PathType Leaf){
+        try{
+            $old=Get-Content -LiteralPath $historical -Raw | ConvertFrom-Json
+            if([string]$old.schema -eq 'WaW360.NativeTestReadinessHistory.v1'){
+                $history=@($old.entries | Where-Object {$null -ne $_})
+                if($history.Count -gt 0){$oldCount=[int]$history[-1].passed}
+            }
+        }catch{Write-Host "[READINESS] Ignoring invalid prior readiness history: $historical"}
+    }
+    $delta=if($null -eq $oldCount){'first evidence baseline'}else{
+        $d=$passed-$oldCount
+        if($d -gt 0){"+$d gates since previous check"}elseif($d -lt 0){
+            "$d gates since previous check"
+        }else{'no gate-count change since previous check'}
+    }
+    Write-Host "[READINESS] $mapName [$bar] $passed/$total independently evidenced gates | $delta"
+    Write-Progress -Activity 'PC2XB3 native test readiness' -Status "$mapName $passed/$total evidence gates" -PercentComplete ([int](100*$passed/$total))
+    foreach($gate in $gates){
+        Write-Host "[READINESS]   $($gate.status.PadRight(7)) $($gate.id.PadRight(16)) $($gate.reason)"
+    }
+    if($weaponProbeValid){
+        Write-Host "[READINESS]   EXPERIMENTAL ONLY: weapon-order probe FF=$($weaponProbe.bytes)B, full OAT extraction=$weaponProbeState. No gate credited."
+    }
+    Write-Host '[READINESS]   VERDICT: HOLD_DIAGNOSTIC_ONLY. No automated Xbox deployment or release approval.'
+    $stateSignature=(@($gates.ToArray() | ForEach-Object {$_.id+'='+$_.status}) -join ';')+
+        '|'+[string]$matrix.gitCommit+'|'+[string]$m.sourceFingerprint+
+        '|scriptSha='+$(if($null -ne $script){[string]$script.sha256}else{'none'})
+    if($history.Count -eq 0 -or [string]$history[-1].signature -ne $stateSignature){
+        $history+=([pscustomobject]@{
+            utc=[DateTime]::UtcNow.ToString('o')
+            gitCommit=[string]$matrix.gitCommit
+            matrix=$MatrixJson;signature=$stateSignature
+            passed=$passed;total=$total
+            state='HOLD_DIAGNOSTIC_ONLY'
+        })
+        [ordered]@{
+            schema='WaW360.NativeTestReadinessHistory.v1'
+            map=$mapName;entries=@($history)
+        }|ConvertTo-Json -Depth 9|Set-Content -LiteralPath $historical -Encoding UTF8
+    }
+    $reports.Add([pscustomobject]@{
+        map=$mapName;matrix=$MatrixJson;sourceFingerprint=[string]$m.sourceFingerprint
+        gitCommit=[string]$matrix.gitCommit
+        passedEvidenceGates=$passed;totalEvidenceGates=$total
+        scriptOverrides=$scriptOverridden
+        experimentalWeaponOrderProbe=[pscustomobject]@{
+            isDiagnosticOnly=$true
+            canAuthorizeXboxRelease=$false
+            emitted=$weaponProbeValid
+            ffBytes=if($weaponProbeValid){[long]$weaponProbe.bytes}else{$null}
+            oatFullExtractState=$weaponProbeState
+            ordinalNamesIndependentlyProven=$false
+        }
+        scriptClosureFFBytes=if($scriptValid){[long]$script.bytes}else{$null}
+        primaryFFBytes=if($primaryValid){[long]$primary.bytes}else{$null}
+        sourceIndex=$sourceIndex
+        gates=@($gates.ToArray())
+        verdict='HOLD_DIAGNOSTIC_ONLY'
+        xboxReleaseAuthorized=$false
+        history=$historical
+    })
+}
+Write-Progress -Activity 'PC2XB3 native test readiness' -Completed
+if($reports.Count -eq 0){throw 'No maps matched. Specify -IncludeMaps or -MatrixJson.'}
+[ordered]@{
+    schema='WaW360.NativeTestReadiness.v1'
+    generatedUtc=[DateTime]::UtcNow.ToString('o')
+    candidateMatrix=$MatrixJson
+    allMapsAuthorizedForXboxTest=$false
+    note='Evidence counts are discrete preflight gates, NOT percent completion; production release requires full native asset closure and separate human-controlled hardware approval.'
+    maps=@($reports.ToArray())
+}|ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $progressFile -Encoding UTF8
+Write-Host '[READINESS] ========================================================='
+Write-Host "[READINESS] JSON=$progressFile"
+Write-Host '[READINESS] A diagnostic FF is never a safe native Xbox release merely because these checks pass.'
+)
+                if($guardHash.Success -and $witnessHash.Success -and
+                   [string]$guardHash.Groups[1].Value -ieq $actual -and
+                   [string]$directArtifact.sha256 -ieq $actual){
+                    $directEvidencePass=$true
+                }
+            }
+        }catch{
+            Write-Host '[READINESS] Direct WeaponDef name evidence was incomplete; retaining historical gate.'
+        }
+    }
+    if($directEvidencePass){
+        $weaponState='PASS'
+        $weaponReason='61 known + 10 direct packed Virtual-pointer WeaponDef names SHA/source verified (71/71 diagnostic). Real owned WeaponDef gameplay payload NOT verified.'
+    }
     $gates.Add((New-Gate 'WEAPON_NAMES' 'All real WeaponDef identities proven' $weaponState $weaponReason))
     # Diagnostic ONLY: a positional WeaponDef name probe can establish
     # whether OAT extraction moves beyond forbidden placeholder filenames,
