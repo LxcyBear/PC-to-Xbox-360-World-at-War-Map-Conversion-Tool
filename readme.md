@@ -1,5 +1,32 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — MAJOR PIVOT: one shared converter across ALL PC maps (multi-map matrix)
+
+**No more single-map-only development.** Aztec, FRUmansion, Simpsons and every detected source map should now feed one conversion/regression cycle. Shared root-linking, material/image, XModel, XAnim, FX, ScriptString, memory/zone and OAT fixes belong in reusable engine code; a known source-specific fixture must never be promoted to a universal conversion rule without multi-map validation.
+
+**New tool (first Windows run pending):** `tools/oat-xenon/Run-WaWMultiMapMatrix.ps1`. This calls the new `scan-maps-json` CLI command powered by existing MapDiscovery, builds the shared .NET CLI **once**, discovers all PC maps under `...My ProjectsWorld at WarPC Maps`, assigns **isolated per-map run folders**, and supports four processing modes:
+- `Inventory`: build the CLI, discover maps and report their source FF/IWD evidence without serialization.
+- `Analyze`: read-only generic stage4 analyzer for each map.
+- `Source`: analyzer then Linker V2 source archive, map-by-map with independent errors and progress.
+- `Candidate`: preceding two stages then the existing generic V2 structural main emitter; collect only newly emitted FFs, make SHA-verified short-path copies and require genuine T4Xenon OAT exit=0 / 0 warnings/errors on every candidate. **OAT-PASS artifacts remain DIAGNOSTIC-ONLY**, not hardware releases. No consumer Xbox folder or original FF is touched.
+
+A run writes `output/multi_map_matrix/runs/run_<timestamp>_<suffix>/multi_map_matrix.{json,csv}` plus per-map process logs and structured failures. Shared blocker names include XModel, XAnim, FX, image/material, ScriptString/rawfile, packed-pointer/block layout, memory-pressure suspect and missing dependency. Persistently recorded **per-map OAT-verified FF size history** records actual candidate bytes, prior bytes and signed growth; no arbitrary size padding or inferred runtime memory. Optional `-RetailRoots` builds a **shared index of actual .ff/.iwd/.pak physical file paths only**; it is NOT an asset-name index and cannot justify copying unproven donor content. The evidence registry `tools/oat-xenon/multimap_conversion_rules.json` distinguishes global required policies, source-profile-specific facts, and Jake's unverified ~210-MiB RAM-pressure hypothesis. Existing PASS-only BatchStageCache remains in the engine; this first batch-driver implementation has **no independently Windows-verified cross-map cache/parallel OAT scheduling** yet. By default OAT work runs sequentially to avoid simultaneous high-memory x86 failures; multiple maps are processed in a single build cycle.
+
+**FIRST Windows run across all discovered PC maps:**
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Source
+```
+**After source-stage diagnostics are reviewed**, candidate pass for each map (isolated outputs, OAT validation, not hardware-ready):
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Candidate
+```
+Optional: `-IncludeMaps '*aztec*','*FRUmansion*','*simpsons*'` to limit the first run; `-SourceRoots @('path1','path2')` to add folders; `-RetailRoots @('path-to-your-own-retail-FFs')` to generate a single location-only index. UGX and ZCT are *profile-specific dependencies*, not globally equivalent to vanilla WaW retail assets.
+
+**Current limits and nonclaims:** This is the first shared orchestration matrix, not a promise that generic Linker V2 structural FFs are fully playable. Some maps may stop at source analysis, while others can reach OAT diagnostic FFs. Real Xbox approval still requires independent main + _load OAT validation, package/runtime dependencies and appropriate smoke tests; the existing Aztec 9/13 milestone audit remains separate. The shared categories expose where to apply multi-map serializer fixes, rather than randomly patching different FFs without provenance.
+
+
 ## October 30 — Gate 8E Windows PASS; next read-only original-Xbox draw ABI witness (Gate 8F)
 
 **Verified on Windows:** `AZTEC_GATE8_1903_NATIVE_60B_GEOMETRY_SKELETON_SOURCE_ONLY_PASS` — exact **1,903 × 60-byte = 114,180-byte** diagnostic, SHA256 `A9388650F9BDD4B4558F3895E0E339A3E3514BBE372CD723C47E3F3C4DB24D07`, all **5,709** packed-axis words endian-read back, **1,902** source-converted XModel occurrences and **1** independently stock-OAT-verified identity. Deliberately **all 28 bytes +32..+59** of every native record are ZERO/INVALID (unresolved pointers, lighting, flags, padding). The valid source geometry bridge is **NOT a native Xbox draw array** and it was not inserted into the map FF. Real-world FF stays ~**3.45 MiB**, Gate 10 still **0/1,903** physically linked, and full first-Xbox-test tracker stays **9/13 = 69% of milestone gates**.
