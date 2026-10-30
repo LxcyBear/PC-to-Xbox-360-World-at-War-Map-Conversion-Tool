@@ -1,5 +1,31 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — FIRST REAL MULTI-MAP Windows PASS: 11/11 maps, 22/22 source stages
+
+**Verified Windows run (Git be2a60a):** MapDiscovery decoded 11 real PC maps. Inventory 11/11; the subsequent full `-Mode Source` run independently returned PASS/exit 0 for BOTH `stage4-normal-analyze` and `linker-v2-source` across all 11 = **22/22 source-stage PASS**.
+
+Source-pass maps: `nazi_zombie_FRUmansion`, `nazi_zombie_tower`, `Backrooms`, `Bad Subway`, `ballbags_2`, `fortress`, `nazi_zombie_aztec_V2.2`, `nazi_zombie_bbf2`, `nazi_zombie_ndh`, `nazi_zombie_simp`, `small_map`.
+
+**FIRST full-fleet source milestone COMPLETE.** This is not yet an Xbox candidate or hardware PASS: the reported OAT FF bytes=0 is correct. Source report: `output/multi_map_matrix/runs/run_20261030_021720_a0b54c/multi_map_matrix.json` (user-local output; not committed).
+
+**Candidate build optimization added after the verified run (Windows test pending):**
+
+- Candidate mode directly invokes `linker-v2-main-structural` because its `RunAsync` itself invokes/validates SourceArchive, RootPolicy, BlockPlan and ScriptStringMerge. This avoids two redundant standalone stages for all 11 maps.
+- Main FFs and A/B variants are still emitted and recorded. **Default `-OatVariants Primary` runs OAT on only the primary proof-heavy main FF** per map (up to 11 instead of ~55 calls). `-OatVariants All` runs OAT on each emitted A/B FF when useful. Separate policy-specific caches prevent false hits.
+- Actual emitted candidate FF bytes/MiB and their SHA are printed **even if OAT fails**. A separate emitted-size history tracks per-map, per-variant byte deltas; OAT-verified FF history is independent. Never fake-pads FFs.
+- Candidate FFs are emitted in isolated short `%TEMP%\WMM_*` directories to avoid the long Windows OneDrive checkout path. JSON/CSV/logs remain under `output/multi_map_matrix`. Temporary candidate directories persist until removed separately. OAT receives a SHA-verified short-path copy with original FF filename preserved.
+- Unexpected candidate failures are caught per map so later maps can continue; source FFs are never modified and no Xbox release is automatically published.
+
+**Next full-fleet Windows command:**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Candidate -OatVariants Primary
+```
+
+An OAT structural PASS alone never establishes hardware playability: native GfxWorld draw pointers, shader/image/sound dependency graphs, script/runtime closure, _load.ff, and actual Xbox validation still matter.
+
 ## October 30 — WinPS 5.1 multi-map discovery Object[] hotfix (user run #2)
 
 **First batch engine/build proved PASS**, and the driver loaded **30 scoped conversion rules + 39 historic Jake report samples**, but the user's second Source run stopped during map enumeration: `Run-WaWMultiMapMatrix.ps1:119` tried to coerce a **System.Object[] into a single Int32** while creating a map record. Cause: Windows PowerShell 5.1 `ConvertFrom-Json` can yield the top-level JSON map array as one pipeline object, and `@(... | ConvertFrom-Json)` can preserve a nested array. Then PowerShell member-enumerates `$m.iwdCount` across all discovered maps as an `Object[]`. **No map serializer ran and no source FF was modified.**
