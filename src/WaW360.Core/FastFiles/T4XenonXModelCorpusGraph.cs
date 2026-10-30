@@ -33,7 +33,7 @@ internal sealed class T4XenonXModelCorpus
         var aztecCanary = bindingFormat == "WaW360.AztecPcSingleXModelBinding.v1";
         var aztecTwoModels = bindingFormat == "WaW360.AztecPcTwoXModelBinding.v1";
         var aztecFiveModels = bindingFormat == "WaW360.AztecGate8FiveSourceXModelBinding.v1";
-        var aztecFullStaticModels = bindingFormat == "WaW360.AztecGate8AllStaticXModelBinding.v2";
+        var aztecFullStaticModels = bindingFormat == "WaW360.AztecGate8AllStaticXModelBinding.v3";
         if (!aztecCanary && !aztecTwoModels && !aztecFiveModels && !aztecFullStaticModels &&
             bindingFormat != "WaW360.Nuclear4W.XModelRootBinding.v3")
             throw new InvalidDataException("Unexpected XModel root-binding manifest format.");
@@ -145,10 +145,12 @@ internal sealed class T4XenonXModelCorpus
                 root.GetProperty("nativeXModelRoots").GetInt32() != 284 ||
                 root.GetProperty("sourceStaticModels").GetInt32() != 27 ||
                 root.GetProperty("staticDrawsRepresented").GetInt32() != 1903 ||
-                root.GetProperty("realOwnedStaticModelTypes").GetInt32() + 
-                    root.GetProperty("nativeExternalReferenceModelTypes").GetInt32() != 27 ||
+                root.GetProperty("realOwnedStaticModelTypes").GetInt32() +
+                    root.GetProperty("nativeExternalReferenceModelTypes").GetInt32() +
+                    root.GetProperty("unresolvedNativeReferenceModelTypes").GetInt32() != 27 ||
                 root.GetProperty("ownedModelDraws").GetInt32() +
-                    root.GetProperty("externallyReferencedDraws").GetInt32() != 1903 ||
+                    root.GetProperty("externallyReferencedDraws").GetInt32() +
+                    root.GetProperty("unresolvedNativeReferenceDraws").GetInt32() != 1903 ||
                 root.GetProperty("realOwnedStaticModelTypes").GetInt32() + 2 !=
                     aztecOwnedBodyCount ||
                 !root.GetProperty("validationOnly").GetBoolean() ||
@@ -177,6 +179,27 @@ internal sealed class T4XenonXModelCorpus
                         $"Aztec external XModel reference '{name}' has invalid provenance/classification.");
             }
 
+            var unresolvedRefs = root.GetProperty("unresolvedNativeReferenceModels")
+                .EnumerateArray().ToArray();
+            if (unresolvedRefs.Length !=
+                    root.GetProperty("unresolvedNativeReferenceModelTypes").GetInt32() ||
+                root.GetProperty("sourceNamesAccounted").GetInt32() != 27)
+                throw new InvalidDataException(
+                    "Aztec full source model census does not account for exact reference ownership gaps.");
+            foreach (var pending in unresolvedRefs)
+            {
+                var name = pending.GetProperty("model").GetString() ?? "";
+                var nativeIndex = pending.GetProperty("nativeRoot").GetInt32();
+                if (!name.StartsWith(",", StringComparison.Ordinal) ||
+                    pending.GetProperty("classification").GetString() !=
+                        "UNRESOLVED_PC_REFERENCE_NATIVE_IDENTITY" ||
+                    pending.GetProperty("runtimeResidencyVerified").GetBoolean() ||
+                    nativeIndex < 0 || nativeIndex >= 8509 ||
+                    !referenceRoots.Add(nativeIndex) ||
+                    !referenceNames.Add(NormalizeReferenceName(name)))
+                    throw new InvalidDataException(
+                        $"Unresolved source XModel reference '{name}' has invalid identity/provenance.");
+            }
             var firstFive = new[]
             {
                 "zombie_x2_icon", "tag_origin", "foliage_oki2_tallgrass",
