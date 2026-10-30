@@ -216,7 +216,11 @@ if($RetailRoots.Count -gt 0){
 }
 $failures=@{}
 $results=New-Object 'System.Collections.Generic.List[object]'
-$steps=if($Mode -eq 'Inventory'){@()}elseif($Mode -eq 'Analyze'){@('stage4-normal-analyze')}elseif($Mode -eq 'Source'){@('stage4-normal-analyze','linker-v2-source')}else{@('stage4-normal-analyze','linker-v2-source','linker-v2-main-structural')}
+# Linker V2 structural emitter ALREADY calls and validates SourceArchive,
+# RootPolicy, BlockPlan and ScriptStringMerge internally. Do not re-run
+# stage4 analyzer and SourceArchive ahead of it for every single map.
+# Independent Source-mode regression (11/11 PASS) remains available.
+$steps=if($Mode -eq 'Inventory'){@()}elseif($Mode -eq 'Analyze'){@('stage4-normal-analyze')}elseif($Mode -eq 'Source'){@('stage4-normal-analyze','linker-v2-source')}else{@('linker-v2-main-structural')}
 $i=0
 foreach($m in $maps){
     $i++
