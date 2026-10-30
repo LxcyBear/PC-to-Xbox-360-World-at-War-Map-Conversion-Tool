@@ -58,6 +58,19 @@ function Report-Path([string]$name){
 function Read-Pass($row,[string]$path){
     if(-not(Test-Path -LiteralPath $path -PathType Leaf)){return $null}
     $m=Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    # A previous run may have moved/preserved the OAT-proven body out of
+    # %TEMP%; recover ONLY when the durable SHA matches the original proof.
+    $durable=Join-Path (Split-Path -Parent $path) 'original_pc_xenon_model_standalone.ff'
+    if(-not(Test-Path -LiteralPath ([string]$m.standaloneXenonFF) -PathType Leaf) -and
+       (Test-Path -LiteralPath $durable -PathType Leaf)){
+        if((Get-FileHash -LiteralPath $durable -Algorithm SHA256).Hash -ine
+            [string]$m.standaloneXenonFFSha256){
+            throw "Persisted source-owned XModel body hash mismatch: $durable"
+        }
+        $m.standaloneXenonFF=$durable
+        $m | ConvertTo-Json -Depth 9 |
+            Set-Content -LiteralPath $path -Encoding UTF8
+    }
     if([string]$m.schema -ne 'WaW360.AztecGate8StaticDrawXModelCanary.v1' -or
        [string]$m.status -ne 'AZTEC_GATE8_STATIC_DRAW_PC_XMODEL_TO_XENON_OAT_PASS_STANDALONE' -or
        (Norm ([string]$m.sourceModel)) -ne (Norm ([string]$row.pcModelName)) -or
