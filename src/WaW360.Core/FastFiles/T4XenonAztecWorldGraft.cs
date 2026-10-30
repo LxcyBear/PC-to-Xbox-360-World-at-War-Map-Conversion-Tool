@@ -72,6 +72,18 @@ public sealed class T4XenonAztecWorldGraft
             $"Unknown GfxWorld child probe '{value}'.")
     };
 
+    // Only when WAW360_AZTEC_GATE8_CHILD_CORPUS is set; diagnostic partial
+    // stages isolate the exact T4 Xenon child that fails OAT without moving
+    // or modifying any previously validated source-owned scratch graph.
+    private static int Gate8ChildLevel =>
+        (Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE8_CHILD_LEVEL")?.Trim().ToLowerInvariant()) switch
+        {
+            null or "" or "all" => 3,
+            "planes" => 1,
+            "nodes" => 2,
+            var value => throw new InvalidDataException($"Unknown Gate8 GfxWorld child level '{value}'.")
+        };
+
     private static bool StaticDpvsProbeEnabled =>
         (Environment.GetEnvironmentVariable("WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE")?.Trim().ToLowerInvariant()) switch
         {
@@ -370,9 +382,10 @@ public sealed class T4XenonAztecWorldGraft
                dpvsPlanesAt<0 || dpvsPlanesAt>=XboxRootSize-16 ||
                vldAt-4<=verticesAt)
                 throw new InvalidDataException("Native Xenon PC-derived plane/node/vld pointer offsets unsupported.");
+            var childLevel=Gate8ChildLevel;
             graft._gate8Planes=planesBe;
-            graft._gate8Nodes=nodesBe;
-            graft._gate8Layer=layerSrc;
+            graft._gate8Nodes=childLevel>=2?nodesBe:null;
+            graft._gate8Layer=childLevel>=3?layerSrc:null;
             graft._gate8PlanePointerAt=dpvsPlanesAt+4;
             graft._gate8NodePointerAt=dpvsPlanesAt+8;
             graft._gate8LayerPointerAt=vldAt;
@@ -390,13 +403,12 @@ public sealed class T4XenonAztecWorldGraft
         virtualAlloc(Encoding.UTF8.GetByteCount(NativeRootName)+1L,1,true);
         virtualAlloc(Encoding.UTF8.GetByteCount("nazi_zombie_aztec")+1L,1,true);
         if(stage>=1)virtualAlloc(_indices.Length,2,true);
-        if(_gate8Planes is not null && _gate8Nodes is not null)
-        {
-            // Before materialMemory: GfxWorldDpvsPlanes is loaded earlier
-            // in the pinned OAT reordered structure sequence.
+        // Both source-owned arrays are loaded inside GfxWorldDpvsPlanes.
+        // A single- or two-child probe must keep the same relative order.
+        if(_gate8Planes is not null)
             virtualAlloc(_gate8Planes.Length,4,true);
+        if(_gate8Nodes is not null)
             virtualAlloc(_gate8Nodes.Length,2,true);
-        }
         // Pinned OAT GfxWorld reorder: '... materialMemory vd vld'.
         // Its first member remains at the original position; vd/vld follow
         // immediately, while the embedded DPVS surfaces are loaded later.
@@ -437,12 +449,18 @@ public sealed class T4XenonAztecWorldGraft
                 Put(body,_dpvsModelsAt,T4ZonePointer.Following);
         }
         if(stage>=3)Put(body,_materialMemoryAt,T4ZonePointer.Following);
-        if(_gate8Planes is not null && _gate8Nodes is not null && _gate8Layer is not null)
+        if(_gate8Planes is not null)
         {
             Put(body,8,3447);
-            Put(body,12,24511);
             Put(body,_gate8PlanePointerAt,T4ZonePointer.Following);
+        }
+        if(_gate8Nodes is not null)
+        {
+            Put(body,12,24511);
             Put(body,_gate8NodePointerAt,T4ZonePointer.Following);
+        }
+        if(_gate8Layer is not null)
+        {
             Put(body,_gate8LayerSizeAt,(uint)_gate8Layer.Length);
             Put(body,_gate8LayerPointerAt,T4ZonePointer.Following);
         }
@@ -456,10 +474,13 @@ public sealed class T4XenonAztecWorldGraft
             virtualAlloc(_indices.Length,2,true);
             zone.Write(_indices);
         }
-        if(_gate8Planes is not null && _gate8Nodes is not null)
+        if(_gate8Planes is not null)
         {
             virtualAlloc(_gate8Planes.Length,4,true);
             zone.Write(_gate8Planes);
+        }
+        if(_gate8Nodes is not null)
+        {
             virtualAlloc(_gate8Nodes.Length,2,true);
             zone.Write(_gate8Nodes);
         }
