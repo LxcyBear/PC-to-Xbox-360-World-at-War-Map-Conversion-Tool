@@ -83,6 +83,21 @@ foreach($directory in @($searched | Sort-Object)){
     $topFiles=@(Get-ChildItem -LiteralPath $directory -File -ErrorAction Stop | Sort-Object Name)
     $extras=@(Get-ChildItem -LiteralPath $directory -Directory -ErrorAction Stop | Sort-Object Name |
         ForEach-Object {$_.Name})
+    # Write every actual relative path and size into the source package
+    # manifest. Do not accidentally drop patch/highmip/sound/unknown extras
+    # when planning an eventual CodXe-beta flat package.
+    $fileInventory=@($allFiles | ForEach-Object {
+        [pscustomobject]@{
+            relativePath=($_.FullName.Substring(([string]$directory).Length).TrimStart('\','/') -replace '\\','/')
+            bytes=[long]$_.Length
+            extension=$_.Extension.ToLowerInvariant()
+        }
+    } | Sort-Object relativePath)
+    $highmipFiles=@($fileInventory | Where-Object {$_.relativePath -like 'highmip/*'})
+    $soundFiles=@($fileInventory | Where-Object {$_.relativePath -like 'sounds/*'})
+    $extensionCounts=@($fileInventory | Group-Object extension | Sort-Object Name | ForEach-Object {
+        [pscustomobject]@{extension=$_.Name;files=$_.Count}
+    })
     $referencePackages.Add([pscustomobject]@{
         name=$mapBase
         locationKind='REFERENCE_COLLECTION_OR_UNVERIFIED_INSTALL'
@@ -102,6 +117,13 @@ foreach($directory in @($searched | Sort-Object)){
         previewDdsPresent=(Test-Path -LiteralPath $previewDds -PathType Leaf)
         topLevelFiles=@($topFiles | ForEach-Object {$_.Name})
         extraDirectories=$extras
+        highmipFileCount=$highmipFiles.Count
+        looseSoundFileCount=$soundFiles.Count
+        extensionCounts=$extensionCounts
+        allFilesRelativePathAndBytes=$fileInventory
+        publicCodxeMapMenuFallback=if(Test-Path -LiteralPath $mapJson -PathType Leaf){'METADATA_PRESENT'}else{'FOLDER_NAME_FALLBACK_IN_PUBLIC_MAIN'}
+        betaMetadataRequirementConfirmed=$false
+        recommendedFlatInstallRelativePath=('_codxe\usermaps\'+$mapBase)
         totalFiles=$allFiles.Count
         totalBytes=[long]$fileBytes
         formatAndLoaderValidityUnknown=$true
@@ -162,6 +184,9 @@ foreach($pkg in $referencePackages){
     $mb=[Math]::Round($pkg.mainFfBytes / 1MB,3)
     Write-Host "[CODXE-T4-LAYOUT] REFERENCE $($pkg.name): FF=$mb MiB, load=$($pkg.loadFfPresent), patch=$($pkg.patchFfPresent), map.json=$($pkg.mapJsonPresent), preview.dds=$($pkg.previewDdsPresent), files=$($pkg.totalFiles)"
     Write-Host "[CODXE-T4-LAYOUT]   path=$($pkg.directory)"
+    Write-Host "[CODXE-T4-LAYOUT]   highmipFiles=$($pkg.highmipFileCount) looseSounds=$($pkg.looseSoundFileCount) totalBytes=$($pkg.totalBytes)"
+    Write-Host "[CODXE-T4-LAYOUT]   PUBLIC codxe map menu: $($pkg.publicCodxeMapMenuFallback) (upcoming beta requirement UNVERIFIED)"
+    Write-Host "[CODXE-T4-LAYOUT]   expected beta flat target: $($pkg.recommendedFlatInstallRelativePath); NO COPYING PERFORMED"
     if(@($pkg.extraDirectories).Count -gt 0){
         Write-Host "[CODXE-T4-LAYOUT]   extra directories=$(@($pkg.extraDirectories) -join ', ')"
     }
@@ -176,7 +201,7 @@ if($referenceFastFiles.Count -eq 0 -and $maps.Count -eq 0 -and $referencePackage
 }
 $result=[ordered]@{
     schema='WaW360.CodXeT4BetaPackageInventory.v1'
-    note='Predicted flat CodXe map path. Definitive beta layout must be checked against Michael beta binaries/documentation.'
+    note='Predicted flat CodXe map path. Public CodXe menu falls back to folder names for absent map.json; this does not establish unpublished beta requirements. Actual beta release layout requires beta verification.'
     root=$rootPath
     isReadOnly=$true
     xboxTestAuthorization=$false
