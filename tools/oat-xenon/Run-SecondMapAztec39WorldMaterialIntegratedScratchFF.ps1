@@ -86,15 +86,19 @@ if($Gate8AllModelProbe){
     }
     $allStage=Get-Content -LiteralPath $allStaging -Raw | ConvertFrom-Json
     if([string]$allStage.schema -ne 'WaW360.AztecGate8AllStaticXModelStaging.v1' -or
-       [string]$allStage.status -ne 'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED' -or
+       [string]$allStage.status -notin @(
+            'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED',
+            'AZTEC_GATE8_SOURCE_MODELS_STAGED_WITH_UNRESOLVED_REFERENCES') -or
        [int]$allStage.sourceModels -ne 27 -or
        [int]$allStage.staticDrawsRepresented -ne 1903 -or
-       ([int]$allStage.realOwnedStaticModelTypes + [int]$allStage.nativeExternalReferenceModelTypes) -ne 27 -or
+       ([int]$allStage.realOwnedStaticModelTypes + [int]$allStage.nativeExternalReferenceModelTypes +
+            [int]$allStage.unresolvedNativeReferenceModelTypes) -ne 27 -or
        [int]$allStage.modelCount -ne (2 + [int]$allStage.realOwnedStaticModelTypes) -or
        [int]$allStage.rootCount -ne 8509 -or
        [bool]$allStage.hardwareReady -or
        @($allStage.graphProofs).Count -ne [int]$allStage.modelCount -or
-       @($allStage.nativeExternalReferences).Count -ne [int]$allStage.nativeExternalReferenceModelTypes){
+       @($allStage.nativeExternalReferences).Count -ne [int]$allStage.nativeExternalReferenceModelTypes -or
+       @($allStage.unresolvedNativeReferenceModels).Count -ne [int]$allStage.unresolvedNativeReferenceModelTypes){
 
         throw 'All 27 PC static model identities are not classified with complete actual converted XModel graphs and native external-reference provenance.'
     }
@@ -352,7 +356,13 @@ if($IntegrateWorld){
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
         status=if($Gate8AllModelProbe){
-            if($core -and $candidateOatPass){'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS'}
+            if($core -and $candidateOatPass){
+                if([int]$allStage.unresolvedNativeReferenceModelTypes -gt 0){
+                    'AZTEC_GATE8_REAL_OWNED_XMODEL_FF_OAT_PASS_REFERENCES_UNRESOLVED'
+                }else{
+                    'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS'
+                }
+            }
             else{'AZTEC_GATE8_ALL_STATIC_XMODEL_WORLD_OAT_BLOCKED'}
         }elseif($Gate8FiveModelProbe){
             if($core -and $candidateOatPass){'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS'}
@@ -380,6 +390,8 @@ if($IntegrateWorld){
         fiveSourceOwnedXModelProbe=[bool]$Gate8FiveModelProbe
         all27StaticSourceXModelProbe=[bool]$Gate8AllModelProbe
         all27SourceModelStagingManifest=if($Gate8AllModelProbe){$allStaging}else{''}
+        unresolvedNativeSourceModelReferences=if($Gate8AllModelProbe){[int]$allStage.unresolvedNativeReferenceModelTypes}else{0}
+        unresolvedNativeSourceModelDraws=if($Gate8AllModelProbe){[int]$allStage.unresolvedNativeReferenceDraws}else{0}
         sourceStaticModelTypesClassified=if($Gate8AllModelProbe){27}else{0}
         sourceOwnedStaticModelTypes=if($Gate8AllModelProbe){[int]$allStage.realOwnedStaticModelTypes}else{0}
         verifiedNativeExternalModelReferences=if($Gate8AllModelProbe){[int]$allStage.nativeExternalReferenceModelTypes}else{0}
@@ -401,7 +413,7 @@ if($IntegrateWorld){
         emitterReport=$emitManifest
         emitterLog=$log
         note=if($Gate8AllModelProbe){
-            'SCRATCH-ONLY: original-PC 27 static model NAME identities classified as genuine converted source-owned model bodies OR proven native external references; only genuine model bodies serialized, reference names kept as references. Native 8509-root/OAT check required. No 1903 draw-instance linkage, external reference residency, complete DPVS, images or runtime closure. NOT for Xbox deployment.'
+            'SCRATCH-ONLY: source 27 model NAMES are accounted by actual converted source mesh bodies, proven native refs, and explicitly UNRESOLVED PC reference/native-root mismatches. Only real source bodies are serialized; unresolved models remain identity shells. OAT must accept real FF. No 1903 GfxWorld static draws, external residency, complete DPVS, images, runtime dependency closure or Xbox hardware approval.'
         }elseif($Gate8FiveModelProbe){
             'SCRATCH-ONLY five source-owned Xenon XModel graph root upgrades, with original-PC Gate8 BSP plane/node/layer world. Exactly 3 static draw models added to the 2 earlier canaries, but all 1903 static draw entries remain unbound, and other DPVS/cell/runtime branches are incomplete. No main/_load pair or Xbox hardware.'
         }elseif($Gate8ChildProbe){
