@@ -71,6 +71,10 @@ function Fault([string]$log){
     if(-not(Test-Path -LiteralPath $log)){return 'NO_LOG'}
     $txt=Get-Content -LiteralPath $log -Raw
     if($txt -match '(?i)outofmemory|memory pressure|allocate memory'){return 'MEMORY_PRESSURE_SUSPECT'}
+    # Prefer OAT's precise externally observed cause over incidental asset
+    # family mentions earlier in a very long parser/unlinker log.
+    if($txt -match '(?i)Zone tried to reference invalid block 7'){return 'INVALID_BLOCK_7'}
+    if($txt -match '(?i)weapons/<packed-name@'){return 'PACKED_WEAPON_NAME'}
     if($txt -match '(?i)invalid block|bad pointer|packed pointer'){return 'FF_POINTER_OR_BLOCK_LAYOUT'}
     if($txt -match '(?i)fxeffect|fx serializer'){return 'FX_SERIALIZER'}
     if($txt -match '(?i)xmodel|xsurface'){return 'XMODEL'}
