@@ -1,5 +1,33 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Block 7 cleared on Backrooms and Aztec; next gate is real WeaponDef names
+
+**Observed Windows two-map candidate at 9c27145:** WinPS 5.1 syntax PASS 4 scripts. `-IncludeMaps Backrooms,nazi_zombie_aztec_V2.2` correctly selected exactly 2 maps; the `PRIORITY MAP NOT DETECTED` notices for FRUmansion/Tower were expected from this intentional filter, not missing source assets.
+
+- Backrooms Linker V2 structural emit PASS; primary compressed FF=7,078,631 bytes (up 16 from previous candidate). Full OAT no longer reported `invalid block 7` but rejected `weapons/<packed-name@...>` filesystem output identities. Status `OAT_REJECTED_NO_XBOX`.
+- Aztec Linker V2 structural emit PASS; primary FF=6,205,444 bytes (up 1). The same invalid-block-7 issue was absent; full OAT instead rejected `weapons/<packed-name@...>`. Status `OAT_REJECTED_NO_XBOX`.
+
+**Cause of next failure found in source:** `src/WaW360.Core/FastFiles/T4WeaponSerializerProof.cs` explicitly labels WeaponDef bodies with packed virtual-block name pointers as `<packed-name@0x{sourceOffset}:0x{pointer}>` because Alpha 6f has not resolved those packed pointer identities. `NormalMapWeaponVariableSerializerProof.cs` reuses those labels verbatim; `NormalMapLinkerV2StructuralMainEmitter.cs` subsequently emits them as diagnostic WeaponDef names. The labels contain Windows filename-invalid characters (`<`, `>`, `:`), and OAT full extraction attempts `weapons/<packed-name@...>`. **These are synthetic proof labels, not legitimate names**, so do not simply sanitize filenames or claim production identity closure.
+
+**New read-only no-rebuild audit:** `tools/oat-xenon/Run-WaWMultiMapWeaponNameAudit.ps1` prefers the most-complete existing Candidate matrix (all 11 original maps), reads Alpha7b WeaponDef proof binary records, counts/samples all `packed-name` placeholders, and calls pinned OAT `--list` against SHA-verified short-path copies of the ORIGINAL PC source FFs for the four target maps (FRUmansion, Tower, Backrooms, Aztec). Raw source-OAT logs and a provenance JSON report are retained with the matrix. It never guesses a name-to-offset mapping or modifies originals/candidates. Establish exact source identity evidence before implementing a resolver.
+
+**Improved read-only differential:** `Run-WaWMultiMapOatDifferential.ps1` now accepts `-OatMode List` as a separate OAT loader/listing phase; old `-OatMode Extract` remains the default and may fail on invalid Windows output filenames. Neither alone demonstrates Xbox hardware readiness. The two-track comparison should establish whether the FF is structurally loaded/listed but full export fails on synthetic weapon labels.
+
+**Next Windows steps (no .NET compiler or FF rebuilding):**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Script syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapWeaponNameAudit.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1" -OatMode List -IncludeMaps Backrooms,nazi_zombie_aztec_V2.2
+```
+
+The original *full* Candidate report for all four maps is `output/multi_map_matrix/runs/run_20261030_024027_373fb3/multi_map_matrix.json`; the new *two-map* Candidate report is `output/multi_map_matrix/runs/run_20261030_132451_8ec8ff/multi_map_matrix.json`. If the script's latest-matrix behavior is ambiguous, specify `-MatrixJson` explicitly.
+
+**Current verified stage:** 11/11 source stages; 10/11 structural FF emissions across first fleet; newly rebuilt two map candidates have cleared previous block-7 frontier but still fail full OAT extraction; no full-Xbox gameplay-ready FF approved. WeaponDef name identity must be recovered from authoritative PC source/asset lookup, not guessed or copied from unrelated maps.
+
 ## October 30 — confirmed two-map StringTable OAT root frontiers and root-pointer fix
 
 **Observed Windows bisection after commit `3d35696`:** both existing tracked-shell FFs had a passing zero-root control and a failing complete root list, then converged to the very last few StringTable roots:
