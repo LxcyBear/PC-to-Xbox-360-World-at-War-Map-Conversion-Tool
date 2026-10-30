@@ -81,6 +81,7 @@ foreach($r in $SourceRoots){
             name=[string]$m.name;root=$root;profile=[string]$m.profile
             main=[string]$m.mainFastFile;mod=[string]$m.modFastFile
             patch=[string]$m.patchFastFile;iwds=[int]$m.iwdCount
+            sourceFolders=@($m.sourceFolders)
         })
     }
 }
@@ -200,12 +201,61 @@ foreach($m in $maps){
         $item=Get-Item -LiteralPath $p
         $finger+=("$($item.FullName)|$($item.Length)|$((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash)")
     }
+    # A stable per-map ledger reports REAL OAT-confirmed candidate size
+    # changes, not arithmetic over unrelated PC compressed file sizes.
+    foreach($sourceFolder in @($m.sourceFolders)){
+        if(-not(Test-Path -LiteralPath $sourceFolder -PathType Container)){continue}
+        foreach($iwd in (Get-ChildItem -LiteralPath $sourceFolder -File -Filter '*.iwd' -ErrorAction SilentlyContinue)){
+            $finger+=("$($iwd.FullName)|$($iwd.Length)|$((Get-FileHash -LiteralPath $iwd.FullName -Algorithm SHA256).Hash)")
+        }
+    }
+    $sourceHash=HashText ($finger -join [Environment]::NewLine)
+    $historyDir=Join-Path $OutputRoot 'verified_size_history'
+    New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
+    $historyFile=Join-Path $historyDir ($m.id+'.json')
+    $history=@()
+    if(Test-Path -LiteralPath $historyFile -PathType Leaf){
+        $histDoc=Get-Content -LiteralPath $historyFile -Raw | ConvertFrom-Json
+        if([string]$histDoc.schema -ne 'WaW360.MultiMapOatCandidateHistory.v1' -or
+           [string]$histDoc.mapId -ne [string]$m.id){
+            throw "Map size-history schema or identity changed: $historyFile"
+        }
+        $history=@($histDoc.entries)
+    }
+    $priorVerifiedBytes=$null
+    $deltaVerifiedBytes=$null
+    $candidateArtifactHash=$null
+    if($history.Count -gt 0){$priorVerifiedBytes=[long]$history[-1].bytes}
+    if($status -eq 'OAT_PASS_DIAGNOSTIC_ONLY' -and $oatPasses -gt 0){
+        $artifacts=@($events.ToArray()|Where-Object{$_.step -eq 'OAT_DIAGNOSTIC' -and $_.pass}|
+            ForEach-Object{ [string]$_.sha256 }|Sort-Object)
+        $candidateArtifactHash=HashText ($artifacts -join '|')
+        if($null -eq $priorVerifiedBytes){$deltaVerifiedBytes=[long]$oatBytes}
+        else{$deltaVerifiedBytes=[long]$oatBytes - [long]$priorVerifiedBytes}
+        if($history.Count -eq 0 -or
+           [string]$history[-1].artifactSetSha256 -ine $candidateArtifactHash){
+            $history+=([pscustomobject]@{
+                utc=[DateTime]::UtcNow.ToString('o')
+                gitCommit=$rev;sourceFingerprintSha256=$sourceHash
+                bytes=[long]$oatBytes;deltaBytes=$deltaVerifiedBytes
+                artifactSetSha256=$candidateArtifactHash
+                validatedOatFastFiles=$oatPasses;hardwareReady=$false
+            })
+            [ordered]@{
+                schema='WaW360.MultiMapOatCandidateHistory.v1'
+                mapId=$m.id;entries=@($history)
+            }|ConvertTo-Json -Depth 9|Set-Content -LiteralPath $historyFile -Encoding UTF8
+        }
+        Write-Host "[MULTIMAP-SIZE] $($m.name): OAT-verified diagnostic=$oatBytes bytes; prior=$priorVerifiedBytes; delta=$deltaVerifiedBytes; NO Xbox approval"
+    }
     $r=[ordered]@{
         map=$m.name;profile=$m.profile;sourceRoot=$m.root
         main=$m.main;mainBytes=if($m.main -and(Test-Path $m.main)){[int64](Get-Item $m.main).Length}else{0}
-        iwdCount=$m.iwds;sourceFingerprint=HashText ($finger -join [Environment]::NewLine)
+        iwdCount=$m.iwds;sourceFingerprint=$sourceHash
         status=$status;mode=$Mode;stages=@($events.ToArray())
         oatPassDiagnosticCount=$oatPasses;oatPassDiagnosticBytes=$oatBytes
+        previousOatDiagnosticBytes=$priorVerifiedBytes;verifiedDeltaBytes=$deltaVerifiedBytes
+        candidateArtifactSetSha256=$candidateArtifactHash;sizeHistory=$historyFile
         hardwareReady=$false;retailFileIndex=$retailIndex;resultFolder=$folder
     }
     $results.Add([pscustomobject]$r)
@@ -217,6 +267,7 @@ $summary=[ordered]@{
     schema='WaW360.MultiMapConversionMatrix.v1'
     gitCommit=$rev;dateUtc=[DateTime]::UtcNow.ToString('o')
     mode=$Mode;sourceRoots=$SourceRoots;mapCount=$results.Count
+    sharedRulesLedger=(Join-Path $PSScriptRoot 'multimap_conversion_rules.json')
     note='Jake evidence is guidance, not universal validated conversion rules. No native donor bytes, no fake minimum-size padding, no auto Xbox deployment. OAT PASS != playable.'
     sharedFaults=@($failures.GetEnumerator()|Sort-Object Name|ForEach-Object{[ordered]@{category=$_.Key;maps=$_.Value}})
     maps=@($results.ToArray())
@@ -224,7 +275,7 @@ $summary=[ordered]@{
 $json=Join-Path $run 'multi_map_matrix.json'
 $csv=Join-Path $run 'multi_map_matrix.csv'
 $summary|ConvertTo-Json -Depth 11|Set-Content -LiteralPath $json -Encoding UTF8
-$results.ToArray()|Select-Object map,profile,status,mainBytes,iwdCount,oatPassDiagnosticCount,oatPassDiagnosticBytes,hardwareReady,resultFolder|
+$results.ToArray()|Select-Object map,profile,status,mainBytes,iwdCount,oatPassDiagnosticCount,oatPassDiagnosticBytes,previousOatDiagnosticBytes,verifiedDeltaBytes,hardwareReady,resultFolder|
     Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
 Write-Host '[MULTIMAP] ==========================================================='
 Write-Host "[MULTIMAP] $($results.Count) maps processed | NO Xbox release authorized."
