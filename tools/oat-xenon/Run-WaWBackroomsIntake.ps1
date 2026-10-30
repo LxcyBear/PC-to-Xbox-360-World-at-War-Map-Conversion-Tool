@@ -40,7 +40,7 @@ $json=Join-Path $outDir ('backrooms_intake_'+$stamp+'.json')
 
 # Match both installed folder names and original source FF names.
 # Never guess that a named executable/zip is an unpacked PC FF.
-$matches=New-Object 'System.Collections.Generic.List[object]'
+$sourceFiles=New-Object 'System.Collections.Generic.List[object]'
 $candidates=New-Object 'System.Collections.Generic.List[string]'
 Write-Host '[BACKROOMS] ========================================================'
 Write-Host '[BACKROOMS] Source-owned Backrooms discovery. Xbox output: DISABLED.'
@@ -68,7 +68,7 @@ foreach($sourceRoot in $roots){
         $sha=if($kind -in @('.ff','.iwd')){
             (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash
         }else{''}
-        $matches.Add([pscustomobject]@{
+        $sourceFiles.Add([pscustomobject]@{
             sourceRoot=$sourceRoot
             path=$f.FullName
             file=$f.Name
@@ -82,9 +82,9 @@ foreach($sourceRoot in $roots){
 }
 Write-Progress -Activity 'PC2XB3 Backrooms source intake' -Completed
 $names=@($candidates.ToArray() | Sort-Object -Unique)
-Write-Host ("[BACKROOMS] Matching source files: {0}; possible main map names: {1}" -f $matches.Count,$names.Count)
+Write-Host ("[BACKROOMS] Matching source files: {0}; possible main map names: {1}" -f $sourceFiles.Count,$names.Count)
 foreach($name in $names){Write-Host "[BACKROOMS-MAP] $name"}
-if($matches.Count -eq 0){
+if($sourceFiles.Count -eq 0){
     Write-Host '[BACKROOMS] No unpacked Backrooms FF/IWD found. Install/extract the PC map first; do NOT invent FFs.'
 }
 
@@ -95,7 +95,7 @@ if($matches.Count -eq 0){
     mode=$Mode
     sourceRoots=@($roots.ToArray())
     candidates=$names
-    files=@($matches.ToArray())
+    files=@($sourceFiles.ToArray())
     pcSourceAssetsDecoded=$false
     oAtValidated=$false
     xboxReleaseAuthorized=$false
