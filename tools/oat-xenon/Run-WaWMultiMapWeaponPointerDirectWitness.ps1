@@ -24,6 +24,16 @@ foreach($f in $audits){
 if($null -eq $audit){throw 'No original PC WeaponDef source provenance audit. Run Run-WaWMultiMapWeaponNameAudit.ps1.'}
 $map=@($audit.maps | Where-Object {[string]$_.map -ieq $MapName})[0]
 if([int]$map.syntheticPackedNameCount -ne 10){throw 'Expected exactly ten packed WeaponDef names from Aztec proof corpus.'}
+# Cross-check original PC FF SHA256 with the authoritative candidate's source
+# archive, rather than merely verifying our copied temporary FF.
+$matrixPath=[string]$audit.matrix
+if(-not(Test-Path -LiteralPath $matrixPath -PathType Leaf)){throw "Name audit Candidate matrix no longer exists: $matrixPath"}
+$matrix=Get-Content -LiteralPath $matrixPath -Raw | ConvertFrom-Json
+$matrixMap=@($matrix.maps | Where-Object {[string]$_.map -ieq $MapName})
+if($matrixMap.Count -ne 1){throw 'Weapon name audit matrix has no unique Aztec source map.'}
+$archiveFile=Join-Path ([string]$matrixMap[0].conversionOutputFolder) (Join-Path $MapName (Join-Path 'linker_v2_source_archive' ($MapName+'_linker_v2_source_archive.json')))
+if(-not(Test-Path -LiteralPath $archiveFile -PathType Leaf)){throw "Source-owned FF SHA ledger missing: $archiveFile"}
+$sourceArchive=Get-Content -LiteralPath $archiveFile -Raw | ConvertFrom-Json
 if(-not(Test-Path -LiteralPath $dumper -PathType Leaf) -or
    -not(Test-Path -LiteralPath $capPath -PathType Leaf) -or
    @((Get-Content -LiteralPath $capPath -Raw | ConvertFrom-Json).capabilities) -notcontains $capName){
@@ -67,6 +77,12 @@ foreach($src in @($map.pcSourceOatListings)){
         $copy=Join-Path $tmp ([IO.Path]::GetFileName($file))
         Copy-Item -LiteralPath $file -Destination $copy
         $sourceSha=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+        $sourceRecords=@($sourceArchive.FastFiles | Where-Object {[string]$_.Path -ieq $file})
+        if($sourceRecords.Count -ne 1 -or
+           [string]$sourceRecords[0].GraphParticipation -notin @('PRIMARY_GRAPH_SOURCE','AUXILIARY_GRAPH_SOURCE') -or
+           $sourceSha -ine [string]$sourceRecords[0].Sha256){
+            throw "Original PC FF SHA or source-role mismatch with Linker V2 archive: $file"
+        }
         if((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -ine $sourceSha){throw "PC FF short-path copy changed: $file"}
         $out=Join-Path $tmp 'out.txt'
         $err=Join-Path $tmp 'err.txt'
@@ -99,7 +115,7 @@ foreach($src in @($map.pcSourceOatListings)){
         $status='NO_TRACE'
         $name=$null
         if($hits.Count -eq 1){
-            $hit=[regex]::Match($hits[0],'^\\[WAW360-WPTR\\] raw=([0-9a-fA-F]{8}) block=(\d+) offset=0x([0-9a-fA-F]+) status=([A-Z_]+)(?: name=([A-Za-z0-9_./-]+))?$'.Replace('\\','\'))
+            $hit=[regex]::Match($hits[0],'^\[WAW360-WPTR\] raw=([0-9a-fA-F]{8}) block=(\d+) offset=0x([0-9a-fA-F]+) status=([A-Z_]+)(?: name=([A-Za-z0-9_./-]+))?$')
             if($hit.Success){
                 $status=[string]$hit.Groups[4].Value
                 $value=[string]$hit.Groups[5].Value
