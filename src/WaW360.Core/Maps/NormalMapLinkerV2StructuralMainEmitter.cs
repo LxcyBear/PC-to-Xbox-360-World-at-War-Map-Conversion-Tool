@@ -1979,7 +1979,11 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         if (!File.Exists(archivePath))
             throw new FileNotFoundException("Recipe IWD archive disappeared.", archivePath);
         using var zip = ZipFile.OpenRead(archivePath);
-        var entry = zip.Entries.FirstOrDefault(x =>
+        // The source index resolves duplicate virtual paths by the last
+        // entry within the winning (alphabetically latest) IWD. Read that
+        // exact same entry; FirstOrDefault would silently choose a different
+        // body if a ZIP contains duplicate names.
+        var entry = zip.Entries.LastOrDefault(x =>
             x.FullName.Replace('\\', '/').Equals(
                 virtualPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
         if (entry is null)
