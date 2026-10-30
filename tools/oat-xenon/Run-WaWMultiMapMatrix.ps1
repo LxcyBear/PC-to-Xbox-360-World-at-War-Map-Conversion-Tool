@@ -2,6 +2,7 @@
 param(
     [string[]]$SourceRoots=@(),
     [string[]]$IncludeMaps=@(),
+    [string[]]$PriorityMaps=@('nazi_zombie_FRUmansion','nazi_zombie_tower'),
     [ValidateSet('Inventory','Analyze','Source','Candidate')]
     [string]$Mode='Analyze',
     [string]$OutputRoot='',
@@ -110,7 +111,25 @@ foreach($r in $SourceRoots){
 }
 $maps=@($found.ToArray()|Sort-Object id -Unique)
 if($maps.Count -eq 0){throw 'No maps found. Set -SourceRoots or check installed map folders.'}
-Write-Host "[MULTIMAP] Found $($maps.Count) maps. Compiled engine SHA/commit: $rev"
+# Work on requested priority maps FIRST, then every other discovered map.
+# Never fabricate or overwrite source FFs if a priority name is absent.
+$priority=New-Object 'System.Collections.Generic.List[object]'
+$other=New-Object 'System.Collections.Generic.List[object]'
+foreach($m in $maps){
+    $match=$false
+    foreach($pattern in $PriorityMaps){
+        if($m.name -like $pattern){$match=$true;break}
+    }
+    if($match){$priority.Add($m)}else{$other.Add($m)}
+}
+$maps=@($priority.ToArray())+@($other.ToArray())
+foreach($pattern in $PriorityMaps){
+    if(@($maps|Where-Object{$_.name -like $pattern}).Count -eq 0){
+        Write-Host "[MULTIMAP] PRIORITY MAP NOT DETECTED: $pattern (no source created, check folder/FF name)"
+    }
+}
+Write-Host "[MULTIMAP] Found $($maps.Count) maps. First priorities: $($PriorityMaps -join ', ')"
+Write-Host "[MULTIMAP] Compiled engine SHA/commit: $rev"
 # Optional SHARED RETAIL FILE LOCATION index. This does not decode FF
 # assets or assert any XAsset identity. Avoid redundant scans by saving it.
 $retailIndex=''
