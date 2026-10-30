@@ -42,3 +42,15 @@ The staging script (1) locates the exact SHA-matched matrix Candidate; (2) requi
 4. Return the logs and staged `PROVENANCE_NATIVE_DEBUG_NOT_RELEASE.json`; attribute success only to genuine PC2XB3 hash-matched files, never the native reference staged copy.
 
 **Important:** This canary is incomplete by design. A premature return to menu cannot on its own identify whether failure is missing World/GfxWorld, absent sound/patch, script error, bad weapon dependency, or CodXe fastfile interception; the logs and first-fault context discriminate them. If it cannot start without `map.arena` or other metadata, add only verified metadata and run again, keeping exact hash provenance.
+
+## Prove that the Xbox received the new generated FFs
+
+After manually copying the two FFs into CodXe (never automatically done by this tool), either access the console's actual usermap folder over a mapped drive or download BOTH files back to a separate local directory. Verify byte identity against the stage manifest:
+
+```powershell
+$manifest = 'C:\Path\From\Stage\PROVENANCE_NATIVE_DEBUG_NOT_RELEASE.json'
+$xboxFiles = 'C:\Path\To\FilesCopiedBackFromXbox\nazi_zombie_aztec'
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-AztecXboxCopiedFFs.ps1' -ManifestJson $manifest -XboxCopiedMapDirectory $xboxFiles
+```
+
+This checker explicitly refuses the local stage itself and the old codxe_beta_stage reference tree as evidence of a new on-console installation. Both main and load SHA-256 must match. It cannot establish Xbox execution, only exact copy provenance. Do not credit Xbox boot/graphics/gameplay to this tool without actual WV/CodXe runtime capture.
