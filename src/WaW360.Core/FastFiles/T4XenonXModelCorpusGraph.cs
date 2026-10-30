@@ -168,9 +168,25 @@ internal sealed class T4XenonXModelCorpus
             {
                 var name = reference.GetProperty("model").GetString() ?? "";
                 var nativeIndex = reference.GetProperty("nativeRoot").GetInt32();
+                var classification = reference.GetProperty("classification").GetString();
+                var exactStockBase = classification ==
+                    "STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME";
+                var nativeReference = classification ==
+                    "XBOX_NATIVE_REFERENCE_NO_OWNED_MESH";
+                if (exactStockBase)
+                {
+                    if (!reference.GetProperty("stockOatExactBodyMatch").GetBoolean() ||
+                        !reference.GetProperty("stockBodyZones").EnumerateArray()
+                            .Any(zone => zone.GetString() is "common.ff" or
+                                "code_post_gfx.ff" or "patch.ff") ||
+                        reference.GetProperty("stockBodyZones").EnumerateArray()
+                            .Any(zone => zone.GetString() is not ("common.ff" or
+                                "code_post_gfx.ff" or "patch.ff")))
+                        throw new InvalidDataException(
+                            $"Aztec stock-referenced XModel '{name}' has no exact preloaded Xbox FF body evidence.");
+                }
                 if (!name.StartsWith(",", StringComparison.Ordinal) ||
-                    reference.GetProperty("classification").GetString() !=
-                        "XBOX_NATIVE_REFERENCE_NO_OWNED_MESH" ||
+                    (!nativeReference && !exactStockBase) ||
                     reference.GetProperty("runtimeResidencyVerified").GetBoolean() ||
                     nativeIndex < 0 || nativeIndex >= 8509 ||
                     !referenceRoots.Add(nativeIndex) ||
