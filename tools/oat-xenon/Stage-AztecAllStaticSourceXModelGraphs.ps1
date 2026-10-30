@@ -201,7 +201,19 @@ for($j=3;$j -lt @($wave.verifiedModels).Count;$j++){
             $_ -match '(?i)Finished with\s+\d+\s+warnings?\s*,\s*\d+\s+errors?'
         })
         if($exit -ne 0 -or $errorLines.Count -gt 0){
-            throw "Xenon XModel graph extraction failed for $key; exit=$exit errorLines=$($errorLines.Count) log=$log"
+            # Important: emit the REAL raw OAT error, not just errorLines=1.
+            # Never silently ignore an OAT error when exit=0, and do NOT
+            # rerun 26 already-proven PC model conversions to diagnose it.
+            foreach($line in @($errorLines | Select-Object -First 10)){
+                Write-Host "[AZTEC-29X] EXACT_OAT_ERROR model=$key : $line"
+            }
+            $graphProbe=Join-Path $temp 'xenon_xmodel_graphs'
+            $graphCount=0
+            if(Test-Path -LiteralPath $graphProbe -PathType Container){
+                $graphCount=@(Get-ChildItem -LiteralPath $graphProbe -Filter '*.json' -File).Count
+            }
+            Write-Host "[AZTEC-29X] OAT_GRAPH_DIAGNOSTIC model=$key exit=$exit errors=$($errorLines.Count) actualRelocatableJsonGraphs=$graphCount"
+            throw "Xenon XModel extraction has real OAT errors for $key; exit=$exit errorLines=$($errorLines.Count) physicalGraphs=$graphCount. See exact error above and $log"
         }
         if($summaries.Count -gt 1){
             throw "Ambiguous OAT terminal summary for $key; summaryCount=$($summaries.Count) log=$log"
