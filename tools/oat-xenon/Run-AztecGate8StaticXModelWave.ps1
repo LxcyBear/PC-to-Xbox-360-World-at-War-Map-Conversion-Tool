@@ -135,15 +135,23 @@ $unresolved=New-Object 'System.Collections.Generic.List[object]'
 $stockProof=$null
 if(Test-Path -LiteralPath $stockProofPath -PathType Leaf){
     $candidate=Get-Content -LiteralPath $stockProofPath -Raw | ConvertFrom-Json
+    # A partial BASE-ZONE CENSUS can still contain an exact real model
+    # BODY in an individually OAT-listed common.ff. Accept only the verified
+    # row's own stock zone; never claim that a missing patch.ff was audited.
+    $zones=@($candidate.zones)
+    $referenceRows=@($candidate.references)
+    $auditedPaths=@($zones | Where-Object {
+        [bool]$_.found -and [bool]$_.oatValid
+    })
     if([string]$candidate.schema -eq 'WaW360.AztecExpectedLoadedStockXModelReferenceAudit.v1' -and
-       [bool]$candidate.allExpectedLoadedZonesOatListed -and
-       @($candidate.references).Count -eq [int]$candidate.targetSourceReferences -and
-       @($candidate.zones).Count -eq 3 -and
-       @($candidate.zones | Where-Object {-not [bool]$_.oatValid}).Count -eq 0){
+       $referenceRows.Count -eq [int]$candidate.targetSourceReferences -and
+       $zones.Count -eq 3 -and
+       $auditedPaths.Count -ge 1 -and
+       @($zones | Where-Object {[bool]$_.found -and -not [bool]$_.oatValid}).Count -eq 0){
         $stockProof=$candidate
-        Write-Host "[AZTEC-GATE8-XMODEL-WAVE] Independent retail stock reference audit loaded: $stockProofPath"
+        Write-Host "[AZTEC-GATE8-XMODEL-WAVE] Retail base-zone XModel identity audit loaded (fullZoneCensus=$([bool]$candidate.allExpectedLoadedZonesOatListed)): $stockProofPath"
     }else{
-        Write-Host '[AZTEC-GATE8-XMODEL-WAVE] Retail stock audit incomplete; refusing its reference fallback. Owned model conversion unaffected.'
+        Write-Host '[AZTEC-GATE8-XMODEL-WAVE] No trustworthy individually OAT-listed stock base zone; refusing stock reference fallback. Owned PC meshes unaffected.'
     }
 }
 function Resolve-ExplicitReference($row){
@@ -170,12 +178,20 @@ function Resolve-ExplicitReference($row){
                 [int]@($_.nativeRootIndices).Count -eq 1 -and
                 [int]$_.nativeRootIndices[0] -eq $rootIndex -and
                 [bool]$_.exactNativeAliasMatch -and
+                [bool]$_.foundInIndividuallyVerifiedStockBaseZone -and
                 [bool]$_.exactExpectedStockBodyFound
             })
             if($stockRows.Count -eq 1){
                 $bodyZones=@($stockRows[0].expectedPreloadedStockBodyZones)
                 if($bodyZones.Count -gt 0 -and
-                   @($bodyZones | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -eq 0){
+                   @($bodyZones | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -eq 0 -and
+                   @($bodyZones | Where-Object {
+                       $nameInZone=$_
+                       @($stockProof.zones | Where-Object {
+                           [string]$_.zone -ieq $nameInZone -and
+                           [bool]$_.found -and [bool]$_.oatValid
+                       }).Count -ne 1
+                   }).Count -eq 0){
                     Write-Host "[AZTEC-GATE8-XMODEL-WAVE] PROVEN OAT STOCK BASE XMODEL BODY: $name -> $($bodyZones -join ',')"
                     return [pscustomobject]@{
                         model=$name
