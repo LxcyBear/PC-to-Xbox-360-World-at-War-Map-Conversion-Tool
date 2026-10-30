@@ -3,6 +3,7 @@ param(
     [string]$WorldReportJson='',
     [string]$LoadProvenanceJson='',
     [string]$UnlinkerExe='',
+    [switch]$AllowMissingXmaWarnings,
     [switch]$Stage
 )
 Set-StrictMode -Version Latest
@@ -121,8 +122,10 @@ Write-Host "[AZTEC-WORLD-NATIVE] MAIN=$worldLen bytes (28 real XModels / 735 sur
 Write-Host "[AZTEC-WORLD-NATIVE] MAIN SHA256=$worldHash"
 Write-Host "[AZTEC-WORLD-NATIVE] LOAD SHA256=$loadHash (selected original PC _load.ff)"
 Write-Host '[AZTEC-WORLD-NATIVE] 0/1903 static-draw links, incomplete DPVS/images/runtime. Crashes/menu-return expected.'
+Write-Host "[AZTEC-WORLD-NATIVE] XMA-only warning allowance (native debug only)=$([bool]$AllowMissingXmaWarnings)"
 if(-not $Stage){
     Write-Host '[AZTEC-WORLD-NATIVE] DRY RUN ONLY. Add -Stage to recheck BOTH native FFs with OAT and create fresh folder.'
+    Write-Host '[AZTEC-WORLD-NATIVE] Optional first-exception-only permission: -AllowMissingXmaWarnings (strict 0-error and exact warning-class checks).'
     return
 }
 
@@ -159,13 +162,45 @@ function OatCheck([string]$fastfile,[string]$baseName,[string]$expectedSha){
             $outText=if(Test-Path -LiteralPath $stdout){[IO.File]::ReadAllText($stdout)}else{''}
             $errText=if(Test-Path -LiteralPath $stderr){[IO.File]::ReadAllText($stderr)}else{''}
             $combined=$outText+[Environment]::NewLine+$errText
-            $passed=($proc.ExitCode -eq 0 -and
-                $combined -match '(?im)Finished with\s+0\s+warnings?\s*,\s*0\s+errors?' -and
-                $combined -notmatch '(?im)^\s*(?:ERROR\s*:|FATAL\s*:|Unhandled exception|Loading fastfile failed)')
+            # This explicitly opt-in first-exception test can tolerate ONLY
+            # missing-XMA warnings from sound names in the SOURCE WORLD FF.
+            # A genuine extraction failure, unknown warning, warning-count
+            # discrepancy, or any errors always blocks diagnostic staging.
+            $allLines=@($combined -split '\r?\n')
+            $summaries=[regex]::Matches($combined,
+                '(?im)^Finished with ([0-9]+) warnings?, ([0-9]+) errors?\r?$')
+            $summaryWarnings=-1
+            $summaryErrors=-1
+            if($summaries.Count -eq 1){
+                $summaryWarnings=[int]$summaries[0].Groups[1].Value
+                $summaryErrors=[int]$summaries[0].Groups[2].Value
+            }
+            $warningLines=@($allLines | Where-Object {
+                $_ -match '^\s*(?:WARN|WARNING)\s*:'
+            })
+            $otherWarnings=@($warningLines | Where-Object {
+                $_ -cnotmatch '^WARN: Loaded sound "[^"\r\n]+" has no XMA data\r?$'
+            })
+            $badLines=@($allLines | Where-Object {
+                $_ -match '(?i)(^\s*(?:ERROR|FATAL)\s*:|Unhandled exception|Loading fastfile failed|^\s*Failed with)'
+            })
+            $exactCount=($summaryWarnings -ge 0 -and $summaryWarnings -eq $warningLines.Count)
+            $zeroWarnings=($summaryWarnings -eq 0 -and $warningLines.Count -eq 0)
+            $allowedSoundWarnings=($AllowMissingXmaWarnings.IsPresent -and
+                $mode -eq 'Extract' -and $baseName -eq ($map+'.ff') -and
+                $summaryWarnings -gt 0 -and $exactCount -and $otherWarnings.Count -eq 0)
+            $passed=($proc.ExitCode -eq 0 -and $summaryErrors -eq 0 -and
+                $summaries.Count -eq 1 -and $badLines.Count -eq 0 -and
+                ($zeroWarnings -or $allowedSoundWarnings))
+            if($passed -and $allowedSoundWarnings){
+                $script:worldXmaWarningsAccepted=$summaryWarnings
+                Write-Host "[AZTEC-WORLD-NATIVE] $baseName OAT $mode: DEBUG-ONLY PASS ($summaryWarnings/$($warningLines.Count) strictly matching missing-sound-XMA warnings; errors=0; other warnings=0)."
+                Write-Host '[AZTEC-WORLD-NATIVE] WARNING: audio data unavailable inside this diagnostic FF; Xbox external/retail streamed audio remains unverified.'
+            }
             if(-not $passed){
                 # Surface the actual OAT extractor failure instead of only
                 # forwarding long stdout/stderr paths. Exit 0 is insufficient.
-                Write-Host "[AZTEC-WORLD-OAT-FAIL] file=$baseName mode=$mode exit=$($proc.ExitCode)"
+                Write-Host "[AZTEC-WORLD-OAT-FAIL] file=$baseName mode=$mode exit=$($proc.ExitCode) summaryWarn=$summaryWarnings summaryErr=$summaryErrors warningLines=$($warningLines.Count) otherWarningKinds=$($otherWarnings.Count)"
                 $lines=@($combined -split '[\r\n]+')
                 $errorLines=@($lines | Where-Object {
                     $_ -match '(?i)(ERROR\s*:|FATAL\s*:|failed to|could not|invalid block|exception|Finished with|warning|errors|missing|not found)'
@@ -183,12 +218,15 @@ function OatCheck([string]$fastfile,[string]$baseName,[string]$expectedSha){
                 Write-Host "[AZTEC-WORLD-OAT-FAIL] stderr=$stderr"
                 throw "Native OAT $baseName $mode FAILED, exit=$($proc.ExitCode). Check the first error lines above."
             }
-            Write-Host "[AZTEC-WORLD-NATIVE] $baseName OAT $mode PASS: 0 warnings, 0 errors"
+            if($zeroWarnings){
+                Write-Host "[AZTEC-WORLD-NATIVE] $baseName OAT $mode PASS: 0 warnings, 0 errors"
+            }
         }
     }finally{
         Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+$script:worldXmaWarningsAccepted=0
 try{
     OatCheck $world ($map+'.ff') $worldHash
     OatCheck $load ($map+'_load.ff') $loadHash
@@ -223,6 +261,9 @@ try{
         metadata=@($meta.ToArray())
         absentUnconverted=@('_patch.ff','.pak','_load.bik','highmip/','sounds/','preview.dds')
         copiedNativeReferenceMainOrLoadFfs=0
+        worldOatMissingXmaOnlyWarningCount=[int]$script:worldXmaWarningsAccepted
+        explicitlyAllowedXmaWarningsForDiagnostic=[bool]$AllowMissingXmaWarnings
+        soundPayloadsOrRuntimeAudioVerified=$false
         nativeReleaseAuthorized=$false
         fullOriginalPcGraphReady=$false
         purpose='Xbox first exception / CodXe zone load diagnostic. Not guaranteed to spawn or render.'
@@ -246,6 +287,7 @@ try{
     Write-Host "[AZTEC-WORLD-NATIVE] TWO GENUINE PC2XB3 FFS STAGED (world + load), SHA-verified."
     Write-Host "[AZTEC-WORLD-NATIVE] Xbox-copy folder: $target"
     Write-Host "[AZTEC-WORLD-NATIVE] Manifest: $manifest"
+    Write-Host "[AZTEC-WORLD-NATIVE] Audited sound-XMA-only warnings=$script:worldXmaWarningsAccepted. Runtime audio unresolved; no production approval."
     Write-Host '[AZTEC-WORLD-NATIVE] NO Xbox install or production release performed.'
 }catch{
     Write-Host "[AZTEC-WORLD-NATIVE] BLOCKED: $($_.Exception.Message)"
