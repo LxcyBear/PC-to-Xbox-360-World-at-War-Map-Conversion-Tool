@@ -182,6 +182,24 @@ namespace gfxworld
         out << ",\"surfaceCount\":" << world.surfaceCount;
         out << ",\"vertexCount\":" << world.vertexCount;
         out << ",\"vertexLayerDataSize\":" << world.vertexLayerDataSize;
+        out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
+        out << ",\"smodelCount\":" << world.dpvs.smodelCount;
+        out << ",\"staticSurfaceCount\":" << world.dpvs.staticSurfaceCount;
+        out << ",\"smodelVisDataCount\":" << world.dpvs.smodelVisDataCount;
+        out << ",\"surfaceVisDataCount\":" << world.dpvs.surfaceVisDataCount;
+        out << ",\"sortedSurfIndexPresent\":"
+            << (world.dpvs.sortedSurfIndex ? "true":"false");
+        out << ",\"surfacesPresent\":"
+            << (world.dpvs.surfaces ? "true":"false");
+        out << ",\"materialMemoryPresent\":"
+            << (world.materialMemory ? "true":"false");
+        out << ",\"indicesPresent\":"
+            << (world.indices ? "true":"false");
+        out << ",\"verticesPresent\":"
+            << (world.vd.vertices ? "true":"false");
+        out << ",\"surfaceMaterialsPresent\":"
+            << (world.dpvs.surfaceMaterials ? "true":"false");
+        out << "}";
         // A completely separate read-only calibration of ORIGINAL Xbox
         // draw fields, not serialized Xbox draw bytes and not a fixup list.
         // Only publish rows if the original loader actually fixed the
@@ -235,24 +253,6 @@ namespace gfxworld
         }
         out << ']';
         out << ",\"nativeStaticDrawWitnessOnly\":true";
-        out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
-        out << ",\"smodelCount\":" << world.dpvs.smodelCount;
-        out << ",\"staticSurfaceCount\":" << world.dpvs.staticSurfaceCount;
-        out << ",\"smodelVisDataCount\":" << world.dpvs.smodelVisDataCount;
-        out << ",\"surfaceVisDataCount\":" << world.dpvs.surfaceVisDataCount;
-        out << ",\"sortedSurfIndexPresent\":"
-            << (world.dpvs.sortedSurfIndex ? "true":"false");
-        out << ",\"surfacesPresent\":"
-            << (world.dpvs.surfaces ? "true":"false");
-        out << ",\"materialMemoryPresent\":"
-            << (world.materialMemory ? "true":"false");
-        out << ",\"indicesPresent\":"
-            << (world.indices ? "true":"false");
-        out << ",\"verticesPresent\":"
-            << (world.vd.vertices ? "true":"false");
-        out << ",\"surfaceMaterialsPresent\":"
-            << (world.dpvs.surfaceMaterials ? "true":"false");
-        out << "}";
         out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
         out << ",\"surfaceCount\":" << world.surfaceCount;
         out << ",\"vertexCount\":" << world.vertexCount;
