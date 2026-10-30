@@ -75,6 +75,29 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Direct packed WeaponDef pointer-to-string loader witness (Windows validation pending)
+
+**Observed scalar test result:** 10 packed WeaponDef bodies, **1/10** unique across 59 constrained scalar slots and **9/10 collision cases**. Scalar uniqueness alone cannot recover the original name pointers. No names have been changed or promoted.
+
+**New opt-in independent loader experiment:**
+
+- `tools/oat-xenon/graph-dumper/WeaponPointerDirectVirtualTrace.snippet.cpp` adds read-only, bounded trace support to the pinned original-PC OAT x86 loader. A requested source raw name pointer is decoded with OAT's exact biased `(raw - 1)` virtual block allocation addressing, **not** a physical source offset and **not** an ordinal candidate. After loader completion it reads at most 96 printable ASCII bytes from the bound-checked loaded block target and prints `WAW360-WPTR` pointer/name/status evidence.
+- `Build-OatXenonGraphDumper.ps1 -TraceWeaponNamePointers` is the one-time specialized OAT build switch. It patches the clean pinned OAT checkout only for the build, restores its modified ZoneInputStream source afterward, and advertises capability `t4-pc-weapon-virtual-pointer-direct-string-v1`.
+- `Run-WaWMultiMapWeaponPointerDirectWitness.ps1 -BuildDumper` uses the existing original-PC WeaponDef name provenance audit and exact ten source packed pointers. For each participating PC source it checks source SHA against Linker V2's archive, makes a temporary short-path SHA-matched copy for the OAT tool, runs real original-PC OAT `--list`, and checks that any directly obtained pointer target string matches an independently listed original-PC WeaponDef name. It emits pointer-by-pointer log/JSON, with unmatched/malformed cases left unresolved. It never mutates a source or candidate FF.
+- **Nothing is Xbox-release authorized.** No production name substitutions, owned-weapon graph promotions, or readiness-gate credit are implied. The original Aztec 3/10 native-test readiness remains unchanged. The new native x86 build and Windows script are still untested.
+
+First Windows test (native OAT compilation may be substantial; use `-BuildDumper` only for initial capability build):
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapWeaponPointerDirectWitness.ps1' -MapName nazi_zombie_aztec_V2.2 -BuildDumper
+```
+
+After a successful initial capability build, omit `-BuildDumper` to reuse the specialized OAT binary. Next after direct pointer-name mapping is independently verified: SHA-bound source-name promotion into actual native WeaponDef owned-payload graph, then real FF OAT extraction and native memory/asset checks.
+
 ## October 30 — Back to the real converter: non-ordinal WeaponDef scalar fingerprint groundwork
 
 **New code, Windows validation pending:** `tools/oat-xenon/Run-WaWMultiMapWeaponScalarWitness.ps1` reads the existing **original-PC-derived Stage 4 alpha7b owned WeaponDef proof files** for the newest selected Candidate matrix. It does not rebuild FFs or run OAT. From each weapon's independently verified big-endian `0x9AC` fixed body, compute a SHA-256 fingerprint from **59 fixed scalar-field locations** already constrained by `T4WeaponSerializerProof` (weapon type/class and other enums, numerous validated booleans and count fields). No `szInternalName`, file position, root ordinal, packed pointer, or source name is included in the fingerprint.
