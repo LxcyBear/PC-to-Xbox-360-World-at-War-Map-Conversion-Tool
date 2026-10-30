@@ -395,3 +395,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 The runner reports `[MULTIMAP-RECIPE]` counts and the `recipe_source_precedence/<map>_recipe_iwd_precedence.json` location under each run's conversion folder. Source mode only indexes precedence; `AppliedToXenonPayload=False`. The distinct script-closure **Candidate** diagnostic now reads that indexed evidence and applies matching GSC/CSC IWD winners to existing RawFile roots and newly promoted missing scripts. Both source index and script-closure changes still require Windows compile/test before being treated as verified.
 
 Update this file from actual logs, not speculative success.
+
+
+## October 30 — Windows-confirmed DIRECT WeaponDef pointer closure (10/10)
+
+**User's Windows result:** Native OAT specialized x86 Unlinker built and installed successfully. The original-PC direct pointer witness followed all ten Aztec internal-name pointers into OAT's loaded VIRTUAL block 4; map.ff 6/6 (molotov, m7_launcher_zombie, m7_launcher_zombie_upgraded, ray_gun, kar98k, 30cal); mod.ff 4/4 (all four zombie perk bottles). No ordinal inference, original PC FF modifications, or Xbox deployment. Source report: output/multi_map_matrix/runs/run_20261030_024027_373fb3/weapon_direct_vptr_20261030_164506.json.
+
+**New opt-in implementation (Windows .NET/OAT validation pending):** The script-closure stage reads WAW360_WEAPON_DIRECT_WITNESS_JSON, checks the full 10/10 contract, original-PC source SHA-256, exact packed pointer+physical proof offset, source role, proof filename and unique name. A separate hardware_test_main_xanim_native_layout_weapon_direct_proven diagnostic FF retains all non-weapon script-closure payloads and uses named, inert Xbox 0x9AC WeaponDef shells. It checks zone headers, independent readback and Xbox wrapper round trip. The existing production and other diagnostic outputs are not changed. The matrix cache keys on the witness JSON SHA. No new OAT C++ build is needed.
+
+**Targeted Windows check:**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+$env:WAW360_WEAPON_DIRECT_WITNESS_JSON = (Resolve-Path -LiteralPath '.\output\multi_map_matrix\runs\run_20261030_024027_373fb3\weapon_direct_vptr_20261030_164506.json').Path
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1' -Mode Candidate -OatVariants Primary -IncludeMaps nazi_zombie_aztec_V2.2
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1' -OatMode List -IncludeMaps nazi_zombie_aztec_V2.2 -VariantNames hardware_test_main_xanim_native_layout_weapon_direct_proven
+```
+
+**Not a release gate:** 71/71 source identities would validate names, not real WeaponDef variable/scalar/animation/audio conversion. Do not copy this file to Xbox. Next gate is actual WeaponDef owned graph serialization and full OAT extraction, both independently read back and verified.
