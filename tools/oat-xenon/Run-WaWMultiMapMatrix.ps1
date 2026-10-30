@@ -6,6 +6,8 @@ param(
     [ValidateSet('Inventory','Analyze','Source','Candidate')]
     [string]$Mode='Analyze',
     [string]$OutputRoot='',
+    [ValidateSet('Primary','All')]
+    [string]$OatVariants='Primary',
     [string[]]$RetailRoots=@(),
     [switch]$Force
 )
@@ -338,9 +340,23 @@ foreach($m in $maps){
                     $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
                 }
                 if(-not(Test-Path -LiteralPath $oat)){ $status='OAT_NOT_INSTALLED';break }
+                # Generic V2 can emit five A/B FF variants. OAT-check
+                # only the main (proof-heavy) FF per map by default:
+                # 11 OAT checks instead of up to 55. Use -OatVariants All
+                # for deliberate differential debugging of alternatives.
+                $oatQueue=@($newFfs.ToArray() | Where-Object {
+                    if($OatVariants -eq 'All'){return $true}
+                    (Split-Path -Path (Split-Path -Path $_ -Parent) -Leaf) -eq
+                        'hardware_test_main_xanim_native_layout'
+                })
+                if($oatQueue.Count -eq 0){
+                    $status='NO_PRIMARY_FF_FOR_OAT'
+                    Write-Host "[MULTIMAP-OAT] No primary proof-heavy FF emitted for $($m.name). Other variants remain UNVERIFIED."
+                    break
+                }
                 $passAll=$true
                 $ord=0
-                foreach($ff in $newFfs){
+                foreach($ff in $oatQueue){
                     $ord++
                     $tmp=Join-Path ([IO.Path]::GetTempPath()) ('WawMatrix_'+[guid]::NewGuid().ToString('N').Substring(0,8))
                     New-Item -ItemType Directory -Path $tmp -Force|Out-Null
@@ -363,7 +379,7 @@ foreach($m in $maps){
                             step='OAT_DIAGNOSTIC';file=$ff;bytes=[int64](Get-Item $ff).Length
                             sha256=$sha;exit=$code;pass=$pass;log=$oatLog
                         })
-                        Write-Host "[MULTIMAP]   OAT $ord/$($newFfs.Count): $(if($pass){'PASS - SCRATCH'}else{'FAIL'})"
+                        Write-Host "[MULTIMAP]   OAT $ord/$($oatQueue.Count) $([IO.Path]::GetFileName((Split-Path -Path $ff -Parent))): $(if($pass){'PASS - SCRATCH'}else{'FAIL'})"
                         if($pass){$oatPasses++;$oatBytes+=[int64](Get-Item $ff).Length}
                         else{$passAll=$false}
                     }finally{Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue}
@@ -429,6 +445,7 @@ foreach($m in $maps){
         status=$status;mode=$Mode;stages=@($events.ToArray())
         emittedCandidateFFCount=$emittedFfCount;emittedCandidateFFBytes=$emittedFfBytes
         emittedCandidates=@($emittedFFs.ToArray())
+        oatVariantPolicy=$OatVariants
         oatPassDiagnosticCount=$oatPasses;oatPassDiagnosticBytes=$oatBytes
         previousOatDiagnosticBytes=$priorVerifiedBytes;verifiedDeltaBytes=$deltaVerifiedBytes
         candidateArtifactSetSha256=$candidateArtifactHash;sizeHistory=$historyFile
