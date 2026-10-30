@@ -124,6 +124,51 @@ foreach($m in $maps){
     $folder=Join-Path $run $m.id
     $output=Join-Path $folder 'conversion'
     New-Item -ItemType Directory -Path $output -Force | Out-Null
+    $finger=@()
+    foreach($inputFile in (@($m.main,$m.mod,$m.patch) | Where-Object{
+        $_ -ne '' -and (Test-Path -LiteralPath $_ -PathType Leaf)
+    })){
+        $meta=Get-Item -LiteralPath $inputFile
+        $finger+=("$($meta.FullName)|$($meta.Length)|$((Get-FileHash -LiteralPath $inputFile -Algorithm SHA256).Hash)")
+    }
+    # Hash actual FF/IWD inputs; stamp auxiliary source files so loose
+    # scripts, images and sounds invalidate a previously PASSING run.
+    foreach($sourceFolder in @($m.sourceFolders)){
+        if(-not(Test-Path -LiteralPath $sourceFolder -PathType Container)){continue}
+        foreach($file in (Get-ChildItem -LiteralPath $sourceFolder -File -Recurse -ErrorAction SilentlyContinue)){
+            if($file.Extension -notin @('.ff','.iwd','.gsc','.csc','.iwi','.wav','.dds','.rmb','.json','.cfg')){continue}
+            $stamp=if($file.Extension -in @('.ff','.iwd')){
+                (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+            }else{[string]$file.LastWriteTimeUtc.Ticks}
+            $finger+=("$($file.FullName)|$($file.Length)|$stamp")
+        }
+    }
+    $sourceHash=HashText (($finger | Sort-Object -Unique) -join [Environment]::NewLine)
+    $cacheDir=Join-Path $OutputRoot 'pass_cache'
+    $cacheFile=Join-Path $cacheDir ($m.id+'_'+$Mode+'.json')
+    if(-not $Force -and (Test-Path -LiteralPath $cacheFile -PathType Leaf)){
+        $cached=Get-Content -LiteralPath $cacheFile -Raw | ConvertFrom-Json
+        $reuse=[string]$cached.schema -eq 'WaW360.MultiMapPassCache.v1' -and
+            [string]$cached.gitCommit -eq $rev -and
+            [string]$cached.sourceFingerprint -eq $sourceHash -and
+            [string]$cached.mode -eq $Mode -and
+            [string]$cached.mapId -eq $m.id -and
+            (Test-Path -LiteralPath ([string]$cached.result.resultFolder) -PathType Container)
+        if($reuse){
+            foreach($artifact in @($cached.verifiedOatArtifacts)){
+                if(-not(Test-Path -LiteralPath ([string]$artifact.file) -PathType Leaf) -or
+                   (Get-FileHash -LiteralPath ([string]$artifact.file) -Algorithm SHA256).Hash -ine [string]$artifact.sha256){
+                    $reuse=$false
+                    break
+                }
+            }
+        }
+        if($reuse){
+            $results.Add($cached.result)
+            Write-Host '[MULTIMAP]   PASS CACHE HIT: source files + Git revision + stage mode unchanged.'
+            continue
+        }
+    }
     $status='INVENTORIED'
     $events=New-Object 'System.Collections.Generic.List[object]'
     $newFfs=New-Object 'System.Collections.Generic.List[string]'
@@ -196,20 +241,6 @@ foreach($m in $maps){
             }
         }
     }
-    $finger=@()
-    foreach($p in (@($m.main,$m.mod,$m.patch) | Where-Object{$_ -ne '' -and (Test-Path -LiteralPath $_ -PathType Leaf)})){
-        $item=Get-Item -LiteralPath $p
-        $finger+=("$($item.FullName)|$($item.Length)|$((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash)")
-    }
-    # A stable per-map ledger reports REAL OAT-confirmed candidate size
-    # changes, not arithmetic over unrelated PC compressed file sizes.
-    foreach($sourceFolder in @($m.sourceFolders)){
-        if(-not(Test-Path -LiteralPath $sourceFolder -PathType Container)){continue}
-        foreach($iwd in (Get-ChildItem -LiteralPath $sourceFolder -File -Filter '*.iwd' -ErrorAction SilentlyContinue)){
-            $finger+=("$($iwd.FullName)|$($iwd.Length)|$((Get-FileHash -LiteralPath $iwd.FullName -Algorithm SHA256).Hash)")
-        }
-    }
-    $sourceHash=HashText (($finger | Sort-Object) -join [Environment]::NewLine)
     $historyDir=Join-Path $OutputRoot 'verified_size_history'
     New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
     $historyFile=Join-Path $historyDir ($m.id+'.json')
@@ -260,6 +291,16 @@ foreach($m in $maps){
     }
     $results.Add([pscustomobject]$r)
     $r|ConvertTo-Json -Depth 9|Set-Content -LiteralPath (Join-Path $folder 'result.json') -Encoding UTF8
+    if($status -like 'PASSED_*' -or $status -eq 'OAT_PASS_DIAGNOSTIC_ONLY' -or $status -eq 'INVENTORIED'){
+        New-Item -ItemType Directory -Path $cacheDir -Force|Out-Null
+        $oatVerified=@($events.ToArray()|Where-Object{$_.step -eq 'OAT_DIAGNOSTIC' -and $_.pass}|
+            ForEach-Object{[ordered]@{file=$_.file;sha256=$_.sha256}})
+        [ordered]@{
+            schema='WaW360.MultiMapPassCache.v1'
+            gitCommit=$rev;mode=$Mode;mapId=$m.id;sourceFingerprint=$sourceHash
+            verifiedOatArtifacts=$oatVerified;result=$r
+        }|ConvertTo-Json -Depth 11|Set-Content -LiteralPath $cacheFile -Encoding UTF8
+    }
     Write-Host "[MULTIMAP]   => $status | OAT diagnostic FF bytes=$oatBytes"
 }
 Write-Progress -Activity 'PC2XB3 multi-map conversion matrix' -Completed
