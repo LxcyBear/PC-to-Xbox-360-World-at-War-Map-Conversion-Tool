@@ -24,6 +24,18 @@ $runLogs=Join-Path $n 'pc_gate8_29x_ff\build_logs'
 New-Item -ItemType Directory -Path $runLogs -Force | Out-Null
 $stageLog=Join-Path $runLogs 'latest_xmodel_stage.log'
 $emitterLog=Join-Path $runLogs 'latest_integrated_emitter.log'
+$sizeWriter=Join-Path $PSScriptRoot 'Record-AztecOatFastFileSize.ps1'
+$milestoneView=Join-Path $PSScriptRoot 'Show-AztecFirstXboxFFProgress.ps1'
+function Set-BuildProgress([int]$percent,[string]$phase){
+    # This 0..100 number is progress through THIS build's actions.
+    # It is deliberately unrelated to Xbox map/gameplay completeness.
+    $p=[Math]::Max(0,[Math]::Min(100,$percent))
+    $blocks=20
+    $filled=[int][Math]::Floor(($p*$blocks)/100.0)
+    $bar=('#' * $filled)+('-' * ($blocks-$filled))
+    Write-Progress -Id 1 -Activity 'Aztec actual Xenon FastFile build (not map readiness)' -Status "$phase ($p%)" -PercentComplete $p
+    Write-Host "[AZTEC-BUILD-PROGRESS] [$bar] $p% | $phase"
+}
 function Show-BuildError([string]$log,[string]$step,[int]$exitCode){
     Write-Host "[AZTEC-REAL-FF] ERROR: $step failed (exit=$exitCode); first failure details follow."
     if(Test-Path -LiteralPath $log -PathType Leaf){
@@ -51,6 +63,8 @@ Write-Host '[AZTEC-REAL-FF] CLASSIFY 27 SOURCE MODEL TYPES: CONVERT REAL OWNED B
 Write-Host '[AZTEC-REAL-FF] Recompile REAL model graphs into 8509-root Xbox FF; OAT readback.'
 Write-Host '[AZTEC-REAL-FF] Preserve existing PC source and passing 5-model baseline.'
 Write-Host '[AZTEC-REAL-FF] NO ARTIFICIAL SIZE PADDING OR DONOR MODEL BYTES.'
+Write-Host '[AZTEC-SIZE] Last verified baseline: 3,615,230 bytes (3.45 MiB); future OAT-PASS builds will be compared and ledgered.'
+Set-BuildProgress 2 'Starting source/native identity checks'
 Write-Host "[AZTEC-REAL-FF] REQUESTED FINAL Xbox map destination: $finalDest"
 Write-Host '[AZTEC-REAL-FF] Final root receives ONLY full source-closure/hardware-approved maps.'
 if($ExportDiagnostic){
@@ -74,7 +88,8 @@ if(Test-Path -LiteralPath $stockAudit -PathType Leaf){
     if($stockExit -ne 0){
         Write-Host '[AZTEC-REAL-FF] WARNING: stock residency unproven. Continuing PC-owned conversion, retaining explicit unresolved references.'
     }
-}
+} 
+Set-BuildProgress 12 'Retail reference check complete; source XModel corpus next'
 try{
     $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$stage)
     if($SkipPcModelConversion){$params+='-SkipPcModelConversion'}
@@ -82,7 +97,18 @@ try{
     & powershell.exe @params 2>&1 |
         ForEach-Object { [string]$_ } |
         Tee-Object -FilePath $stageLog |
-        ForEach-Object { Write-Host "[AZTEC-REAL-FF] $_" }
+        ForEach-Object {
+            $line=[string]$_
+            Write-Host "[AZTEC-REAL-FF] $line"
+            if($line -match 'GRAFT SOURCE XMODEL\s+(\d+)/(\d+)'){
+                $completed=[int]$Matches[1]
+                $target=[int]$Matches[2]
+                if($target -gt 0 -and $completed -le $target){
+                    $pct=18+[int][Math]::Round(42.0*$completed/$target)
+                    Set-BuildProgress $pct "Verified real XModel graph $completed/$target"
+                }
+            }
+        }
     $stageExit=[int]$LASTEXITCODE
 }finally{$ErrorActionPreference=$old}
 if($stageExit -ne 0){
@@ -98,6 +124,7 @@ if([string]$stageProof.status -notin @('AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDEN
    [int]$stageProof.modelCount -ne (2 + [int]$stageProof.realOwnedStaticModelTypes)){
     throw 'Source model ownership/classified native-reference stage is not complete.'
 }
+Set-BuildProgress 63 "All $($stageProof.modelCount) XModel graphs staged; emitting one native FF"
 try{
     $ErrorActionPreference='Continue'
     $builderArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$builder,
@@ -106,7 +133,15 @@ try{
     & powershell.exe @builderArgs 2>&1 |
         ForEach-Object { [string]$_ } |
         Tee-Object -FilePath $emitterLog |
-        ForEach-Object {Write-Host "[AZTEC-REAL-FF] $_"}
+        ForEach-Object {
+            $line=[string]$_
+            Write-Host "[AZTEC-REAL-FF] $line"
+            if($line -match 'Incremental \.NET build PASS'){
+                Set-BuildProgress 76 '.NET Xenon emitter compiled; writing FF and verifying'
+            }elseif($line -match 'OAT PASS=True'){
+                Set-BuildProgress 92 'Native OAT reports FF load success; checking actual manifest and SHA'
+            }
+        }
     $emitExit=[int]$LASTEXITCODE
 }finally{$ErrorActionPreference=$old}
 if($emitExit -ne 0){
@@ -135,6 +170,18 @@ if([string]$r.schema -ne 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -or
 }
 $sha=(Get-FileHash -LiteralPath $ff -Algorithm SHA256).Hash
 $length=(Get-Item -LiteralPath $ff).Length
+Set-BuildProgress 96 'Native OAT and source graph gates passed; recording size history'
+if(-not(Test-Path -LiteralPath $sizeWriter -PathType Leaf)){
+    throw "Validated FF exists, but the size-history tool is missing: $sizeWriter"
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeWriter `
+    -FastFile $ff -ExpectedSha256 $sha -OatStatus ([string]$r.status) `
+    -HistoryDirectory $runLogs -RealXModelBodies ([int]$r.realXModelRootsInCurrentFf) `
+    -RealGfxSurfaces ([int]$r.realPcGfxSurfaceCount) `
+    -RealMaterials ([int]$r.realPcGfxWorldMaterialRoots) -DrawRecordsLinked 0
+if($LASTEXITCODE -ne 0){
+    throw "Real FF OAT passed, but recording its verified size history failed. Inspect $runLogs."
+}
 Write-Host '[AZTEC-REAL-FF] ====================================================='
 Write-Host "[AZTEC-REAL-FF] PASS: $($r.status)"
 Write-Host "[AZTEC-REAL-FF] REAL Xbox source-derived XModel bodies=$($r.realXModelRootsInCurrentFf) (original two + $($stageProof.realOwnedStaticModelTypes) static types)."
@@ -148,6 +195,15 @@ Write-Host "[AZTEC-REAL-FF] physical bytes=$length sha256=$sha"
 Write-Host "[AZTEC-REAL-FF] FF=$ff"
 Write-Host '[AZTEC-REAL-FF] NEXT real integration target: 1903 XModel draw links/complete world DPVS+required image/runtime assets.'
 Write-Host '[AZTEC-REAL-FF] NO hardware ready claim; this is actual source-payload progress, not cosmetic polish.'
+if(Test-Path -LiteralPath $milestoneView -PathType Leaf){
+    Write-Host '[AZTEC-REAL-FF] UPDATED VERIFIED MAP MILESTONES (different from per-build progress):'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $milestoneView
+    if($LASTEXITCODE -ne 0){
+        Write-Host '[AZTEC-REAL-FF] WARNING: map milestone display failed; it does not invalidate the OAT-verified FF.'
+    }
+}
+Set-BuildProgress 100 'OAT-verified diagnostic FF and size history complete'
+Write-Progress -Id 1 -Activity 'Aztec actual Xenon FastFile build' -Completed
 # The only currently possible PASS statuses above are explicitly
 # validation-only: incomplete DPVS, absent 1903 static draw pointers and
 # additional image/script/runtime dependency closure. Never overwrite the
