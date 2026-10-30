@@ -115,7 +115,8 @@ foreach($m in @($matrix.maps)){
     if(Test-Path -LiteralPath $sourceIndex -PathType Leaf){
         try{
             $src=Get-Content -LiteralPath $sourceIndex -Raw | ConvertFrom-Json
-            $sourceOk=[bool]$src.PrecedenceIndexed -and @($src.Errors).Count -eq 0
+            $sourceErrors=@($src.Errors | Where-Object {$null -ne $_})
+            $sourceOk=[bool]$src.PrecedenceIndexed -and $sourceErrors.Count -eq 0
             $indexed=@($src.Entries).Count
         }catch{}
     }
@@ -196,8 +197,9 @@ foreach($m in @($matrix.maps)){
     $passed=@($gates.ToArray() | Where-Object {$_.status -eq 'PASS'}).Count
     $total=$gates.Count
     $bar=('=' * $passed)+('-' * ($total-$passed))
-    $key=($mapName -replace '[^a-zA-Z0-9_-]','_')+'_'+(
-        [IO.Path]::GetFileName([string]$m.resultFolder) -replace '[^a-zA-Z0-9_-]','_')
+    # Preserve both map identity and the discovered source-root discriminator,
+    # avoiding collisions when multiple source roots have identical map names.
+    $key=([IO.Path]::GetFileName([string]$m.resultFolder) -replace '[^a-zA-Z0-9_-]','_')
     $historical=Join-Path $historyRoot ($key+'.json')
     $oldCount=$null
     $history=@()
