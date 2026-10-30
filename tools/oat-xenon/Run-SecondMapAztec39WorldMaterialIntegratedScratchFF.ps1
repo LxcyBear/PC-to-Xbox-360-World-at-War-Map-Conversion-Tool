@@ -89,14 +89,14 @@ if($Gate8AllModelProbe){
        [string]$allStage.status -ne 'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED' -or
        [int]$allStage.sourceModels -ne 27 -or
        [int]$allStage.staticDrawsRepresented -ne 1903 -or
-       [int]$allStage.realOwnedStaticModelTypes + [int]$allStage.nativeExternalReferenceModelTypes -ne 27 -or
+       ([int]$allStage.realOwnedStaticModelTypes + [int]$allStage.nativeExternalReferenceModelTypes) -ne 27 -or
        [int]$allStage.modelCount -ne (2 + [int]$allStage.realOwnedStaticModelTypes) -or
        [int]$allStage.rootCount -ne 8509 -or
        [bool]$allStage.hardwareReady -or
        @($allStage.graphProofs).Count -ne [int]$allStage.modelCount -or
        @($allStage.nativeExternalReferences).Count -ne [int]$allStage.nativeExternalReferenceModelTypes){
 
-        throw 'All-static PC model real graph staging report failed its strict ownership gate.'
+        throw 'All 27 PC static model identities are not classified with complete actual converted XModel graphs and native external-reference provenance.'
     }
     foreach($graph in @($allStage.graphProofs)){
         if(-not(Test-Path -LiteralPath ([string]$graph.stagedGraph) -PathType Leaf) -or
