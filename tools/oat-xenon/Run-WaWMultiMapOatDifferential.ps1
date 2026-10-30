@@ -172,7 +172,7 @@ Write-Host '[OAT-DIFF] No original PC FFs or candidate FFs modified. NO Xbox rel
 $readiness=Join-Path $PSScriptRoot 'Run-WaWMultiMapNativeReadiness.ps1'
 if(Test-Path -LiteralPath $readiness -PathType Leaf){
     Write-Host '[OAT-DIFF] Updating native Xbox readiness gate history (read-only).'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $readiness -MatrixJson $MatrixJson -IncludeMaps $IncludeMaps
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $readiness -MatrixJson $MatrixJson -IncludeMaps ($IncludeMaps -join ',')
     if($LASTEXITCODE -ne 0){
         Write-Host "[OAT-DIFF] WARNING: readiness report failed with exit code $LASTEXITCODE. OAT evidence unchanged."
     }
