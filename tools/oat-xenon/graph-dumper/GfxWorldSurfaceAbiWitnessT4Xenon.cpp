@@ -226,7 +226,7 @@ namespace gfxworld
         out << ",\"nativeStaticDraws\":[";
         if (drawReady)
         {
-            for(int i=0; i<world.dpvs.smodelCount; ++i)
+            for (decltype(world.dpvs.smodelCount) i = 0; i < world.dpvs.smodelCount; ++i)
             {
                 if(i) out << ',';
                 const auto& d = world.dpvs.smodelDrawInsts[i];
