@@ -144,6 +144,7 @@ foreach($m in $matrix.maps){
     # GraphParticipation and its real source path. Read that inventory rather
     # than inventing properties or silently dropping non-main sources.
     $inputs=New-Object 'System.Collections.Generic.List[string]'
+    $sourceRoles=@{}
     $archiveFile=Join-Path ([string]$m.conversionOutputFolder) (Join-Path $mapName (Join-Path 'linker_v2_source_archive' ($mapName+'_linker_v2_source_archive.json')))
     if(Test-Path -LiteralPath $archiveFile -PathType Leaf){
         $archive=Get-Content -LiteralPath $archiveFile -Raw | ConvertFrom-Json
@@ -160,6 +161,7 @@ foreach($m in $matrix.maps){
                 continue
             }
             if(-not $inputs.Contains($original)){$inputs.Add($original)}
+            $sourceRoles[$original]=[string]$source.Role
         }
         Write-Host "[WEAPON-NAMES]   Source archive: $($inputs.Count) participating original PC FF(s), including mod/patch when present."
     }else{
@@ -172,6 +174,7 @@ foreach($m in $matrix.maps){
             -not [string]::IsNullOrWhiteSpace([string]$mainProperty.Value) -and
             (Test-Path -LiteralPath ([string]$mainProperty.Value) -PathType Leaf)){
             $inputs.Add([string]$mainProperty.Value)
+            $sourceRoles[[string]$mainProperty.Value]='map.ff'
         }
     }
     $oatSources=New-Object 'System.Collections.Generic.List[object]'
@@ -183,6 +186,15 @@ foreach($m in $matrix.maps){
         $log=Join-Path $run ('weapon_pc_oat_'+$stamp+'_'+($mapName -replace '[^A-Za-z0-9_-]','_')+'_'+$ix+'.log')
         $exit=-1
         $sample=@()
+        $actualWeaponNames=@()
+        $sourceRole=if($sourceRoles.ContainsKey([string]$path)){[string]$sourceRoles[[string]$path]}else{'UNKNOWN'}
+        $proofBase=[IO.Path]::GetFileNameWithoutExtension([string]$path)
+        $proofRole=($sourceRole -replace '[^a-zA-Z0-9]','_')
+        $expectedProofName=$proofBase+'_'+$proofRole+'.xbox_weapon_owned_proof.bin'
+        $expectedProofFile=Join-Path $proofFolder $expectedProofName
+        $sourceProofRecords=@($names.ToArray() | Where-Object {
+            [string]$_.proof -ieq $expectedProofFile
+        })
         try {
             $copy=Join-Path $temp ([IO.Path]::GetFileName([string]$path))
             Copy-Item -LiteralPath $path -Destination $copy
@@ -196,16 +208,46 @@ foreach($m in $matrix.maps){
             $exit=[int]$process.ExitCode
             $all=[IO.File]::ReadAllText($stdout)+[Environment]::NewLine+[IO.File]::ReadAllText($stderr)
             [IO.File]::WriteAllText($log,$all,[Text.UTF8Encoding]::new($false))
-            $sample=@($all -split '[\r\n]+' | Where-Object {$_ -match '(?i)\bweapon\b|weapons[/\\]'} | Select-Object -First 12)
-            Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix : exit=$exit; weapon-related lines=$($sample.Count); log=$log"
-            foreach($line in @($sample | Select-Object -First 3)){Write-Host "[WEAPON-NAMES]     $line"}
+            # OAT "--list" prints real top-level assets as "weapon, name".
+            # Do NOT mix in "loadedsound, sfx/weapon/...", FX, or unrelated
+            # material paths. Capture ALL exact weapon asset declarations.
+            $actualWeaponNames=@($all -split '[\r\n]+' | ForEach-Object {
+                $lineMatch=[regex]::Match($_,'^\s*(?:\[STDOUT\]\s*)?weapon\s*,\s*(\S(?:.*\S)?)\s*$',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                if($lineMatch.Success){$lineMatch.Groups[1].Value.Trim()}
+            } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+            $sample=@($actualWeaponNames | Select-Object -First 8)
+            Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix ($sourceRole): exit=$exit; realWeaponAssets=$($actualWeaponNames.Count); proofBodies=$($sourceProofRecords.Count); log=$log"
+            foreach($weaponName in $sample){Write-Host "[WEAPON-NAMES]     weapon, $weaponName"}
         }catch{
             [IO.File]::WriteAllText($log,[string]$_,[Text.UTF8Encoding]::new($false))
             Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix ERROR: $([string]$_)"
         }finally{
             Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
         }
-        $oatSources.Add([pscustomobject]@{path=$path;exit=$exit;log=$log;sample=@($sample)})
+        $knownProofNames=@($sourceProofRecords | Where-Object {-not $_.synthetic} | ForEach-Object {[string]$_.name})
+        $knownProofNotInOat=@($knownProofNames | Where-Object {
+            $n=$_
+            -not @($actualWeaponNames | Where-Object {$_ -ieq $n}).Count
+        })
+        $oatNotInKnownProof=@($actualWeaponNames | Where-Object {
+            $n=$_
+            -not @($knownProofNames | Where-Object {$_ -ieq $n}).Count
+        })
+        Write-Host "[WEAPON-NAMES]   source=$sourceRole actualWeaponAssets=$($actualWeaponNames.Count) knownProofNames=$($knownProofNames.Count) unresolvedProofBodies=$(@($sourceProofRecords | Where-Object {$_.synthetic}).Count) unmatchedOatNameCandidates=$($oatNotInKnownProof.Count)"
+        Write-Host '[WEAPON-NAMES]   NOTE: unmatched names are candidates only. XAsset aliases and table order forbid automatic record-to-name assignments.'
+        $oatSources.Add([pscustomobject]@{
+            path=$path;sourceRole=$sourceRole;exit=$exit;log=$log
+            weaponNameEvidenceSource='OAT original PC --list; exact top-level weapon assets only'
+            oatWeaponAssetCount=$actualWeaponNames.Count
+            oatWeaponAssetNames=@($actualWeaponNames)
+            sample=@($sample)
+            expectedProofFile=$expectedProofFile
+            sourceProofPhysicalBodyCount=$sourceProofRecords.Count
+            sourceProofKnownNames=@($knownProofNames)
+            proofKnownNamesNotInOat=@($knownProofNotInOat)
+            oatWeaponNamesNotInKnownProof=@($oatNotInKnownProof)
+            exactPointerToNameMappingEstablished=$false
+        })
     }
     $rows.Add([pscustomobject]@{
         map=$mapName
@@ -214,6 +256,7 @@ foreach($m in $matrix.maps){
         proofNames=@($names.ToArray())
         pcSourceOatListings=@($oatSources.ToArray())
         identitiesResolved=$false
+        note='Real OAT weapon names are enumerated per original PC FF; source proof body identities remain unresolved until a verified pointer-to-virtual-block mapping exists.'
     })
 }
 if($rows.Count -eq 0){throw 'No maps matched -IncludeMaps'}
