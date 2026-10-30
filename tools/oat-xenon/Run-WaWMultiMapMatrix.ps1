@@ -13,6 +13,11 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+# powershell.exe -File can pass comma-separated -IncludeMaps as ONE string.
+# Normalize both Windows argument forms without matching unrelated maps.
+$IncludeMaps=@($IncludeMaps | ForEach-Object {
+    ([string]$_) -split ','
+} | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne '' })
 trap {
     Write-Host "[MULTIMAP-ERROR] $($_.Exception.Message)"
     Write-Host "[MULTIMAP-ERROR] $($_.InvocationInfo.PositionMessage)"
