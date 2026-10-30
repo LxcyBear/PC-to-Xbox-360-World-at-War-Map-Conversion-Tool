@@ -2,6 +2,10 @@
 
 **Single technical reference:** user-supplied `WaW_PC_to_Xbox360_codxe_porting_knowledge.txt`, documenting the WaW360Tool's Xbox 360 + CodXe rules. Follow detailed Part 2 when it differs from Part 1. This checklist tracks PC2XB3, not WaW360Tool: the source's `[AUTO]` tags do not signify a working PC2XB3 feature.
 
+## Readiness tracker Windows syntax preflight (October 30)
+
+First Windows run after commit `3bfc08f` reported PS5.1 syntax **FAIL** in `Run-WaWMultiMapNativeReadiness.ps1` at lines 188–195. The four static `New-Gate` calls had newline-separated positional strings, which PowerShell parsed as terminated commands. The syntax preflight stopped the attempted workflow before readiness reporting or OAT extraction. **No new FFs or Xbox files were affected.** Hotfix `9fe75f8` puts those command arguments on single logical lines; **Windows syntax and runtime recheck are still pending**. Do not count this as an additional readiness gate.
+
 ## Live native Xbox test-readiness progression (implemented)
 
 `Run-WaWMultiMapNativeReadiness.ps1` reads an existing Candidate matrix and its SHA-matched OAT differential reports. It records **10 discrete evidence gates** per map (not an estimate of how much conversion is complete), uses a durable `==========`-style console bar, prints a reason for every PASS / PENDING / BLOCKED, shows movement since the previous evidence check, and persists JSON and per-map history. The Candidate runner now invokes this automatically at the end of each run; OAT differential invokes it whenever new validation evidence is saved. It **never builds or deploys FFs, nor declares native hardware test authorization**.
