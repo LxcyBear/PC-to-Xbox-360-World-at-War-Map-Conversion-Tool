@@ -53,7 +53,7 @@ foreach($m in $matrix.maps){
     $mapName=[string]$m.map
     $emitted=@($m.emittedCandidates | Where-Object{$null -ne $_})
     if($emitted.Count -eq 0){
-        Write-Host "[OAT-DIFF] $mapName: no emitted FF to recheck ($($m.status))"
+        Write-Host "[OAT-DIFF] ${mapName}: no emitted FF to recheck ($($m.status))"
         continue
     }
     foreach($variant in $VariantNames){
@@ -62,13 +62,13 @@ foreach($m in $matrix.maps){
             (Split-Path -Path $parent -Leaf) -eq $variant
         })
         if($matching.Count -eq 0){
-            Write-Host "[OAT-DIFF] $mapName / $variant: not emitted"
+            Write-Host "[OAT-DIFF] $mapName / ${variant}: not emitted"
             continue
         }
         foreach($entry in $matching){
             $file=[string]$entry.path
             if(-not(Test-Path -LiteralPath $file -PathType Leaf)){
-                Write-Host "[OAT-DIFF] $mapName / $variant: candidate TEMP FF missing: $file"
+                Write-Host "[OAT-DIFF] $mapName / ${variant}: candidate TEMP FF missing: $file"
                 continue
             }
             $hash=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
