@@ -163,7 +163,25 @@ function OatCheck([string]$fastfile,[string]$baseName,[string]$expectedSha){
                 $combined -match '(?im)Finished with\s+0\s+warnings?\s*,\s*0\s+errors?' -and
                 $combined -notmatch '(?im)^\s*(?:ERROR\s*:|FATAL\s*:|Unhandled exception|Loading fastfile failed)')
             if(-not $passed){
-                throw "Native OAT $baseName $mode FAILED, exit=$($proc.ExitCode), stdout=$stdout stderr=$stderr"
+                # Surface the actual OAT extractor failure instead of only
+                # forwarding long stdout/stderr paths. Exit 0 is insufficient.
+                Write-Host "[AZTEC-WORLD-OAT-FAIL] file=$baseName mode=$mode exit=$($proc.ExitCode)"
+                $lines=@($combined -split '[\r\n]+')
+                $errorLines=@($lines | Where-Object {
+                    $_ -match '(?i)(ERROR\s*:|FATAL\s*:|failed to|could not|invalid block|exception|Finished with|warning|errors|missing|not found)'
+                } | Select-Object -First 18)
+                if($errorLines.Count -gt 0){
+                    foreach($detail in $errorLines){
+                        Write-Host "[AZTEC-WORLD-OAT-FAIL] $detail"
+                    }
+                }else{
+                    foreach($detail in @($lines | Where-Object { $_ -match '\S' } | Select-Object -Last 18)){
+                        Write-Host "[AZTEC-WORLD-OAT-TAIL] $detail"
+                    }
+                }
+                Write-Host "[AZTEC-WORLD-OAT-FAIL] stdout=$stdout"
+                Write-Host "[AZTEC-WORLD-OAT-FAIL] stderr=$stderr"
+                throw "Native OAT $baseName $mode FAILED, exit=$($proc.ExitCode). Check the first error lines above."
             }
             Write-Host "[AZTEC-WORLD-NATIVE] $baseName OAT $mode PASS: 0 warnings, 0 errors"
         }
