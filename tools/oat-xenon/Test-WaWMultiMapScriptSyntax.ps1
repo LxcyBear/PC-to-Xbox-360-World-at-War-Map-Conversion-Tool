@@ -22,7 +22,7 @@ foreach ($file in $files) {
         [ref]$tokens,
         [ref]$parseErrors
     )
-    if (@($parseErrors).Count -gt 0) {
+    if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
         $failed++
         Write-Host "[PS51-SYNTAX] FAIL $($file.Name)"
         foreach ($issue in $parseErrors) {
