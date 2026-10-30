@@ -20,6 +20,45 @@ foreach($candidate in $knownRoots){
         $rootsFound.Add($candidate)
     }
 }
+# The chosen path can be a reference/library directory rather than the WaW
+# install root. Discover nested usermaps and sample fastfiles without moving
+# anything. This is a bounded search, never a beta-layout certification.
+$referenceFastFiles = New-Object 'System.Collections.Generic.List[object]'
+$discoveredFolders = 0
+$searchLimitHit = $false
+$queue = New-Object 'System.Collections.Generic.Queue[object]'
+$queue.Enqueue([pscustomobject]@{path=$rootPath;depth=0})
+$searched = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+while($queue.Count -gt 0){
+    if($discoveredFolders -ge 2500){$searchLimitHit=$true;break}
+    $current = $queue.Dequeue()
+    if(-not $searched.Add([string]$current.path)){continue}
+    $discoveredFolders++
+    if([IO.Path]::GetFileName(([string]$current.path).TrimEnd('\','/')) -ieq 'usermaps'){
+        $norm = ([string]$current.path).Replace('/','\').TrimEnd('\')
+        $layout=if($norm -match '(?i)\\t4\\usermaps$'){'legacy_nested_t4'}elseif(
+            $norm -match '(?i)\\_codxe\\usermaps$'){'flat'}else{'unclassified_usermaps'}
+        if($seen.Add($norm)){
+            $rootsFound.Add([pscustomobject]@{name=$layout;path=$norm})
+        }
+    }
+    if($referenceFastFiles.Count -lt 25){
+        foreach($ff in @(Get-ChildItem -LiteralPath $current.path -File -Filter '*.ff' -ErrorAction SilentlyContinue)){
+            if($referenceFastFiles.Count -ge 25){break}
+            if([string]::IsNullOrWhiteSpace($MapName) -or
+               $ff.Name -like ('*'+$MapName+'*')){
+                $referenceFastFiles.Add([pscustomobject]@{
+                    file=$ff.FullName;bytes=[long]$ff.Length;directory=$ff.DirectoryName
+                })
+            }
+        }
+    }
+    if([int]$current.depth -ge 6){continue}
+    foreach($child in @(Get-ChildItem -LiteralPath $current.path -Directory -ErrorAction SilentlyContinue)){
+        if($child.Name -in @('.git','node_modules','.deps','.vs','obj')){continue}
+        $queue.Enqueue([pscustomobject]@{path=$child.FullName;depth=([int]$current.depth+1)})
+    }
+}
 $maps = New-Object 'System.Collections.Generic.List[object]'
 foreach($candidate in $rootsFound){
     $folders = @(Get-ChildItem -LiteralPath $candidate.path -Directory -ErrorAction Stop |
@@ -64,7 +103,18 @@ foreach($m in $maps){
     Write-Host "[CODXE-T4-LAYOUT]   main=$($m.mainFfPresent) load=$($m.loadFfPresent) map.json=$($m.mapJsonPresent) preview.dds=$($m.previewDdsPresent)"
     if($m.nestedT4WithinMapPresent){ Write-Host '[CODXE-T4-LAYOUT]   NOTE: additional t4/ detected inside map directory; inspect beta reference' }
 }
-if($maps.Count -eq 0){Write-Host '[CODXE-T4-LAYOUT] No map directories found. Check -Root or the beta reference layout.'}
+if($maps.Count -eq 0){
+    Write-Host '[CODXE-T4-LAYOUT] No installed usermap packages found in scanned directory trees.'
+    Write-Host '[CODXE-T4-LAYOUT] This may be a reference asset folder, NOT the CodXe game/install root.'
+}
+Write-Host "[CODXE-T4-LAYOUT] Directories inspected=$discoveredFolders; searchLimitReached=$searchLimitHit"
+foreach($ff in $referenceFastFiles){
+    Write-Host "[CODXE-T4-LAYOUT] FF PATH HINT (not a confirmed installed map): $($ff.file) [$($ff.bytes) B]"
+}
+if($referenceFastFiles.Count -eq 0 -and $maps.Count -eq 0){
+    Write-Host '[CODXE-T4-LAYOUT] No FF files found within the bounded 6-level search.'
+    Write-Host '[CODXE-T4-LAYOUT] Try -Root with the actual CodXe beta _codxe directory or a folder containing a working usermaps directory.'
+}
 $result=[ordered]@{
     schema='WaW360.CodXeT4BetaPackageInventory.v1'
     note='Predicted flat CodXe map path. Definitive beta layout must be checked against Michael beta binaries/documentation.'
@@ -72,6 +122,13 @@ $result=[ordered]@{
     isReadOnly=$true
     xboxTestAuthorization=$false
     rootsFound=@($rootsFound.ToArray())
+    discovery=[ordered]@{
+        inspectedDirectories=$discoveredFolders
+        maxSearchDepth=6
+        searchLimitReached=$searchLimitHit
+        candidateFastFiles=@($referenceFastFiles.ToArray())
+        note='A *.ff found without a usermaps root is a reference candidate, not proof of a correct CodXe install location.'
+    }
     maps=@($maps.ToArray())
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
