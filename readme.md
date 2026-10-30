@@ -1,5 +1,14 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Requested current test-map destination (final output path)
+
+**Exact user-selected Windows output root:**
+`C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\Xbox Maps\Converter Current Test Map`
+
+`Build-AztecAllRealStaticModelWorldFF.ps1` now defaults `-FinalOutputDirectory` to this exact path and writes two persistent troubleshooting files under `output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping\pc_gate8_29x_ff\build_logs\`: `latest_xmodel_stage.log` and `latest_integrated_emitter.log`. Failures show the first probable real error and preserve the full child PowerShell process trace instead of only the outer `PC-owned model conversion ... blocked` wrapper. **The OAT-passing 28-XModel candidate is still explicitly incomplete** (missing real world draw links, full DPVS, images/audio/runtime closure) and is NOT automatically copied into the Xbox test-map root. For a deliberately segregated diagnostic copy after a successful partial OAT run, use the optional `-ExportDiagnostic`: outputs only to `Converter Current Test Map\_diagnostic_only_not_for_xbox\nazi_zombie_aztec.ff`, accompanied by an explicit not-for-hardware metadata JSON and SHA validation. No diagnostic FF is passed off as a final map.
+
+`Prepare-AztecMinimumNativeSmokePackage.ps1 -PublishApproved` also defaults to the same `ConvertedMapsRoot` and, **only if the existing strict full-emitter/source-closure + real OAT approval actually passes**, copies approved `nazi_zombie_aztec.ff` and `nazi_zombie_aztec_load.ff` **directly into that folder, with no extra nested `nazi_zombie_aztec` directory**. It fails on conflicting existing files/folders rather than silently overwriting prior test content. This older 5-model package is currently validation-only/blocked by the release gate, so it cannot accidentally publish while incomplete. Neither final root nor diagnostic folder is changed by a failed XModel wave.
+
 ## Aztec 26-model milestone — real source XModel wave now complete, corpus integration next
 
 **Verified on user Windows in latest console log:** the 27 distinct original-PC GfxWorld static-draw model names split into **26 independent real PC→Xenon XModel OAT-PASS bodies accounting for 1,902/1,903 placements**, plus a one-placement **unresolved PC comma reference** `,viewmodel_default` pointing at **native root 7506**, whose native identity is the unprefixed owned `viewmodel_default` (frontier `NativeReference=False`). All 27 names/1,903 source occurrences are **accounted**, NOT all runtime-resolved or linked into GfxWorld. The 26 source FFs are SHA-cached and preserved. The separate combined native world FF is **NOT yet OAT-passing**.
