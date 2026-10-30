@@ -36,3 +36,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-Az
 ```
 
 A hardware boot/return is meaningful only if both installed-source SHA-256 values are matched. The capture distinguishes early FF loading from runtime world/weapon/script faults. We do NOT infer missing assets from a raw exception address alone, and we retain exact CodXe / Title Update versions and all logs.
+
+## October 30: extraction completed with missing-XMA sound warnings
+
+The first actual source-world OAT extraction exited **0** and printed `Finished with 1532 warnings, 0 errors`. The user-supplied warning samples were all `WARN: Loaded sound "<path>" has no XMA data`; stderr was empty. This is **NOT** an OAT zero-warning PASS, and warning-class completeness was NOT proven merely by the samples. The strict production release gates remain unchanged and BLOCKED.
+
+Native *first-exception diagnostic only*: `Stage-AztecWorldFirstExceptionCanary.ps1 -Stage -AllowMissingXmaWarnings` performs fresh List+Extract checks on BOTH converter-generated FFs. The new opt-in exception is constrained to the **main world FF extraction only** and accepts warnings ONLY IF every counted warning is a full-line `WARN: Loaded sound "..." has no XMA data`, the exact count equals the single terminal OAT `Finished with N warnings, 0 errors` summary, the process exit is 0, no `ERROR:/FATAL:` or extraction-failure text appears, and all other warnings are absent. Load FF must still have **zero warnings and zero errors**, as does main FF List. Unknown/new warning or mismatch stops the stage; no blanket warnings bypass, no production approval.
+
+Example commands:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Stage-AztecWorldFirstExceptionCanary.ps1' -Stage -AllowMissingXmaWarnings
+```
+
+The output manifest records `worldOatMissingXmaOnlyWarningCount`, `explicitlyAllowedXmaWarningsForDiagnostic`, and `soundPayloadsOrRuntimeAudioVerified=false`. Missing XMA could reflect streamed/external/retail stock audio, absent source payloads, or a diagnostic SoundAlias object without encoded data. We **do not infer sound will work on hardware** or that the sound dependencies are properly closed; WV/CodXe first fault and runtime behavior remain the next independent test. The main FF still has 0/1903 live draw links and incomplete DPVS/cells/image/runtime closure. There is no playable-map claim.
