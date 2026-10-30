@@ -75,6 +75,12 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Windows-confirmed beta staging DRY RUN PASS (9/9 WinPS syntax)
+
+User ran `Stage-CodXeT4BetaPackage.ps1` without `-Stage` against the existing native Aztec reference folder. PowerShell 5.1 parser preflight **9/9 PASS**, including the staging tool. Staging dry run reported `map=nazi_zombie_aztec`, **44 files**, **120,068,964 bytes**, expected relative target `_codxe\usermaps\nazi_zombie_aztec`, `Status: DRY_RUN_ONLY`, and a JSON report in `output/codxe_beta_stage/reports/`. **No map data was copied or modified.** The real `-Stage` operation and post-copy SHA verification have not yet been Windows-tested.
+
+This is a **packaging-tool milestone**, not a release gate: Aztec still has **3/10 independently evidenced native Xbox test gates**, and the beta's actual install behavior is unverified. Next optional test: explicitly add `-Stage` to create a separate, unique output-only copy of the 44-file reference package and verify each copied SHA-256. Retain `REFERENCE ONLY / DO NOT DEPLOY` labeling and do not upload the copy to Xbox.
+
 ## October 30 — Windows-confirmed 44-file Aztec corpus, lossless beta staging path
 
 Latest Windows run of `Test-CodXeT4BetaLayout.ps1` after `ce41b31`: **PowerShell 5.1 AST 8/8 PASS**, Aztec reference `nazi_zombie_aztec` is **44 files / 120,068,964 bytes**, including **37 `highmip/` files** and **0 loose sound files**. Main FF 80,309,061 bytes (76.589 MiB), load and patch FFs present, `preview.dds` present, `map.json` absent. The auditor again found no installed `usermaps` root under the selected *reference collection*, so this is a source-package inventory, not beta-install verification. Current Aztec Xbox readiness remains 3/10 verified evidence gates.
