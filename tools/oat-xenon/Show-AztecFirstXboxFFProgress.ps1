@@ -35,7 +35,7 @@ $pcGfxWorldRootAbi=Read-Report 'xenon_native_gfxworld_root_dpvs_abi\native_xenon
 $pcGfxWorldRootSeed=Read-Report 'pc_source_to_xenon_gfxworld_root_dpvs_scalar_seed\aztec_pc_gfxworld_800_to_xenon_900_root_dpvs_seed.json'
 $pcIntegratedWorldCore=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run\aztec_pc_world_core_integrated_oat_run.json'
 $pcStaticDpvsProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static\aztec_pc_world_core_integrated_oat_run.json'
-$pcGate8ChildProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_planes_nodes_layer\aztec_pc_world_core_integrated_oat_run.json'
+$pcGate8ChildProbe=Read-Report 'pc_gate8_planes_nodes_layer\aztec_pc_world_core_integrated_oat_run.json'
 $nativeTestReleaseReport=Join-Path $repo 'output\native_smoke_test_release\nazi_zombie_aztec\native_smoke_test_package_release.json'
 $nativeTestRelease=$null
 if(Test-Path -LiteralPath $nativeTestReleaseReport -PathType Leaf){
