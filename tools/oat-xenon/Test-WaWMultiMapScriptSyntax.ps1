@@ -7,8 +7,13 @@ $ErrorActionPreference = 'Stop'
 # Windows PowerShell 5.1's built-in AST parser detects invalid interpolation
 # such as "$variable:" in double-quoted strings BEFORE a map conversion run.
 $dir = $PSScriptRoot
-$files = @(Get-ChildItem -LiteralPath $dir -Filter '*WaWMultiMap*.ps1' -File |
-    Sort-Object Name)
+# Include CodXe beta layout checks alongside the multi-map scripts, so
+# a parser error in a newly shipped compatibility diagnostic is caught BEFORE
+# any data inspection or FF operation on Windows PowerShell 5.1.
+$files = @(
+    @(Get-ChildItem -LiteralPath $dir -Filter '*WaWMultiMap*.ps1' -File)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Test-CodXeT4BetaLayout.ps1') -ErrorAction Stop)
+) | Sort-Object Name
 if ($files.Count -eq 0) {
     throw "No WaW multi-map scripts found in $dir"
 }
