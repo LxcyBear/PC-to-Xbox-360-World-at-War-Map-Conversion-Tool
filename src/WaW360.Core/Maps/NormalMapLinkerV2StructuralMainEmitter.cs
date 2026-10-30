@@ -1179,7 +1179,6 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                         var ffSha = await Sha256Async(weaponDirectFfPath, cancellationToken);
                                         weaponDirectKnown = direct.KnownNames;
                                         weaponDirectProven = direct.IndependentlyProvenNames;
-                                        weaponDirectReady = true;
                                         await File.WriteAllTextAsync(
                                             Path.Combine(weaponDirectDir, "DO_NOT_DEPLOY_WEAPON_DIRECT_PROVEN.txt"),
                                             "DIAGNOSTIC ONLY / DO NOT DEPLOY TO XBOX" + Environment.NewLine +
@@ -1192,6 +1191,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                             "The 71 WeaponDefs are still inert 0x9AC name-only diagnostic shells." + Environment.NewLine +
                                             "No real weapon scalar/animation/audio content, no production release authorization." + Environment.NewLine,
                                             new UTF8Encoding(false), cancellationToken);
+                                        weaponDirectReady = true;
                                         notes.Add(
                                             $"WEAPON-DIRECT 71/71 SOURCE-NAMED DIAGNOSTIC: " +
                                             $"{weaponDirectKnown} original named bodies plus {weaponDirectProven} " +
@@ -1206,6 +1206,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                         notes.Add(
                                             $"WEAPON-DIRECT FAIL-CLOSED (other variants unchanged): {ex.GetType().Name}: {ex.Message}");
                                         Console.WriteLine($"WEAPON-DIRECT BLOCKED: {ex.GetType().Name}: {ex.Message}");
+                                        weaponDirectReady = false;
+                                        weaponDirectKnown = 0;
+                                        weaponDirectProven = 0;
                                         TryDelete(weaponDirectFfPath);
                                         TryDelete(weaponDirectZonePath);
                                     }
