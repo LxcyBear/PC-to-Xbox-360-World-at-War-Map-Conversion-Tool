@@ -52,15 +52,19 @@ $bind5=Get-Content -LiteralPath $fiveBindingPath -Raw|ConvertFrom-Json
 $identity=Get-Content -LiteralPath $identityPath -Raw|ConvertFrom-Json
 $caps=Get-Content -LiteralPath $cap -Raw|ConvertFrom-Json
 if([string]$wave.schema -ne 'WaW360.AztecGate8StandaloneXModelWave.v1' -or
-   [string]$wave.status -ne 'AZTEC_GATE8_STATIC_MODEL_WAVE_STANDALONE_OAT_PASS' -or
+   [string]$wave.status -notin @('AZTEC_GATE8_STATIC_MODEL_WAVE_STANDALONE_OAT_PASS',
+       'AZTEC_GATE8_STATIC_MODEL_WAVE_UNRESOLVED_REFERENCE_IDENTITIES') -or
    [int]$wave.sourceStaticModels -ne 27 -or
-   -not [bool]$wave.allStaticModelTypeIdentitiesClassified -or
-   [int]$wave.sourceNameTypesClassified -ne 27 -or
+   -not [bool]$wave.allSourceNamesAndDrawsAccounted -or
+   [int]$wave.sourceNameTypesAccounted -ne 27 -or
    [int]$wave.modelOnlyOatProven -lt 3 -or
-   ([int]$wave.modelOnlyOatProven + [int]$wave.externalNativeReferenceModels) -ne 27 -or
-   ([int]$wave.modelOnlyOatRepresentedDraws + [int]$wave.externalNativeReferenceDraws) -ne 1903 -or
+   ([int]$wave.modelOnlyOatProven + [int]$wave.externalNativeReferenceModels +
+        [int]$wave.unresolvedReferenceModelTypes) -ne 27 -or
+   ([int]$wave.modelOnlyOatRepresentedDraws + [int]$wave.externalNativeReferenceDraws +
+        [int]$wave.unresolvedReferenceDraws) -ne 1903 -or
    @($wave.verifiedModels).Count -ne [int]$wave.modelOnlyOatProven -or
    @($wave.explicitlyVerifiedNativeReferences).Count -ne [int]$wave.externalNativeReferenceModels -or
+   @($wave.unresolvedReferenceRows).Count -ne [int]$wave.unresolvedReferenceModelTypes -or
    [string]$five.status -ne 'AZTEC_GATE8_FIVE_SOURCE_XMODEL_GRAPHS_STAGED' -or
    [int]$five.modelCount -ne 5 -or
    @($bind5.ownedBindings).Count -ne 5 -or
@@ -216,8 +220,26 @@ foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
         throw "Native referenced XModel $name failed final unique root/residency classification."
     }
 }
+# Refused source-body synthesis: the PC FF's leading-comma reference
+# may target a native root whose own identity is *unmarked* (owned) or
+# different. Preserve that exact unresolved evidence with no resident
+# mesh claim, while integrating ONLY actual converted source meshes.
+foreach($unresolved in @($wave.unresolvedReferenceRows)){
+    $name=[string]$unresolved.model
+    $rootIndex=[int]$unresolved.nativeRoot
+    $nativeMatch=@($nativeModels|Where-Object {[int]$_.Index -eq $rootIndex})
+    if(-not $name.StartsWith(',') -or
+       [string]$unresolved.classification -ne 'UNRESOLVED_PC_REFERENCE_NATIVE_IDENTITY' -or
+       [bool]$unresolved.runtimeResidencyVerified -or
+       $nativeMatch.Count -ne 1 -or
+       (Norm ([string]$nativeMatch[0].Name)) -ne (Norm $name) -or
+       $seenRoot.Contains($rootIndex) -or $seenName.Contains((Norm $name))){
+        throw "Unresolved PC XModel reference '$name' native root #$rootIndex cannot be reconciled even by exact normalized identity. Do not guess at borrowed geometry."
+    }
+    Write-Host "[AZTEC-29X] UNRESOLVED PC reference '$name' -> Xbox native root '$($nativeMatch[0].Name)' ($rootIndex). Not converted/resident."
+}
 $binding=[ordered]@{
-    format='WaW360.AztecGate8AllStaticXModelBinding.v2'
+    format='WaW360.AztecGate8AllStaticXModelBinding.v3'
     bindingPass=$true
     nativeRoots=8509
     nativeXModelRoots=284
@@ -225,6 +247,10 @@ $binding=[ordered]@{
     realOwnedStaticModelTypes=[int]$wave.modelOnlyOatProven
     nativeExternalReferenceModelTypes=[int]$wave.externalNativeReferenceModels
     externalReferenceModels=@($wave.explicitlyVerifiedNativeReferences)
+    unresolvedNativeReferenceModelTypes=[int]$wave.unresolvedReferenceModelTypes
+    unresolvedNativeReferenceDraws=[int]$wave.unresolvedReferenceDraws
+    unresolvedNativeReferenceModels=@($wave.unresolvedReferenceRows)
+    sourceNamesAccounted=[int]$wave.sourceNameTypesAccounted
     staticDrawsRepresented=1903
     ownedModelDraws=[int]$wave.modelOnlyOatRepresentedDraws
     externallyReferencedDraws=[int]$wave.externalNativeReferenceDraws
@@ -233,18 +259,25 @@ $binding=[ordered]@{
     hardwareReady=$false
     ownedBindings=@($rows.ToArray())
     referenceBindings=@()
-    note="Actual original-PC owned XModel graph bodies: $realCount (2 known plus $($wave.modelOnlyOatProven) static types), with $($wave.externalNativeReferenceModels) independent comma-prefixed XModel references left as native roots. All 27 source names/1903 placements accounted for by owned-or-reference classification. No 1903 GfxWorld draws, external reference runtime residency, images/world closure or Xbox hardware certified."
+    note="Actual PC-owned XModel bodies: $realCount (2 existing plus $($wave.modelOnlyOatProven) static model types). Proven native external references: $($wave.externalNativeReferenceModels); unresolved source references: $($wave.unresolvedReferenceModelTypes), which remain native identity shells and are NOT classified or runtime-resident. All 27 names and 1903 draws accounted for, but NO world draw records are linked, no final Xbox hardware approval."
 }
 $binding|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $bindingPath -Encoding UTF8
 $report=[ordered]@{
     schema='WaW360.AztecGate8AllStaticXModelStaging.v1'
-    status='AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED'
+    status=if([int]$wave.unresolvedReferenceModelTypes -gt 0){
+        'AZTEC_GATE8_SOURCE_MODELS_STAGED_WITH_UNRESOLVED_REFERENCES'
+    }else{
+        'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED'
+    }
     sourceModels=27
     modelCount=$realCount
     realOwnedStaticModelTypes=[int]$wave.modelOnlyOatProven
     nativeExternalReferenceModelTypes=[int]$wave.externalNativeReferenceModels
     nativeExternalReferenceDraws=[int]$wave.externalNativeReferenceDraws
     nativeExternalReferences=@($wave.explicitlyVerifiedNativeReferences)
+    unresolvedNativeReferenceModelTypes=[int]$wave.unresolvedReferenceModelTypes
+    unresolvedNativeReferenceDraws=[int]$wave.unresolvedReferenceDraws
+    unresolvedNativeReferenceModels=@($wave.unresolvedReferenceRows)
     rootCount=8509
     staticDrawsRepresented=1903
     graphRoot=$graphs
@@ -255,7 +288,7 @@ $report=[ordered]@{
     hardwareReady=$false
 }
 $report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $reportPath -Encoding UTF8
-Write-Host "[AZTEC-29X] status=$($report.status) realOwnedModelGraphs=$realCount, nativeExternalReferences=$($wave.externalNativeReferenceModels)"
-Write-Host "[AZTEC-29X] typedSourcePlacements=1903/1903 (owned=$($wave.modelOnlyOatRepresentedDraws), nativeReference=$($wave.externalNativeReferenceDraws))"
+Write-Host "[AZTEC-29X] status=$($report.status) realOwnedModelGraphs=$realCount, nativeExternalReferences=$($wave.externalNativeReferenceModels), unresolvedReferences=$($wave.unresolvedReferenceModelTypes)"
+Write-Host "[AZTEC-29X] typedSourcePlacements=1903/1903 (owned=$($wave.modelOnlyOatRepresentedDraws), nativeReference=$($wave.externalNativeReferenceDraws), unresolved=$($wave.unresolvedReferenceDraws))"
 Write-Host "[AZTEC-29X] binding=$bindingPath"
 Write-Host '[AZTEC-29X] Real PC model graph payloads staged; next integrate into native world FF. No Xbox claim.'
