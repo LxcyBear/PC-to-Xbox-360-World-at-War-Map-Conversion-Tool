@@ -114,8 +114,8 @@ if(-not $Stage){
             $copiedBytes+=[int64]$file.Length
             Write-Progress -Activity 'CodXe beta package staging (reference only)' -Status "$mapName $copiedFiles/$($srcFiles.Count) files" -PercentComplete ([int](100*$copiedFiles/$srcFiles.Count))
             if(($copiedFiles % 5) -eq 0 -or $copiedFiles -eq $srcFiles.Count){
-                $bar=('=' * [int][Math]::Floor(10*$copiedFiles/$srcFiles.Count))+
-                    ('-' * (10-[int][Math]::Floor(10*$copiedFiles/$srcFiles.Count)))
+                $filled=[int][Math]::Floor(10*$copiedFiles/$srcFiles.Count)
+                $bar=('=' * $filled)+('-' * (10-$filled))
                 Write-Host "[CODXE-BETA-STAGE] [$bar] $copiedFiles/$($srcFiles.Count) files; $copiedBytes/$totalBytes bytes SHA-verified"
             }
         }
@@ -151,7 +151,7 @@ $report=[ordered]@{
     copyRequested=[bool]$Stage
     staged=$staged
     stagedRelativeMapRoot=('_codxe\usermaps\'+$mapName)
-    stagedMapDirectory=if($staged){$mapTarget}else{$null}
+    stagedMapDirectory=$(if($staged){$mapTarget}else{$null})
     sourceFileCount=$srcFiles.Count
     sourceTotalBytes=$totalBytes
     stagedVerifiedFiles=$copiedFiles
