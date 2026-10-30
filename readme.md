@@ -1,5 +1,23 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — 11-map Candidate structural emission outcome + OAT differential follow-up
+
+**Observed user-run `ee481b7` 11-map matrix:** 10/11 Linker V2 structural emitters returned exit 0; Fortress alone returned BLOCKED_XANIM from a missing `mod.ff` versioned typed XAnim proof at `%TEMP%/WMM_*/fortress.../stage4_alpha4_xanim/mod_mod_ff.xbox_xanim_proof.bin`. **All 10 structural candidates emitted actual compressed FFs, but 0/10 passed native OAT.** No Xbox release authorized.
+
+**Three grouped failures:** FRUmansion and Tower produced real proof-heavy main FFs (2,742,985B / 2,780,418B) but OAT reported unresolved `weapons/<packed-name@...>` resources. The other eight emitted map candidates hit OAT `Zone tried to reference invalid block 7` (Backrooms, Bad Subway, ballbags_2, Aztec, bbf2, ndh, Simpsons, small_map). Fortress did not generate a candidate. The 8+2+1 split isolates shared failure families; exact underlying pointer or weapon cause is still UNKNOWN until A/B evidence.
+
+**Primary compressed FF sizes (for historical baseline, not a fidelity claim):** FRUmansion=2,742,985B; Tower=2,780,418B; Backrooms=7,078,615B; Bad Subway=6,123,108B; ballbags_2=6,261,318B; fortress=no FF; Aztec=6,205,443B; bbf2=6,288,698B; ndh=7,528,873B; Simpsons=6,097,209B; small_map=6,444,326B. Auxiliary A/B variants are also retained and tracked separately.
+
+**No-rebuild diagnostic workflow added:** `tools/oat-xenon/Run-WaWMultiMapOatDifferential.ps1` reads the most recent Candidate `multi_map_matrix.json`, validates existing emitted FF file size and SHA256, then OAT-checks its retained `tracked_shell` alternative using an isolated short-path copy. Defaults to FOUR representative maps (FRUmansion, Tower, Backrooms, Aztec). OAT error logs and a per-test JSON report are saved in the existing Candidate matrix run directory. No fresh `.NET` build, no source conversion work, no candidates modified. If TEMP files were cleared, report missing instead of silently regenerating.
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1"
+```
+
+Interpretation: if a tracked-shell FF passes OAT while the primary fails, the first suspect is a promoted typed asset family (XAnim/Weapon/FX/XModel), NOT a universal wrapper problem. If it fails identically, examine retained non-tracked roots/stream layout instead. The script's PASS is strictly OAT structural validation; neither assets nor playable runtime are declared production-complete.
+
 ## October 30 — Candidate first-run logging hotfix (FRUmansion stopped before the emitter)
 
 **Observed from user Windows Candidate run after 1a27fe5:** All-map discovery passed (11 maps), prioritization passed, and short-path candidate output was printed for FRUmansion. Then the batch error handler itself failed at line 431 writing `unexpected_map_failure.log` because Candidate mode created `%TEMP%/WMM_*/<mapid>` but had **not created** its persistent `output/multi_map_matrix/runs/<run>/<mapid>` log folder. `Start-Process -RedirectStandardOutput` requires a real parent directory, so the original command could not even start and its exception was masked by the log handler.
