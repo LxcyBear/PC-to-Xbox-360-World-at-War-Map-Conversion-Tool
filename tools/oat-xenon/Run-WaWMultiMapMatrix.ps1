@@ -29,12 +29,35 @@ function HashText([string]$text){
 }
 function SafeName([string]$text){ return ($text -replace '[^A-Za-z0-9_-]','_').Trim('_') }
 function ExecLog([string]$ex,[string[]]$arguments,[string]$log){
-    $old=$ErrorActionPreference
-    try {
-        $ErrorActionPreference='Continue'
-        & $ex @arguments 2>&1 | ForEach-Object { [string]$_ } | Set-Content -LiteralPath $log -Encoding UTF8
-        return [int]$LASTEXITCODE
-    }finally{ $ErrorActionPreference=$old }
+    # Start-Process returns ONE strongly typed ExitCode, avoiding PowerShell
+    # 5.1 native-command pipeline/error-stream array coercion.
+    # Each argument quoted separately to preserve paths with whitespace.
+    $stdout=$log+'.stdout.tmp'
+    $stderr=$log+'.stderr.tmp'
+    foreach($tmp in @($stdout,$stderr)){
+        if(Test-Path -LiteralPath $tmp){Remove-Item -LiteralPath $tmp -Force}
+    }
+    try{
+        $argumentLine=(@($arguments | ForEach-Object {
+            $a=[string]$_
+            '"'+($a.Replace('"','\"'))+'"'
+        }) -join ' ')
+        $process=Start-Process -FilePath $ex -ArgumentList $argumentLine -RedirectStandardOutput $stdout -RedirectStandardError $stderr -NoNewWindow -PassThru -Wait -ErrorAction Stop
+        $code=[int]$process.ExitCode
+        $lines=New-Object 'System.Collections.Generic.List[string]'
+        if(Test-Path -LiteralPath $stdout){
+            foreach($line in [IO.File]::ReadAllLines($stdout)){$lines.Add($line)}
+        }
+        if(Test-Path -LiteralPath $stderr){
+            foreach($line in [IO.File]::ReadAllLines($stderr)){$lines.Add('[STDERR] '+$line)}
+        }
+        [IO.File]::WriteAllLines($log,$lines.ToArray(),[Text.UTF8Encoding]::new($false))
+        return $code
+    }finally{
+        foreach($tmp in @($stdout,$stderr)){
+            Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 function Fault([string]$log){
     if(-not(Test-Path -LiteralPath $log)){return 'NO_LOG'}
@@ -56,7 +79,7 @@ if(-not $target){throw 'CLI target framework unknown.'}
 $dll=Join-Path $repo ("src\WaW360.Cli\bin\Release\"+$target+"\WaW360.Cli.dll")
 Write-Host "[MULTIMAP] Shared engine: compiling ONCE ($target). Mode=$Mode"
 $buildLog=Join-Path $run 'build.log'
-if((ExecLog 'dotnet' @('build',$project,'-c','Release','--nologo') $buildLog) -ne 0){
+if((ExecLog -ex 'dotnet' -arguments @('build',$project,'-c','Release','--nologo') -log $buildLog) -ne 0){
     Get-Content -LiteralPath $buildLog -Tail 40
     throw "Shared build failed. Log=$buildLog"
 }
@@ -70,7 +93,7 @@ foreach($r in $SourceRoots){
         continue
     }
     $list=Join-Path $run ('discovery_'+(HashText $root).Substring(0,8)+'.json')
-    if((ExecLog 'dotnet' @($dll,'scan-maps-json',$root) $list) -ne 0){
+    if((ExecLog -ex 'dotnet' -arguments @($dll,'scan-maps-json',$root) -log $list) -ne 0){
         throw "Map discovery failed: $list"
     }
     $maps=@(Get-Content -LiteralPath $list -Raw | ConvertFrom-Json)
@@ -185,7 +208,7 @@ foreach($m in $maps){
                 }
             }
             $log=Join-Path $folder ($step+'.log')
-            $exit=ExecLog 'dotnet' @($dll,$step,$m.root,$m.name,$output) $log
+            $exit=ExecLog -ex 'dotnet' -arguments @($dll,$step,$m.root,$m.name,$output) -log $log
             $ok=($exit -eq 0)
             $events.Add([ordered]@{step=$step;exit=$exit;pass=$ok;log=$log})
             Write-Host "[MULTIMAP]   $step => $(if($ok){'PASS'}else{'BLOCKED'}) ($exit)"
@@ -223,7 +246,7 @@ foreach($m in $maps){
                         $oatLog=Join-Path $folder ("oat_"+$ord+'.log')
                         $oatOut=Join-Path $tmp 'out'
                         New-Item -ItemType Directory -Path $oatOut -Force|Out-Null
-                        $code=ExecLog $oat @('--no-color','--output-folder',$oatOut,$copy) $oatLog
+                        $code=ExecLog -ex $oat -arguments @('--no-color','--output-folder',$oatOut,$copy) -log $oatLog
                         $tail=Get-Content -LiteralPath $oatLog -Raw
                         $pass=($code -eq 0 -and
                             $tail -match '(?i)Finished with\s+0\s+warnings?\s*,\s*0\s+errors?' -and
