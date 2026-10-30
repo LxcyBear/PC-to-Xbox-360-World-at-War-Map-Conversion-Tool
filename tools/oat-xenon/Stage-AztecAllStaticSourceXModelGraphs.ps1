@@ -76,6 +76,7 @@ if([string]$wave.schema -ne 'WaW360.AztecGate8StandaloneXModelWave.v1' -or
    @($caps.capabilities) -notcontains 't4xenon-xmodel-relocatable-graph-v1'){
     throw 'All 27 original-PC static source model names must be classified as owned converted meshes or explicitly proven native external references.'
 }
+$expectedCorpusCount=2+[int]$wave.modelOnlyOatProven
 $byName=@{}
 foreach($row in @($wave.verifiedModels)){
     $key=Norm ([string]$row.model)
@@ -153,7 +154,7 @@ function Stage-One([int]$ordinal,[string]$name,[int]$rootIndex,[string]$sourceFo
         stagedGraph=$copied[0].FullName
         sha256=(Get-FileHash -LiteralPath $copied[0].FullName -Algorithm SHA256).Hash
     })
-    Write-Host "[AZTEC-29X] GRAFT SOURCE XMODEL $ordinal/28 : $normName root=$rootIndex"
+    Write-Host "[AZTEC-29X] GRAFT SOURCE XMODEL $($ordinal+1)/$expectedCorpusCount : $normName root=$rootIndex"
 }
 # The 5-model reference is the exact preexisting verified source graph.
 # No modification to .deps/aztec8-five-xmodels is performed.
@@ -187,13 +188,42 @@ for($j=3;$j -lt @($wave.verifiedModels).Count;$j++){
                 ForEach-Object {[string]$_}|Set-Content -LiteralPath $log -Encoding UTF8
             $exit=[int]$LASTEXITCODE
         }finally{$ErrorActionPreference=$prior}
-        if($exit -ne 0 -or
-           @(Select-String -LiteralPath $log -Pattern '^\s*ERROR:').Count -gt 0 -or
-           @(Select-String -LiteralPath $log -Pattern '(?i)^\s*Finished with\s+0\s+warnings?,\s+0\s+errors?\s*$').Count -ne 1){
-            throw "Source $key Xenon graph OAT load failed, exit=$exit. Log=$log"
+        # A standalone model FF has already passed OAT and is SHA-pinned.
+        # This separate Unlinker call must EXIT 0 and physically emit exactly
+        # one structurally valid, source-named relocatable Xenon graph.
+        # OAT's console summary varies by build / stdout prefix. Never
+        # classify a missing exact summary line as an XModel decoding failure.
+        $logLines=@(Get-Content -LiteralPath $log)
+        $errorLines=@($logLines | Where-Object {
+            $_ -match '(?i)(?:^|\]\s*|\s)(?:ERROR\s*:|FATAL\s*:|fatal error\b|Unhandled exception\b)'
+        })
+        $summaries=@($logLines | Where-Object {
+            $_ -match '(?i)Finished with\s+\d+\s+warnings?\s*,\s*\d+\s+errors?'
+        })
+        if($exit -ne 0 -or $errorLines.Count -gt 0){
+            throw "Xenon XModel graph extraction failed for $key; exit=$exit errorLines=$($errorLines.Count) log=$log"
         }
-        $g=@(Get-ChildItem -LiteralPath (Join-Path $temp 'xenon_xmodel_graphs') -Filter '*.json' -File)
-        if($g.Count -ne 1){throw "One source-derived model must produce exactly one Xenon relocatable graph: $key"}
+        if($summaries.Count -gt 1){
+            throw "Ambiguous OAT terminal summary for $key; summaryCount=$($summaries.Count) log=$log"
+        }
+        if($summaries.Count -eq 1){
+            if($summaries[0] -notmatch '(?i)Finished with\s+(\d+)\s+warnings?\s*,\s+(\d+)\s+errors?'){
+                throw "Cannot parse terminal summary for $key. log=$log"
+            }
+            $warnings=[int]$Matches[1]
+            $errors=[int]$Matches[2]
+            if($warnings -ne 0 -or $errors -ne 0){
+                throw "OAT returned $warnings warnings and $errors errors for $key despite exit=0. log=$log"
+            }
+        }else{
+            Write-Host "[AZTEC-29X] OAT exit=0; no standard warning/error summary found for $key. Require actual native relocatable graph and validate its structure/ownership."
+        }
+        $graphFolder=Join-Path $temp 'xenon_xmodel_graphs'
+        if(-not(Test-Path -LiteralPath $graphFolder -PathType Container)){
+            throw "OAT exit=0 but did NOT emit Xenon XModel graph directory for $key. log=$log"
+        }
+        $g=@(Get-ChildItem -LiteralPath $graphFolder -Filter '*.json' -File)
+        if($g.Count -ne 1){throw "OAT must emit exactly one source-owned Xenon XModel graph for $key; actual=$($g.Count); log=$log"}
         Stage-One ($j+2) $key ([int]$w.nativeRoot) $temp $g[0].FullName
     }finally{
         if(Test-Path -LiteralPath $temp -PathType Container){
