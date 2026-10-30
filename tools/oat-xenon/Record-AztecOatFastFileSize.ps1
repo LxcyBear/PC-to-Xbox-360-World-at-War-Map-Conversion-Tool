@@ -76,7 +76,8 @@ $record=[ordered]@{
 if($changed){
     $history+=([pscustomobject]$record)
 }
-if($length -gt $peak){$peak=$length}
+$newRecord=$length -gt $peak
+if($newRecord){$peak=$length}
 $formatBytes = {
     param([long]$b)
     return ('{0:N2} MiB' -f ($b/1MB))
@@ -87,6 +88,9 @@ Write-Host '[AZTEC-SIZE] ==================================================='
 Write-Host "[AZTEC-SIZE] OAT VERIFIED FF: $length bytes ($(& $formatBytes $length))"
 Write-Host "[AZTEC-SIZE] Since last distinct OAT build: $sign$delta bytes ($trend)"
 Write-Host "[AZTEC-SIZE] RECORD SIZE: $peak bytes ($(& $formatBytes $peak))"
+if($newRecord){
+    Write-Host "[AZTEC-SIZE] NEW SIZE RECORD! Actual FF grew by +$delta bytes from last verified binary."
+}
 Write-Host "[AZTEC-SIZE] VALIDATED CONTENT: XModels=$RealXModelBodies GfxSurfaces=$RealGfxSurfaces Materials=$RealMaterials actualStaticDrawLinks=$DrawRecordsLinked/1903"
 if($changed){
     Write-Host '[AZTEC-SIZE] NEW verified build SHA recorded.'
