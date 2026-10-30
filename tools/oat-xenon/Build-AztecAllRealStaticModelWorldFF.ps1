@@ -63,7 +63,7 @@ Write-Host '[AZTEC-REAL-FF] CLASSIFY 27 SOURCE MODEL TYPES: CONVERT REAL OWNED B
 Write-Host '[AZTEC-REAL-FF] Recompile REAL model graphs into 8509-root Xbox FF; OAT readback.'
 Write-Host '[AZTEC-REAL-FF] Preserve existing PC source and passing 5-model baseline.'
 Write-Host '[AZTEC-REAL-FF] NO ARTIFICIAL SIZE PADDING OR DONOR MODEL BYTES.'
-Write-Host '[AZTEC-SIZE] Last verified baseline: 3,615,230 bytes (3.45 MiB); future OAT-PASS builds will be compared and ledgered.'
+Write-Host '[AZTEC-SIZE] Initial verified size baseline: 3,615,230 bytes (3.45 MiB); each OAT-PASS build is compared with the most recent recorded binary.'
 Set-BuildProgress 2 'Starting source/native identity checks'
 Write-Host "[AZTEC-REAL-FF] REQUESTED FINAL Xbox map destination: $finalDest"
 Write-Host '[AZTEC-REAL-FF] Final root receives ONLY full source-closure/hardware-approved maps.'
