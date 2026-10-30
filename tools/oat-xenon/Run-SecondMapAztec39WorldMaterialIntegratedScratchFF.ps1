@@ -44,7 +44,7 @@ if($Gate8ChildProbe -and -not(Test-Path -LiteralPath $gate8Source -PathType Leaf
 }
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate8ChildLevel -eq 'All'){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_planes_nodes_layer'}
+        if($Gate8ChildLevel -eq 'All'){'pc_gate8_planes_nodes_layer'}
         else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_'+$Gate8ChildLevel.ToLowerInvariant()}
     }
     elseif($DpvsStaticProbe){'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static'}
@@ -56,6 +56,16 @@ $log=Join-Path $work 'integrated_emitter.log'
 $buildLog=Join-Path $work 'build.log'
 $report=Join-Path $work $(if($IntegrateWorld){'aztec_pc_world_core_integrated_oat_run.json'}else{'aztec_39_source_world_material_scratch_ff_gate.json'})
 $emitManifest=Join-Path $out 'nuclear_xenon_renderer_emit.json'
+# The pinned native Win32 Unlinker uses legacy MAX_PATH APIs. The original
+# ALL probe's 266-character FF path could be written by modern .NET but
+# failed native OAT with "Could not find file". Fail before the expensive
+# .NET build if an output path cannot be opened by that legacy consumer.
+$plannedFf=Join-Path $out 'nazi_zombie_aztec.ff'
+Write-Host "[AZTEC-WORLD39-FF] OAT candidate FF pathLength=$($plannedFf.Length) output=$plannedFf"
+if($plannedFf.Length -ge 260){
+    throw "Native OAT MAX_PATH risk: candidate FF path is $($plannedFf.Length) characters. Shorten the scratch output directory before running OAT: $plannedFf"
+}
+
 
 foreach($p in @($source,$codec,$proof,$nativeIdentity,$renderBinding,$raw,$modelBinding,$map,$com,$cli,$oat)){
     if(-not(Test-Path -LiteralPath $p -PathType Leaf)){
