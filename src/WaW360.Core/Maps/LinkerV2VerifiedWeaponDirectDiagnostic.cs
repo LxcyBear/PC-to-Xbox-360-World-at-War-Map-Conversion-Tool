@@ -143,9 +143,14 @@ internal static class LinkerV2VerifiedWeaponDirectDiagnostic
                 throw new InvalidDataException($"Source-role mismatch for {row.Name}.");
             var expectedProof = Path.GetFullPath(LinkerV2ProofEvidence.GetProofPath(
                 outputRoot, mapName, source, rootAsset.SourceRole, "weapon"));
-            if (!string.Equals(expectedProof, row.Proof, StringComparison.OrdinalIgnoreCase) ||
-                !File.Exists(expectedProof))
-                throw new InvalidDataException($"Typed original-PC WeaponDef proof path mismatch for {row.Name}.");
+            // The direct trace may be from an earlier Candidate run while
+            // the current run regenerated the exact same source-owned proof.
+            // Compare the identity-bearing proof filename, not a transient run
+            // directory. The current proof label/offset/pointer and the exact
+            // original PC FF SHA are independently checked above/below.
+            if (!string.Equals(Path.GetFileName(expectedProof), Path.GetFileName(row.Proof),
+                    StringComparison.OrdinalIgnoreCase) || !File.Exists(expectedProof))
+                throw new InvalidDataException($"Typed original-PC WeaponDef proof identity mismatch for {row.Name}.");
 
             if (!sourceHashes.TryGetValue(source, out var actualSha))
             {
