@@ -304,6 +304,8 @@ foreach($m in $maps){
         }else{
             $finger+='WEAPON_DIRECT_WITNESS|NONE'
         }
+        $scalarOption=[Environment]::GetEnvironmentVariable('WAW360_WEAPON_REAL_SCALAR_DIAGNOSTIC','Process')
+        $finger+=('WEAPON_REAL_SCALAR_DIAGNOSTIC|'+$(if($scalarOption -eq '1'){'ON'}else{'OFF'}))
     }
     $sourceHash=HashText (($finger | Sort-Object -Unique) -join [Environment]::NewLine)
     $cacheDir=Join-Path $OutputRoot 'pass_cache'
@@ -376,7 +378,7 @@ foreach($m in $maps){
                 # so a map emitting an FF but applying 0 overrides is not
                 # mistaken for successful recipe conversion.
                 foreach($line in @((Get-Content -LiteralPath $log) | Where-Object {
-                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^WEAPON ORDINAL A/B|^WEAPON-DIRECT |^BLOCKER: '
+                    $_ -match 'RECIPE IWD script-closure overrides=|^scriptClosureReady=|^WEAPON ORDINAL A/B|^WEAPON-DIRECT |^WEAPON-SCALAR |^BLOCKER: '
                 } | Select-Object -First 12)){
                     Write-Host "[MULTIMAP-RECIPE] $($m.name): $line"
                 }
