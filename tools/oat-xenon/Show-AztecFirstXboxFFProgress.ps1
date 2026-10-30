@@ -38,6 +38,7 @@ $pcStaticDpvsProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_d
 $pcGate8ChildProbe=Read-Report 'pc_gate8_planes_nodes_layer\aztec_pc_world_core_integrated_oat_run.json'
 $pc28ModelWorld=Read-Report 'pc_gate8_29x_ff\aztec_pc_world_core_integrated_oat_run.json'
 $pc28ModelStagingPath=Join-Path $repo '.deps\aztec8-all-static-xmodels\aztec_gate8_29_xmodel_staging.json'
+$pc1903Source=Read-Report 'pc_gate8_static_draw_source\aztec_gate8_pc_static_draw_source_report.json'
 $pc28ModelStaging=$null
 if(Test-Path -LiteralPath $pc28ModelStagingPath -PathType Leaf){
     try{$pc28ModelStaging=Get-Content -LiteralPath $pc28ModelStagingPath -Raw|ConvertFrom-Json}
@@ -179,6 +180,26 @@ $modelsInOneFf=$null -ne $pc28ModelWorld -and
     -not [bool]$pc28ModelWorld.hardwareReady -and
     (Test-Path -LiteralPath ([string]$pc28ModelWorld.outputFastFile) -PathType Leaf)
 Add-Gate '28 source-derived XModels integrated in one 8,509-root OAT FF' $modelsInOneFf '28 real model bodies, one stock XModel identity; 735 surfaces and 39 materials'
+
+# A typed PC-source exporter is a prerequisite to actual native draw
+# relocation. It is NOT an Xbox GfxWorld draw-array and never upgrades
+# the 1,903 physical placement-link gate by itself.
+$typedDrawSourcePass=$false
+if($modelsInOneFf -and $null -ne $pc1903Source -and
+   [string]$pc1903Source.schema -eq 'WaW360.AztecGate8PcStaticDrawSourceProof.v1' -and
+   [string]$pc1903Source.status -eq 'AZTEC_GATE8_1903_PC_TYPED_STATIC_DRAWS_SOURCE_PASS' -and
+   [int]$pc1903Source.sourceDrawCount -eq 1903 -and
+   [int]$pc1903Source.distinctSourceModels -eq 27 -and
+   [int]$pc1903Source.verifiedSourceWorldModelBodies -eq 28 -and
+   [int]$pc1903Source.sourceDrawOccurrencesCoveredByRealConvertedModelTypes -eq 1902 -and
+   [int]$pc1903Source.convertedXenonDrawRecords -eq 0 -and
+   -not [bool]$pc1903Source.pcModelPointerBytesCopied -and
+   -not [bool]$pc1903Source.hardwareReady -and
+   (Test-Path -LiteralPath ([string]$pc1903Source.typedDrawFile) -PathType Leaf)){
+    $typedDrawSourcePass=(Get-FileHash -LiteralPath ([string]$pc1903Source.typedDrawFile) -Algorithm SHA256).Hash -ieq
+        [string]$pc1903Source.typedDrawSha256
+}
+Add-Gate 'Extract 1,903 actual original-PC draw transforms and metadata' $typedDrawSourcePass 'OAT typed 92B PC draws, 52B placements; no host pointers, no Xbox draw array yet'
 
 # Explicit fail-closed 1,903 *physical GfxStaticModelDrawInst* gate.
 # Source name accounting (1903/1903) is NOT an emitted draw-array proof.
