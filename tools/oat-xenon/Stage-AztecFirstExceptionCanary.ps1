@@ -147,6 +147,47 @@ try{
     if([IO.Path]::GetFileName($load) -ine ($map+'_load.ff')){throw 'Load FF basename wrong.'}
     $loadSha=Hash $load
     if($loadSha -ine [string]$l.FastFileSha256){throw 'Converted load FF SHA mismatch against emitter report.'}
+
+    # Independently validate the SOURCE-CONVERTED load with Xenon OAT (both
+    # modes). This is evidence only; even 0/0 parsing never proves gameplay.
+    $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Unlinker.exe'
+    if(-not(Test-Path -LiteralPath $oat -PathType Leaf)){
+        $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
+    }
+    if(-not(Test-Path -LiteralPath $oat -PathType Leaf)){
+        throw 'Pinned native Xenon OAT Unlinker unavailable; load OAT validation cannot be skipped.'
+    }
+    $oatTmp=Join-Path ([IO.Path]::GetTempPath()) ('AztecNativeLoad_'+[guid]::NewGuid().ToString('N').Substring(0,8))
+    New-Item -Path $oatTmp -ItemType Directory -Force | Out-Null
+    try{
+        $shortLoad=Join-Path $oatTmp ($map+'_load.ff')
+        CopyVerified $load $shortLoad $loadSha
+        foreach($mode in @('List','Extract')){
+            $oatStdout=Join-Path $run ('pc_load_oat_'+$mode+'.stdout.log')
+            $oatStderr=Join-Path $run ('pc_load_oat_'+$mode+'.stderr.log')
+            $argParts=if($mode -eq 'List'){
+                @('--list','--no-color',$shortLoad)
+            }else{
+                $oatExtract=Join-Path $oatTmp 'extracted'
+                New-Item -Path $oatExtract -ItemType Directory -Force | Out-Null
+                @('--no-color','--output-folder',$oatExtract,$shortLoad)
+            }
+            $oatArgs=(@($argParts | ForEach-Object {'"'+([string]$_).Replace('"','\"')+'"'})) -join ' '
+            $oatProcess=Start-Process -FilePath $oat -ArgumentList $oatArgs -RedirectStandardOutput $oatStdout -RedirectStandardError $oatStderr -NoNewWindow -PassThru -Wait
+            $outText=if(Test-Path -LiteralPath $oatStdout){[IO.File]::ReadAllText($oatStdout)}else{''}
+            $errText=if(Test-Path -LiteralPath $oatStderr){[IO.File]::ReadAllText($oatStderr)}else{''}
+            $oatText=$outText+[Environment]::NewLine+$errText
+            $zero=($oatText -match '(?im)Finished with\s+0\s+warnings?\s*,\s*0\s+errors?')
+            $errorLine=($oatText -match '(?im)^\s*(?:ERROR\s*:|FATAL\s*:|Unhandled exception)')
+            if([int]$oatProcess.ExitCode -ne 0 -or -not $zero -or $errorLine){
+                throw "PC-derived LOAD FF OAT $mode BLOCKED, exit=$($oatProcess.ExitCode); log=$oatStdout stderr=$oatStderr"
+            }
+            Write-Host "[AZTEC-FIRST-EXCEPTION] SOURCE-CONVERTED LOAD OAT $mode PASS 0 warnings 0 errors SHA256=$loadSha"
+        }
+    }finally{
+        Remove-Item -LiteralPath $oatTmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     New-Item -ItemType Directory -Path $target -Force | Out-Null
     $stagedMain=Join-Path $target ($map+'.ff')
     $stagedLoad=Join-Path $target ($map+'_load.ff')
