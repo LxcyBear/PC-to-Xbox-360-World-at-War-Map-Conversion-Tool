@@ -1,5 +1,24 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Multi-map Windows first-run PowerShell fix + Jake archive evidence + FRUmansion/Tower priority
+
+**User's first Windows Source batch failed before map enumeration** at the shared engine build with `Cannot convert the System.Object[] value ... to System.Int32`. Fixed `ExecLog` in `Run-WaWMultiMapMatrix.ps1` to use `Start-Process -PassThru -Wait` and a single typed `Process.ExitCode` instead of coercing a PowerShell native-command pipeline result. All invocations now use named arguments and individually quoted paths; stdout/stderr are saved to logs. A global script failure handler prints the exact PowerShell source position if another issue appears. **Fix is untested on Windows until rerun.**
+
+**Both requested maps now take priority in every batch:** `nazi_zombie_FRUmansion` and `nazi_zombie_tower`, discovered under the existing `C:UsersjordaOneDriveDesktopMy XboxMy ProjectsWorld at WarPC Maps`. Existing `MapDiscovery` supports the requested folder/loose-FF discovery without ever moving source files. If the actual folder/name is absent, the runner emits `PRIORITY MAP NOT DETECTED` instead of inventing input. Remaining maps still run afterwards. Filter just the priority pair with `-IncludeMaps '*frumansion*','*tower*'` when desired, or pass `-PriorityMaps` to reorder the whole fleet.
+
+**Jake's complete archive received and inspected:** user-supplied `LLM infodump(1).rar` is **RAR5 with 351 entries** including `README.txt`, `CONVERSION_RULES.txt`, `TOOL_REFERENCE.txt`, `settings.ini`, large inventory/dump text and many per-map reports, but **no identified Go/.NET source or executable**. Rather than claim Jake's conversion algorithms were transplanted, the new **30 scoped rules** in `tools/oat-xenon/multimap_conversion_rules.json` catalog proven policies versus tentative/untested claims. Rules include exact owned-assets-first precedence, runtime FF residency, shared lazy asset-name indexes, fresh zone relocation per build, adaptive memory-budget hypothesis, 3D sound format constraints, correct texture swizzling, strict script/animtree dependencies, and no unproven stock/donor substitutions.
+
+**Jake comparison corpus imported:** `tools/oat-xenon/jake_reference_map_reports.json` contains **39 historical WaW360Tool conversion reports**, not Xbox hardware runs: Jake-estimated zone memory **180.4–321.5 MiB**, median **209.5 MiB**, with **19/39** entries above 210 MiB. These include UGX game-mode variants and their heuristic load probabilities, not unique verified playable maps. The batch runner now attaches matching historical outcomes to the new per-map report and labels them **estimates only**; neither Xbox approval nor arbitrary FF size padding follows from them. FRUmansion and Tower do not appear in the historic 39-report summary, so their actual source files are the authoritative inputs.
+
+**Next Windows command — FIRST two-map focused diagnostic (all original inputs preserved):**
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1" -Mode Source -IncludeMaps '*frumansion*','*tower*'
+```
+Then rerun with `-Mode Source` and **omit `-IncludeMaps`** to process every detected map. Per-map logs and summary CSV/JSON are written under `output/multi_map_matrix/runs`. Once Source-mode is validated, Candidate mode emits only isolated structural diagnostics and strictly OAT checks any generated FF; no automatic release or Xbox deployment.
+
+
 ## October 30 — MAJOR PIVOT: one shared converter across ALL PC maps (multi-map matrix)
 
 **No more single-map-only development.** Aztec, FRUmansion, Simpsons and every detected source map should now feed one conversion/regression cycle. Shared root-linking, material/image, XModel, XAnim, FX, ScriptString, memory/zone and OAT fixes belong in reusable engine code; a known source-specific fixture must never be promoted to a universal conversion rule without multi-map validation.
