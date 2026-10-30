@@ -119,8 +119,8 @@ foreach($m in @($matrix.maps)){
             $indexed=@($src.Entries).Count
         }catch{}
     }
-    $gates.Add((New-Gate 'SOURCE' 'Recipe IWD/source precedence indexed' (
-        if($sourceOk){'PASS'}else{'PENDING'}) (
+    $gates.Add((New-Gate 'SOURCE' 'Recipe IWD/source precedence indexed' $(
+        if($sourceOk){'PASS'}else{'PENDING'}) $(
         if($sourceOk){"Source index clean, $indexed IWD entries"}else{'Current Candidate source-index proof missing or invalid'})))
 
     $emitterLog=Join-Path ([string]$m.resultFolder) 'linker-v2-main-structural.log'
@@ -134,18 +134,18 @@ foreach($m in @($matrix.maps)){
     $closureOk=$scriptValid -and
         $logText -match 'scriptClosureReady=True;\s*residentMenusRemoved=[0-9,]+;\s*rawFilesPromoted=[0-9,]+;\s*readBackErrors=0;\s*wrapperRoundTrip=True' -and
         $scriptOverridden -gt 0
-    $gates.Add((New-Gate 'SCRIPT' 'Real IWD script overrides + FF internal readback' (
-        if($closureOk){'PASS'}else{'PENDING'}) (
+    $gates.Add((New-Gate 'SCRIPT' 'Real IWD script overrides + FF internal readback' $(
+        if($closureOk){'PASS'}else{'PENDING'}) $(
         if($closureOk){"$scriptOverridden overridden RawFile roots; internal readback 0; FF $($script.bytes) B"}else{'No verified, altered script-closure FF in this run'})))
 
     $scriptListOk=Is-OatVerified @($diffs.ToArray()) $mapName $scriptVariant 'List' $script
-    $gates.Add((New-Gate 'SCRIPT_LIST' 'Script-closure independent OAT listing' (
-        if($scriptListOk){'PASS'}else{'PENDING'}) (
+    $gates.Add((New-Gate 'SCRIPT_LIST' 'Script-closure independent OAT listing' $(
+        if($scriptListOk){'PASS'}else{'PENDING'}) $(
         if($scriptListOk){"OAT --list 0 warnings/errors; FF SHA $([string]$script.sha256)"}else{'No same-run, SHA-matched clean OAT listing result'})))
 
     $scriptExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $scriptVariant 'Extract' $script
-    $gates.Add((New-Gate 'SCRIPT_EXTRACT' 'Script-closure full OAT extraction' (
-        if($scriptExtractOk){'PASS'}else{'PENDING'}) (
+    $gates.Add((New-Gate 'SCRIPT_EXTRACT' 'Script-closure full OAT extraction' $(
+        if($scriptExtractOk){'PASS'}else{'PENDING'}) $(
         if($scriptExtractOk){'Same SHA fully extracted without warnings/errors'}else{'Full OAT extraction not yet proven for script-closure FF'})))
 
     $mainExtractOk=Is-OatVerified @($diffs.ToArray()) $mapName $mainVariant 'Extract' $primary
@@ -158,8 +158,8 @@ foreach($m in @($matrix.maps)){
             }
         }
     }
-    $gates.Add((New-Gate 'MAIN_EXTRACT' 'Production-shape primary FF full OAT extraction' (
-        if($mainExtractOk){'PASS'}else{'BLOCKED'}) (
+    $gates.Add((New-Gate 'MAIN_EXTRACT' 'Production-shape primary FF full OAT extraction' $(
+        if($mainExtractOk){'PASS'}else{'BLOCKED'}) $(
         if($mainExtractOk){'Same-hash primary FF passed OAT full extraction'}else{"Primary OAT full-extraction gate not passed; matrix=$($m.status)"})))
 
     # A matched name at the same XAsset ordinal is NOT the same as a
