@@ -1,5 +1,22 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## Aztec 28-model source corpus preflight — exact Xbox stock reference comparison fixed
+
+After the second all-28-graph Windows extraction (user's `Pasted text(20261030-050014).txt`), the user verified that every single **28 / 28** source-derived Xenon XModel graph was emitted, while the very last `,viewmodel_default` validation again failed. The original-PC census is still **26 real source-owned static model types / 1,902 static draws**, plus **1 comma-marked stock reference / 1 draw**, with two earlier verified model canaries accounting for 28 owned model graph bodies. Independent stock audit found unprefixed native XModel `viewmodel_default` root `7506` and the Xbox `common.ff` OAT body. `patch.ff` absent in local stock scan, so this is **only a proven stock name/type identity**, not runtime hardware residency.
+
+**New fix and short test:** `Stage-AztecAllStaticSourceXModelGraphs.ps1` now resolves the single unique native XModel root **BY INDEX FIRST**, then applies explicit separate comparisons: PC comma `',viewmodel_default'` to unprefixed Xbox **owned** native identity for an independently OAT stock-body-proven reference, or exact comma identity for true native reference roots. It rejects duplicate roots/owned graph aliases, unsupported stock zones and false residency. The full pinned stock audit is re-read and checked. The reference check now runs **before** all costly native graph extraction, not after. A new opt-in `-ReferenceCheckOnly` switch validates just this alias and corpus provenance without copying/altering the 26 cached source model FFs or rebuilding the FF.
+
+**Do this FIRST:**
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Stage-AztecAllStaticSourceXModelGraphs.ps1" -SkipPcModelConversion -ReferenceCheckOnly
+```
+Only after `[AZTEC-29X] REFERENCE_PREFLIGHT_PASS` run:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Build-AztecAllRealStaticModelWorldFF.ps1" -SkipPcModelConversion
+```
+**Windows outcome pending.** The integrated actual 8,509-root Xbox FF is not yet independently OAT-passing; GfxWorld's 1,903 actual static draw link records and complete DPVS/image/runtime closure still require implementation. Hardware test-map destination remains protected.
+
 ## Aztec all 28 XModel graphs extracted — one canonical native-stock-reference bug after the actual 28/28 wave
 
 **Latest user's Windows run (`Pasted text(20261030-044854).txt`), verified facts:**
