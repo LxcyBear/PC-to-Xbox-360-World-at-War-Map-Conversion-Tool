@@ -75,6 +75,30 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — Aztec 44-file reference package: WinPS inventory PASS; CodXe beta profile hardened
+
+**Windows-verified:** commit `c3d4108` `Test-CodXeT4BetaLayout.ps1` passed AST preflight **8/8** and discovered exactly one map-shaped reference matching `-MapName nazi_zombie_aztec` under the user's `codxe latest (working map references)` folder. Inventory:
+
+- `nazi_zombie_aztec.ff` **80,309,061 bytes** (76.589 MiB), `nazi_zombie_aztec_load.ff` present, `nazi_zombie_aztec_patch.ff` present;
+- `preview.dds` **present**, `map.json` **absent**, `highmip/` **present**;
+- **44 total files** in the reference directory. The folder does not include a detectable `usermaps` install root, so its compatibility with an unpublished CodXe beta is NOT verified.
+
+**Public CodXe loader evidence, not beta claims:** `src/game/t4/sp/components/ui.cpp` `ScanUsermaps()` looks for `<root>/usermaps/<name>/<name>.ff` to advertise a map and falls back to directory name if `map.json` metadata is absent; `preview.dds` is optional (default preview). `src/game/t4/sp/components/fastfiles.cpp` strips `_load`/`_patch` to locate the same named map folder, and redirects loose sound opens under `sounds/`. The public sources do not establish that a beta *requires* `_patch.ff`, `highmip/`, or `map.json`.
+
+**Implementation update, Windows validation pending:** the read-only `Test-CodXeT4BetaLayout.ps1` now emits `allFilesRelativePathAndBytes`, extension histogram, `highmipFileCount`, loose sound count, and a public menu metadata-fallback annotation for each map-shaped reference package. The Linker V2 SourceArchive package plan explicitly lists `map.json`/`preview.dds` as **recommended in public CodXe**, with future beta behavior unverified, and preserves `_patch.ff`/`highmip/` as conditional native assets without copying donor/oracle data into production. There is no migration, no auto-copy, no Xbox release authorization.
+
+Run a no-build regression:
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-CodXeT4BetaLayout.ps1' -Root 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\codxe latest (working map references)' -MapName nazi_zombie_aztec
+```
+
+**Next acceptance input:** actual beta-installed `_codxe` tree or beta source `Config::data_root`, `ScanUsermaps()` and `GetUsermapFastfilePath()` behavior. Without this, a reference package proves contents only, not install compatibility. Native Xbox readiness stays 3/10 verified evidence gates.
+
 ## October 30 — Windows verified beta-reference FF discovery + same-run 3/10 restoration
 
 User ran commit `9c48f39` with PS 5.1 AST **8/8 PASS**, including `Test-CodXeT4BetaLayout.ps1`. Scanned 50 directories in the selected `codxe latest (working map references)` folder. No installed `usermaps/` tree was present, but the script found many **direct `<map>/<map>.ff` reference packages**, including:
