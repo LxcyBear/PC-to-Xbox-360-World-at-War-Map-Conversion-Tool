@@ -72,6 +72,10 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public bool WeaponDirectProvenReady { get; init; }
     public int WeaponDirectProvenNames { get; init; }
     public int WeaponDirectKnownNames { get; init; }
+    public string? WeaponScalarDiagnosticOutputFastFile { get; init; }
+    public bool WeaponScalarDiagnosticReady { get; init; }
+    public int WeaponScalarSourceBodies { get; init; }
+    public int WeaponScalarCopiedFields { get; init; }
     public required string? NativeBlockOutputFastFile { get; init; }
     public required string? NativeBlockHardwarePackageDirectory { get; init; }
     public required bool NativeBlockCandidateReady { get; init; }
@@ -653,6 +657,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_script_closure");
         var weaponOrderProbeDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_weapon_order_probe");
         var weaponDirectDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_weapon_direct_proven");
+        var weaponScalarDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_weapon_real_scalars");
         var nativeBlockPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_native_blocks");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
@@ -661,6 +666,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         Directory.CreateDirectory(scriptClosurePackageDir);
         Directory.CreateDirectory(weaponOrderProbeDir);
         Directory.CreateDirectory(weaponDirectDir);
+        Directory.CreateDirectory(weaponScalarDir);
         Directory.CreateDirectory(nativeBlockPackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
@@ -676,6 +682,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var weaponOrderProbeFfPath = Path.Combine(weaponOrderProbeDir, source.CanonicalBaseName + ".ff");
         var weaponDirectZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".weapon_direct_proven.zone");
         var weaponDirectFfPath = Path.Combine(weaponDirectDir, source.CanonicalBaseName + ".ff");
+        var weaponScalarZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".weapon_real_scalars.zone");
+        var weaponScalarFfPath = Path.Combine(weaponScalarDir, source.CanonicalBaseName + ".ff");
         var nativeBlockZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_blocks.zone");
         var nativeBlockFfPath = Path.Combine(nativeBlockPackageDir, source.CanonicalBaseName + ".ff");
 
@@ -699,6 +707,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(weaponDirectZonePath);
         TryDelete(weaponDirectFfPath);
         TryDelete(Path.Combine(weaponDirectDir, "DO_NOT_DEPLOY_WEAPON_DIRECT_PROVEN.txt"));
+        TryDelete(weaponScalarZonePath);
+        TryDelete(weaponScalarFfPath);
+        TryDelete(Path.Combine(weaponScalarDir, "DO_NOT_DEPLOY_WEAPON_REAL_SCALARS.txt"));
         TryDelete(nativeBlockFfPath);
         TryDelete(nativeBlockZonePath);
         TryDelete(Path.Combine(nativeBlockPackageDir, "NATIVE_BLOCK_CAPACITY_AB_TEST.txt"));
@@ -990,6 +1001,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var weaponDirectReady = false;
         var weaponDirectProven = 0;
         var weaponDirectKnown = 0;
+        var weaponScalarReady = false;
+        var weaponScalarBodies = 0;
+        var weaponScalarFields = 0;
         if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             try
@@ -1200,6 +1214,84 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                         Console.WriteLine(
                                             $"WEAPON-DIRECT 71/71: known={weaponDirectKnown}/61 direct={weaponDirectProven}/10; " +
                                             $"readBack=0 wrapperRoundTrip=True; FF={weaponDirectFfPath}");
+
+                                        // Source-owned numeric content A/B, opt-in ONLY.
+                                        // Keep OAT-green direct-name FF intact. This does
+                                        // NOT activate real WeaponDef dependencies.
+                                        if (string.Equals(
+                                            Environment.GetEnvironmentVariable("WAW360_WEAPON_REAL_SCALAR_DIAGNOSTIC"),
+                                            "1", StringComparison.Ordinal))
+                                        {
+                                            try
+                                            {
+                                                var scalar = await LinkerV2VerifiedWeaponScalarDiagnostic.ApplyAsync(
+                                                    outputRoot, map.Name, scriptVariant.Roots,
+                                                    scriptVariant.Payloads, direct.Payloads,
+                                                    cancellationToken);
+                                                var scalarZone = BuildZone(
+                                                    scriptVariant.Roots, scalar.Payloads,
+                                                    canonicalStrings, blockPlan, out var scalarHeader);
+                                                if (scalarHeader != checked((uint)(
+                                                        scalarZone.Length - FastFileConstants.T4XFileHeaderSize)) ||
+                                                    !VerifyBlockHeader(scalarZone, blockPlan))
+                                                    throw new InvalidDataException("Weapon scalar zone header/block capacity mismatch.");
+
+                                                await File.WriteAllBytesAsync(
+                                                    weaponScalarZonePath, scalarZone, cancellationToken);
+                                                var scalarReadBackErrors = VerifyReadBack(
+                                                    weaponScalarZonePath, scalarZone,
+                                                    scriptVariant.Roots, scalar.Payloads,
+                                                    canonicalStrings, blockPlan);
+                                                if (scalarReadBackErrors != 0)
+                                                    throw new InvalidDataException(
+                                                        $"Weapon scalar zone readback failed: {scalarReadBackErrors} error(s).");
+                                                var scalarWrite = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                                                    weaponScalarFfPath, scalarZone,
+                                                    preferNativeLevel6: true, cancellationToken: cancellationToken);
+                                                if (!scalarWrite.RoundTripVerified)
+                                                    throw new InvalidDataException("Weapon scalar wrapper round-trip failed.");
+
+                                                var scalarSha = await Sha256Async(
+                                                    weaponScalarFfPath, cancellationToken);
+                                                await File.WriteAllTextAsync(
+                                                    Path.Combine(weaponScalarDir, "DO_NOT_DEPLOY_WEAPON_REAL_SCALARS.txt"),
+                                                    "DIAGNOSTIC ONLY / DO NOT DEPLOY TO XBOX" + Environment.NewLine +
+                                                    $"Map: {map.Name}" + Environment.NewLine +
+                                                    $"WeaponDef source bodies: {scalar.SourceWeaponBodies}/71" + Environment.NewLine +
+                                                    $"Safe scalar slots per body: {scalar.ScalarFieldsPerBody}" + Environment.NewLine +
+                                                    $"Real scalar fields copied: {scalar.ScalarFieldsCopied}" + Environment.NewLine +
+                                                    $"Nonzero scalar fields: {scalar.NonZeroScalarFields}" + Environment.NewLine +
+                                                    $"Verified source proof containers: {scalar.SourceProofContainers}" + Environment.NewLine +
+                                                    $"Generated FF SHA-256: {scalarSha}" + Environment.NewLine +
+                                                    "Numeric scalars only; all child pointers, strings, ScriptStrings, FX, sound, models and animation ownership are still inert." + Environment.NewLine +
+                                                    "NOT playable WeaponDef conversion; OAT validation PENDING." + Environment.NewLine,
+                                                    new UTF8Encoding(false), cancellationToken);
+                                                weaponScalarBodies = scalar.SourceWeaponBodies;
+                                                weaponScalarFields = scalar.ScalarFieldsCopied;
+                                                weaponScalarReady = true;
+                                                notes.Add(
+                                                    $"WEAPON-SCALAR SOURCE-PROVEN DIAGNOSTIC: {scalar.SourceWeaponBodies}/71 " +
+                                                    $"bodies; {scalar.ScalarFieldsCopied} real scalar fields; nonzero={scalar.NonZeroScalarFields}; " +
+                                                    "nonpointer only; OAT pending; DO NOT DEPLOY.");
+                                                Console.WriteLine(
+                                                    $"WEAPON-SCALAR 71/71: copied={weaponScalarFields} " +
+                                                    $"nonzero={scalar.NonZeroScalarFields} readBack=0 wrapperRoundTrip=True " +
+                                                    $"FF={weaponScalarFfPath}");
+                                            }
+                                            catch (Exception ex) when (ex is not OperationCanceledException)
+                                            {
+                                                weaponScalarReady = false;
+                                                weaponScalarBodies = 0;
+                                                weaponScalarFields = 0;
+                                                TryDelete(weaponScalarFfPath);
+                                                TryDelete(weaponScalarZonePath);
+                                                notes.Add(
+                                                    $"WEAPON-SCALAR FAIL-CLOSED (direct-name FF unchanged): " +
+                                                    $"{ex.GetType().Name}: {ex.Message}");
+                                                Console.WriteLine(
+                                                    $"WEAPON-SCALAR BLOCKED: {ex.GetType().Name}: {ex.Message}");
+                                            }
+                                        }
                                     }
                                     catch (Exception ex) when (ex is not OperationCanceledException)
                                     {
@@ -1430,6 +1522,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             WeaponDirectProvenOutputFastFile = weaponDirectReady ? weaponDirectFfPath : null,
             WeaponDirectProvenNames = weaponDirectProven,
             WeaponDirectKnownNames = weaponDirectKnown,
+            WeaponScalarDiagnosticReady = weaponScalarReady,
+            WeaponScalarDiagnosticOutputFastFile = weaponScalarReady ? weaponScalarFfPath : null,
+            WeaponScalarSourceBodies = weaponScalarBodies,
+            WeaponScalarCopiedFields = weaponScalarFields,
             NativeBlockOutputFastFile = nativeBlockReady ? nativeBlockFfPath : null,
             NativeBlockHardwarePackageDirectory = nativeBlockReady ? nativeBlockPackageDir : null,
             NativeBlockCandidateReady = nativeBlockReady,
@@ -2745,6 +2841,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         sb.AppendLine($"trackedShellCandidate={r.ConservativeCandidateReady}; trackedShellReadBackErrors={r.ConservativeReadBackErrors:N0}; trackedShellRoundTrip={r.ConservativeWrapperRoundTripVerified}; trackedShellSha256={r.ConservativeFastFileSha256 ?? "<none>"}; trackedShellOutput={r.ConservativeOutputFastFile ?? "<none>"}");
         sb.AppendLine($"scriptClosureCandidate={r.ScriptClosureCandidateReady}; scriptClosureReadBackErrors={r.ScriptClosureReadBackErrors:N0}; scriptClosureRoundTrip={r.ScriptClosureWrapperRoundTripVerified}; residentMenusRemoved={r.ScriptClosureResidentMenusRemoved:N0}; iwdRawFilesPromoted={r.ScriptClosureRawFilesPromoted:N0}; scriptClosureSha256={r.ScriptClosureFastFileSha256 ?? "<none>"}; scriptClosureOutput={r.ScriptClosureOutputFastFile ?? "<none>"}");
         sb.AppendLine($"weaponDirectProvenReady={r.WeaponDirectProvenReady}; knownNames={r.WeaponDirectKnownNames:N0}; directPointerNames={r.WeaponDirectProvenNames:N0}; weaponDirectOutput={r.WeaponDirectProvenOutputFastFile ?? "<none>"}");
+        sb.AppendLine($"weaponRealScalarsReady={r.WeaponScalarDiagnosticReady}; sourceBodies={r.WeaponScalarSourceBodies:N0}; copiedScalarFields={r.WeaponScalarCopiedFields:N0}; FF={r.WeaponScalarDiagnosticOutputFastFile ?? "<none>"}; diagnosticOnly=True");
         sb.AppendLine($"nativeBlockCandidate={r.NativeBlockCandidateReady}; nativeBlockReadBackErrors={r.NativeBlockReadBackErrors:N0}; nativeBlockRoundTrip={r.NativeBlockWrapperRoundTripVerified}; nativeBlockSha256={r.NativeBlockFastFileSha256 ?? "<none>"}; nativeBlockOutput={r.NativeBlockOutputFastFile ?? "<none>"}");
         sb.AppendLine();
         sb.AppendLine("SOURCE-DERIVED BLOCK CAPACITIES");
