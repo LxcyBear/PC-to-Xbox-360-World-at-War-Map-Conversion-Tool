@@ -1,5 +1,21 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — Gate 8D packed rotations PASS; 60-byte Xenon draw ABI bridge next
+
+**Observed Windows PASS:** `AZTEC_GATE8_1903_PC_PLACEMENT_XENON_PACKED_AXES_PREFLIGHT_PASS` using **all 1,903** original-PC static-draw placements and **5,709/5,709 T4Xenon packed axis vectors**. Max component roundtrip error `0.00155460835` (limit 0.003); max source unit-axis length error `6.93529756E-08`; 0 invalid source axes, 0 components outside unit range. **1,902** placements correspond to owned source-converted model types and **1** to an independently stock-OAT-verified model identity, with **zero unresolved identity-only placements**. Hardware residency of that stock reference remains unproven. The separate first-Xbox-test tracker is still **9/13 milestones (69%)**; the axis preflight is not a physically linked draw FF.
+
+**Pinned Xbox ABI from OAT T4Xenon assets header at `3beaa7c8`:** `GfxStaticModelDrawInst` is **60 bytes**, not the 92-byte PC source draw. It contains cull distance +0, 28-byte packed placement +4 (origin +4, packed axes +16, scale +28), Xenon XModel* +32, reflection probe index +36, primary light index +37, lightingHandle uint16 +38, flags uint8 +40, 19 bytes padding +41. These last native fields **cannot be indiscriminately copied from the PC record**. Independent OAT native schema/header and relocation constraints must be respected.
+
+**New source-only Gate 8E script, awaiting first Windows run:** `Run-AztecGate8Xenon60ByteDrawLayoutBridge.ps1` checks the pinned local OAT checkout/header, exact 28-model OAT world, 1903 source records and passing axis candidate report. It serializes only four **proven numeric geometry fields** (cullDist, origin, axes, scale) as 60-byte-stride **partial diagnostic skeletons**, preserving the full original-PC source and endian-checking all 5,709 axis words; all 28 bytes of every native draw's pointer/lighting/flags/pad tail remain zero/UNRESOLVED. It records SHA/size for a **114,180-byte NOT-FOR-FF diagnostic**. It cannot be used as a valid Xbox map/draw array. **No FF is modified**, Gate 10 remains 0/1903 physically linked until real native references and lighting policy are proven and actual GfxWorld/OAT passes.
+
+**Next Windows command (no OAT rebuild or map mutation):**
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate8Xenon60ByteDrawLayoutBridge.ps1"
+```
+
+
 ## October 30 — 9/13 verified first-Xbox-test milestones; 28-model Gate 8D axis proof
 
 **Verified on Windows:** the first-Xbox-test progress script now reports **9/13 milestone gates (69%)**, including all **1,903 source PC GfxStaticModelDrawInst transforms** extracted from the OAT-valid 28-XModel world. The combined current diagnostic is **3.45 MiB** with 28 source-owned Xenon XModel bodies, 735 surfaces and 39 materials. All **1,903 actual GfxWorld draw pointer links remain absent**; GfxWorld DPVS/required children, paired runtime FFs and Xbox smoke-test release remain PENDING. Milestone percentages are gate counts, **not development time, gameplay completeness or physical FF growth**.
