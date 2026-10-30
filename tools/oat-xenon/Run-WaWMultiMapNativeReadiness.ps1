@@ -148,7 +148,7 @@ foreach($m in @($matrix.maps)){
     $scriptExtractFailure=$null
     foreach($d in $diffs.ToArray()){
         foreach($e in @($d.results)){
-            if($null -ne $e -and [string]$e.map -ieq $mapName -and
+            if($null -ne $script -and $null -ne $e -and [string]$e.map -ieq $mapName -and
                [string]$e.variant -eq $scriptVariant -and
                [string]$e.oatMode -eq 'Extract' -and
                [string]$e.sha256 -ieq [string]$script.sha256 -and
