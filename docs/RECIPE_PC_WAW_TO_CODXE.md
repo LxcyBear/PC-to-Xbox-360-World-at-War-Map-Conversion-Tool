@@ -47,6 +47,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 Check the matrix for `[MULTIMAP-RECIPE] ... scriptClosureReady=...`, `RECIPE IWD script-closure overrides=N`, emitted FF path/size, and OAT `--list` summary. A script-closure FF may be absent if typed closure cannot build or the index finds no applicable overrides; that is evidence to debug, not a PASS. Full OAT extraction and Xbox hardware testing are separate gates.
 
+## October 30 — first real Windows order witness PASS (map + mod)
+
+User ran the new `Run-WaWMultiMapWeaponNameOrderWitness.ps1` on saved original PC OAT/proof evidence. PowerShell 5.1 syntax preflight **6/6 PASS**. Full source-order witnesses:
+
+- `map.ff`: `ALL_KNOWN_NAMES_MATCH_ORDER_ONLY`, **61/61** source OAT/typed proof counts, **55/55** known-name anchors agreeing, **0** ordering conflicts. Six *UNVERIFIED* positional mappings: ordinal 24 `molotov`; 28 `m7_launcher_zombie`; 29 `m7_launcher_zombie_upgraded`; 48 `ray_gun`; 55 `kar98k`; 56 `30cal`.
+- `mod.ff`: `ALL_KNOWN_NAMES_MATCH_ORDER_ONLY`, **10/10** counts, **6/6** known-name anchors, **0** conflicts. Four *UNVERIFIED* positional mappings: ordinal 3 `zombie_perk_bottle_doubletap`; 4 `zombie_perk_bottle_jugg`; 5 `zombie_perk_bottle_revive`; 6 `zombie_perk_bottle_sleight`.
+- `map_patch.ff`: 0/0 weapon bodies (no known-name anchor and nothing to resolve).
+
+**61 known anchors out of 61 match; ten remaining have plausible names, but pointer target proof is still missing.** The OAT T4 loader resolves packed block offsets in `ZoneInputStream::ConvertOffsetToPointerNative` using allocation into a **block buffer**, not by blindly treating `pointerOffset` as a decompressed-zone file offset. Never equate an XFile virtual-block pointer offset to a raw byte offset. Pointer semantics provenance: upstream OpenAssetTools `src/ZoneLoading/Zone/Stream/ZoneInputStream.cpp` and `src/ZoneLoading/Game/T4/ContentLoaderT4.cpp`.
+
+**No production weapon renames have been made.** Next proof gate is to trace the XFile VIRTUAL block allocations/alias table or an equivalent exact loader mapping to associate each of the 10 packed name pointers with a known real name. The offline `weapon_order_witness_20261030_151804.json` contains unverified candidate mappings, not a green conversion certificate.
+
 ## October 30 — Aztec exact 71/71 OAT weapon names; offline source-order witness
 
 **User Windows run on `f229a8c`:** 5/5 PS 5.1 syntax preflight PASS; packed uint32 self-check PASS; original Aztec WeaponDef proof corpus has 71 physical records (2 proof files), 10 synthetic packed-name placeholders. Original PC OAT `--list` success on all 3 participating FFs:
