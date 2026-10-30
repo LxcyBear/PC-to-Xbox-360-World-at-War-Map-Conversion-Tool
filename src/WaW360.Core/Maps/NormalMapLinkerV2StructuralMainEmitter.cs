@@ -1040,6 +1040,80 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                     scriptClosureRawPromoted,
                                     typedClosure.GoldenExpectedRawFilePromotions,
                                     cancellationToken);
+
+                                // Explicit opt-in. NO production fastfile is
+                                // changed and an ordinal witness is NOT a
+                                // proven packed-pointer target. This is an
+                                // isolated, inert-WeaponDef exporter A/B test.
+                                if (string.Equals(
+                                    Environment.GetEnvironmentVariable("WAW360_DIAGNOSTIC_WEAPON_ORDER_PROBE"),
+                                    "1", StringComparison.Ordinal))
+                                {
+                                    try
+                                    {
+                                        var witness = await BuildWeaponNameOrdinalProbeAsync(
+                                            scriptVariant.Roots,
+                                            scriptVariant.Payloads,
+                                            contexts,
+                                            cancellationToken);
+                                        var probeZone = BuildZone(
+                                            scriptVariant.Roots,
+                                            witness.Payloads,
+                                            canonicalStrings,
+                                            blockPlan,
+                                            out var probeHeaderZoneSize);
+                                        if (probeHeaderZoneSize != checked((uint)(
+                                                probeZone.Length - FastFileConstants.T4XFileHeaderSize)) ||
+                                            !VerifyBlockHeader(probeZone, blockPlan))
+                                            throw new InvalidDataException("Weapon-order probe zone header verification failed.");
+
+                                        await File.WriteAllBytesAsync(
+                                            weaponOrderProbeZonePath, probeZone, cancellationToken);
+                                        var probeReadbackErrors = VerifyReadBack(
+                                            weaponOrderProbeZonePath, probeZone,
+                                            scriptVariant.Roots, witness.Payloads,
+                                            canonicalStrings, blockPlan);
+                                        if (probeReadbackErrors != 0)
+                                            throw new InvalidDataException(
+                                                $"Weapon-order probe readback: {probeReadbackErrors} error(s).");
+
+                                        var probeWrite = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                                            weaponOrderProbeFfPath, probeZone,
+                                            preferNativeLevel6: true,
+                                            cancellationToken: cancellationToken);
+                                        if (!probeWrite.RoundTripVerified)
+                                            throw new InvalidDataException("Weapon-order probe wrapper round-trip failed.");
+
+                                        var probeSha = await Sha256Async(
+                                            weaponOrderProbeFfPath, cancellationToken);
+                                        weaponOrderProbeKnownAnchors = witness.KnownNamesConfirmed;
+                                        weaponOrderProbeOrdinalSubstitutions = witness.SyntheticNamesSubstituted;
+                                        await File.WriteAllTextAsync(
+                                            Path.Combine(weaponOrderProbeDir, "DO_NOT_DEPLOY_WEAPON_ORDER_PROBE.txt"),
+                                            "DIAGNOSTIC ONLY — NEVER COPY THIS FF TO XBOX" + Environment.NewLine +
+                                            "No actual packed-pointer-to-string proof exists for the substituted names." + Environment.NewLine +
+                                            $"Original PC OAT names anchored: {witness.KnownNamesConfirmed}" + Environment.NewLine +
+                                            $"Ordinal-only substitutions: {witness.SyntheticNamesSubstituted}" + Environment.NewLine +
+                                            $"Original PC FFs with all known anchors matching: {witness.SourceFastFilesVerified}" + Environment.NewLine +
+                                            $"SHA-256: {probeSha}" + Environment.NewLine +
+                                            "WeaponDef owned payloads remain inert shells, not real converted weapons." + Environment.NewLine +
+                                            "Purpose: test whether OAT full extraction progresses past forbidden placeholder filenames." + Environment.NewLine,
+                                            new UTF8Encoding(false),
+                                            cancellationToken);
+                                        weaponOrderProbeReady = true;
+                                        notes.Add(
+                                            $"WEAPON-ORDER-PROBE DIAGNOSTIC ONLY: {witness.KnownNamesConfirmed} exact name anchors, " +
+                                            $"{witness.SyntheticNamesSubstituted} ordinal-only substitutions, {witness.SourceFastFilesVerified} PC FF(s) verified; " +
+                                            $"output='{weaponOrderProbeFfPath}'. DO NOT DEPLOY.");
+                                    }
+                                    catch (Exception ex) when (ex is not OperationCanceledException)
+                                    {
+                                        notes.Add(
+                                            $"WEAPON-ORDER-PROBE SKIPPED (main/script FF unchanged): {ex.GetType().Name}: {ex.Message}");
+                                        TryDelete(weaponOrderProbeFfPath);
+                                        TryDelete(weaponOrderProbeZonePath);
+                                    }
+                                }
                             }
                             else
                             {
