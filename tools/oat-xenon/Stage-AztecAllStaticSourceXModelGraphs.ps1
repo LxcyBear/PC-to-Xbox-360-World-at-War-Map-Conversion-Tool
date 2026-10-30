@@ -156,6 +156,92 @@ function Stage-One([int]$ordinal,[string]$name,[int]$rootIndex,[string]$sourceFo
     })
     Write-Host "[AZTEC-29X] GRAFT SOURCE XMODEL $($ordinal+1)/$expectedCorpusCount : $normName root=$rootIndex"
 }
+# Run the short, strict stock reference identity/audit gate BEFORE
+# re-extracting 28 XModels so a reference mismatch never wastes a pass.
+# Reference identities are retained in the 8509-root map by their native
+# root indices, but NO fake owned XModel graph payload is generated for them.
+# Do not claim they are runtime-resident: they may need stock zone resolution.
+foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
+    $name=[string]$reference.model
+    $root=[int]$reference.nativeRoot
+    # PC may spell a reference as ',viewmodel_default' while the native
+    # 8509-root identity is the OWNED, UNPREFIXED 'viewmodel_default'.
+    # This is valid only after we independently OAT-prove the same XModel
+    # BODY in a specific Xbox stock base zone (currently common.ff).
+    # Strict native-reference roots still require an EXACT comma name.
+    $refClass=[string]$reference.classification
+    $stockProven=$refClass -eq 'STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME'
+    $nativeProven=$refClass -eq 'XBOX_NATIVE_REFERENCE_NO_OWNED_MESH'
+    # Do not interleave -and, -or, -eq and function calls in one
+    # Where-Object expression. PowerShell 5.1 can parse/coerce that
+    # differently from the intended standalone comparisons. Resolve the
+    # unique native root first, THEN compare the identity for each class.
+    $match=@($nativeModels | Where-Object { [int]$_.Index -eq $root })
+    $nativeName=if($match.Count -eq 1){[string]$match[0].Name}else{''}
+    $canonicalSource=Norm $name
+    $canonicalNative=Norm $nativeName
+    $identityMatch=$false
+    if($match.Count -eq 1){
+        if($stockProven){
+            # PC comma reference -> Xbox owned (UNPREFIXED) stock body.
+            $identityMatch=(-not $nativeName.StartsWith(',')) -and
+                ($canonicalNative -ceq $canonicalSource)
+        }elseif($nativeProven){
+            # An actual reference-only native root must match exactly.
+            $identityMatch=([string]::Equals($nativeName,$name,
+                [StringComparison]::OrdinalIgnoreCase)) -and
+                $nativeName.StartsWith(',')
+        }
+    }
+    $sourceNameValid=$name.StartsWith(',')
+    $conflictsOwned=$seenRoot.Contains($root) -or
+        $seenName.Contains($canonicalSource)
+    $falseResidencyClaim=[bool]$reference.runtimeResidencyVerified
+    if(-not $sourceNameValid -or -not $identityMatch -or
+       $conflictsOwned -or $falseResidencyClaim){
+        Write-Host "[AZTEC-29X] STOCK_REFERENCE_GATE name=$name root=$root type=$refClass nativeCandidates=$($match.Count) nativeName='$nativeName' canonicalSource='$canonicalSource' canonicalNative='$canonicalNative' sourceNameValid=$sourceNameValid identityMatch=$identityMatch collidesWithOwned=$conflictsOwned residencyClaim=$falseResidencyClaim"
+        throw "XModel source reference $name (#$root) failed exact independent native/stock identity validation; see STOCK_REFERENCE_GATE above."
+    }
+    if($stockProven){
+        $zoneList=@($reference.stockBodyZones)
+        $auditPath=[string]$reference.exactOatEvidenceManifest
+        if(-not [bool]$reference.stockOatExactBodyMatch -or
+           $zoneList.Count -eq 0 -or
+           @($zoneList | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -gt 0 -or
+           -not(Test-Path -LiteralPath $auditPath -PathType Leaf)){
+            throw "Stock-resolved source reference $name is missing its exact Xbox base-FF OAT proof."
+        }
+        # Re-check the *actual audit evidence*, not merely a boolean
+        # copied into a wave report. Keep the missing patch.ff explicitly
+        # unscanned; a verified common.ff body is enough for name identity.
+        $auditProof=Get-Content -LiteralPath $auditPath -Raw | ConvertFrom-Json
+        $proofRow=@($auditProof.references | Where-Object {
+            [string]$_.pcReferenceName -ieq $name -and
+            @($_.nativeRootIndices).Count -eq 1 -and
+            [int]$_.nativeRootIndices[0] -eq $root -and
+            [bool]$_.exactNativeAliasMatch -and
+            [bool]$_.exactExpectedStockBodyFound -and
+            [bool]$_.foundInIndividuallyVerifiedStockBaseZone
+        })
+        if([string]$auditProof.schema -ne 'WaW360.AztecExpectedLoadedStockXModelReferenceAudit.v1' -or
+           $proofRow.Count -ne 1){
+            throw "The independently OAT-verified base-zone identity evidence for $name is absent/mismatched."
+        }
+        foreach($zone in $zoneList){
+            $verified=@($auditProof.zones | Where-Object {
+                [string]$_.zone -ieq [string]$zone -and
+                [bool]$_.found -and [bool]$_.oatValid
+            })
+            if($verified.Count -ne 1 -or
+               @($proofRow[0].expectedPreloadedStockBodyZones | Where-Object {
+                   [string]$_ -ieq [string]$zone
+               }).Count -ne 1){
+                throw "Model reference $name has no OAT-listed real body in verified Xbox zone $zone."
+            }
+        }
+        Write-Host "[AZTEC-29X] STOCK_REFERENCE_MATCH PC=$name native=$($match[0].Name) root=$root baseZone=$($zoneList -join ',') runtimeResidency=UNPROVEN"
+    }
+}
 # The 5-model reference is the exact preexisting verified source graph.
 # No modification to .deps/aztec8-five-xmodels is performed.
 if(Test-Path -LiteralPath $graphs -PathType Container){Remove-Item -LiteralPath $graphs -Recurse -Force}
@@ -264,70 +350,12 @@ $realCount=2+[int]$wave.modelOnlyOatProven
 if($rows.Count -ne $realCount -or $seenName.Count -ne $realCount -or $proofs.Count -ne $realCount){
     throw 'Source-owned verified XModel body count does not match the 27-name census minus explicitly verified native references.'
 }
-# Reference identities are retained in the 8509-root map by their native
-# root indices, but NO fake owned XModel graph payload is generated for them.
-# Do not claim they are runtime-resident: they may need stock zone resolution.
+# Owner/reference separation: after all meshes stage, check that no
+# source-owned payload was accidentally bound to a stock/reference root.
 foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
-    $name=[string]$reference.model
-    $root=[int]$reference.nativeRoot
-    # PC may spell a reference as ',viewmodel_default' while the native
-    # 8509-root identity is the OWNED, UNPREFIXED 'viewmodel_default'.
-    # This is valid only after we independently OAT-prove the same XModel
-    # BODY in a specific Xbox stock base zone (currently common.ff).
-    # Strict native-reference roots still require an EXACT comma name.
-    $refClass=[string]$reference.classification
-    $stockProven=$refClass -eq 'STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME'
-    $nativeProven=$refClass -eq 'XBOX_NATIVE_REFERENCE_NO_OWNED_MESH'
-    $match=@($nativeModels|Where-Object {
-        [int]$_.Index -eq $root -and
-        ($stockProven -and (Norm ([string]$_.Name)) -eq (Norm $name) -or
-         $nativeProven -and [string]$_.Name -ieq $name)
-    })
-    if(-not $name.StartsWith(',') -or
-       (-not $nativeProven -and -not $stockProven) -or
-       $match.Count -ne 1 -or
-       $seenRoot.Contains($root) -or $seenName.Contains((Norm $name)) -or
-       [bool]$reference.runtimeResidencyVerified){
-        throw "XModel source reference $name (#$root) does not have a unique exact-native/stock-body identity proof."
-    }
-    if($stockProven){
-        $zoneList=@($reference.stockBodyZones)
-        $auditPath=[string]$reference.exactOatEvidenceManifest
-        if(-not [bool]$reference.stockOatExactBodyMatch -or
-           $zoneList.Count -eq 0 -or
-           @($zoneList | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -gt 0 -or
-           -not(Test-Path -LiteralPath $auditPath -PathType Leaf)){
-            throw "Stock-resolved source reference $name is missing its exact Xbox base-FF OAT proof."
-        }
-        # Re-check the *actual audit evidence*, not merely a boolean
-        # copied into a wave report. Keep the missing patch.ff explicitly
-        # unscanned; a verified common.ff body is enough for name identity.
-        $auditProof=Get-Content -LiteralPath $auditPath -Raw | ConvertFrom-Json
-        $proofRow=@($auditProof.references | Where-Object {
-            [string]$_.pcReferenceName -ieq $name -and
-            @($_.nativeRootIndices).Count -eq 1 -and
-            [int]$_.nativeRootIndices[0] -eq $root -and
-            [bool]$_.exactNativeAliasMatch -and
-            [bool]$_.exactExpectedStockBodyFound -and
-            [bool]$_.foundInIndividuallyVerifiedStockBaseZone
-        })
-        if([string]$auditProof.schema -ne 'WaW360.AztecExpectedLoadedStockXModelReferenceAudit.v1' -or
-           $proofRow.Count -ne 1){
-            throw "The independently OAT-verified base-zone identity evidence for $name is absent/mismatched."
-        }
-        foreach($zone in $zoneList){
-            $verified=@($auditProof.zones | Where-Object {
-                [string]$_.zone -ieq [string]$zone -and
-                [bool]$_.found -and [bool]$_.oatValid
-            })
-            if($verified.Count -ne 1 -or
-               @($proofRow[0].expectedPreloadedStockBodyZones | Where-Object {
-                   [string]$_ -ieq [string]$zone
-               }).Count -ne 1){
-                throw "Model reference $name has no OAT-listed real body in verified Xbox zone $zone."
-            }
-        }
-        Write-Host "[AZTEC-29X] STOCK_REFERENCE_MATCH PC=$name native=$($match[0].Name) root=$root baseZone=$($zoneList -join ',') runtimeResidency=UNPROVEN"
+    if($seenRoot.Contains([int]$reference.nativeRoot) -or
+       $seenName.Contains((Norm ([string]$reference.model)))){
+        throw "Stock/reference identity collides with a real source-owned XModel body: $($reference.model)"
     }
 }
 # Refused source-body synthesis: the PC FF's leading-comma reference
