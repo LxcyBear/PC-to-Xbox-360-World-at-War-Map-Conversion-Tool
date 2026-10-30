@@ -1862,10 +1862,18 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         IReadOnlyList<LinkerV2CanonicalRoot> roots,
         IReadOnlyList<StructuralPayload> payloads,
         NormalMapLinkerV2TypedClosurePlanResult closure,
+        NormalMapRecipeIwdPrecedenceResult recipeIwd,
         CancellationToken ct)
     {
         if (roots.Count != payloads.Count)
             throw new InvalidDataException("Script-closure matrix requires one payload per canonical provenance root.");
+        if (!recipeIwd.PrecedenceIndexed)
+            throw new InvalidDataException("IWD precedence index must pass before script-closure emission.");
+        var looseWinners = recipeIwd.Entries
+            .Where(x => x.WinningLooseScript &&
+                (x.VirtualPath.EndsWith(".gsc", StringComparison.OrdinalIgnoreCase) ||
+                 x.VirtualPath.EndsWith(".csc", StringComparison.OrdinalIgnoreCase)))
+            .ToDictionary(x => x.VirtualPath.Replace('\\', '/'), x => x, StringComparer.OrdinalIgnoreCase);
 
         static string Full(string path) => Path.GetFullPath(path);
         var resident = closure.ResidentRoots
@@ -1875,6 +1883,7 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var keptRoots = new List<LinkerV2CanonicalRoot>(roots.Count + closure.Promotions.Count);
         var keptPayloads = new List<StructuralPayload>(payloads.Count + closure.Promotions.Count);
         var removed = 0;
+        var overridden = 0;
         for (var i = 0; i < roots.Count; i++)
         {
             var root = roots[i];
@@ -1884,7 +1893,22 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                 continue;
             }
             keptRoots.Add(root);
-            keptPayloads.Add(payloads[i]);
+            var payload = payloads[i];
+            // Recipe Part 2 rule 16: the map's loose IWD script wins over
+            // the same virtual path compiled into the source FF.
+            // Exact names only: never resolve packed proof labels by guessing.
+            var name = payload.Name.Replace('\\', '/').TrimStart('/');
+            if (root.XboxTypeName.Equals("rawfile", StringComparison.OrdinalIgnoreCase) &&
+                looseWinners.TryGetValue(name, out var winner))
+            {
+                var sourceBytes = await ReadRecipeIwdEntryAsync(
+                    winner.ArchivePath, winner.VirtualPath, ct);
+                payload = new StructuralPayload(
+                    "rawfile", name, BuildRawFileOwned(name, sourceBytes), false,
+                    $"RECIPE_IWD_SCRIPT_OVERRIDE: original loose source {Path.GetFileName(winner.ArchivePath)}::{winner.VirtualPath}");
+                overridden++;
+            }
+            keptPayloads.Add(payload);
         }
 
         var rawPromotions = closure.Promotions
