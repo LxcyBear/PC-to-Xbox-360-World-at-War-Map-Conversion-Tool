@@ -56,6 +56,11 @@ public sealed class NormalMapLinkerV2SourceArchiveResult
     public required int IwdFiles { get; init; }
     public required int IwdEntries { get; init; }
     public required bool ExternalSoundsExpected { get; init; }
+    public required int RecipeIwdScriptWinners { get; init; }
+    public required int RecipeIwdScriptCollisions { get; init; }
+    public required string RecipeIwdPrecedenceJsonFile { get; init; }
+    public required bool RecipeIwdPrecedenceIndexed { get; init; }
+    public required bool RecipeIwdPrecedenceAppliedToXenonPayload { get; init; }
     public required bool GoldenOracleApplied { get; init; }
     public required string? GoldenOracleName { get; init; }
     public required int? GoldenMainAssetCount { get; init; }
@@ -90,6 +95,9 @@ public static class NormalMapLinkerV2SourceArchive
         CancellationToken cancellationToken = default)
     {
         var analysis = await NormalMapAnalyzer.AnalyzeAsync(map, outputRoot, cancellationToken);
+        // Recipe Step 1: index IWD virtual paths and PC loose-script override
+        // priority BEFORE planning the final Xbox graph. No FF is modified.
+        var recipe = await NormalMapRecipeIwdPrecedence.BuildAsync(analysis, outputRoot, cancellationToken);
         var outDir = Path.Combine(outputRoot, map.Name, "linker_v2_source_archive");
         Directory.CreateDirectory(outDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_source_archive.txt");
@@ -142,6 +150,8 @@ public static class NormalMapLinkerV2SourceArchive
         var exactLoadName = canonicalBase + "_load.ff";
         var selectedLoad = loadCandidates.FirstOrDefault(x => x.FileName.Equals(exactLoadName, StringComparison.OrdinalIgnoreCase));
         var notes = new List<string>();
+        notes.Add($"RECIPE SOURCE PRECEDENCE: {recipe.ScriptWinners:N0} IWD loose script winner(s), {recipe.ScriptPathCollisions:N0} collision(s), {recipe.Errors.Count:N0} IWD source error(s). Source index: {recipe.JsonReportFile}");
+        notes.Add("RECIPE GATE: indexed loose-IWD script winners have NOT been applied to Xenon rawfile payloads yet. A complete production converter must wire them into its canonical source graph.");
         if (selectedLoad is null && loadCandidates.Count == 1)
         {
             selectedLoad = loadCandidates[0];
@@ -240,17 +250,19 @@ public static class NormalMapLinkerV2SourceArchive
         if (selectedLoad is not null)
             packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- selected canonical load graph: " + selectedLoad.FileName);
 
-        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_patch.ff <- optional override/fix layer when emitted; loaded after the main FF");
-        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.bik <- optional solo loading video using stock T4 naming");
-        packagePlan.Add(canonicalBase + "\\" + canonicalBase + ".pak <- optional packed streamed audio; PackIndex remains a fastfile asset");
-        packagePlan.Add(canonicalBase + "\\map.json <- optional shared menu metadata; plugin-specific fields must be tolerated");
-        packagePlan.Add(canonicalBase + "\\preview.dds <- optional on-demand menu preview");
-        packagePlan.Add(canonicalBase + "\\highmip\\ <- loose streamed high-resolution texture mip files (.hi)");
-        packagePlan.Add(canonicalBase + "\\sounds\\ <- loose external streamed Xbox audio (.xma), preserving subdirectories");
+        // This plan follows the supplied WaW360Tool porting knowledge file,
+        // NOT prior screenshot-based or assumed plugin package layouts.
+        packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- required load zone assembled from the stock zombie prototype load template");
+        packagePlan.Add(canonicalBase + "\\map.json <- CodXe r351+ map menu metadata");
+        packagePlan.Add(canonicalBase + "\\preview.dds <- CodXe r351+ map preview");
         if (externalSoundsExpected)
-            notes.Add("PACKAGE CONTRACT: streamed XMA payloads stay external under sounds\\; they are never embedded into the main FF merely to increase fastfile size.");
+            packagePlan.Add(canonicalBase + "\\sounds\\**\\*.xma <- SDNS/XMA streamed audio when needed; only these may stay loose");
+        notes.Add("RECIPE PACKAGE CONTRACT: FF + required load FF + CodXe map.json/preview.dds; SDNS/XMA streamed sounds under sounds\\ when needed. PC IWDs are never Xbox runtime files. No highmip/.pak/BIK requirement inferred from this recipe.");
 
         var blockers = new List<string>();
+        foreach (var error in recipe.Errors)
+            blockers.Add("RECIPE IWD SOURCE ERROR: " + error);
+        blockers.Add("RECIPE STEP 1 PENDING: script/rawfile builder must consume IWD loose-script winners before the final FF is production-ready.");
         if (primaryPath is null)
             blockers.Add("No primary map.ff was identified; canonical Xbox main output cannot be named safely.");
         if (loadCandidates.Count > 1 && selectedLoad is null)
@@ -278,6 +290,11 @@ public static class NormalMapLinkerV2SourceArchive
             IwdFiles = iwdFiles,
             IwdEntries = iwdEntries,
             ExternalSoundsExpected = externalSoundsExpected,
+            RecipeIwdScriptWinners = recipe.ScriptWinners,
+            RecipeIwdScriptCollisions = recipe.ScriptPathCollisions,
+            RecipeIwdPrecedenceJsonFile = recipe.JsonReportFile,
+            RecipeIwdPrecedenceIndexed = recipe.PrecedenceIndexed,
+            RecipeIwdPrecedenceAppliedToXenonPayload = recipe.AppliedToXenonPayload,
             GoldenOracleApplied = golden is not null,
             GoldenOracleName = golden?.Name,
             GoldenMainAssetCount = golden?.MainAssets,
@@ -287,7 +304,8 @@ public static class NormalMapLinkerV2SourceArchive
             PackagePlan = packagePlan,
             Blockers = blockers,
             Notes = notes,
-            Verified = containers.All(x => x.Platform.Equals("PC", StringComparison.OrdinalIgnoreCase)) && primaryPath is not null,
+            Verified = containers.All(x => x.Platform.Equals("PC", StringComparison.OrdinalIgnoreCase)) &&
+                primaryPath is not null && recipe.PrecedenceIndexed,
             TextReportFile = txt,
             JsonReportFile = json
         };
@@ -349,6 +367,8 @@ public static class NormalMapLinkerV2SourceArchive
         sb.AppendLine($"Planned Xbox load FF: {r.LoadOutputFastFile ?? "<none>"}");
         sb.AppendLine($"Primary-graph source roots: {r.PrimaryGraphSourceRoots:N0}; source script strings: {r.PrimaryGraphSourceStrings:N0}");
         sb.AppendLine($"IWD source archives: {r.IwdFiles:N0}; entries={r.IwdEntries:N0}; copied-to-Xbox=False");
+        sb.AppendLine($"Recipe IWD script winners: {r.RecipeIwdScriptWinners:N0}; collisions={r.RecipeIwdScriptCollisions:N0}; indexed={r.RecipeIwdPrecedenceIndexed}; appliedToXenonPayload={r.RecipeIwdPrecedenceAppliedToXenonPayload}");
+        sb.AppendLine($"Recipe IWD source provenance: {r.RecipeIwdPrecedenceJsonFile}");
         sb.AppendLine($"External Xbox sounds expected: {r.ExternalSoundsExpected}");
         sb.AppendLine($"Verified source inventory: {r.Verified}");
         sb.AppendLine();
