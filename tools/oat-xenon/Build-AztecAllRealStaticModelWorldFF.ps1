@@ -29,7 +29,7 @@ $stageProof=Get-Content -LiteralPath $stagingProof -Raw|ConvertFrom-Json
 if([string]$stageProof.status -ne 'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED' -or
    [int]$stageProof.sourceModels -ne 27 -or
    [int]$stageProof.staticDrawsRepresented -ne 1903 -or
-   [int]$stageProof.realOwnedStaticModelTypes + [int]$stageProof.nativeExternalReferenceModelTypes -ne 27 -or
+   ([int]$stageProof.realOwnedStaticModelTypes + [int]$stageProof.nativeExternalReferenceModelTypes) -ne 27 -or
    [int]$stageProof.modelCount -ne (2 + [int]$stageProof.realOwnedStaticModelTypes)){
     throw 'Source model ownership/classified native-reference stage is not complete.'
 }
