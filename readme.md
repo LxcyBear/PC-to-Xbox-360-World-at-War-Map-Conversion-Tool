@@ -1,5 +1,31 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## October 30 — OAT differential: two zero exits, two reproducible block-7 failures
+
+**User Windows differential run (after b1abcbf) PASS: 3/3 PowerShell scripts syntax-checked.** Existing emitted tracked-shell FFs were reused without any source rebuild.
+
+- FRUmansion tracked shell: **24,153B, OAT process exit 0**, tool printed `Dumped weapon "<packed-name@...>"`; previous differential script incorrectly classified this as a `PACKED_WEAPON_NAME` failure by searching for any literal `<packed-name@` in log output. Exit=0 is real; **clean OAT warning/error summary remains unconfirmed**, and fake `packed-name` is not fidelity-correct identity.
+- Tower tracked shell: **61,995B, OAT process exit 0**, with the same informational `Dumped weapon` lines. Same distinction applies.
+- Backrooms tracked shell: **329,515B, exit 1**, real `Zone tried to reference invalid block 7`.
+- Aztec tracked shell: **449,763B, exit 1**, same real invalid-block-7 failure.
+
+**Immediate tool repairs:** `Run-WaWMultiMapOatDifferential.ps1` no longer mistakes informational `Dumped weapon` messages for `ERROR: Failed to open file`; it classifies unconfirmed zero exits separately and prints real OAT finish/error summary lines. It still refuses to label Xbox-hardware success. These edits require Windows validation.
+
+**New fast frontier tool:** `Run-WaWMultiMapRootBisect.ps1` reads the saved multi-map Candidate JSON and selects the existing Backrooms + Aztec tracked-shell FFs, verifies each recorded size/SHA, then calls the already-implemented C# CLI `oat-root-bisect` using the prebuilt DLL and pinned Xenon OAT `--list`. It checks that a zero-root control loads before attempting root-prefix binary search, and reports the first failing XAsset root if isolatable. No maps are recompiled or candidates overwritten. The OAT `--list` loader phase differs from the previous `--output-folder` full-unlink phase; compare outcomes accordingly.
+
+**Windows next: syntax first, then root frontier, then corrected differential recheck for FRUmansion/Tower**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw "Git pull failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "Script syntax preflight failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapRootBisect.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1" -IncludeMaps nazi_zombie_FRUmansion,nazi_zombie_tower
+```
+
+Tool state remains **11/11 source stages, 10/11 structural FF emissions, 0 confirmed OAT-primary passes, 0 hardware approvals**. The two zero process exit codes are highly relevant new evidence but do not prove playable maps.
+
 ## October 30 — Windows PowerShell 5.1 parser hotfix + AST preflight
 
 **Observed:** first `Run-WaWMultiMapOatDifferential.ps1` invocation stopped at parse time, before any FF check, with `InvalidVariableReferenceWithDrive` at lines 56, 65 and 71 (`$mapName:` / `$variant:` directly followed by a colon within interpolated double-quoted strings). This does **not** mean the existing FFs changed or OAT failed.
