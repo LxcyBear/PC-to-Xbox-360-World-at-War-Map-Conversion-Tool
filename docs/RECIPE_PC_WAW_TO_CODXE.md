@@ -47,6 +47,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 Check the matrix for `[MULTIMAP-RECIPE] ... scriptClosureReady=...`, `RECIPE IWD script-closure overrides=N`, emitted FF path/size, and OAT `--list` summary. A script-closure FF may be absent if typed closure cannot build or the index finds no applicable overrides; that is evidence to debug, not a PASS. Full OAT extraction and Xbox hardware testing are separate gates.
 
+## October 30 — real Aztec weapon pointer and original-PC name census
+
+**Windows-confirmed after 35fdb93:** PowerShell 5.1 syntax preflight PASS 5/5; unsigned-pointer self-test PASS. The **Aztec** typed-proof archive has 71 physical WeaponDef proof records from 2 proof files, with 10 synthetic `<packed-name@...>` placeholders. All five printed unresolved pointers decode into **Virtual block 4** with source-specific packed block offsets; this establishes *pointer provenance*, not the pointed-to string value.
+
+Original PC source graph enumerated 3 participating FFs. Native OAT `--list` returned exit 0 for all three. The previous audit sampled 12 arbitrary lines containing `weapon`, and was polluted by `loadedsound, sfx/weapon/...` and `fx, weapon/...`, so these samples could NOT prove a weapon-name mapping.
+
+**New read-only crosswalk (Windows validation pending):** `Run-WaWMultiMapWeaponNameAudit.ps1` now selects **only** exact `weapon, <name>` OAT asset lines and saves the full per-FF weapon-name list. It computes the corresponding proof file using the same source-basename/role naming convention as `LinkerV2ProofEvidence.GetProofPath`, then reports known exact proof names, unresolved proof bodies, OAT-only names, and mismatches per original source FF. It does **not** pair names to packed pointer records automatically (OAT tables may contain alias references and proof bodies are serialized in physical-offset order). All pointer-to-name mappings remain unresolved until virtual-block loader semantics are independently proven.
+
+**Targeted next Windows run (no conversion, no Xbox FF rebuild, read-only original PC OAT listing):**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapWeaponNameAudit.ps1' -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
+Once this produces full per-original-FF real names, implement and prove packed virtual-block name-pointer target resolution instead of copying other weapons or guessing names from index position. Keep 6 proven IWD GSC/CSC overrides and independent OAT `--list` PASS as regression checkpoints.
+
 ## October 30 — packed WeaponDef name-audit UInt32 hotfix
 
 User ran `Run-WaWMultiMapWeaponNameAudit.ps1` after `cf2a3ed`; syntax preflight PASS 5/5. Audit stopped at proof record #3 with `Weapon proof pointer is null or special sentinel at record #3` BEFORE inspecting original PC FFs. This was a **Windows PowerShell 5.1 diagnostic arithmetic bug**, not a demonstrated invalid source pointer. The code compared a `UInt32` pointer against `0xFFFFFFFE` using `-ge`; WinPS 5.1 parses the high-bit hex literal as signed **-2**, making valid high-bit block 4 pointers compare greater than -2.
