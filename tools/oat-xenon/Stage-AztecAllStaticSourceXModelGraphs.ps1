@@ -57,8 +57,8 @@ if([string]$wave.schema -ne 'WaW360.AztecGate8StandaloneXModelWave.v1' -or
    -not [bool]$wave.allStaticModelTypeIdentitiesClassified -or
    [int]$wave.sourceNameTypesClassified -ne 27 -or
    [int]$wave.modelOnlyOatProven -lt 3 -or
-   [int]$wave.modelOnlyOatProven+ [int]$wave.externalNativeReferenceModels -ne 27 -or
-   [int]$wave.modelOnlyOatRepresentedDraws + [int]$wave.externalNativeReferenceDraws -ne 1903 -or
+   ([int]$wave.modelOnlyOatProven + [int]$wave.externalNativeReferenceModels) -ne 27 -or
+   ([int]$wave.modelOnlyOatRepresentedDraws + [int]$wave.externalNativeReferenceDraws) -ne 1903 -or
    @($wave.verifiedModels).Count -ne [int]$wave.modelOnlyOatProven -or
    @($wave.explicitlyVerifiedNativeReferences).Count -ne [int]$wave.externalNativeReferenceModels -or
    [string]$five.status -ne 'AZTEC_GATE8_FIVE_SOURCE_XMODEL_GRAPHS_STAGED' -or
@@ -70,7 +70,7 @@ if([string]$wave.schema -ne 'WaW360.AztecGate8StandaloneXModelWave.v1' -or
    -not [bool]$identity.typeSequenceVerified -or
    [string]$caps.oatRevision -ne '3beaa7c81af517f0c05f2b4612d477ed1541b676' -or
    @($caps.capabilities) -notcontains 't4xenon-xmodel-relocatable-graph-v1'){
-    throw 'All 27 converted source XModels and five historical graphs must pass exact native ownership gates.'
+    throw 'All 27 original-PC static source model names must be classified as owned converted meshes or explicitly proven native external references.'
 }
 $byName=@{}
 foreach($row in @($wave.verifiedModels)){
