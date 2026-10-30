@@ -270,28 +270,64 @@ if($rows.Count -ne $realCount -or $seenName.Count -ne $realCount -or $proofs.Cou
 foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
     $name=[string]$reference.model
     $root=[int]$reference.nativeRoot
-    $match=@($nativeModels|Where-Object {
-        [int]$_.Index -eq $root -and [string]$_.Name -ieq $name
-    })
+    # PC may spell a reference as ',viewmodel_default' while the native
+    # 8509-root identity is the OWNED, UNPREFIXED 'viewmodel_default'.
+    # This is valid only after we independently OAT-prove the same XModel
+    # BODY in a specific Xbox stock base zone (currently common.ff).
+    # Strict native-reference roots still require an EXACT comma name.
     $refClass=[string]$reference.classification
     $stockProven=$refClass -eq 'STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME'
     $nativeProven=$refClass -eq 'XBOX_NATIVE_REFERENCE_NO_OWNED_MESH'
-    $refAliasMatches=$match.Count -eq 1 -and
-        (Norm ([string]$match[0].Name)) -eq (Norm $name)
-    if(-not $name.StartsWith(',') -or -not $refAliasMatches -or
+    $match=@($nativeModels|Where-Object {
+        [int]$_.Index -eq $root -and
+        ($stockProven -and (Norm ([string]$_.Name)) -eq (Norm $name) -or
+         $nativeProven -and [string]$_.Name -ieq $name)
+    })
+    if(-not $name.StartsWith(',') -or
        (-not $nativeProven -and -not $stockProven) -or
+       $match.Count -ne 1 -or
        $seenRoot.Contains($root) -or $seenName.Contains((Norm $name)) -or
        [bool]$reference.runtimeResidencyVerified){
-        throw "Reference-only XModel $name failed exact unique native root identity and provenance checks."
+        throw "XModel source reference $name (#$root) does not have a unique exact-native/stock-body identity proof."
     }
     if($stockProven){
         $zoneList=@($reference.stockBodyZones)
+        $auditPath=[string]$reference.exactOatEvidenceManifest
         if(-not [bool]$reference.stockOatExactBodyMatch -or
            $zoneList.Count -eq 0 -or
            @($zoneList | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -gt 0 -or
-           -not(Test-Path -LiteralPath ([string]$reference.exactOatEvidenceManifest) -PathType Leaf)){
+           -not(Test-Path -LiteralPath $auditPath -PathType Leaf)){
             throw "Stock-resolved source reference $name is missing its exact Xbox base-FF OAT proof."
         }
+        # Re-check the *actual audit evidence*, not merely a boolean
+        # copied into a wave report. Keep the missing patch.ff explicitly
+        # unscanned; a verified common.ff body is enough for name identity.
+        $auditProof=Get-Content -LiteralPath $auditPath -Raw | ConvertFrom-Json
+        $proofRow=@($auditProof.references | Where-Object {
+            [string]$_.pcReferenceName -ieq $name -and
+            @($_.nativeRootIndices).Count -eq 1 -and
+            [int]$_.nativeRootIndices[0] -eq $root -and
+            [bool]$_.exactNativeAliasMatch -and
+            [bool]$_.exactExpectedStockBodyFound -and
+            [bool]$_.foundInIndividuallyVerifiedStockBaseZone
+        })
+        if([string]$auditProof.schema -ne 'WaW360.AztecExpectedLoadedStockXModelReferenceAudit.v1' -or
+           $proofRow.Count -ne 1){
+            throw "The independently OAT-verified base-zone identity evidence for $name is absent/mismatched."
+        }
+        foreach($zone in $zoneList){
+            $verified=@($auditProof.zones | Where-Object {
+                [string]$_.zone -ieq [string]$zone -and
+                [bool]$_.found -and [bool]$_.oatValid
+            })
+            if($verified.Count -ne 1 -or
+               @($proofRow[0].expectedPreloadedStockBodyZones | Where-Object {
+                   [string]$_ -ieq [string]$zone
+               }).Count -ne 1){
+                throw "Model reference $name has no OAT-listed real body in verified Xbox zone $zone."
+            }
+        }
+        Write-Host "[AZTEC-29X] STOCK_REFERENCE_MATCH PC=$name native=$($match[0].Name) root=$root baseZone=$($zoneList -join ',') runtimeResidency=UNPROVEN"
     }
 }
 # Refused source-body synthesis: the PC FF's leading-comma reference
