@@ -13,6 +13,7 @@ $dir = $PSScriptRoot
 $files = @(
     @(Get-ChildItem -LiteralPath $dir -Filter '*WaWMultiMap*.ps1' -File)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-CodXeT4BetaLayout.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Stage-CodXeT4BetaPackage.ps1') -ErrorAction Stop)
 ) | Sort-Object Name
 if ($files.Count -eq 0) {
     throw "No WaW multi-map scripts found in $dir"
