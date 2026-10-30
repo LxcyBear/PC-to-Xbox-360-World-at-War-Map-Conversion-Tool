@@ -1132,6 +1132,7 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"tracked-shell package: {result.ConservativeHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"scriptClosureReady={result.ScriptClosureCandidateReady}; residentMenusRemoved={result.ScriptClosureResidentMenusRemoved:N0}; rawFilesPromoted={result.ScriptClosureRawFilesPromoted:N0}; readBackErrors={result.ScriptClosureReadBackErrors:N0}; wrapperRoundTrip={result.ScriptClosureWrapperRoundTripVerified}");
                 Console.WriteLine($"script-closure package: {result.ScriptClosureHardwarePackageDirectory ?? "<not emitted>"}");
+                Console.WriteLine($"WEAPON ORDINAL A/B (DIAGNOSTIC ONLY): ready={result.WeaponOrderProbeReady}; knownAnchors={result.WeaponOrderProbeKnownNameAnchors}; unverifiedSubstitutions={result.WeaponOrderProbeUnverifiedOrdinalSubstitutions}; FF={result.WeaponOrderProbeOutputFastFile ?? "<not emitted>"}; NEVER DEPLOY");
                 Console.WriteLine($"nativeBlockReady={result.NativeBlockCandidateReady}; readBackErrors={result.NativeBlockReadBackErrors:N0}; wrapperRoundTrip={result.NativeBlockWrapperRoundTripVerified}");
                 Console.WriteLine($"native-block package: {result.NativeBlockHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
