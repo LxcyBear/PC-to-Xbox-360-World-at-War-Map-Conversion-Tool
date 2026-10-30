@@ -6,7 +6,8 @@ param(
     [string]$UnlinkerExe,
     [string]$ReportDirectory,
     [switch]$SkipWorldGfxWorldCheck,
-    [switch]$MinimumLoadSmokeTest
+    [switch]$MinimumLoadSmokeTest,
+    [string]$MainEmitterManifest
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -179,8 +180,43 @@ if($SkipWorldGfxWorldCheck){
     # cannot run the specialized witness. NEVER authorizes hardware tests.
     $worldReason='World check skipped explicitly; hardware approval forbidden.'
 }
+# OAT zero-warning parsing and a real 735-surface root are necessary but
+# NOT sufficient: our existing 5-XModel FF is validation-only with its full
+# DPVS omitted and thousands of source assets represented by identity shells.
+# Read the manifest for the PHYSICAL FINAL main FF before any native approval.
+# This gate is intentionally stricter than an OAT parsing diagnostic.
+$mainEmitterReady=$false
+$mainEmitterReason='Main emitter manifest not provided; no production source-payload closure proof.'
+$mainEmitterSource=''
+if(-not [string]::IsNullOrWhiteSpace($MainEmitterManifest)){
+    $emitterPath=[IO.Path]::GetFullPath($MainEmitterManifest)
+    if(Test-Path -LiteralPath $emitterPath -PathType Leaf){
+        $manifest=Get-Content -LiteralPath $emitterPath -Raw | ConvertFrom-Json
+        $manifestMain=[string]$manifest.OutputFastFile
+        $physicalMatch=$manifestMain -and
+            (Test-Path -LiteralPath $manifestMain -PathType Leaf) -and
+            $fullFF -and
+            ((Get-FileHash -LiteralPath $manifestMain -Algorithm SHA256).Hash -ieq
+             (Get-FileHash -LiteralPath $main -Algorithm SHA256).Hash)
+        $mainEmitterReady=[bool]$physicalMatch -and
+            [bool]$manifest.ValidationPass -and
+            [bool]$manifest.ReadyForHardware -and
+            -not [bool]$manifest.ValidationOnly -and
+            [bool]$manifest.OriginalPcGfxWorldCoreEmitted -and
+            [bool]$manifest.OriginalPcGfxWorldFullDpvsGraphComplete
+        $mainEmitterReason=if($mainEmitterReady){
+            'Physical emitted FF SHA matches and emitter certifies non-validation-only, hardware-ready full world closure.'
+        }else{
+            "Emitter evidence incomplete or copied FF mismatch: shaMatch=$physicalMatch validationOnly=$([bool]$manifest.ValidationOnly) ready=$([bool]$manifest.ReadyForHardware) fullDpvs=$([bool]$manifest.OriginalPcGfxWorldFullDpvsGraphComplete)"
+        }
+        $mainEmitterSource=$emitterPath
+    }else{
+        $mainEmitterReason="Emitter manifest not found: $emitterPath"
+    }
+}
 $complete=$hasSounds -and $metadataPresent -and $fullFF
-$realFfProof=$fullFF -and $worldProof -and -not $SkipWorldGfxWorldCheck
+$realFfProof=$fullFF -and $worldProof -and $mainEmitterReady -and
+    -not $SkipWorldGfxWorldCheck
 $fullPackageApproval=$complete -and $realFfProof
 $minimalLoadApproval=[bool]$MinimumLoadSmokeTest -and $realFfProof
 $pass=$fullPackageApproval -or $minimalLoadApproval
@@ -206,6 +242,9 @@ $result=[ordered]@{
     realMainGfxWorldAnd735MaterialReferencesOatPass=$worldProof
     realMainGfxWorldAuditResult=$worldReason
     realMainGfxWorldAuditFile=$worldEvidence
+    physicalMainEmitterManifest=$mainEmitterSource
+    actualEmitterProductionReady=$mainEmitterReady
+    actualEmitterProductionReadinessReason=$mainEmitterReason
     completeCodxePackage=$complete
     readyForFirstControlledHardwareSmokeTest=$pass
     runtimeGameplayGuaranteed=$false
@@ -220,11 +259,12 @@ $result=[ordered]@{
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $reportFile -Encoding UTF8
 Write-Host "[AZTEC-HARDWARE-GATE] soundsPresent=$hasSounds streamedFiles=$(@($soundFiles).Count) map.json=$($metadata[0].present) preview.dds=$($metadata[1].present)"
 Write-Host "[AZTEC-HARDWARE-GATE] MAIN_FF_SOURCE_GFXWORLD_OAT_PASS=$worldProof reason=$worldReason"
+Write-Host "[AZTEC-HARDWARE-GATE] PHYSICAL_MAIN_EMITTER_PRODUCTION_READY=$mainEmitterReady reason=$mainEmitterReason"
 Write-Host "[AZTEC-HARDWARE-GATE] BOTH_FINAL_FFS_OAT_PASS=$fullFF COMPLETE_CODEXE_PACKAGE=$complete MINIMAL_LOAD_ONLY=$MinimumLoadSmokeTest"
 Write-Host "[AZTEC-HARDWARE-GATE] status=$($result.status)"
 Write-Host "[AZTEC-HARDWARE-GATE] report=$reportFile"
 if(-not $pass){
-    throw 'Native test BLOCKED: both final FFs must OAT load, and the main FF must pass the real 735-surface linked GfxWorld witness. In full-package mode, map.json preview.dds and sounds/ are additionally required. See report.'
+    throw 'Native test BLOCKED: both FFs must OAT load, the real linked GfxWorld must pass, and the physical main FF must prove non-validation-only full DPVS/hardware readiness in -MainEmitterManifest. Default complete-package mode also requires map.json preview.dds sounds/. See report.'
 }
 if($fullPackageApproval){
     Write-Host '[AZTEC-HARDWARE-GATE] COMPLETE PACKAGE: FIRST CONTROLLED NATIVE XBOX TEST APPROVED.'
