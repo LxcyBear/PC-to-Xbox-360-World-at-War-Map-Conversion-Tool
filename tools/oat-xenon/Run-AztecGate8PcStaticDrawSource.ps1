@@ -1,15 +1,23 @@
 [CmdletBinding()]
-param([switch]$BuildDumper)
+param(
+    [switch]$BuildDumper,
+    [switch]$Use28ModelWorld
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
 # Gate8C PC-source placement witness. Source PC x86 OAT has fixed-up typed
 # draw structures; NEVER re-export raw in-process XModel* pointer bytes.
-# NOT a Xenon draw serializer, and does not mutate the verified five-XModel FF.
+# NOT a Xenon draw serializer. Does not mutate either the prior five-
+# model baseline OR the current 28-XModel/8509-root OAT-verified FF.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $n=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $original=Join-Path $n 'pc_gfxworld_gate8_child_source_corpus\aztec_pc_gate8_child_source_corpus.json'
-$five=Join-Path $n 'pc_gate8_5x_ff\aztec_pc_world_core_integrated_oat_run.json'
+$worldProof=Join-Path $n $(if($Use28ModelWorld){
+    'pc_gate8_29x_ff\aztec_pc_world_core_integrated_oat_run.json'
+}else{
+    'pc_gate8_5x_ff\aztec_pc_world_core_integrated_oat_run.json'
+})
 $models=Join-Path $n 'pc_gate8_static_model_dependency_audit\aztec_gate8_static_draw_xmodel_dependencies.json'
 $build=Join-Path $PSScriptRoot 'Build-OatXenonGraphDumper.ps1'
 $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
@@ -18,12 +26,27 @@ $work=Join-Path $n 'pc_gate8_static_draw_source'
 $log=Join-Path $work 'original_pc_oat_static_draw_source.log'
 $recordsOut=Join-Path $work 'aztec_1903_original_pc_static_draws.json'
 $report=Join-Path $work 'aztec_gate8_pc_static_draw_source_report.json'
-foreach($p in @($original,$five,$models,$build)){
+foreach($p in @($original,$worldProof,$models,$build)){
     if(-not(Test-Path -LiteralPath $p -PathType Leaf)){throw "Gate8C verified source prerequisite missing: $p"}
 }
 $c=Get-Content -LiteralPath $original -Raw | ConvertFrom-Json
-$f=Get-Content -LiteralPath $five -Raw | ConvertFrom-Json
+$f=Get-Content -LiteralPath $worldProof -Raw | ConvertFrom-Json
 $a=Get-Content -LiteralPath $models -Raw | ConvertFrom-Json
+$expectedWorldStatus=if($Use28ModelWorld){
+    'AZTEC_GATE8_ALL_CLASSIFIED_STATIC_XMODEL_TYPES_8509_ROOT_WORLD_OAT_PASS'
+}else{
+    'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS'
+}
+$expectedBodies=if($Use28ModelWorld){28}else{5}
+$worldModeVerified=if($Use28ModelWorld){
+    [bool]$f.all27StaticSourceXModelProbe -and
+    [int]$f.sourceOwnedStaticModelTypes -eq 26 -and
+    [int]$f.verifiedNativeExternalModelReferences -eq 1 -and
+    [int]$f.unresolvedNativeSourceModelReferences -eq 0 -and
+    [int]$f.realPcGfxSurfaceCount -eq 735
+}else{
+    [bool]$f.fiveSourceOwnedXModelProbe
+}
 if([string]$c.schema -ne 'WaW360.AztecGate8PcTypedChildCorpus.v1' -or
    [string]$c.status -ne 'AZTEC_PC_GATE8_TYPED_PLANES_NODES_LAYER_SOURCE_PASS' -or
    [int]$c.staticModelDrawCount -ne 1903 -or
@@ -31,16 +54,16 @@ if([string]$c.schema -ne 'WaW360.AztecGate8PcTypedChildCorpus.v1' -or
    [int]$c.distinctStaticModelNames -ne 27 -or
    [int]$c.missingStaticModelNames -ne 0 -or
    [string]$f.schema -ne 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -or
-   [string]$f.status -ne 'AZTEC_GATE8_FIVE_REAL_XMODELS_8509_ROOT_WORLD_OAT_PASS' -or
+   [string]$f.status -ne $expectedWorldStatus -or
    -not [bool]$f.OatPass -or
-   [int]$f.realXModelRootsInCurrentFf -ne 5 -or
-   -not [bool]$f.fiveSourceOwnedXModelProbe -or
+   [int]$f.realXModelRootsInCurrentFf -ne $expectedBodies -or
+   -not $worldModeVerified -or
    [bool]$f.hardwareReady -or
    -not(Test-Path -LiteralPath ([string]$f.outputFastFile) -PathType Leaf) -or
    [string]$a.schema -ne 'WaW360.AztecGate8StaticDrawModelDependencyAudit.v1' -or
    [int]$a.sourceDrawInstances -ne 1903 -or
    [int]$a.distinctSourceStaticModelNames -ne 27){
-    throw 'Gate8C requires unchanged original 1903 PC draw name corpus and proven five-XModel OAT-loaded world.'
+    throw "Gate8C requires original-PC 1903 typed draw names and real OAT-validated $expectedBodies-XModel 8509-root world; source-only, no FF mutation."
 }
 $pc=[string]$c.originalPcFF
 if(-not(Test-Path -LiteralPath $pc -PathType Leaf) -or
@@ -70,6 +93,7 @@ try{
     Write-Host '[AZTEC-GATE8-DRAW] ================================================'
     Write-Host '[AZTEC-GATE8-DRAW] ORIGINAL PC 1903 STATIC DRAW TRANSFORM/METADATA SOURCE'
     Write-Host '[AZTEC-GATE8-DRAW] Export exact typed fields; never copy PC host pointers.'
+    Write-Host "[AZTEC-GATE8-DRAW] Verified current Xbox world identity: OAT PASS with $expectedBodies real XModel bodies; main FF untouched."
     $prior=$ErrorActionPreference
     try{
         $ErrorActionPreference='Continue'
@@ -167,7 +191,11 @@ try{
         typedDrawSha256=$sha
         sourceDrawCount=1903
         distinctSourceModels=27
-        verifiedFiveWorldFfReport=$five
+        verifiedFiveWorldFfReport=if($Use28ModelWorld){''}else{$worldProof}
+        verifiedSourceWorldFfReport=$worldProof
+        verifiedSourceWorldModelBodies=$expectedBodies
+        verifiedSourceWorldHasAll27StaticModelIdentities=[bool]$Use28ModelWorld
+        sourceDrawOccurrencesCoveredByRealConvertedModelTypes=if($Use28ModelWorld){1902}else{1572}
         fiveRealModelBodyDrawsRepresented=1572
         convertedXenonDrawRecords=0
         pcModelPointerBytesCopied=$false
@@ -179,7 +207,7 @@ try{
     $result | ConvertTo-Json -Depth 7 | Set-Content -LiteralPath $report -Encoding UTF8
     Write-Host "[AZTEC-GATE8-DRAW] PASS: $($result.status)"
     Write-Host '[AZTEC-GATE8-DRAW] originalPCDraws=1903 distinctModels=27'
-    Write-Host '[AZTEC-GATE8-DRAW] verified5RealXModelSourceOccurrences=1572'
+    Write-Host "[AZTEC-GATE8-DRAW] PC model names cross-checked against $expectedBodies-body OAT-valid world; real source types currently represent $(if($Use28ModelWorld){1902}else{1572}) source draw occurrences."
     Write-Host '[AZTEC-GATE8-DRAW] source fields: full PC float axes, placement, lighting metadata, flags, LOD'
     Write-Host "[AZTEC-GATE8-DRAW] SHA256=$sha"
     Write-Host "[AZTEC-GATE8-DRAW] report=$report"
