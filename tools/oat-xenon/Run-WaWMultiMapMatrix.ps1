@@ -185,7 +185,7 @@ foreach($m in $maps){
     $jakeMatch=$null
     if($jakeMatches.Count -eq 1){
         $jakeMatch=$jakeMatches[0]
-        Write-Host "[MULTIMAP]   Jake historical reference: $($jakeMatch.jakeEstimatedZoneMemoryMiB) MiB ESTIMATE, $($jakeMatch.jakeHeuristicLoadProbabilityPct)% HEURISTIC, NOT Xbox verification."
+        Write-Host "[MULTIMAP]   Jake historical reference: $($jakeMatch.jakeReportedZoneMemoryMB) MB (Jake's reported unit) ESTIMATE, $($jakeMatch.jakeHeuristicLoadProbabilityPct)% HEURISTIC, NOT Xbox verification."
     }
     $folder=Join-Path $run $m.id
     $output=Join-Path $folder 'conversion'
