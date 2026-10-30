@@ -47,6 +47,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 Check the matrix for `[MULTIMAP-RECIPE] ... scriptClosureReady=...`, `RECIPE IWD script-closure overrides=N`, emitted FF path/size, and OAT `--list` summary. A script-closure FF may be absent if typed closure cannot build or the index finds no applicable overrides; that is evidence to debug, not a PASS. Full OAT extraction and Xbox hardware testing are separate gates.
 
+## Windows verification — actual Aztec IWD script payload conversion (October 30)
+
+User ran commit `afbffb5` on Windows 10 with **one-map Candidate** `nazi_zombie_aztec_V2.2` after recipe Source PASS:
+
+- `linker-v2-main-structural => PASS (0)`.
+- `RECIPE IWD script-closure overrides=6`: six preexisting FF RawFile roots were rebuilt using the authoritative winning IWD script bytes (3 distinct loose GSC/CSC source script paths were recorded in preceding source inventory). This is an **actual content change**, not a shell-size adjustment.
+- `scriptClosureReady=True`; `residentMenusRemoved=0`; `rawFilesPromoted=0`; `readBackErrors=0`; `wrapperRoundTrip=True`.
+- Script-closure `.ff` **449,870 bytes**, while the tracked-shell control was **449,763 bytes**. Size delta **+107 bytes**, not a quality score.
+- Independent native Xenon OAT `--list` of the script-closure `.ff`: **exit 0**, `Finished with 0 warnings, 0 errors`.
+- The primary proof-heavy FF remained **6,205,444 bytes**, full OAT extraction still rejected real unresolved `weapons/<packed-name@...>` labels. **No playable Xbox output approved**.
+
+**Regression retained:** Linker V2 `VerifyReadBack` already compares each emitted payload byte-for-byte against the contiguous rebuilt zone, then the Xbox zlib wrapper round-trips. Reuse those checks; do not add weaker duplicate checks.
+
+**Next priority (read-only, no extra build):** inspect unresolved original-PC WeaponDef internal-name pointers with `Run-WaWMultiMapWeaponNameAudit.ps1 -IncludeMaps nazi_zombie_aztec_V2.2`. The audit now decodes the packed T4 pointer's block and offset (3 block bits, 29 offset bits, +1 bias), while marking the real string name **unresolved** until the virtual-block target is traced. Do NOT replace synthetic labels with arbitrary filenames. This added decoder has not yet passed Windows syntax/runtime testing.
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapWeaponNameAudit.ps1' -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
 ## Focused Windows preflight (no FF rebuild)
 
 ```powershell
