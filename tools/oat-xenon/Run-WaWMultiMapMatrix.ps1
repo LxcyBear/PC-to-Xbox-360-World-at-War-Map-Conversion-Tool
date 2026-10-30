@@ -237,6 +237,13 @@ foreach($m in $maps){
         Write-Host "[MULTIMAP]   Jake historical reference: $($jakeMatch.jakeReportedZoneMemoryMB) MB (Jake's reported unit) ESTIMATE, $($jakeMatch.jakeHeuristicLoadProbabilityPct)% HEURISTIC, NOT Xbox verification."
     }
     $folder=Join-Path $run $m.id
+    # Candidate payloads can live under a SHORT TEMP root, but ALL
+    # process stdout/stderr, first-exception logs, and report metadata
+    # still target this permanent per-map folder. Create it FIRST.
+    New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
+    if(-not (Test-Path -LiteralPath $folder -PathType Container)){
+        throw "Per-map report directory could not be created: $folder"
+    }
     $output=Join-Path $folder 'conversion'
     if($Mode -eq 'Candidate'){
         # C# V2 emitter appends map-name/hardware_test_* folders. The
@@ -321,6 +328,7 @@ foreach($m in $maps){
                 }
             }
             $log=Join-Path $folder ($step+'.log')
+            Write-Host "[MULTIMAP-STAGE] START $($m.name): $step | log=$log"
             $exit=ExecLog -ex 'dotnet' -arguments @($dll,$step,$m.root,$m.name,$output) -log $log
             $ok=($exit -eq 0)
             $events.Add([ordered]@{step=$step;exit=$exit;pass=$ok;log=$log})
@@ -425,16 +433,40 @@ foreach($m in $maps){
         }
     }
     } catch {
-        $errorText=[string]$_
+        # Print the ORIGINAL exception first. Log failures must never
+        # replace or conceal the actual converter/runner error.
+        $caught=$_
+        $errorText=[string]$caught
         $status='BATCH_MAP_EXCEPTION'
         $errLog=Join-Path $folder 'unexpected_map_failure.log'
-        [IO.File]::WriteAllText($errLog,($errorText+[Environment]::NewLine+$_.ScriptStackTrace),[Text.UTF8Encoding]::new($false))
+        Write-Host "[MULTIMAP] MAP ERROR: $($m.name) => $errorText"
+        Write-Host "[MULTIMAP] ERROR LOCATION: $($caught.InvocationInfo.PositionMessage)"
+        Write-Host "[MULTIMAP] ERROR STACK: $($caught.ScriptStackTrace)"
+        $details=$errorText+[Environment]::NewLine+
+            $caught.InvocationInfo.PositionMessage+[Environment]::NewLine+
+            $caught.ScriptStackTrace
+        try {
+            New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
+            [IO.File]::WriteAllText($errLog,$details,[Text.UTF8Encoding]::new($false))
+            Write-Host "[MULTIMAP] First-error log written: $errLog"
+        } catch {
+            Write-Host "[MULTIMAP] WARNING: unable to write first-error log: $($_.Exception.Message)"
+            # Fall back to a short durable output-root path. Original error
+            # remains printed above even if this fallback also fails.
+            try {
+                $fallback=Join-Path $OutputRoot ('map_error_'+(SafeName $m.name)+'.log')
+                [IO.File]::WriteAllText($fallback,$details,[Text.UTF8Encoding]::new($false))
+                $errLog=$fallback
+            } catch {
+                Write-Host "[MULTIMAP] WARNING: fallback error log failed: $($_.Exception.Message)"
+                $errLog=''
+            }
+        }
         $events.Add([ordered]@{step='BATCH_MAP_EXCEPTION';exit=-1;pass=$false;log=$errLog})
-        $key=Fault $errLog
+        $key='MAP_EXCEPTION'
         if(-not $failures.ContainsKey($key)){$failures[$key]=0}
         $failures[$key]++
-        Write-Host "[MULTIMAP] MAP ERROR: $($m.name) => $($errorText)"
-        Write-Host "[MULTIMAP] Continuing next map; exception log=$errLog"
+        Write-Host "[MULTIMAP] Continuing next map."
     }
     # Track EACH real candidate FF size across builds, including OAT failures.
     # Separate from the OAT-verified history: a larger FF is not success.
