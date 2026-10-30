@@ -1719,6 +1719,32 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Verified: {result.VerifiedByteForByte}");
                 return 0;
             }
+            case "scan-maps-json":
+            {
+                // Machine-readable multi-map discovery contract. No conversion,
+                // no expensive PC asset dump, and no mutation of source maps.
+                // The runner can stage each map under its own output directory
+                // while using exactly the existing MapDiscovery rules.
+                var root = args.Length >= 2 ? args[1] : MapDiscovery.DefaultPcMapsFolder;
+                var maps = MapDiscovery.DiscoverSourceFolder(root)
+                    .Select(map => new
+                    {
+                        name = map.Name,
+                        profile = map.Profile,
+                        signals = map.ProfileSignals,
+                        mainFastFile = map.MapFastFile,
+                        modFastFile = map.ModFastFile,
+                        patchFastFile = map.PatchFastFile,
+                        iwdCount = map.IwdCount,
+                        sourceFolders = map.SourceFolders,
+                        hasMainFastFile = map.MapFastFile is not null
+                    })
+                    .OrderBy(map => map.name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+                    maps, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                return 0;
+            }
             case "scan-maps":
             {
                 var root = args.Length >= 2 ? args[1] : MapDiscovery.DefaultPcMapsFolder;
