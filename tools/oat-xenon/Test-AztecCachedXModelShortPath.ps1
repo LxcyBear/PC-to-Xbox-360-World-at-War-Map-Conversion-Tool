@@ -96,8 +96,18 @@ try{
         throw "OAT must emit exactly one actual source-owned XModel graph, got $($g.Count). Log=$log"
     }
     $graph=Get-Content -LiteralPath $g[0].FullName -Raw | ConvertFrom-Json
+    # Keep the exact same canonical-name rule as the real graph corpus
+    # loader: external marker and optional '_wj' suffix are not new meshes.
+    $canonicalActual=([string]$graph.name).Trim().Replace('\','/').TrimStart(',')
+    $canonicalExpected=([string]$ModelName).Trim().Replace('\','/').TrimStart(',')
+    if($canonicalActual.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){
+        $canonicalActual=$canonicalActual.Substring(0,$canonicalActual.Length-3)
+    }
+    if($canonicalExpected.EndsWith('_wj',[StringComparison]::OrdinalIgnoreCase)){
+        $canonicalExpected=$canonicalExpected.Substring(0,$canonicalExpected.Length-3)
+    }
     if([string]$graph.format -ne 'WaW360.T4Xenon.XModelRelocatableGraph.v1' -or
-       [string]$graph.name -ine $ModelName -or
+       $canonicalActual -ine $canonicalExpected -or
        [int]$graph.abi.xmodel -ne 212 -or
        [int]$graph.unsupported.count -ne 0 -or
        [int]$graph.reusable.aliasCount -ne 0){
