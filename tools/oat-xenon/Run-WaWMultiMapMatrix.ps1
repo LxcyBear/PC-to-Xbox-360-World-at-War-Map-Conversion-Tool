@@ -339,7 +339,12 @@ foreach($m in $maps){
                     $stamp="$($f.Length)/$($f.LastWriteTimeUtc.Ticks)"
                     if(-not $prior.ContainsKey($f.FullName) -or $prior[$f.FullName] -ne $stamp){$newFfs.Add($f.FullName)}
                 }
-                if($newFfs.Count -eq 0){$status='NO_NEW_FF_EMITTED';break}
+                if($newFfs.Count -eq 0){
+                    $status='NO_NEW_FF_EMITTED'
+                    if(-not $failures.ContainsKey($status)){$failures[$status]=0}
+                    $failures[$status]++
+                    break
+                }
                 $emittedFfCount=$newFfs.Count
                 foreach($path in $newFfs){
                     $file=Get-Item -LiteralPath $path
@@ -355,7 +360,12 @@ foreach($m in $maps){
                 if(-not(Test-Path -LiteralPath $oat)){
                     $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
                 }
-                if(-not(Test-Path -LiteralPath $oat)){ $status='OAT_NOT_INSTALLED';break }
+                if(-not(Test-Path -LiteralPath $oat)){
+                    $status='OAT_NOT_INSTALLED'
+                    if(-not $failures.ContainsKey($status)){$failures[$status]=0}
+                    $failures[$status]++
+                    break
+                }
                 # Generic V2 can emit five A/B FF variants. OAT-check
                 # only the main (proof-heavy) FF per map by default:
                 # 11 OAT checks instead of up to 55. Use -OatVariants All
@@ -367,6 +377,8 @@ foreach($m in $maps){
                 })
                 if($oatQueue.Count -eq 0){
                     $status='NO_PRIMARY_FF_FOR_OAT'
+                    if(-not $failures.ContainsKey($status)){$failures[$status]=0}
+                    $failures[$status]++
                     Write-Host "[MULTIMAP-OAT] No primary proof-heavy FF emitted for $($m.name). Other variants remain UNVERIFIED."
                     break
                 }
@@ -397,7 +409,15 @@ foreach($m in $maps){
                         })
                         Write-Host "[MULTIMAP]   OAT $ord/$($oatQueue.Count) $([IO.Path]::GetFileName((Split-Path -Path $ff -Parent))): $(if($pass){'PASS - SCRATCH'}else{'FAIL'})"
                         if($pass){$oatPasses++;$oatBytes+=[int64](Get-Item $ff).Length}
-                        else{$passAll=$false}
+                        else{
+                            $passAll=$false
+                            $fault='OAT_'+(Fault $oatLog)
+                            if(-not $failures.ContainsKey($fault)){$failures[$fault]=0}
+                            $failures[$fault]++
+                            Get-Content -LiteralPath $oatLog -Tail 8 | ForEach-Object {
+                                Write-Host "[MULTIMAP-OAT-FAIL] $_"
+                            }
+                        }
                     }finally{Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue}
                 }
                 $status=if($passAll){'OAT_PASS_DIAGNOSTIC_ONLY'}else{'OAT_REJECTED_NO_XBOX'}
