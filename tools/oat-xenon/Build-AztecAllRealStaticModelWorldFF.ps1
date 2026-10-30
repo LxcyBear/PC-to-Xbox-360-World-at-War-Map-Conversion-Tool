@@ -31,7 +31,7 @@ function Show-BuildError([string]$log,[string]$step,[int]$exitCode){
         $matches=@($all | Where-Object {
             $_ -match '(?i)(?:^|\]\s*)(?:ERROR\s*:|FATAL\s*:|throw\s*:)' -or
             $_ -match '(?i)(?:InvalidDataException|ParserError|PropertyNotFound|at\s+.+\.ps1:\d+)' -or
-            $_ -match '(?i)(?:Source\s+\S+\s+Xenon\s+graph|OAT.*(?:failed|blocked)|native root.+mismatch)'
+            $_ -match '(?i)(?:Source\s+\S+\s+Xenon\s+graph|OAT.*(?:failed|blocked)|native root.+mismatch|reference-only XModel|source reference.*identity|STOCK_REFERENCE_MATCH)'
         })
         foreach($line in @($matches | Select-Object -First 12)){
             Write-Host "[AZTEC-REAL-FF] FIRST_FAILURE $line"
