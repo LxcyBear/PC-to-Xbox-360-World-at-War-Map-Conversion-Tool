@@ -1926,40 +1926,36 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             if (!File.Exists(p.Archive))
                 throw new FileNotFoundException("Typed-closure IWD archive disappeared.", p.Archive);
 
-            byte[] sourceBytes;
-            using (var zip = ZipFile.OpenRead(p.Archive))
-            {
-                var entry = zip.Entries.FirstOrDefault(x =>
-                    x.FullName.Replace('\\', '/').Equals(p.Entry.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
-                if (entry is null)
-                    throw new InvalidDataException($"IWD RawFile promotion entry disappeared: {Path.GetFileName(p.Archive)}::{p.Entry}");
-                await using var stream = entry.Open();
-                using var ms = new MemoryStream(checked((int)Math.Min(entry.Length + 1L, int.MaxValue)));
-                await stream.CopyToAsync(ms, ct);
-                sourceBytes = ms.ToArray();
-            }
-
+            // Promoted missing RawFile is also subject to IWD precedence.
+            // If the typed-closure reference came from an earlier IWD,
+            // replace its source with the winning archive's exact entry.
             var name = p.Name.Replace('\\', '/').TrimStart('/');
+            var winner = looseWinners.GetValueOrDefault(name);
+            var authoritativeArchive = winner?.ArchivePath ?? p.Archive;
+            var authoritativeEntry = winner?.VirtualPath ?? p.Entry;
+            var sourceBytes = await ReadRecipeIwdEntryAsync(
+                authoritativeArchive, authoritativeEntry, ct);
+
             var payload = BuildRawFileOwned(name, sourceBytes);
             var root = new LinkerV2CanonicalRoot(
                 nextOrdinal++,
                 "iwd",
-                p.Archive,
+                authoritativeArchive,
                 -1,
                 "rawfile",
                 "rawfile",
                 T4XboxAssetTypeMap.GetXboxTypeId("rawfile"),
                 T4AssetReferenceKind.InlineShared,
                 T4ZonePointer.Insert,
-                $"iwd|{Path.GetFileName(p.Archive)}|{p.Entry}|rawfile",
-                "HARDWARE_DIAGNOSTIC_TYPED_IWD_RAWFILE_PROMOTION");
+                $"iwd|{Path.GetFileName(authoritativeArchive)}|{authoritativeEntry}|rawfile",
+                "HARDWARE_DIAGNOSTIC_TYPED_IWD_RAWFILE_PROMOTION_RECIPE_WINNER");
             keptRoots.Add(root);
             keptPayloads.Add(new StructuralPayload(
                 "rawfile",
                 name,
                 payload,
                 false,
-                $"script-closure hardware diagnostic: exact IWD RawFile bytes promoted from {Path.GetFileName(p.Archive)}::{p.Entry}"));
+                $"script-closure hardware diagnostic: exact IWD RawFile bytes promoted from {Path.GetFileName(authoritativeArchive)}::{authoritativeEntry}"));
             promoted++;
         }
 
@@ -1973,7 +1969,27 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ordered.Select(x => x.root).ToList(),
             ordered.Select(x => x.payload).ToList(),
             removed,
-            promoted);
+            promoted,
+            overridden);
+    }
+
+    private static async Task<byte[]> ReadRecipeIwdEntryAsync(
+        string archivePath, string virtualPath, CancellationToken ct)
+    {
+        if (!File.Exists(archivePath))
+            throw new FileNotFoundException("Recipe IWD archive disappeared.", archivePath);
+        using var zip = ZipFile.OpenRead(archivePath);
+        var entry = zip.Entries.FirstOrDefault(x =>
+            x.FullName.Replace('\\', '/').Equals(
+                virtualPath.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase));
+        if (entry is null)
+            throw new InvalidDataException($"Recipe IWD entry disappeared: {Path.GetFileName(archivePath)}::{virtualPath}");
+        if (entry.Length > int.MaxValue - 1L)
+            throw new InvalidDataException($"IWD RawFile is too large: {virtualPath}");
+        await using var stream = entry.Open();
+        using var ms = new MemoryStream(checked((int)entry.Length + 1));
+        await stream.CopyToAsync(ms, ct);
+        return ms.ToArray();
     }
 
     private static byte[] BuildRawFileOwned(string name, ReadOnlySpan<byte> sourceBytes)
