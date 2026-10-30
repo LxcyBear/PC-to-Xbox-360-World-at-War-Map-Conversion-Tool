@@ -9,6 +9,7 @@ $auditPath=Join-Path $n 'pc_gate8_static_model_dependency_audit\aztec_gate8_stat
 $firstPath=Join-Path $n 'pc_gate8_first_static_xmodel\aztec_first_static_draw_xmodel_canary.json'
 $identityPath=Join-Path $n 'main_native_closure\native_identity\nazi_zombie_aztec_native_identity_manifest.json'
 $frontPath=Join-Path $n 'pc_model_world_source_frontier\aztec_pc_model_world_source_frontier.json'
+$stockProofPath=Join-Path $n 'pc_gate8_runtime_stock_xmodel_reference_audit\aztec_runtime_stock_xmodel_reference_audit.json'
 $script=Join-Path $PSScriptRoot 'Run-AztecGate8FirstStaticDrawXModelCanary.ps1'
 $out=Join-Path $n 'pc_gate8_static_model_wave'
 $report=Join-Path $out 'aztec_gate8_static_model_wave.json'
@@ -128,6 +129,23 @@ $converted=0
 $blocked=''
 $referenced=New-Object 'System.Collections.Generic.List[object]'
 $unresolved=New-Object 'System.Collections.Generic.List[object]'
+# Optional separately OAT-verified retail stock body evidence. The stock
+# audit must be run against the actual Xbox base files; never infer runtime
+# residency from 8509 root names or a matching unrelated campaign FF.
+$stockProof=$null
+if(Test-Path -LiteralPath $stockProofPath -PathType Leaf){
+    $candidate=Get-Content -LiteralPath $stockProofPath -Raw | ConvertFrom-Json
+    if([string]$candidate.schema -eq 'WaW360.AztecExpectedLoadedStockXModelReferenceAudit.v1' -and
+       [bool]$candidate.allExpectedLoadedZonesOatListed -and
+       @($candidate.references).Count -eq [int]$candidate.targetSourceReferences -and
+       @($candidate.zones).Count -eq 3 -and
+       @($candidate.zones | Where-Object {-not [bool]$_.oatValid}).Count -eq 0){
+        $stockProof=$candidate
+        Write-Host "[AZTEC-GATE8-XMODEL-WAVE] Independent retail stock reference audit loaded: $stockProofPath"
+    }else{
+        Write-Host '[AZTEC-GATE8-XMODEL-WAVE] Retail stock audit incomplete; refusing its reference fallback. Owned model conversion unaffected.'
+    }
+}
 function Resolve-ExplicitReference($row){
     $name=[string]$row.pcModelName
     if(-not $name.StartsWith(',',[StringComparison]::Ordinal)){return $null}
@@ -146,6 +164,32 @@ function Resolve-ExplicitReference($row){
         [bool]$_.NativeReference
     })
     if($roots.Count -ne 1 -or $bindings.Count -ne 1){
+        if($null -ne $stockProof){
+            $stockRows=@($stockProof.references | Where-Object {
+                [string]$_.pcReferenceName -ieq $name -and
+                [int]@($_.nativeRootIndices).Count -eq 1 -and
+                [int]$_.nativeRootIndices[0] -eq $rootIndex -and
+                [bool]$_.exactNativeAliasMatch -and
+                [bool]$_.exactExpectedStockBodyFound
+            })
+            if($stockRows.Count -eq 1){
+                $bodyZones=@($stockRows[0].expectedPreloadedStockBodyZones)
+                if($bodyZones.Count -gt 0 -and
+                   @($bodyZones | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -eq 0){
+                    Write-Host "[AZTEC-GATE8-XMODEL-WAVE] PROVEN OAT STOCK BASE XMODEL BODY: $name -> $($bodyZones -join ',')"
+                    return [pscustomobject]@{
+                        model=$name
+                        draws=[int]$row.occurrences
+                        nativeRoot=$rootIndex
+                        classification='STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME'
+                        stockOatExactBodyMatch=$true
+                        stockBodyZones=$bodyZones
+                        exactOatEvidenceManifest=$stockProofPath
+                        runtimeResidencyVerified=$false
+                    }
+                }
+            }
+        }
         # The PC world can name a comma-prefixed reference while the
         # corresponding native identity is an OWNED root, an unprefixed
         # name or a different alias. Do not infer stock runtime residency
