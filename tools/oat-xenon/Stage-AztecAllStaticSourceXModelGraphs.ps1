@@ -180,6 +180,200 @@ for($j=3;$j -lt @($wave.verifiedModels).Count;$j++){
     if($temp.Length -gt 115){throw "Native OAT temporary path too long: $temp"}
     New-Item -ItemType Directory -Path $temp -Force|Out-Null
     try{
+        # IMPORTANT Windows MAX_PATH fix: the preserved per-model original
+        # FF can live in a 260+ character OneDrive path which PowerShell
+        # resolves and hashes but the x86 OAT Unlinker cannot fopen().
+        # NEVER pass the long persisted path directly to native OAT.
+        # Use only SHA-proven bytes copied to a SHORT temporary path.
+        $persistentSource=[IO.Path]::GetFullPath([string]$w.ff)
+        $shortInput=Join-Path $temp 'source.ff'
+        $expectedSourceSha=[string]$w.sha256
+        if($expectedSourceSha -notmatch '^[0-9a-fA-F]{64}
+        try{
+            $ErrorActionPreference='Continue'
+            & $oat '--no-color' '--include-assets' 'xmodel' '--model-format' 'gltf' '--output-folder' $temp $shortInput 2>&1 |
+                ForEach-Object {[string]$_}|Set-Content -LiteralPath $log -Encoding UTF8
+            $exit=[int]$LASTEXITCODE
+        }finally{$ErrorActionPreference=$prior}
+        # A standalone model FF has already passed OAT and is SHA-pinned.
+        # This separate Unlinker call must EXIT 0 and physically emit exactly
+        # one structurally valid, source-named relocatable Xenon graph.
+        # OAT's console summary varies by build / stdout prefix. Never
+        # classify a missing exact summary line as an XModel decoding failure.
+        $logLines=@(Get-Content -LiteralPath $log)
+        $errorLines=@($logLines | Where-Object {
+            $_ -match '(?i)(?:^|\]\s*|\s)(?:ERROR\s*:|FATAL\s*:|fatal error\b|Unhandled exception\b)'
+        })
+        $summaries=@($logLines | Where-Object {
+            $_ -match '(?i)Finished with\s+\d+\s+warnings?\s*,\s*\d+\s+errors?'
+        })
+        if($exit -ne 0 -or $errorLines.Count -gt 0){
+            # Important: emit the REAL raw OAT error, not just errorLines=1.
+            # Never silently ignore an OAT error when exit=0, and do NOT
+            # rerun 26 already-proven PC model conversions to diagnose it.
+            foreach($line in @($errorLines | Select-Object -First 10)){
+                Write-Host "[AZTEC-29X] EXACT_OAT_ERROR model=$key : $line"
+            }
+            $graphProbe=Join-Path $temp 'xenon_xmodel_graphs'
+            $graphCount=0
+            if(Test-Path -LiteralPath $graphProbe -PathType Container){
+                $graphCount=@(Get-ChildItem -LiteralPath $graphProbe -Filter '*.json' -File).Count
+            }
+            Write-Host "[AZTEC-29X] OAT_GRAPH_DIAGNOSTIC model=$key exit=$exit errors=$($errorLines.Count) actualRelocatableJsonGraphs=$graphCount"
+            throw "Xenon XModel extraction has real OAT errors for $key; exit=$exit errorLines=$($errorLines.Count) physicalGraphs=$graphCount. See exact error above and $log"
+        }
+        if($summaries.Count -gt 1){
+            throw "Ambiguous OAT terminal summary for $key; summaryCount=$($summaries.Count) log=$log"
+        }
+        if($summaries.Count -eq 1){
+            if($summaries[0] -notmatch '(?i)Finished with\s+(\d+)\s+warnings?\s*,\s+(\d+)\s+errors?'){
+                throw "Cannot parse terminal summary for $key. log=$log"
+            }
+            $warnings=[int]$Matches[1]
+            $errors=[int]$Matches[2]
+            if($warnings -ne 0 -or $errors -ne 0){
+                throw "OAT returned $warnings warnings and $errors errors for $key despite exit=0. log=$log"
+            }
+        }else{
+            Write-Host "[AZTEC-29X] OAT exit=0; no standard warning/error summary found for $key. Require actual native relocatable graph and validate its structure/ownership."
+        }
+        $graphFolder=Join-Path $temp 'xenon_xmodel_graphs'
+        if(-not(Test-Path -LiteralPath $graphFolder -PathType Container)){
+            throw "OAT exit=0 but did NOT emit Xenon XModel graph directory for $key. log=$log"
+        }
+        $g=@(Get-ChildItem -LiteralPath $graphFolder -Filter '*.json' -File)
+        if($g.Count -ne 1){throw "OAT must emit exactly one source-owned Xenon XModel graph for $key; actual=$($g.Count); log=$log"}
+        Stage-One ($j+2) $key ([int]$w.nativeRoot) $temp $g[0].FullName
+    }finally{
+        if(Test-Path -LiteralPath $temp -PathType Container){
+            Remove-Item -LiteralPath $temp -Force -Recurse -ErrorAction SilentlyContinue
+        }
+    }
+}
+$realCount=2+[int]$wave.modelOnlyOatProven
+if($rows.Count -ne $realCount -or $seenName.Count -ne $realCount -or $proofs.Count -ne $realCount){
+    throw 'Source-owned verified XModel body count does not match the 27-name census minus explicitly verified native references.'
+}
+# Reference identities are retained in the 8509-root map by their native
+# root indices, but NO fake owned XModel graph payload is generated for them.
+# Do not claim they are runtime-resident: they may need stock zone resolution.
+foreach($reference in @($wave.explicitlyVerifiedNativeReferences)){
+    $name=[string]$reference.model
+    $root=[int]$reference.nativeRoot
+    $match=@($nativeModels|Where-Object {
+        [int]$_.Index -eq $root -and [string]$_.Name -ieq $name
+    })
+    $refClass=[string]$reference.classification
+    $stockProven=$refClass -eq 'STOCK_XBOX_PRELOADED_REFERENCE_EXACT_NAME'
+    $nativeProven=$refClass -eq 'XBOX_NATIVE_REFERENCE_NO_OWNED_MESH'
+    $refAliasMatches=$match.Count -eq 1 -and
+        (Norm ([string]$match[0].Name)) -eq (Norm $name)
+    if(-not $name.StartsWith(',') -or -not $refAliasMatches -or
+       (-not $nativeProven -and -not $stockProven) -or
+       $seenRoot.Contains($root) -or $seenName.Contains((Norm $name)) -or
+       [bool]$reference.runtimeResidencyVerified){
+        throw "Reference-only XModel $name failed exact unique native root identity and provenance checks."
+    }
+    if($stockProven){
+        $zoneList=@($reference.stockBodyZones)
+        if(-not [bool]$reference.stockOatExactBodyMatch -or
+           $zoneList.Count -eq 0 -or
+           @($zoneList | Where-Object { $_ -notin @('common.ff','code_post_gfx.ff','patch.ff') }).Count -gt 0 -or
+           -not(Test-Path -LiteralPath ([string]$reference.exactOatEvidenceManifest) -PathType Leaf)){
+            throw "Stock-resolved source reference $name is missing its exact Xbox base-FF OAT proof."
+        }
+    }
+}
+# Refused source-body synthesis: the PC FF's leading-comma reference
+# may target a native root whose own identity is *unmarked* (owned) or
+# different. Preserve that exact unresolved evidence with no resident
+# mesh claim, while integrating ONLY actual converted source meshes.
+foreach($unresolved in @($wave.unresolvedReferenceRows)){
+    $name=[string]$unresolved.model
+    $rootIndex=[int]$unresolved.nativeRoot
+    $nativeMatch=@($nativeModels|Where-Object {[int]$_.Index -eq $rootIndex})
+    if(-not $name.StartsWith(',') -or
+       [string]$unresolved.classification -ne 'UNRESOLVED_PC_REFERENCE_NATIVE_IDENTITY' -or
+       [bool]$unresolved.runtimeResidencyVerified -or
+       $nativeMatch.Count -ne 1 -or
+       (Norm ([string]$nativeMatch[0].Name)) -ne (Norm $name) -or
+       $seenRoot.Contains($rootIndex) -or $seenName.Contains((Norm $name))){
+        throw "Unresolved PC XModel reference '$name' native root #$rootIndex cannot be reconciled even by exact normalized identity. Do not guess at borrowed geometry."
+    }
+    Write-Host "[AZTEC-29X] UNRESOLVED PC reference '$name' -> Xbox native root '$($nativeMatch[0].Name)' ($rootIndex). Not converted/resident."
+}
+$binding=[ordered]@{
+    format='WaW360.AztecGate8AllStaticXModelBinding.v3'
+    bindingPass=$true
+    nativeRoots=8509
+    nativeXModelRoots=284
+    sourceStaticModels=27
+    realOwnedStaticModelTypes=[int]$wave.modelOnlyOatProven
+    nativeExternalReferenceModelTypes=[int]$wave.externalNativeReferenceModels
+    externalReferenceModels=@($wave.explicitlyVerifiedNativeReferences)
+    unresolvedNativeReferenceModelTypes=[int]$wave.unresolvedReferenceModelTypes
+    unresolvedNativeReferenceDraws=[int]$wave.unresolvedReferenceDraws
+    unresolvedNativeReferenceModels=@($wave.unresolvedReferenceRows)
+    sourceNamesAccounted=[int]$wave.sourceNameTypesAccounted
+    staticDrawsRepresented=1903
+    ownedModelDraws=[int]$wave.modelOnlyOatRepresentedDraws
+    externallyReferencedDraws=[int]$wave.externalNativeReferenceDraws
+    actualOwnedModelBodies=$realCount
+    validationOnly=$true
+    hardwareReady=$false
+    ownedBindings=@($rows.ToArray())
+    referenceBindings=@()
+    note="Actual PC-owned XModel bodies: $realCount (2 existing plus $($wave.modelOnlyOatProven) static model types). Proven native external references: $($wave.externalNativeReferenceModels); unresolved source references: $($wave.unresolvedReferenceModelTypes), which remain native identity shells and are NOT classified or runtime-resident. All 27 names and 1903 draws accounted for, but NO world draw records are linked, no final Xbox hardware approval."
+}
+$binding|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $bindingPath -Encoding UTF8
+$report=[ordered]@{
+    schema='WaW360.AztecGate8AllStaticXModelStaging.v1'
+    status=if([int]$wave.unresolvedReferenceModelTypes -gt 0){
+        'AZTEC_GATE8_SOURCE_MODELS_STAGED_WITH_UNRESOLVED_REFERENCES'
+    }else{
+        'AZTEC_GATE8_ALL_27_PC_STATIC_XMODEL_IDENTITIES_CLASSIFIED_GRAPHS_STAGED'
+    }
+    sourceModels=27
+    modelCount=$realCount
+    realOwnedStaticModelTypes=[int]$wave.modelOnlyOatProven
+    nativeExternalReferenceModelTypes=[int]$wave.externalNativeReferenceModels
+    nativeExternalReferenceDraws=[int]$wave.externalNativeReferenceDraws
+    nativeExternalReferences=@($wave.explicitlyVerifiedNativeReferences)
+    unresolvedNativeReferenceModelTypes=[int]$wave.unresolvedReferenceModelTypes
+    unresolvedNativeReferenceDraws=[int]$wave.unresolvedReferenceDraws
+    unresolvedNativeReferenceModels=@($wave.unresolvedReferenceRows)
+    rootCount=8509
+    staticDrawsRepresented=1903
+    graphRoot=$graphs
+    bindingManifest=$bindingPath
+    graphProofs=@($proofs.ToArray())
+    sourceWaveProof=$wavePath
+    actualWorldDrawRecordsLinked=0
+    hardwareReady=$false
+}
+$report|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $reportPath -Encoding UTF8
+Write-Host "[AZTEC-29X] status=$($report.status) realOwnedModelGraphs=$realCount, nativeExternalReferences=$($wave.externalNativeReferenceModels), unresolvedReferences=$($wave.unresolvedReferenceModelTypes)"
+Write-Host "[AZTEC-29X] typedSourcePlacements=1903/1903 (owned=$($wave.modelOnlyOatRepresentedDraws), nativeReference=$($wave.externalNativeReferenceDraws), unresolved=$($wave.unresolvedReferenceDraws))"
+Write-Host "[AZTEC-29X] binding=$bindingPath"
+Write-Host '[AZTEC-29X] Real PC model graph payloads staged; next integrate into native world FF. No Xbox claim.'){
+            throw "Model $key lacks its real original standalone source FF SHA256."
+        }
+        if(-not(Test-Path -LiteralPath $persistentSource -PathType Leaf)){
+            throw "Cached real source FF missing for $key : $persistentSource"
+        }
+        $onDiskSha=(Get-FileHash -LiteralPath $persistentSource -Algorithm SHA256).Hash
+        if($onDiskSha -ine $expectedSourceSha){
+            throw "Cached real source FF sha256 mismatch for $key : $persistentSource"
+        }
+        Copy-Item -LiteralPath $persistentSource -Destination $shortInput -Force
+        if(-not(Test-Path -LiteralPath $shortInput -PathType Leaf) -or
+           (Get-FileHash -LiteralPath $shortInput -Algorithm SHA256).Hash -ine $expectedSourceSha){
+            throw "Short-path OAT input copy did not preserve real original Xbox model FF bytes for $key."
+        }
+        if($shortInput.Length -ge 240 -or $temp.Length -ge 115){
+            throw "Short-path native OAT FF path still too long: $shortInput"
+        }
+        Write-Host "[AZTEC-29X] SHORT_OAT_INPUT model=$key persistentPathChars=$($persistentSource.Length) oatInputChars=$($shortInput.Length) sha256=$expectedSourceSha"
         $log=Join-Path $work ('xmodel_{0:D3}_oat.log' -f ($j+2))
         $prior=$ErrorActionPreference
         try{
