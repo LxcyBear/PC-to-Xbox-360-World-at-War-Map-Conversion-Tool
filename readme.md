@@ -1,5 +1,27 @@
 # PC2XB3 — World at War PC → Xbox 360 Map Converter
 
+## Native Xbox test-readiness progress (per build)
+
+`tools/oat-xenon/Run-WaWMultiMapNativeReadiness.ps1` reports **10 evidence-backed, fail-closed readiness gates per map**, a persistent console progress bar, FF sizes, gate changes since the previous check, and why each gate remains blocked. It runs **automatically after every Candidate matrix build and OAT differential check**. Historical evidence is not treated as proof for a different build: the checker matches candidate hashes and the originating matrix before accepting OAT results. A 3/10 tally is **not 30% playable** and never authorizes Xbox deployment.
+
+Latest user-verified Aztec evidence before introducing this tracker: exact IWD source precedence indexed; six true GSC/CSC RawFile overrides in a 449,870-byte diagnostic FF; internal readback and wrapper round-trip PASS; OAT `--list` PASS with 0 warnings/errors. Primary full extraction still fails due packed WeaponDef names; ten names have strong 61-anchor order witnesses but not independently verified packed-pointer targets. **No safe native Xbox test build exists yet.**
+
+Run the tracker without a rebuild or another OAT call:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapNativeReadiness.ps1' -IncludeMaps nazi_zombie_aztec_V2.2
+```
+
+To attempt the **next gate without rebuilding**, run full OAT extraction of the existing Aztec script-closure FF:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1' -OatMode Extract -IncludeMaps nazi_zombie_aztec_V2.2 -VariantNames hardware_test_main_xanim_native_layout_script_closure
+```
+
+See [`docs/RECIPE_PC_WAW_TO_CODXE.md`](docs/RECIPE_PC_WAW_TO_CODXE.md) for the recipe gates and original evidence. **Never deploy the current diagnostic FFs**.
+
 ## October 30 — recipe-first conversion implementation begins
 
 The canonical requirements are the user-supplied `WaW_PC_to_Xbox360_codxe_porting_knowledge.txt`, especially its detailed Part 2 rules. See [`docs/RECIPE_PC_WAW_TO_CODXE.md`](docs/RECIPE_PC_WAW_TO_CODXE.md) for the eight implementation gates and exact Windows test.
