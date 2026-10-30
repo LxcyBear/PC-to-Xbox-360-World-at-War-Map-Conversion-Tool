@@ -1169,10 +1169,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
                                             throw new InvalidDataException(
                                                 $"Direct WeaponDef diagnostic readback failed: {errors} error(s).");
 
-                                        var write = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
+                                        var directWeaponWrite = await T4XboxFastFileWriter.WriteUnsignedSingleZlibAsync(
                                             weaponDirectFfPath, directZone,
                                             preferNativeLevel6: true, cancellationToken: cancellationToken);
-                                        if (!write.RoundTripVerified)
+                                        if (!directWeaponWrite.RoundTripVerified)
                                             throw new InvalidDataException(
                                                 "Direct WeaponDef diagnostic wrapper round-trip failed.");
 
