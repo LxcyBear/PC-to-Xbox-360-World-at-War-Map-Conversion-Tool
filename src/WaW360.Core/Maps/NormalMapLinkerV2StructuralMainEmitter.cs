@@ -64,6 +64,10 @@ public sealed class NormalMapLinkerV2StructuralMainEmitResult
     public required int ScriptClosureResidentMenusRemoved { get; init; }
     public required int ScriptClosureRawFilesPromoted { get; init; }
     public required int ScriptClosureIwdScriptsOverridden { get; init; }
+    public string? WeaponOrderProbeOutputFastFile { get; init; }
+    public bool WeaponOrderProbeReady { get; init; }
+    public int WeaponOrderProbeKnownNameAnchors { get; init; }
+    public int WeaponOrderProbeUnverifiedOrdinalSubstitutions { get; init; }
     public required string? NativeBlockOutputFastFile { get; init; }
     public required string? NativeBlockHardwarePackageDirectory { get; init; }
     public required bool NativeBlockCandidateReady { get; init; }
@@ -643,12 +647,14 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var conservativePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_tracked_shell");
         var realTechsetNamePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_real_techset_names");
         var scriptClosurePackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_script_closure");
+        var weaponOrderProbeDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_weapon_order_probe");
         var nativeBlockPackageDir = Path.Combine(outputRoot, map.Name, "hardware_test_main_xanim_native_layout_native_blocks");
         Directory.CreateDirectory(outDir);
         Directory.CreateDirectory(packageDir);
         Directory.CreateDirectory(conservativePackageDir);
         Directory.CreateDirectory(realTechsetNamePackageDir);
         Directory.CreateDirectory(scriptClosurePackageDir);
+        Directory.CreateDirectory(weaponOrderProbeDir);
         Directory.CreateDirectory(nativeBlockPackageDir);
         var txt = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.txt");
         var json = Path.Combine(outDir, $"{map.Name}_linker_v2_main_structural.json");
@@ -660,6 +666,8 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var realTechsetNameFfPath = Path.Combine(realTechsetNamePackageDir, source.CanonicalBaseName + ".ff");
         var scriptClosureZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".script_closure.zone");
         var scriptClosureFfPath = Path.Combine(scriptClosurePackageDir, source.CanonicalBaseName + ".ff");
+        var weaponOrderProbeZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".weapon_order_probe.zone");
+        var weaponOrderProbeFfPath = Path.Combine(weaponOrderProbeDir, source.CanonicalBaseName + ".ff");
         var nativeBlockZonePath = Path.Combine(outDir, source.CanonicalBaseName + ".native_blocks.zone");
         var nativeBlockFfPath = Path.Combine(nativeBlockPackageDir, source.CanonicalBaseName + ".ff");
 
@@ -677,6 +685,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         TryDelete(scriptClosureFfPath);
         TryDelete(scriptClosureZonePath);
         TryDelete(Path.Combine(scriptClosurePackageDir, "SCRIPT_CLOSURE_NATIVE_TEST.txt"));
+        TryDelete(weaponOrderProbeFfPath);
+        TryDelete(weaponOrderProbeZonePath);
+        TryDelete(Path.Combine(weaponOrderProbeDir, "DO_NOT_DEPLOY_WEAPON_ORDER_PROBE.txt"));
         TryDelete(nativeBlockFfPath);
         TryDelete(nativeBlockZonePath);
         TryDelete(Path.Combine(nativeBlockPackageDir, "NATIVE_BLOCK_CAPACITY_AB_TEST.txt"));
@@ -962,6 +973,9 @@ public static class NormalMapLinkerV2StructuralMainEmitter
         var scriptClosureRawPromoted = 0;
         var scriptClosureIwdOverridden = 0;
         var scriptClosureSkipReason = string.Empty;
+        var weaponOrderProbeReady = false;
+        var weaponOrderProbeKnownAnchors = 0;
+        var weaponOrderProbeOrdinalSubstitutions = 0;
         if (blockers.Count == 0 && rootPayloads.Count == emissionRoots.Count)
         {
             try
@@ -1235,6 +1249,10 @@ public static class NormalMapLinkerV2StructuralMainEmitter
             ScriptClosureResidentMenusRemoved = scriptClosureMenusRemoved,
             ScriptClosureRawFilesPromoted = scriptClosureRawPromoted,
             ScriptClosureIwdScriptsOverridden = scriptClosureIwdOverridden,
+            WeaponOrderProbeReady = weaponOrderProbeReady,
+            WeaponOrderProbeOutputFastFile = weaponOrderProbeReady ? weaponOrderProbeFfPath : null,
+            WeaponOrderProbeKnownNameAnchors = weaponOrderProbeKnownAnchors,
+            WeaponOrderProbeUnverifiedOrdinalSubstitutions = weaponOrderProbeOrdinalSubstitutions,
             NativeBlockOutputFastFile = nativeBlockReady ? nativeBlockFfPath : null,
             NativeBlockHardwarePackageDirectory = nativeBlockReady ? nativeBlockPackageDir : null,
             NativeBlockCandidateReady = nativeBlockReady,
