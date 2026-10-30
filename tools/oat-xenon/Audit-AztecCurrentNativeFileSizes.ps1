@@ -84,6 +84,16 @@ if(-not $pcMain){
 }
 Add-File 'Original PC main FF (different compression/platform)' 'PC_ORIGINAL_MAIN' $pcMain
 Add-File 'Original PC load FF (different compression/platform)' 'PC_ORIGINAL_LOAD' $pcLoad
+# A PC custom map can be a multiple-container package: comparing ONLY
+# map.ff ignores map_patch.ff/mod.ff and may understate source asset bytes.
+if($null -ne (Get-Variable -Name b -ErrorAction SilentlyContinue)){
+    foreach($entry in @($b.fastfiles)){
+        $role=[string]$entry.Role
+        if($role -in @('map_patch.ff','mod.ff')){
+            Add-File ('Original PC '+$role) ('PC_SOURCE_'+($role -replace '[^a-zA-Z0-9]','_').ToUpperInvariant()) ([string]$entry.Path)
+        }
+    }
+}
 $golden=''
 $goldenSha=''
 if(Test-Path -LiteralPath $nativeProofPath -PathType Leaf){
@@ -101,6 +111,22 @@ if(Test-Path -LiteralPath $selectedLoadPath -PathType Leaf){
     $loadReport=Get-Content -LiteralPath $selectedLoadPath -Raw | ConvertFrom-Json
     $load=[string]$loadReport.OutputFastFile
     $loadSha=[string]$loadReport.FastFileSha256
+    # Some baselines inventory map.ff/patch/mod but exclude load.ff.
+    # The verified Linker V2 selected-load proof is then authoritative.
+    if(-not (Test-Path -LiteralPath $pcLoad -PathType Leaf) -and
+       -not [string]::IsNullOrWhiteSpace([string]$loadReport.SelectedSourceFastFile)){
+        $pcLoad=[string]$loadReport.SelectedSourceFastFile
+        $originalLoadRow=@($rows.ToArray() | Where-Object {$_.role -eq 'PC_ORIGINAL_LOAD'})[0]
+        if($null -ne $originalLoadRow){
+            $originalLoadRow.file=$pcLoad
+            $originalLoadRow.exists=Test-Path -LiteralPath $pcLoad -PathType Leaf
+            if($originalLoadRow.exists){
+                $originalLoadRow.bytes=[long](Get-Item -LiteralPath $pcLoad).Length
+                $originalLoadRow.MiB=[math]::Round($originalLoadRow.bytes/1MB,3)
+                $originalLoadRow.sha256=(Get-FileHash -LiteralPath $pcLoad -Algorithm SHA256).Hash
+            }
+        }
+    }
 }
 Add-File 'PC-selected Xbox-format load FF' 'XBOX_SOURCE_SELECTED_LOAD' $load $loadSha
 Add-File 'Currently staged Xbox-format load FF' 'XBOX_STAGED_LOAD' (Join-Path $stage ($map+'_load.ff'))
