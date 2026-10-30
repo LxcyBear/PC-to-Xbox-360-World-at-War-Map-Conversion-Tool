@@ -1,0 +1,325 @@
+{
+  "schema": "WaW360.JakeReferenceMapOutcomes.v1",
+  "source": "User-provided LLM infodump(1).rar, conversion logs/*_report.txt",
+  "sourceConfidence": "Historical Jake WaW360Tool report text; numbers are its estimations not measured Xbox runtime, not current PC2XB3 artifacts",
+  "reportCount": 39,
+  "mapsWithMemoryAbove210MiB": 19,
+  "mapsWithMemoryAtMost210MiB": 20,
+  "medianEstimatedMemoryMiB": 209.5,
+  "medianHeuristicOutlookPct": 59,
+  "metadata": "Several entries are UGX game-mode variants from the same base map, not independent unique worlds. No FRUmansion, nazi_zombie_tower, Simpsons, or Aztec report is included in these 39 historic reports.",
+  "reports": [
+    {
+      "map": "aliendefense",
+      "jakeEstimatedZoneMemoryMiB": 266.1,
+      "jakeHeuristicLoadProbabilityPct": 20,
+      "jakeReportedDownscaledTextures": 111,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "bunbury",
+      "jakeEstimatedZoneMemoryMiB": 209.5,
+      "jakeHeuristicLoadProbabilityPct": 81,
+      "jakeReportedDownscaledTextures": 167,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "chaos_island",
+      "jakeEstimatedZoneMemoryMiB": 199.8,
+      "jakeHeuristicLoadProbabilityPct": 84,
+      "jakeReportedDownscaledTextures": 46,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "cxca",
+      "jakeEstimatedZoneMemoryMiB": 206.7,
+      "jakeHeuristicLoadProbabilityPct": 77,
+      "jakeReportedDownscaledTextures": 36,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "czm_fnaf4",
+      "jakeEstimatedZoneMemoryMiB": 201.5,
+      "jakeHeuristicLoadProbabilityPct": 80,
+      "jakeReportedDownscaledTextures": 143,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "dom_na_krayu_v2",
+      "jakeEstimatedZoneMemoryMiB": 198.3,
+      "jakeHeuristicLoadProbabilityPct": 81,
+      "jakeReportedDownscaledTextures": 87,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "escape_asylum",
+      "jakeEstimatedZoneMemoryMiB": 185,
+      "jakeHeuristicLoadProbabilityPct": 77,
+      "jakeReportedDownscaledTextures": 182,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "green_run_farm_bo1",
+      "jakeEstimatedZoneMemoryMiB": 209.5,
+      "jakeHeuristicLoadProbabilityPct": 80,
+      "jakeReportedDownscaledTextures": 2,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "hghrise",
+      "jakeEstimatedZoneMemoryMiB": 209.3,
+      "jakeHeuristicLoadProbabilityPct": 80,
+      "jakeReportedDownscaledTextures": 97,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_114cabin",
+      "jakeEstimatedZoneMemoryMiB": 221.7,
+      "jakeHeuristicLoadProbabilityPct": 52,
+      "jakeReportedDownscaledTextures": 227,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_114cabin_arcade",
+      "jakeEstimatedZoneMemoryMiB": 221.6,
+      "jakeHeuristicLoadProbabilityPct": 52,
+      "jakeReportedDownscaledTextures": 227,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_114cabin_bh",
+      "jakeEstimatedZoneMemoryMiB": 221.7,
+      "jakeHeuristicLoadProbabilityPct": 52,
+      "jakeReportedDownscaledTextures": 227,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_114cabin_gg",
+      "jakeEstimatedZoneMemoryMiB": 221.6,
+      "jakeHeuristicLoadProbabilityPct": 52,
+      "jakeReportedDownscaledTextures": 227,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_114cabin_ss",
+      "jakeEstimatedZoneMemoryMiB": 221.6,
+      "jakeHeuristicLoadProbabilityPct": 52,
+      "jakeReportedDownscaledTextures": 227,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_albtraumv3",
+      "jakeEstimatedZoneMemoryMiB": 200.8,
+      "jakeHeuristicLoadProbabilityPct": 85,
+      "jakeReportedDownscaledTextures": 0,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_aldenrade",
+      "jakeEstimatedZoneMemoryMiB": 203.8,
+      "jakeHeuristicLoadProbabilityPct": 85,
+      "jakeReportedDownscaledTextures": 42,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_aranda",
+      "jakeEstimatedZoneMemoryMiB": 209.4,
+      "jakeHeuristicLoadProbabilityPct": 81,
+      "jakeReportedDownscaledTextures": 100,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_beachtown",
+      "jakeEstimatedZoneMemoryMiB": 217.4,
+      "jakeHeuristicLoadProbabilityPct": 57,
+      "jakeReportedDownscaledTextures": 122,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_bored",
+      "jakeEstimatedZoneMemoryMiB": 219.1,
+      "jakeHeuristicLoadProbabilityPct": 59,
+      "jakeReportedDownscaledTextures": 154,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_crib",
+      "jakeEstimatedZoneMemoryMiB": 180.4,
+      "jakeHeuristicLoadProbabilityPct": 80,
+      "jakeReportedDownscaledTextures": 98,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_dfr",
+      "jakeEstimatedZoneMemoryMiB": 253.8,
+      "jakeHeuristicLoadProbabilityPct": 12,
+      "jakeReportedDownscaledTextures": 277,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_die_festung",
+      "jakeEstimatedZoneMemoryMiB": 205.3,
+      "jakeHeuristicLoadProbabilityPct": 82,
+      "jakeReportedDownscaledTextures": 149,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_downfall",
+      "jakeEstimatedZoneMemoryMiB": 198.3,
+      "jakeHeuristicLoadProbabilityPct": 84,
+      "jakeReportedDownscaledTextures": 44,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_fac",
+      "jakeEstimatedZoneMemoryMiB": 267.8,
+      "jakeHeuristicLoadProbabilityPct": 17,
+      "jakeReportedDownscaledTextures": 206,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_halloween",
+      "jakeEstimatedZoneMemoryMiB": 209.2,
+      "jakeHeuristicLoadProbabilityPct": 77,
+      "jakeReportedDownscaledTextures": 33,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_hanoizom",
+      "jakeEstimatedZoneMemoryMiB": 279.8,
+      "jakeHeuristicLoadProbabilityPct": 14,
+      "jakeReportedDownscaledTextures": 282,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "nazi_zombie_slums",
+      "jakeEstimatedZoneMemoryMiB": 203.1,
+      "jakeHeuristicLoadProbabilityPct": 83,
+      "jakeReportedDownscaledTextures": 67,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "number2",
+      "jakeEstimatedZoneMemoryMiB": 216.6,
+      "jakeHeuristicLoadProbabilityPct": 58,
+      "jakeReportedDownscaledTextures": 284,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "number2_arcade",
+      "jakeEstimatedZoneMemoryMiB": 216.6,
+      "jakeHeuristicLoadProbabilityPct": 58,
+      "jakeReportedDownscaledTextures": 284,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "number2_bh",
+      "jakeEstimatedZoneMemoryMiB": 216.6,
+      "jakeHeuristicLoadProbabilityPct": 58,
+      "jakeReportedDownscaledTextures": 284,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "number2_gg",
+      "jakeEstimatedZoneMemoryMiB": 216.6,
+      "jakeHeuristicLoadProbabilityPct": 58,
+      "jakeReportedDownscaledTextures": 284,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "number2_ss",
+      "jakeEstimatedZoneMemoryMiB": 216.6,
+      "jakeHeuristicLoadProbabilityPct": 58,
+      "jakeReportedDownscaledTextures": 284,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "ugxm_customize_room",
+      "jakeEstimatedZoneMemoryMiB": 209.5,
+      "jakeHeuristicLoadProbabilityPct": 78,
+      "jakeReportedDownscaledTextures": 1,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "yaw_fnaf_2",
+      "jakeEstimatedZoneMemoryMiB": 204.5,
+      "jakeHeuristicLoadProbabilityPct": 83,
+      "jakeReportedDownscaledTextures": 116,
+      "jakeProfile": "UGX-Mod",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "zm_allein",
+      "jakeEstimatedZoneMemoryMiB": 209.4,
+      "jakeHeuristicLoadProbabilityPct": 52,
+      "jakeReportedDownscaledTextures": 2,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "zm_berhotel",
+      "jakeEstimatedZoneMemoryMiB": 255.5,
+      "jakeHeuristicLoadProbabilityPct": 19,
+      "jakeReportedDownscaledTextures": 338,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "zm_tranzit",
+      "jakeEstimatedZoneMemoryMiB": 321.5,
+      "jakeHeuristicLoadProbabilityPct": 13,
+      "jakeReportedDownscaledTextures": 230,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "zm_tranzit_mw3",
+      "jakeEstimatedZoneMemoryMiB": 297.7,
+      "jakeHeuristicLoadProbabilityPct": 14,
+      "jakeReportedDownscaledTextures": 234,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    },
+    {
+      "map": "zom_detained",
+      "jakeEstimatedZoneMemoryMiB": 197,
+      "jakeHeuristicLoadProbabilityPct": 84,
+      "jakeReportedDownscaledTextures": 61,
+      "jakeProfile": "mod.ff",
+      "xboxHardwareVerified": false
+    }
+  ]
+}
