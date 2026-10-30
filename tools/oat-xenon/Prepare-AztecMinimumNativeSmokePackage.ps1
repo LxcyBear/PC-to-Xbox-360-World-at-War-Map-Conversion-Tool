@@ -57,7 +57,7 @@ function CopySha([string]$source,[string]$dest){
 }
 Say '=========================================================='
 Say 'MINIMAL AZTEC NATIVE PACKAGE: KEEP FIVE-MODEL GFXWORLD PASS'
-Say 'Approval requires BOTH final FFs OAT PASS and complete CoD Xe usermap.'
+Say 'Native approval requires BOTH OAT-passing FFs AND a production-ready main emitter payload/closure manifest.'
 Say 'No 27-model/polished-lighting/script-success prerequisites.'
 try{
     # First copy ONLY the OAT-verified original-PC source-derived world FF.
@@ -74,10 +74,28 @@ try{
             Block 'The pinned real GfxWorld main OAT proof no longer matches 5 XModels, 735 surfaces, and 39 Materials.'
         }else{
             $mainSource=[string]$w.outputFastFile
-            if(-not (ValidFastfile $mainSource)){Block "Five-model main source FF missing: $mainSource"}
-            else{
+            if(-not (ValidFastfile $mainSource)){
+                Block "Five-model main source FF missing: $mainSource"
+            }else{
                 $mainSha=CopySha $mainSource (Join-Path $stage $mainName)
-                Say "STAGED real source GfxWorld main FF; sha256=$mainSha"
+                Say "STAGED DIAGNOSTIC source GfxWorld; sha256=$mainSha"
+                # IMPORTANT: the previously OAT-passing 5-XModel FastFile is
+                # explicitly marked validation-only by its real emitter.
+                # Root names and 735 GfxSurfaces do NOT establish a usable
+                # runtime map. Never rebrand this exact FF hardware-ready.
+                $emitPath=[string]$w.emitterReport
+                if(-not(Test-Path -LiteralPath $emitPath -PathType Leaf)){
+                    Block "No physical native emitter payload-closure report: $emitPath"
+                }else{
+                    $em=Get-Content -LiteralPath $emitPath -Raw | ConvertFrom-Json
+                    $fullDpvs=[bool]$em.OriginalPcGfxWorldFullDpvsGraphComplete
+                    $validation=[bool]$em.ValidationOnly
+                    $ready=[bool]$em.ReadyForHardware
+                    if($validation -or -not $ready -or -not $fullDpvs -or
+                       -not [bool]$w.fullNativeWorldSourceClosurePass){
+                        Block "MAIN FF IS A PARTIAL DIAGNOSTIC: ValidationOnly=$validation ReadyForHardware=$ready FullDpvs=$fullDpvs SourceClosure=$([bool]$w.fullNativeWorldSourceClosurePass). Build and link real source asset bodies/DPVS instead of promoting this FF."
+                    }
+                }
             }
         }
     }
@@ -255,7 +273,7 @@ finally{
         fullPackageMetadataAndSoundPresent=([bool](Test-Path -LiteralPath (Join-Path $stage 'map.json') -PathType Leaf) -and
             [bool](Test-Path -LiteralPath (Join-Path $stage 'preview.dds') -PathType Leaf) -and
             [bool](Test-Path -LiteralPath (Join-Path $stage 'sounds') -PathType Container))
-        note='Never borrowed an entire Xbox load.ff. Initial CoD Xe T4 SP fastfile lookup needs the two original-map-named FFs, not optional map.json/preview.dds/sounds. Both must individually OAT load with real 735-surface main GfxWorld. Missing optional resources limit audio/display but not initial FF-open test. This is not full asset, gameplay, or audio completion.'
+        note='This pipeline must NEVER promote the known 5-XModel validation-only scratch as a production map. OAT file parsing and matching root names do not establish runtime source-payload closure. A complete native emitter manifest with ValidationOnly=false, ReadyForHardware=true, full DPVS and source graph ownership is required before staging can become approved.'
     }
     $result|ConvertTo-Json -Depth 7|Set-Content -LiteralPath $reportPath -Encoding UTF8
     Say '=========================================================='
