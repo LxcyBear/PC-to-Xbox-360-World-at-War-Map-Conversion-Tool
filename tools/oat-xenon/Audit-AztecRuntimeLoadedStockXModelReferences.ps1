@@ -137,7 +137,7 @@ foreach($zoneName in $zoneNames){
         zone=$zoneName;found=$true;oatValid=$true;cacheReused=$reused
         file=$ff.FullName;log=$log;listedRealXModels=$real;listedReferenceOnlyXModels=$stub
     })
-    Write-Host "[AZTEC-XMODEL-REF] $zoneName: realStockModels=$real referenceOnlyNames=$stub cached=$reused"
+    Write-Host "[AZTEC-XMODEL-REF] ${zoneName}: realStockModels=$real referenceOnlyNames=$stub cached=$reused"
 }
 $sourceReferences=@($source.modelDependencyRows | Where-Object {
     ([string]$_.pcModelName).StartsWith(',',[StringComparison]::Ordinal)
