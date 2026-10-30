@@ -167,3 +167,13 @@ if($results.Count -eq 0){
 Write-Host '[OAT-DIFF] ==========================================================='
 Write-Host "[OAT-DIFF] JSON=$report"
 Write-Host '[OAT-DIFF] No original PC FFs or candidate FFs modified. NO Xbox release authorized.'
+# The readiness ledger consumes this NEW same-run SHA-matched OAT result.
+# No map build, OAT rerun or Xbox deployment occurs in the ledger.
+$readiness=Join-Path $PSScriptRoot 'Run-WaWMultiMapNativeReadiness.ps1'
+if(Test-Path -LiteralPath $readiness -PathType Leaf){
+    Write-Host '[OAT-DIFF] Updating native Xbox readiness gate history (read-only).'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $readiness -MatrixJson $MatrixJson -IncludeMaps $IncludeMaps
+    if($LASTEXITCODE -ne 0){
+        Write-Host "[OAT-DIFF] WARNING: readiness report failed with exit code $LASTEXITCODE. OAT evidence unchanged."
+    }
+}
