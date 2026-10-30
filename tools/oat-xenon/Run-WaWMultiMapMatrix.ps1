@@ -283,6 +283,11 @@ foreach($m in $maps){
     $newFfs=New-Object 'System.Collections.Generic.List[string]'
     $oatPasses=0
     $oatBytes=[long]0
+    $emittedFfCount=0
+    $emittedFfBytes=[long]0
+    $emittedFFs=New-Object 'System.Collections.Generic.List[object]'
+    # A single map's unexpected failure must not cancel the other maps.
+    try {
     if([string]::IsNullOrWhiteSpace($m.main)){
         $status='NO_PC_MAIN_FF'
     }else{
@@ -313,6 +318,17 @@ foreach($m in $maps){
                     if(-not $prior.ContainsKey($f.FullName) -or $prior[$f.FullName] -ne $stamp){$newFfs.Add($f.FullName)}
                 }
                 if($newFfs.Count -eq 0){$status='NO_NEW_FF_EMITTED';break}
+                $emittedFfCount=$newFfs.Count
+                foreach($path in $newFfs){
+                    $file=Get-Item -LiteralPath $path
+                    $size=[long]$file.Length
+                    $emittedFfBytes+=$size
+                    $emittedFFs.Add([ordered]@{
+                        path=$path;bytes=$size;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+                        producedFromOriginalPc=$true;hardwareReady=$false
+                    })
+                    Write-Host "[MULTIMAP-FF] $($m.name): candidate $($file.Name) = $size bytes ($([Math]::Round($size/1MB,3)) MiB) | OAT PENDING"
+                }
                 $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Unlinker.exe'
                 if(-not(Test-Path -LiteralPath $oat)){
                     $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
@@ -325,7 +341,9 @@ foreach($m in $maps){
                     $tmp=Join-Path ([IO.Path]::GetTempPath()) ('WawMatrix_'+[guid]::NewGuid().ToString('N').Substring(0,8))
                     New-Item -ItemType Directory -Path $tmp -Force|Out-Null
                     try{
-                        $copy=Join-Path $tmp 'candidate.ff'
+                        # Preserve the native zone filename for OAT; the
+                        # short parent path avoids Windows MAX_PATH failures.
+                        $copy=Join-Path $tmp ([IO.Path]::GetFileName($ff))
                         Copy-Item -LiteralPath $ff -Destination $copy
                         $sha=(Get-FileHash -LiteralPath $ff -Algorithm SHA256).Hash
                         if((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash -ine $sha){throw "Short-path FF copy changed: $ff"}
@@ -349,6 +367,18 @@ foreach($m in $maps){
                 $status=if($passAll){'OAT_PASS_DIAGNOSTIC_ONLY'}else{'OAT_REJECTED_NO_XBOX'}
             }
         }
+    }
+    } catch {
+        $errorText=[string]$_
+        $status='BATCH_MAP_EXCEPTION'
+        $errLog=Join-Path $folder 'unexpected_map_failure.log'
+        [IO.File]::WriteAllText($errLog,($errorText+[Environment]::NewLine+$_.ScriptStackTrace),[Text.UTF8Encoding]::new($false))
+        $events.Add([ordered]@{step='BATCH_MAP_EXCEPTION';exit=-1;pass=$false;log=$errLog})
+        $key=Fault $errLog
+        if(-not $failures.ContainsKey($key)){$failures[$key]=0}
+        $failures[$key]++
+        Write-Host "[MULTIMAP] MAP ERROR: $($m.name) => $($errorText)"
+        Write-Host "[MULTIMAP] Continuing next map; exception log=$errLog"
     }
     $historyDir=Join-Path $OutputRoot 'verified_size_history'
     New-Item -ItemType Directory -Path $historyDir -Force | Out-Null
@@ -393,6 +423,8 @@ foreach($m in $maps){
         main=$m.main;mainBytes=if($m.main -and (Test-Path -LiteralPath $m.main -PathType Leaf)){[int64](Get-Item -LiteralPath $m.main).Length}else{0}
         iwdCount=$m.iwds;sourceFingerprint=$sourceHash
         status=$status;mode=$Mode;stages=@($events.ToArray())
+        emittedCandidateFFCount=$emittedFfCount;emittedCandidateFFBytes=$emittedFfBytes
+        emittedCandidates=@($emittedFFs.ToArray())
         oatPassDiagnosticCount=$oatPasses;oatPassDiagnosticBytes=$oatBytes
         previousOatDiagnosticBytes=$priorVerifiedBytes;verifiedDeltaBytes=$deltaVerifiedBytes
         candidateArtifactSetSha256=$candidateArtifactHash;sizeHistory=$historyFile
@@ -429,11 +461,11 @@ $summary=[ordered]@{
 $json=Join-Path $run 'multi_map_matrix.json'
 $csv=Join-Path $run 'multi_map_matrix.csv'
 $summary|ConvertTo-Json -Depth 11|Set-Content -LiteralPath $json -Encoding UTF8
-$results.ToArray()|Select-Object map,profile,status,mainBytes,iwdCount,oatPassDiagnosticCount,oatPassDiagnosticBytes,previousOatDiagnosticBytes,verifiedDeltaBytes,hardwareReady,resultFolder|
+$results.ToArray()|Select-Object map,profile,status,mainBytes,iwdCount,emittedCandidateFFCount,emittedCandidateFFBytes,oatPassDiagnosticCount,oatPassDiagnosticBytes,previousOatDiagnosticBytes,verifiedDeltaBytes,hardwareReady,resultFolder|
     Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
 Write-Host '[MULTIMAP] ==========================================================='
 Write-Host "[MULTIMAP] $($results.Count) maps processed | NO Xbox release authorized."
-foreach($r in $results){Write-Host ("[MULTIMAP] {0,-26} {1,-33} OAT bytes={2}" -f $r.map,$r.status,$r.oatPassDiagnosticBytes)}
+foreach($r in $results){Write-Host ("[MULTIMAP] {0,-26} {1,-33} FF emitted={2}; OAT bytes={3}" -f $r.map,$r.status,$r.emittedCandidateFFBytes,$r.oatPassDiagnosticBytes)}
 foreach($e in $summary.sharedFaults){Write-Host "[MULTIMAP] Shared blocker $($e.category) across $($e.maps) map(s)."}
 Write-Host "[MULTIMAP] JSON=$json"
 Write-Host "[MULTIMAP] CSV=$csv"
