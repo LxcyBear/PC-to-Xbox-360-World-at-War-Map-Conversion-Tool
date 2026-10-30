@@ -435,3 +435,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 ```
 
 Once emitted, separately run `Run-WaWMultiMapOatDifferential.ps1` on the latest **new** Candidate matrix with `-OatMode List`, then `Extract`, and `-VariantNames hardware_test_main_xanim_native_layout_weapon_real_scalars`. Do not count scalar-only experiment as Xbox gameplay fidelity, production owned WeaponDef conversion or a hardware release gate.
+
+
+## October 30 — hardware claim retracted; staged Aztec was NOT PC2XB3 output
+
+The user identified the Aztec build they played as `output/codxe_beta_stage/nazi_zombie_aztec_20261030_160821_79b25d10`, which was the previously documented **44-file SHA-verified copy of an existing native reference package**, not the candidate Xbox FF created by PC2XB3. The earlier conversational claim of a playable PC2XB3-converted Aztec is **RETRACTED**. Do not present the staged package's gameplay as converter success. OAT LIST and EXTRACT both still passed with 0 warnings/errors for the separate `hardware_test_main_xanim_native_layout_weapon_real_scalars` **451,050-byte diagnostic**, which contains 71 proven WeaponDef names plus 4,189 source numeric fields. OAT acceptance is not engine gameplay or full map asset closure; the original PC2XB3-generated candidate has **no verified playable Xbox hardware result**.
+
+For any future Xbox test, record the precise on-console `<map>.ff` SHA-256 **and** local candidate/output SHA-256; assert the expected variant path and match hashes before crediting Xbox gameplay to PC2XB3. Keep `output/codxe_beta_stage` clearly marked reference-only; do not use it as a conversion release or an oracle/donor source for asset bytes. Native readiness remains at the actual evidence gates, not a claimed playable milestone.
