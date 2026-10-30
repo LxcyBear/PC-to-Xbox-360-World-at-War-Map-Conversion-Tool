@@ -121,7 +121,7 @@ foreach($directory in @($searched | Sort-Object)){
         looseSoundFileCount=$soundFiles.Count
         extensionCounts=$extensionCounts
         allFilesRelativePathAndBytes=$fileInventory
-        publicCodxeMapMenuFallback=if(Test-Path -LiteralPath $mapJson -PathType Leaf){'METADATA_PRESENT'}else{'FOLDER_NAME_FALLBACK_IN_PUBLIC_MAIN'}
+        publicCodxeMapMenuFallback=$(if(Test-Path -LiteralPath $mapJson -PathType Leaf){'METADATA_PRESENT'}else{'FOLDER_NAME_FALLBACK_IN_PUBLIC_MAIN'})
         betaMetadataRequirementConfirmed=$false
         recommendedFlatInstallRelativePath=('_codxe\usermaps\'+$mapBase)
         totalFiles=$allFiles.Count
