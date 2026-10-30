@@ -185,14 +185,13 @@ foreach($m in @($matrix.maps)){
         }
     }
     $gates.Add((New-Gate 'WEAPON_NAMES' 'All real WeaponDef identities proven' $weaponState $weaponReason))
-    $gates.Add((New-Gate 'ASSETS' 'Typed renderer, FX, audio, collision assets complete' 'PENDING'
-        'Structural/placeholder roots remain; no complete production graph manifest'))
-    $gates.Add((New-Gate 'DEPENDENCIES' 'Required script, world and gameplay dependency closure' 'PENDING'
-        'No independently verified production runtime-reachability closure'))
-    $gates.Add((New-Gate 'MEMORY' 'Xbox 360 memory and asset-pool limits verified' 'PENDING'
-        'No production-sized Xbox arena/pool admission result'))
-    $gates.Add((New-Gate 'PACKAGE' 'Native FF, load FF, metadata, textures/sound dependencies validated' 'PENDING'
-        'No independently verified complete CodXe native release package'))
+    # Keep each New-Gate command invocation on one logical line. In WinPS
+    # 5.1 a newline between positional string arguments terminates the
+    # command, even when it appears inside an enclosing method expression.
+    $gates.Add((New-Gate 'ASSETS' 'Typed renderer, FX, audio, collision assets complete' 'PENDING' 'Structural/placeholder roots remain; no complete production graph manifest'))
+    $gates.Add((New-Gate 'DEPENDENCIES' 'Required script, world and gameplay dependency closure' 'PENDING' 'No independently verified production runtime-reachability closure'))
+    $gates.Add((New-Gate 'MEMORY' 'Xbox 360 memory and asset-pool limits verified' 'PENDING' 'No production-sized Xbox arena/pool admission result'))
+    $gates.Add((New-Gate 'PACKAGE' 'Native FF, load FF, metadata, textures/sound dependencies validated' 'PENDING' 'No independently verified complete CodXe native release package'))
 
     $passed=@($gates.ToArray() | Where-Object {$_.status -eq 'PASS'}).Count
     $total=$gates.Count
