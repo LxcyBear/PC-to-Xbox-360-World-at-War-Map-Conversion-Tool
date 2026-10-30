@@ -75,6 +75,24 @@ Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SC
 
 **Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
 
+## October 30 — First actual Xbox runtime symptom: animscripts/dog_combat missing main
+
+**Observed on real hardware:** User manually tested the current **DIAGNOSTIC ONLY** Aztec FF despite unresolved gates. Instead of an immediate console crash, the game displayed a GSC runtime error screen: `Could not find label 'main' in script 'animscripts/dog_combat'`. This is valuable independent evidence that CodXe/the game's startup reached an animation-script lookup. It is **not proof** that all native assets, FF ownership, script payloads, dependencies or game loading are valid. User's current map loading/FF identity and mount precedence are NOT independently recorded, so do not credit another readiness gate or automatically reinterpret the ten WeaponDef names.
+
+`animscripts/dog_combat.gsc` appears in known WaW Zombies custom-map script dependency lists; missing its `main` at runtime may mean the script itself is absent, shadowed by an invalid/stub RawFile, the entry point is missing from compiled script content, or the FF load/mount graph is incomplete. Do not fabricate an empty `main()`, copy unrelated donor script payloads, or hack CodXe to suppress the error.
+
+**New no-build diagnostic:** `tools/oat-xenon/Test-WaWRuntimeScriptDependency.ps1` inventories the latest Candidate's known FF variants and the original-PC participating FFs via OAT `--list`; uses the Linker V2 source archive and candidate SHA-256 for provenance; reports presence/absence of the exact `rawfile, animscripts/dog_combat.gsc` asset name and its bytes/source identity in JSON. It explicitly sets `compiledScriptLabelVerified=false`: OAT RawFile enumeration does not prove a callable `main`. Absence from a map FF does not exclude a stock/global FF that might normally provide the script. The optional `-TestedFastFile` parameter accepts the exact local Xbox-tested candidate to prevent guessing which FF was installed. No files are rebuilt, edited, copied to the console, or signed off.
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWRuntimeScriptDependency.ps1' -MapName nazi_zombie_aztec_V2.2 -Script animscripts/dog_combat -Label main
+```
+
+**Next:** inspect report; identify actual FF variant deployed and CodXe beta FF mount order, then trace whether script name and `main` are actually present in the console's loaded script graph. Do not claim the issue is fixed merely because an asset name is listed or treat this milestone as a production-ready map.
+
 ## October 30 — Direct packed WeaponDef pointer-to-string loader witness (Windows validation pending)
 
 **Observed scalar test result:** 10 packed WeaponDef bodies, **1/10** unique across 59 constrained scalar slots and **9/10 collision cases**. Scalar uniqueness alone cannot recover the original name pointers. No names have been changed or promoted.
