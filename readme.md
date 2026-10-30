@@ -2,6 +2,18 @@
 
 ## Upcoming CodXe beta: `_codxe/t4` directory removed
 
+### Lossless beta-layout staging (reference packages only)
+
+The Aztec reference package audit now confirms **44 files / 120,068,964 bytes**, including **37 `highmip/` files** and optional Xbox-native `_patch.ff`. This is not a converted/approved release. To preview a **separate flattened directory layout**, without modifying source files:
+
+```powershell
+$map = 'C:\Users\jorda\OneDrive\Desktop\My Xbox\World at War\codxe latest (working map references)\nazi_zombie_aztec'
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Stage-CodXeT4BetaPackage.ps1' -SourceMapDirectory $map
+```
+
+Explicit `-Stage` copies that same map into a unique directory under `output/codxe_beta_stage/.../_codxe/usermaps/<map>/`, preserving every file/directory and verifying all SHA-256 digests. The copy is labeled **REFERENCE ONLY, DO NOT DEPLOY**. This step has no ability to make a diagnostic map Xbox-ready or prove the unpublished beta loader contract. Script's first Windows validation is pending.
+
+
 Michael's announced `New map layout, nested t4 dir gone (sorry)` means upcoming builds are expected to look under `<WaW game>/_codxe/usermaps/<map>/<map>.ff` instead of legacy `<WaW game>/_codxe/t4/usermaps/<map>/<map>.ff`. This is a **package/install path compatibility change**, not proof that every old Xbox `.ff` must be recompiled. Beta file expectations may include more changes and must be verified using an actual beta reference folder.
 
 PC2XB3 Linker V2 SourceArchive now states the flat installation target explicitly in its package plan. Read-only inventory is available without builds:
