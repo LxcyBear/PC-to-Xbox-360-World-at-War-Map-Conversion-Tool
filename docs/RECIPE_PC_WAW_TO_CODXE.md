@@ -65,6 +65,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMu
 
 The differential tool saves exact FF SHA, OAT exit code, and full extractor warnings/errors. Its automatic readiness refresh will mark the script-closure extraction gate PASS only when the matching FF digest is unchanged and OAT returns a clean full extract; a new failure instead gives us the next technical blocker. **Neither outcome authorizes an Xbox test**; the primary asset graph and other safety gates remain open.
 
+## October 30 — Windows-confirmed WeaponDef ordinal A/B full extraction PASS
+
+User ran the opt-in `WAW360_DIAGNOSTIC_WEAPON_ORDER_PROBE=1` one-map Candidate on commit `2280d44`. Engine compiled, `linker-v2-main-structural` **PASS**, IWD RawFile overrides **6** and internal readback 0/wrapper round-trip true. Probe reported `ready=True`, **61 known exact-name anchors** and **10 UNVERIFIED ordinal name substitutions**. Emitted separate *nondeployable* `hardware_test_main_xanim_native_layout_weapon_order_probe/nazi_zombie_aztec.ff` **449,743 bytes**. Original 449,870-byte script-closure FF, 449,763-byte tracked shell and 6,205,444-byte primary remain byte-identical to earlier builds.
+
+Independent native OAT **full extraction** of the 449,743-byte order probe: **`OAT_EXTRACT_CLEAN_DIAGNOSTIC`, `exit=0`, `Finished with 0 warnings, 0 errors`**. Previous full extraction of the untouched script-closure FF failed on precisely ten `<packed-name@...>` exporter filenames. Therefore the A/B probe isolates those illegal filesystem names as the immediate exporter blocker in the **inert diagnostic-shell variant**. **It does not independently decode original virtual-block name pointer targets, convert live WeaponDef payloads, prove game load, or authorize Xbox testing.**
+
+Latest Candidate readiness tally **2/10 same-run evidence gates** (SOURCE and SCRIPT) because the new matrix had *no same-run `--list` run on the unchanged script-closure FF*. The earlier run independently verified its clean listing with the same FF SHA. This is an evidence-tracking scope change, not a source/FF regression or lost conversion progress. To restore its currently scoped SCRIPT_LIST gate, run a **no-rebuild** `Run-WaWMultiMapOatDifferential.ps1 -OatMode List -IncludeMaps nazi_zombie_aztec_V2.2 -VariantNames hardware_test_main_xanim_native_layout_script_closure`. The 10-name diagnostic never credits the production WEAPON_NAMES or extraction gates.
+
+**Next actual conversion work:** implement source-pool/direct virtual-block pointer-to-string provenance, retain actual non-inert WeaponDef data with correct Xbox child ownership/relocations, and validate primary/full OAT extraction. Keep ordinal names diagnostic only.
+
 ## CodXe upcoming beta — flat shared T4 usermap layout (October 30)
 
 Michael's beta changelog announces: **'New map layout, nested t4 dir gone (sorry)'** and reports that prior converted map packages need layout updates. This is a packaging/installation compatibility requirement *separate from* the Xbox FF binary conversion. Do not assume old converted `.ff` bytes need re-encoding solely due to the directory change.
@@ -81,6 +91,8 @@ The public CodXe source `src/common/config.cpp` currently chooses its `data_root
 - https://github.com/michaeloliverx/codxe/blob/main/src/common/config.cpp
 - https://github.com/michaeloliverx/codxe/blob/main/src/game/t4/sp/components/fastfiles.cpp
 - https://github.com/michaeloliverx/codxe/blob/main/src/game/t4/sp/components/ui.cpp
+
+**First beta inventory test:** user's selected `codxe latest (working map references)` folder contained no recognized installed `usermaps/<map>` subdirectories at the original shallow roots. This is **not** evidence the beta layout is invalid. A later script revision performs bounded recursive discovery (depth ≤6, ≤2,500 directories) and prints up to 25 `*.ff` path hints to help locate the actual install/map reference files; Windows runtime recheck is pending. The PowerShell syntax preflight now includes this new inspector.
 
 PC2XB3 SourceArchive now explicitly plans the expected flat `_codxe/usermaps/<map>/` installation root without writing files there. `tools/oat-xenon/Test-CodXeT4BetaLayout.ps1 -Root <game-folder-or-beta-reference-folder>` is an independent **read-only** inventory: detects flat vs nested roots, enumerates actual files, checks name-based FF and common menu metadata presence, and creates JSON under the converter's `output/codxe_beta_layout_audit/`. The tool never moves existing maps or approves release.
 
