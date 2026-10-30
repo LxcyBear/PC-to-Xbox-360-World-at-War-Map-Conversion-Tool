@@ -26,6 +26,27 @@
 - FF size increases, OAT listing, successful full extraction, independent readback, and Xbox hardware gameplay are separate milestones. Diagnostic FFs must not be deployed as production output.
 - PC source FFs and IWDs are read-only.
 
+## Windows verification — first recipe Source PASS (October 30)
+
+The user executed commit `3c476a8` with `-Mode Source -IncludeMaps nazi_zombie_FRUmansion,nazi_zombie_aztec_V2.2`: **both maps passed** `linker-v2-source`; the .NET shared engine compiled and emitted no Xbox FFs in Source mode, as expected.
+
+Aztec IWD source report: `IWDs=1; entries=74; unique loose scripts=3; script collisions=0; errors=0`. FRUmansion also passed, but the pasted log truncated its detailed counts. These are SOURCE evidence only, not confirmation that script bytes were overridden in a candidate Xbox FF.
+
+Subsequent development adjustments (Windows untested): Source mode calls `linker-v2-source` directly because it already runs `NormalMapAnalyzer` and writes the same analyzer reports; the former redundant `stage4-normal-analyze` process is removed. The recipe index now limits script winners to `.gsc`/`.csc` (not `.atr`, `.cfg`, `.txt`). The RawFile builder reads the last duplicate path within a winning ZIP, matching the source-index tie-breaker. Candidate logs surface `ScriptClosureIwdScriptsOverridden` and `scriptClosureReady` directly.
+
+**Next targeted Aztec Candidate diagnostic, NOT a release:**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1' -Mode Candidate -OatVariants Primary -IncludeMaps nazi_zombie_aztec_V2.2
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1' -OatMode List -IncludeMaps nazi_zombie_aztec_V2.2 -VariantNames hardware_test_main_xanim_native_layout_script_closure
+```
+
+Check the matrix for `[MULTIMAP-RECIPE] ... scriptClosureReady=...`, `RECIPE IWD script-closure overrides=N`, emitted FF path/size, and OAT `--list` summary. A script-closure FF may be absent if typed closure cannot build or the index finds no applicable overrides; that is evidence to debug, not a PASS. Full OAT extraction and Xbox hardware testing are separate gates.
+
 ## Focused Windows preflight (no FF rebuild)
 
 ```powershell
