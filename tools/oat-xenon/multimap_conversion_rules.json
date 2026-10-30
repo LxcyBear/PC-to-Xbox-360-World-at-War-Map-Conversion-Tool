@@ -1,0 +1,84 @@
+{
+  "schema": "WaW360.SharedConversionEvidenceRules.v1",
+  "purpose": "Common converter rule registry. A rule is applicable to every map only if its scope is 'global'; observations and hypotheses must be validated map-by-map.",
+  "updated": "2026-10-30",
+  "gates": [
+    {
+      "id": "GLOBAL_OAT_LOAD",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Do not authorize Xbox deployment unless both final map fastfiles independently pass native T4Xenon OAT load with zero warnings and errors, plus required package dependency checks.",
+      "enforce": "release-only"
+    },
+    {
+      "id": "GLOBAL_NO_DONOR_BYTES",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Do not copy unverified donor Xbox/retail FF payload bytes or fabricate converted XAsset graphs; stock references are name/identity evidence until proven loaded in the correct runtime zone.",
+      "enforce": "asset lineage"
+    },
+    {
+      "id": "GLOBAL_NO_PADDING",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Never inflate maps to hit an assumed minimum compressed FF size. Measure actual converted bytes and payload coverage.",
+      "enforce": "FF-size history"
+    },
+    {
+      "id": "GLOBAL_ROOT_ORDER",
+      "scope": "global",
+      "confidence": "strong evidence FRUmansion",
+      "rule": "Native asset order is dependency-driven. Do not assume PC root order or simple asset type sorting; verify native ScriptString indices and dependency closure.",
+      "enforce": "linker-v2"
+    },
+    {
+      "id": "GLOBAL_CACHED_PASS_ONLY",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Cache only outputs that satisfy their own validation stage and whose source hashes, context and implementation version still match.",
+      "enforce": "BatchStageCache"
+    },
+    {
+      "id": "RUNTIME_210_MIB",
+      "scope": "hypothesis",
+      "confidence": "Jake suggested, not independently measured universal cutoff",
+      "rule": "A map was reported freezing above approximately 210 MiB runtime RAM. Do not infer runtime RAM from compressed FF size; collect actual runtime memory evidence per map.",
+      "enforce": "diagnostics only"
+    },
+    {
+      "id": "FRU_FX_BLOCK7",
+      "scope": "map-specific",
+      "confidence": "observed",
+      "rule": "FRUmansion FX promoted graph previously caused OAT invalid block 7 at asset #3345; tracked-shell variant passed. Fix serializer generically and run FRUmansion plus other maps through OAT regression, not blind promotion.",
+      "enforce": "FX regression"
+    },
+    {
+      "id": "FRU_IMAGE43",
+      "scope": "map-specific",
+      "confidence": "observed",
+      "rule": "FRUmansion has 43 residual source images that were text references or failing PC-OAT image dumps; stock/UGX/ZCT scans did not prove owned image payloads. Never fill with arbitrary donors.",
+      "enforce": "image payload proof"
+    },
+    {
+      "id": "AZTEC_GATE8_DRAWS",
+      "scope": "map-specific",
+      "confidence": "OAT and Windows-proven source-only",
+      "rule": "Aztec: 1903 typed PC static draws, 1902 source-owned model occurrences and 1 stock identity; 60B Xenon partial numeric array exists, but 0/1903 native pointer draw records linked. Do not mark Xbox-ready.",
+      "enforce": "GfxWorld regression"
+    },
+    {
+      "id": "ZCT_UGX",
+      "scope": "profile-specific",
+      "confidence": "known named dependencies",
+      "rule": "ZCT and UGX maps need profile-specific dependency evidence and sourcing. Do not assume generic vanilla-stock external sound/image rules cover them.",
+      "enforce": "profile routing"
+    },
+    {
+      "id": "RETAIL_LOCATION_INDEX",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "A .ff file path listing is a filename index, not a validated asset or dependency index. Record OAT-decoded asset names, source FF hashes, and ownership separately before reuse.",
+      "enforce": "dependency provenance"
+    }
+  ]
+}
