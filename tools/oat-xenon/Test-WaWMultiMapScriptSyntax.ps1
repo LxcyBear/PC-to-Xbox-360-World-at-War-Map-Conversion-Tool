@@ -12,6 +12,7 @@ $dir = $PSScriptRoot
 # any data inspection or FF operation on Windows PowerShell 5.1.
 $files = @(
     @(Get-ChildItem -LiteralPath $dir -Filter '*WaWMultiMap*.ps1' -File)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-WaWBackroomsIntake.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-CodXeT4BetaLayout.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Stage-CodXeT4BetaPackage.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-WaWRuntimeScriptDependency.ps1') -ErrorAction Stop)
