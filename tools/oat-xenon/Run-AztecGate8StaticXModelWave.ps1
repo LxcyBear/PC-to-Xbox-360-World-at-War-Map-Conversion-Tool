@@ -289,9 +289,33 @@ foreach($row in @($rows | Select-Object -Skip 1)){
     })
     $converted++
 }
-$draws=[int](($verified.ToArray() | Measure-Object -Property draws -Sum).Sum)
-$referenceDraws=[int](($referenced.ToArray() | Measure-Object -Property draws -Sum).Sum)
-$unresolvedDraws=[int](($unresolved.ToArray() | Measure-Object -Property draws -Sum).Sum)
+# Windows PowerShell 5.1 + StrictMode: Measure-Object on an empty
+# collection can return a result without a .Sum member. Both external
+# reference buckets are legitimately empty on a valid conversion wave.
+# Count directly and deterministically, treating ONLY empty buckets as 0;
+# malformed or negative draw counts must remain hard failures.
+function Get-ExactDrawSum([object[]]$items,[string]$label){
+    [long]$sum=0
+    foreach($item in $items){
+        if($null -eq $item){throw "$label includes a null model row"}
+        $p=$item.PSObject.Properties['draws']
+        if($null -eq $p -or $null -eq $p.Value){
+            throw "$label model row is missing its draw-count property"
+        }
+        [int]$count=0
+        if(-not [int]::TryParse([string]$p.Value,[ref]$count) -or $count -lt 0){
+            throw "$label model row has an invalid draw count: $($p.Value)"
+        }
+        $sum += [long]$count
+    }
+    if($sum -gt 1903){
+        throw "$label exceeds the pinned original-PC 1903 static draw instances ($sum)"
+    }
+    return [int]$sum
+}
+$draws=Get-ExactDrawSum -items $verified.ToArray() -label 'PC-owned XModel bodies'
+$referenceDraws=Get-ExactDrawSum -items $referenced.ToArray() -label 'Verified native reference names'
+$unresolvedDraws=Get-ExactDrawSum -items $unresolved.ToArray() -label 'Unresolved PC reference names'
 $coveredTypes=$verified.Count+$referenced.Count
 $accountedTypes=$coveredTypes+$unresolved.Count
 $fullCensus=$coveredTypes -eq 27 -and $draws+$referenceDraws -eq 1903 -and $unresolved.Count -eq 0
