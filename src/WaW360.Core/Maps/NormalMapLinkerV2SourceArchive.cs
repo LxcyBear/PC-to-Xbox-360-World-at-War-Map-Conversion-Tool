@@ -242,11 +242,17 @@ public static class NormalMapLinkerV2SourceArchive
                 notes.Add("GOLDEN ORACLE: Simpsons working output proves mod.ff/patch.ff/IWD/alternate Bocage load FF are source inputs, not required one-for-one Xbox package outputs.");
         }
 
+        // Upcoming CodXe beta removes the legacy per-game "t4" directory.
+        // The package plan is relative to _codxe\\usermaps\\, not to
+        // _codxe\\t4\\usermaps\\. Keep the old path available only for
+        // explicit legacy migration/inventory; never auto-deploy it.
         var packagePlan = new List<string>
         {
-            canonicalBase + "\\  <- shared usermap package root",
+            "_codxe\\usermaps\\" + canonicalBase + "\\ <- expected upcoming CodXe flat install location (BETA CONTRACT TO VERIFY)",
+            canonicalBase + "\\  <- relative usermap package root",
             canonicalBase + "\\" + canonicalBase + ".ff <- canonical merged primary graph (NOT a byte-for-byte mirror of any one PC FF)"
         };
+        notes.Add("CODXE BETA PACKAGING: upcoming shared layout removes nested t4 directory. Expected install root: _codxe\\usermaps\\<map>\\, NOT _codxe\\t4\\usermaps\\<map>\\. Paths and required extra files need confirmation from the beta reference. This planning metadata does not emit or migrate a package.");
         // Recipe Step 7: always emit an Xbox-native loading-screen zone.
         if (selectedLoad is not null)
             packagePlan.Add(canonicalBase + "\\" + canonicalBase + "_load.ff <- REQUIRED: Xbox stock load template with PC loading picture from " + selectedLoad.FileName);
