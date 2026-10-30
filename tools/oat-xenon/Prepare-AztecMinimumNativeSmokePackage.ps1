@@ -3,7 +3,7 @@ param(
     [string]$PcMapsRoot,
     [string]$SourceMapFolderName='nazi_zombie_aztec_V2.2',
     [string]$PackageTemplateDirectory,
-    [string]$ConvertedMapsRoot,
+    [string]$ConvertedMapsRoot='C:\Users\jorda\OneDrive\Desktop\My Xbox\My Projects\World at War\Xbox Maps\Converter Current Test Map',
     [switch]$PublishApproved
 )
 Set-StrictMode -Version Latest
@@ -229,29 +229,48 @@ try{
         }
     }
     if($PublishApproved -and $blockers.Count -eq 0){
-        if(-not $ConvertedMapsRoot){
-            Block 'Approved copy requires -ConvertedMapsRoot: do not guess your Windows Converted Maps location.'
-        }else{
-            $destRoot=[IO.Path]::GetFullPath($ConvertedMapsRoot)
-            $dest=Join-Path $destRoot $map
-            New-Item -ItemType Directory -Path $destRoot -Force | Out-Null
-            if(Test-Path -LiteralPath $dest){
-                throw "Approved Converted Maps destination exists; no overwriting: $dest"
-            }
-            Copy-Item -LiteralPath $stage -Destination $destRoot -Recurse
-            foreach($name in @($mainName,$loadName,'map.json','preview.dds')){
-                $sourceItem=Join-Path $stage $name
-                $destItem=Join-Path $dest $name
-                if(Test-Path -LiteralPath $sourceItem -PathType Leaf){
-                    if(-not(Test-Path -LiteralPath $destItem -PathType Leaf) -or
-                       (Get-FileHash -LiteralPath $sourceItem -Algorithm SHA256).Hash -ine
-                       (Get-FileHash -LiteralPath $destItem -Algorithm SHA256).Hash){
-                        throw "Published approved package checksum changed: $name"
-                    }
+        # The user-selected Converter Current Test Map directory is itself
+        # the package root. NO extra nazi_zombie_aztec subdirectory.
+        # Publish ONLY after the strict OAT/production-emitter approval.
+        $dest=[IO.Path]::GetFullPath($ConvertedMapsRoot)
+        $files=@(Get-ChildItem -LiteralPath $stage -File)
+        $dirs=@(Get-ChildItem -LiteralPath $stage -Directory)
+        if(@($files | Where-Object {$_.Name -ieq $mainName}).Count -ne 1 -or
+           @($files | Where-Object {$_.Name -ieq $loadName}).Count -ne 1){
+            throw 'Approved stage must have exactly one main and one original-PC selected load FF.'
+        }
+        # No partial copy when the user already has a different test file.
+        # Reusing identical existing files is safe; never silently clobber.
+        foreach($item in $files){
+            $existing=Join-Path $dest $item.Name
+            if(Test-Path -LiteralPath $existing){
+                if(-not(Test-Path -LiteralPath $existing -PathType Leaf) -or
+                   (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash -ine
+                   (Get-FileHash -LiteralPath $existing -Algorithm SHA256).Hash){
+                    throw "Conflicting existing test-map file: $existing. Back it up or move it before approved publish."
                 }
             }
-            Say "PUBLISHED approved test package to Converted Maps: $dest"
         }
+        foreach($item in $dirs){
+            if(Test-Path -LiteralPath (Join-Path $dest $item.Name)){
+                throw "Conflicting existing optional folder: $($item.Name). No implicit overwrite."
+            }
+        }
+        New-Item -ItemType Directory -Path $dest -Force | Out-Null
+        foreach($item in $files){
+            $to=Join-Path $dest $item.Name
+            if(-not(Test-Path -LiteralPath $to -PathType Leaf)){
+                Copy-Item -LiteralPath $item.FullName -Destination $to
+            }
+            if((Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash -ine
+               (Get-FileHash -LiteralPath $to -Algorithm SHA256).Hash){
+                throw "Approved test-map file checksum changed during publish: $to"
+            }
+        }
+        foreach($item in $dirs){
+            Copy-Item -LiteralPath $item.FullName -Destination $dest -Recurse
+        }
+        Say "PUBLISHED approved Aztec FFs directly into requested test-map folder: $dest"
     }
 }
 catch{Block $_.Exception.Message}
