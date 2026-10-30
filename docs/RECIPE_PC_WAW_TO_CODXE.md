@@ -6,6 +6,39 @@
 
 First Windows run after commit `3bfc08f` reported PS5.1 syntax **FAIL** in `Run-WaWMultiMapNativeReadiness.ps1` at lines 188–195. The four static `New-Gate` calls had newline-separated positional strings, which PowerShell parsed as terminated commands. The syntax preflight stopped the attempted workflow before readiness reporting or OAT extraction. **No new FFs or Xbox files were affected.** Hotfix `9fe75f8` puts those command arguments on single logical lines; **Windows syntax and runtime recheck are still pending**. Do not count this as an additional readiness gate.
 
+## October 30 — OAT full extraction isolated to the same ten packed weapon labels
+
+Windows run after `388e8a7` **PASS** on all 7 PowerShell syntax scripts and readiness tracker runtime. Existing Aztec Candidate: **3/10 verified evidence gates**, 74 IWD source entries, 6 exact IWD-owned RawFile overrides (readback 0, FF 449,870 B), and script-closure OAT `--list` 0 warnings/errors. OAT **full extraction of that same SHA** failed with ten `Failed to open file 'weapons/<packed-name@...>'` messages even though OAT exit code was 0. The differential checker correctly labeled `WEAPON_OUTPUT_PATH_ERROR`. This proves **the script-closure exporter is also blocked on WeaponDef diagnostic placeholder filenames**, not that the script payloads were invalid. No release authorized.
+
+**Fix to readiness reporting:** a same-SHA failed full OAT extraction now marks `SCRIPT_EXTRACT=BLOCKED` (with exact error category), not `PENDING`. All 10 readiness gates remain fail-closed; 3/10 remains the correct evidenced tally.
+
+**Next isolated exporter A/B experiment (new code, Windows compile and OAT test PENDING):**
+
+- Enable `WAW360_DIAGNOSTIC_WEAPON_ORDER_PROBE=1` **only for a one-map Candidate run**. By default this feature does not run, to avoid wasting OAT PC listing time on every build.
+- From each ORIGINAL PC source FF, native OAT `--list` supplies real top-level `weapon, name` identities. Recheck full count, unique names, **every known WeaponDef proof name** in the original per-type XAsset order, and at least 3 known-name anchors PER source. Any disagreement suppresses the probe.
+- Only AFTER the six real IWD script overrides have produced a verified script-closure diagnostic FF, create an ADDITIONAL `hardware_test_main_xanim_native_layout_weapon_order_probe/<map>.ff` with the ten **ordinal-only** names substituted in **inert WeaponDef shells**. The existing primary/tracked-shell/script-closure FFs remain unchanged. No donor/model/audio/oracle payload bytes are inserted.
+- The probe directory includes `DO_NOT_DEPLOY_WEAPON_ORDER_PROBE.txt`. Its ordinal substitution is **not a proven target of the original packed pointer**, not a real WeaponDef serialization, and does **not** raise `WEAPON_NAMES`, `SCRIPT_EXTRACT`, `MAIN_EXTRACT`, or any native readiness gate. The readiness JSON reports probe FF size/OAT outcome as a separate non-gated experiment.
+- Purpose: run independent OAT **full extraction** on this newly emitted probe. If exporter failures move beyond `weapons/<packed-name@...>`, record the next structural blocker without pretending the map has become playable.
+
+Use the following single-map focused sequence. **Windows compilation is required before running Candidate; stop if build fails.**
+
+```powershell
+git pull --ff-only
+if ($LASTEXITCODE -ne 0) { throw 'Git pull failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS syntax preflight failed' }
+dotnet build '.\src\WaW360.Cli\WaW360.Cli.csproj' -c Release --no-restore --nologo
+if ($LASTEXITCODE -ne 0) { throw 'Weapon name probe .NET compilation failed' }
+$env:WAW360_DIAGNOSTIC_WEAPON_ORDER_PROBE='1'
+try {
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapMatrix.ps1' -Mode Candidate -OatVariants Primary -IncludeMaps nazi_zombie_aztec_V2.2
+    if ($LASTEXITCODE -ne 0) { throw 'Candidate diagnostic failed' }
+} finally { Remove-Item Env:\WAW360_DIAGNOSTIC_WEAPON_ORDER_PROBE -ErrorAction SilentlyContinue }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-WaWMultiMapOatDifferential.ps1' -OatMode Extract -IncludeMaps nazi_zombie_aztec_V2.2 -VariantNames hardware_test_main_xanim_native_layout_weapon_order_probe
+```
+
+**Expected outcome is unknown until the Windows run.** No default rollout; if all ten real names align but the proof still has synthetic pointers, treat OAT full-extraction movement as diagnostic progress only. A separate **pointer-direct** name resolver or exact T4 XAsset source-index validation remains required for production.
+
 ## Live native Xbox test-readiness progression (implemented)
 
 `Run-WaWMultiMapNativeReadiness.ps1` reads an existing Candidate matrix and its SHA-matched OAT differential reports. It records **10 discrete evidence gates** per map (not an estimate of how much conversion is complete), uses a durable `==========`-style console bar, prints a reason for every PASS / PENDING / BLOCKED, shows movement since the previous evidence check, and persists JSON and per-map history. The Candidate runner now invokes this automatically at the end of each run; OAT differential invokes it whenever new validation evidence is saved. It **never builds or deploys FFs, nor declares native hardware test authorization**.
