@@ -40,9 +40,9 @@ internal sealed class T4XenonXModelCorpus
             throw new InvalidDataException("XModel root-binding manifest is not passing.");
 
         // The original 280 + 9 production corpus gate remains unchanged.
-        // The only partial Aztec diagnostic shapes are the pinned one-model
-        // canary and the explicitly enumerated two-model canary. Neither
-        // authorizes hardware deployment, and both require zero ref upgrades.
+        // Partial Aztec diagnostic shapes are restricted to exact 1-, 2-,
+        // or 5-source-model corpora. None authorizes hardware deployment,
+        // and each requires zero reference root upgrades.
         var requiredOwned = aztecCanary ? 1 : aztecTwoModels ? 2 : aztecFiveModels ? 5 : expectedOwned;
         var requiredRefs = (aztecCanary || aztecTwoModels || aztecFiveModels) ? 0 : expectedReferences;
         var ownedRows = root.GetProperty("ownedBindings").EnumerateArray().ToArray();
