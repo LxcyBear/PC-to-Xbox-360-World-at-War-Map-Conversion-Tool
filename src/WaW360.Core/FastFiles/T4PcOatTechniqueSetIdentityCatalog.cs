@@ -145,6 +145,29 @@ public static class T4PcOatTechniqueSetIdentityCatalog
         };
     }
 
+    /// <summary>
+    /// Original PC OAT semantic XAsset names for a selected asset family.
+    /// This is intentionally only an IDENTITY diagnostic and does NOT prove
+    /// that a packed virtual-block WeaponDef pointer targets a specific name.
+    /// Reuse the existing pinned native Unlinker and list parser instead of
+    /// reimplementing brittle parsing or a second Windows process runner.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> ListPcAssetNamesAsync(
+        string pcFastFile,
+        string assetType,
+        CancellationToken cancellationToken = default)
+    {
+        var input = await FastFileAnalysisCache.GetZoneAsync(pcFastFile, cancellationToken);
+        if (input.Platform != WaWPlatform.PC || input.Document.Endianness != Endian.Little)
+            throw new InvalidDataException("OAT PC name census requires a PC/little-endian source FF.");
+        if (assetType is not ("weapon" or "techniqueset"))
+            throw new ArgumentOutOfRangeException(nameof(assetType), assetType, "Only diagnostic weapon/techniqueset names may be requested.");
+        var listed = await RunOatListAsync(ResolveUnlinker(null), pcFastFile, cancellationToken);
+        return listed.Where(x => x.Type.Equals(assetType, StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Name)
+            .ToList();
+    }
+
     private static T4PcOatTechniqueSetIdentityResult Failure(
         string pcFastFile,
         string unlinker,
