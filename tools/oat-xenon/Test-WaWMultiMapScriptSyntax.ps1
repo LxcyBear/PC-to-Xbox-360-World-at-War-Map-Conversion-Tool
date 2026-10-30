@@ -16,6 +16,8 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Stage-CodXeT4BetaPackage.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Stage-AztecFirstExceptionCanary.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecXboxCopiedFFs.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Stage-AztecWorldFirstExceptionCanary.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecWorldXboxCopiedFFs.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-WaWRuntimeScriptDependency.ps1') -ErrorAction Stop)
 ) | Sort-Object Name
 if ($files.Count -eq 0) {
