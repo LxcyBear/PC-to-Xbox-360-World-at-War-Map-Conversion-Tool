@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$ReuseArchivedPasses)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -7,6 +7,9 @@ $ErrorActionPreference = 'Stop'
 # world/renderer and OAT setup, only the source-owned WeaponDef canary
 # count changes 0 -> 63. Diagnostic FFs are NOT Xbox deployable.
 # Never modify the SHA-pinned 4,510,695-byte protected good FF.
+# -ReuseArchivedPasses validates the PREVIOUSLY OAT-PASSED archived FFs
+# without rebuilding, then finishes the size comparison after the old
+# PowerShell native-child stdout polluted the function return value.
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $sourceReport=Join-Path $base 'pc_g11_lightning_weapon_69_unified_native_source\aztec_69_weapon_unified_original_pc_xbox_body_selections.json'
@@ -91,6 +94,9 @@ if((Test-Path -LiteralPath $oldSummary -PathType Leaf) -and
 }
 Write-Host '[AZTEC-W63-AB] ========================================================='
 Write-Host '[AZTEC-W63-AB] TRUE compressed FF growth: same full Gate11 world, 0 vs 63 PC WeaponDef canaries'
+if($ReuseArchivedPasses){
+    Write-Host '[AZTEC-W63-AB] READBACK ONLY: verifying both already OAT-PASS archived FastFiles and source SHA; NO .NET/OAT/rebuild.'
+}
 Write-Host "[AZTEC-W63-AB] Preserved 4,510,695-byte protected FF SHA: $protectedHash"
 Write-Host '[AZTEC-W63-AB] Both builds require 8509 exact identities and OAT 0/0, with NO Xbox deployment.'
 Write-Host '[AZTEC-W63-AB] Full 7b child graphs (179,775 source-proof bytes) are NOT copied to either FF.'
@@ -120,15 +126,28 @@ function Assert-InputsStillPinned {
 }
 function Invoke-ExactCase([int]$count,[string]$label){
     Assert-InputsStillPinned
-    Write-Host "[AZTEC-W63-AB] BUILD $label : original PC weapon diagnostic canaries=$count"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $script -Limit $count
-    $code=[int]$LASTEXITCODE
-    if($code -ne 0){
-        throw "A/B case $label failed (exit=$code). No exact weapon-only FF delta is claimed. Inspect .deps\aztec-w63-ff-growth logs."
+    $caseDir=Join-Path $archive $label
+    if($ReuseArchivedPasses){
+        Write-Host "[AZTEC-W63-AB] READBACK $label : authentic previously passed archived FastFile, canaries=$count"
+        $srcSummary=Join-Path $caseDir 'case_size_and_oat.json'
+        $srcManifest=Join-Path $caseDir 'nuclear_xenon_renderer_emit.json'
+        $srcFf=Join-Path $caseDir 'nazi_zombie_aztec.ff'
+    }else{
+        Write-Host "[AZTEC-W63-AB] BUILD $label : original PC weapon diagnostic canaries=$count"
+        # CRITICAL PS5.1: native PowerShell stdout is function SUCCESS-STREAM data.
+        # Without Out-Host the build's dozens of console lines become part
+        # of the return value, so $control.$key fails under StrictMode even
+        # though both OAT FF builds passed. Only the final [pscustomobject]
+        # may leave this function through the success stream.
+        & powershell -NoProfile -ExecutionPolicy Bypass -File $script -Limit $count | Out-Host
+        $code=[int]$LASTEXITCODE
+        if($code -ne 0){
+            throw "A/B case $label failed (exit=$code). No exact weapon-only FF delta is claimed. Inspect .deps\aztec-w63-ff-growth logs."
+        }
+        $srcSummary=Join-Path $shared ("aztec_weapon63_ff_growth_"+$count+".json")
+        $srcManifest=Join-Path $shared 'scratch_emit\nuclear_xenon_renderer_emit.json'
+        $srcFf=Join-Path $shared 'scratch_emit\nazi_zombie_aztec.ff'
     }
-    $srcSummary=Join-Path $shared ("aztec_weapon63_ff_growth_"+$count+".json")
-    $srcManifest=Join-Path $shared 'scratch_emit\nuclear_xenon_renderer_emit.json'
-    $srcFf=Join-Path $shared 'scratch_emit\nazi_zombie_aztec.ff'
     foreach($required in @($srcSummary,$srcManifest,$srcFf)){
         if(-not(Test-Path -LiteralPath $required -PathType Leaf)){
             throw "A/B case $label PASS flag but output missing: $required"
@@ -163,22 +182,23 @@ function Invoke-ExactCase([int]$count,[string]$label){
        [long]$r.protectedPriorNativeFastFileBytes -ne $protectedBytes){
         throw "A/B case $label failed exact original PC native WeaponDef, OAT, source or physical FF SHA verification."
     }
-    $caseDir=Join-Path $archive $label
-    New-Item -ItemType Directory -Path $caseDir -Force|Out-Null
     $copied=Join-Path $caseDir 'nazi_zombie_aztec.ff'
-    Copy-Item -LiteralPath $srcFf -Destination $copied -Force
-    Copy-Item -LiteralPath $srcSummary -Destination (Join-Path $caseDir 'case_size_and_oat.json') -Force
-    Copy-Item -LiteralPath $srcManifest -Destination (Join-Path $caseDir 'nuclear_xenon_renderer_emit.json') -Force
-    foreach($log in @('integrated_emitter.log','aztec_pc_world_core_integrated_oat_run.json')){
-        $path=Join-Path $shared $log
-        if(Test-Path -LiteralPath $path -PathType Leaf){
-            Copy-Item -LiteralPath $path -Destination (Join-Path $caseDir $log) -Force
+    if(-not $ReuseArchivedPasses){
+        New-Item -ItemType Directory -Path $caseDir -Force|Out-Null
+        Copy-Item -LiteralPath $srcFf -Destination $copied -Force
+        Copy-Item -LiteralPath $srcSummary -Destination (Join-Path $caseDir 'case_size_and_oat.json') -Force
+        Copy-Item -LiteralPath $srcManifest -Destination (Join-Path $caseDir 'nuclear_xenon_renderer_emit.json') -Force
+        foreach($log in @('integrated_emitter.log','aztec_pc_world_core_integrated_oat_run.json')){
+            $path=Join-Path $shared $log
+            if(Test-Path -LiteralPath $path -PathType Leaf){
+                Copy-Item -LiteralPath $path -Destination (Join-Path $caseDir $log) -Force
+            }
         }
     }
     if((Get-FileHash -LiteralPath $copied -Algorithm SHA256).Hash -ine $sha){
         throw "A/B case $label archive FF SHA differs from fresh OAT-passed build."
     }
-    Write-Host "[AZTEC-W63-AB] $label OAT PASS; roots=8509; compressed FF bytes=$length; SHA=$sha"
+    Write-Host "[AZTEC-W63-AB] $label OAT PASS $(if($ReuseArchivedPasses){'ARCHIVED READBACK'}else{'FRESH RUN'}); roots=8509; compressed FF bytes=$length; SHA=$sha"
     return [pscustomobject]@{
         label=$label
         weaponCanaries=$count
@@ -240,6 +260,9 @@ $result=[ordered]@{
     schema='WaW360.Aztec63WeaponExactSameSettingsAbFfSize.v1'
     status=$status
     revision=$revision
+    archivedPreviousAandBReadbackOnly=[bool]$ReuseArchivedPasses
+    originalBuildRevisionCryptographicallyPinnedByArchivedEvidence=(-not $ReuseArchivedPasses)
+    originalBuildRevision=if($ReuseArchivedPasses){'NOT STORED IN PREVIOUSLY ARCHIVED REPORTS'}else{$revision}
     inputOriginalPcWeapon69ManifestSha256=$sourceHash
     inputProtectedSizeLedgerSha256=$sizeHash
     exactNativeFfEmitterAndRunnerCodeSha256=$codeHashes
@@ -255,7 +278,8 @@ $result=[ordered]@{
     controlVsProtectedFfBytes=$protectedToControl
     weaponCandidateVsProtectedFfBytes=$protectedToWeapon
     compressedWeaponPercentOfControl=[Math]::Round(100.0*$weaponDelta/$control.compressedFfBytes,4)
-    exactSameSourceManifestsAndGitRevisionForBothRuns=$true
+    exactSameSourceManifestsAndGitRevisionForBothRuns=(-not $ReuseArchivedPasses)
+    sameWorldSettingsAndResultCountersProvenByArchivedManifests=$true
     allOtherTrackedWorldRootAndChildCountsEqual=$true
     bothCasesOatPass8509IdentitiesZeroWarningsErrors=$true
     noUnverifiedSourcePointersCopiedToCandidate=$true
@@ -265,7 +289,11 @@ $result=[ordered]@{
     gamePlayableOnXbox=$false
     gate11Closed=$false
     noProtectedFfReplaced=$true
-    caveat='Two Stage4D+4E diagnostic full Gate11 builds use the same source manifests, code revision and settings; only WeaponDef canary count differs 0 vs 63. Exact compressed delta is genuine integration size difference for the 63 PARTIAL scalar/inline-XString bodies, not the original 179775 bytes of full Xbox source-owned weapon 7b graphs. Both OAT loads are NOT Xbox hardware/gameplay proof.'
+    caveat=if($ReuseArchivedPasses){
+        'Read-only SHA/OAT validated 0 and 63 canary FastFiles archived from the previously observed same-run A/B execution. The archived OAT reports validate bytes and world counters but DID NOT store the original exact Git revision/build source SHA. Hence source-revision identity across the two ORIGINAL builds is not cryptographically attested; no new OAT or build was performed. The +2095 compressed delta is consistent with a 63 partial-body weapon-only difference. Neither FF is gameplay-ready.'
+    }else{
+        'Two Stage4D+4E diagnostic full Gate11 builds use the same source manifests, code revision and settings; only WeaponDef canary count differs 0 vs 63. Exact compressed delta is genuine integration size difference for the 63 PARTIAL scalar/inline-XString bodies, not the original 179775 bytes of full Xbox source-owned weapon 7b graphs. Both OAT loads are NOT Xbox hardware/gameplay proof.'
+    }
 }
 $result|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $report -Encoding UTF8
 $lines=New-Object 'System.Collections.Generic.List[string]'
@@ -279,6 +307,9 @@ $lines.Add("| Control 0 | 0 | $($control.compressedFfBytes) | PASS |")
 $lines.Add("| Actual 63 | 63 | $($weapons.compressedFfBytes) | PASS |")
 $lines.Add('')
 $lines.Add("**Actual 63-weapon-only compressed delta: $weaponDelta bytes** (whole uncompressed zone delta: $zoneDelta bytes).")
+if($ReuseArchivedPasses){
+    $lines.Add('**Readback-only result:** Both original FF/OAT evidence files were saved in the same reported A/B run, but those archives did not record their exact originating code revision. No fresh builds or OAT runs. Their SHA-verified sizes and non-weapon world counters match.')
+}
 $lines.Add("Historical separately protected FF: $protectedBytes bytes; control minus historical: $protectedToControl; 63 minus historical: $protectedToWeapon.")
 $lines.Add("63 original-PC-source scalar+inline-XString diagnostic bytes: $($weapons.diagnosticSourceOwnedWeaponBytesEmitted); 63 authentic full standalone 7b proofs: 179775 bytes, NOT emitted as full graphs.")
 $lines.Add('')
@@ -293,6 +324,9 @@ Write-Host "[AZTEC-W63-AB] EXACT WEAPON-ONLY COMPRESSED DELTA: $weaponDelta B"
 Write-Host "[AZTEC-W63-AB] EXACT ZONE BYTES DELTA: $zoneDelta B"
 Write-Host "[AZTEC-W63-AB] ORIGINAL SOURCE SCALAR+INLINE XSTRING BYTES: $($weapons.diagnosticSourceOwnedWeaponBytesEmitted)"
 Write-Host '[AZTEC-W63-AB] BOTH FULL GATE11 SCRATCH FFs OAT PASS 8509/8509, 0 warnings/errors; NO Xbox approval.'
+if($ReuseArchivedPasses){
+    Write-Host '[AZTEC-W63-AB] Note: archives do not cryptographically pin previous code revision; same-world A/B inference comes from the original observed joint run and archived world-count parity.'
+}
 Write-Host "[AZTEC-W63-AB] STATUS=$status"
 Write-Host "[AZTEC-W63-AB] JSON: $report"
 Write-Host "[AZTEC-W63-AB] Markdown: $md"
