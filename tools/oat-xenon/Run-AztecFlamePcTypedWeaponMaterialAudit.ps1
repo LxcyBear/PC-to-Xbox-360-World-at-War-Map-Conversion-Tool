@@ -14,6 +14,7 @@ $out=Join-Path $base 'pc_g11_flame_loaded_virtual_target_proof'
 $report=Join-Path $out 'aztec_four_pc_flame_tables_typed_weapon_material_names.json'
 $log=Join-Path $out 'aztec_original_pc_weapon_native_oat_flame_table_export.log'
 $evidence=Join-Path $repo '.deps\aztec-original-pc-typed-flame-table-proofs'
+$pcList=Join-Path $out 'aztec_26_flame_packed_typed_material_alias_loader_v2.log'
 $bin=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $goodFF=Join-Path $repo '.deps\aztec-w63-direct-ff-growth\scratch_emit\nazi_zombie_aztec.ff'
 foreach($f in @($prior,$bin,$goodFF)){
@@ -72,7 +73,14 @@ try{
     $files=@(Get-ChildItem -LiteralPath $export -Recurse -File -ErrorAction SilentlyContinue)
     if($files.Count -gt 20000){throw 'Unexpected excessive file count in original PC-only OAT weapon export.'}
     New-Item -ItemType Directory -Path $evidence -Force|Out-Null
-    $materialRoots=@($combined -split '[\r\n]+'|ForEach-Object{
+    # --include-assets weapon does not necessarily print all Material
+    # roots. Reuse the SHA-pinned previous OAT --list loaded ORIGINAL PC
+    # source log rather than falsely reporting zero independent roots.
+    $sourceLists=@($combined)
+    if(Test-Path -LiteralPath $pcList -PathType Leaf){
+        $sourceLists+=@([IO.File]::ReadAllText($pcList))
+    }
+    $materialRoots=@(($sourceLists -join [Environment]::NewLine) -split '[\r\n]+'|ForEach-Object{
         $m=[regex]::Match([string]$_,'^\s*material\s*,\s*(\S(?:.*\S)?)\s*$',
            [Text.RegularExpressions.RegexOptions]::IgnoreCase)
         if($m.Success){$m.Groups[1].Value.Trim()}
