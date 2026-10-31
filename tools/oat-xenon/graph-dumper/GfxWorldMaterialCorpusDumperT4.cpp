@@ -569,15 +569,29 @@ namespace gfxworld
             // structures must NEVER be mistaken for PC-source file payloads.
             q<<",\"runtimeOnlyPointerPresence\":{";
             q<<"\"cellCasterBits\":"<<(world.cellCasterBits?"true":"false");
+            q<<",\"sceneEntCellBits\":"<<(world.dpvsPlanes.sceneEntCellBits?"true":"false");
+            q<<",\"reflectionProbeTextures\":"<<(world.reflectionProbeTextures?"true":"false");
+            q<<",\"lightmapPrimaryTextures\":"<<(world.lightmapPrimaryTextures?"true":"false");
+            q<<",\"lightmapSecondaryTextures\":"<<(world.lightmapSecondaryTextures?"true":"false");
             q<<",\"sceneDynModel\":"<<(world.sceneDynModel?"true":"false");
             q<<",\"sceneDynBrush\":"<<(world.sceneDynBrush?"true":"false");
             q<<",\"primaryLightEntityShadowVis\":"
              <<(world.primaryLightEntityShadowVis?"true":"false");
             q<<",\"nonSunPrimaryLightForModelDynEnt\":"
              <<(world.nonSunPrimaryLightForModelDynEnt?"true":"false");
+            q<<",\"primaryLightDynEntShadowVis0\":"
+             <<(world.primaryLightDynEntShadowVis[0]?"true":"false");
+            q<<",\"primaryLightDynEntShadowVis1\":"
+             <<(world.primaryLightDynEntShadowVis[1]?"true":"false");
             q<<",\"smodelVis0\":"<<(world.dpvs.smodelVisData[0]?"true":"false");
             q<<",\"surfaceVis0\":"<<(world.dpvs.surfaceVisData[0]?"true":"false");
             q<<",\"lodData\":"<<(world.dpvs.lodData?"true":"false");
+            q<<",\"surfaceMaterials\":"
+             <<(world.dpvs.surfaceMaterials?"true":"false");
+            q<<",\"surfaceCastsSunShadow\":"
+             <<(world.dpvs.surfaceCastsSunShadow?"true":"false");
+            q<<",\"dynVis01\":"
+             <<(world.dpvsDyn.dynEntVisData[0][1]?"true":"false");
             q<<",\"dpvsDynCellBits0\":"<<(world.dpvsDyn.dynEntCellBits[0]?"true":"false");
             q<<"}";
             q<<",\"sourceGridShape\":{";
