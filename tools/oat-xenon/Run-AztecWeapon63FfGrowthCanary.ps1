@@ -44,6 +44,13 @@ New-Item -ItemType Directory -Path $work -Force|Out-Null
 if(Test-Path -LiteralPath $summary -PathType Leaf){
     Copy-Item -LiteralPath $summary -Destination $prior -Force
 }
+# Avoid reporting an earlier scratch FF after a preflight/build failure.
+# Only remove files under this tool's OWN dedicated .deps work directory.
+foreach($stale in @($ff,$emitReport)){
+    if(Test-Path -LiteralPath $stale -PathType Leaf){
+        Remove-Item -LiteralPath $stale -Force
+    }
+}
 Write-Host '[AZTEC-W63-GROWTH] ==========================================================='
 Write-Host '[AZTEC-W63-GROWTH] ACTUAL isolated Xbox FF size experiment from original PC data'
 Write-Host "[AZTEC-W63-GROWTH] Baseline protected OAT-good FF: $baselineBytes bytes"
@@ -93,8 +100,8 @@ $summaryObj=[ordered]@{
     fullWeaponDefChildrenAndDependenciesEmitted=$false
     requestedCanaries=$Limit
     originalPcSourceWeaponBodyUsedForEachCanary=$true
-    fixedBodyNativeScalarsOnly=true
-    originalInlineXstringsOnly=true
+    fixedBodyNativeScalarsOnly=$true
+    originalInlineXstringsOnly=$true
     protectedPriorNativeFastFile=$protected
     protectedPriorNativeFastFileBytes=$baselineBytes
     protectedPriorSha256=[string]$s.converted.sha256
@@ -103,9 +110,9 @@ $summaryObj=[ordered]@{
     newScratchFastFileSha256=$sha
     deltaBytesComparedToProtectedBaseline=$delta
     growthPercentComparedToProtectedBaseline=if($newBytes -gt 0){[Math]::Round(100.0*$delta/$baselineBytes,3)}else{$null}
-    oatLoaded8509NativeAssetIdentities=[bool]$e.ExactIdentitySequence
-    oatZeroWarningsErrors=[bool]$e.OatZeroWarningsZeroErrors
-    nativeLayoutReplayExact=[bool]$e.LayoutReplayExact
+    oatLoaded8509NativeAssetIdentities=if($null -ne $e){[bool]$e.ExactIdentitySequence}else{$false}
+    oatZeroWarningsErrors=if($null -ne $e){[bool]$e.OatZeroWarningsZeroErrors}else{$false}
+    nativeLayoutReplayExact=if($null -ne $e){[bool]$e.LayoutReplayExact}else{$false}
     wrapperRoundTripVerified=if($null -ne $e){[bool]$e.LayoutReplayExact}else{$false}
     sourceOwnedScalarXstringSerializedBytes=if($null -ne $e){[long]$e.OriginalPcWeaponDiagnosticSerializedBytes}else{0L}
     sourceOwnedFullProofBytesForSelectedCanaries=if($null -ne $e){[long]$e.OriginalPcWeaponSourceProofBytes}else{0L}
@@ -125,7 +132,7 @@ Write-Host "[AZTEC-W63-GROWTH] PROTECTED BASELINE FF = $baselineBytes bytes ($('
 Write-Host "[AZTEC-W63-GROWTH] NEW SCRATCH FF = $newBytes bytes ($('{0:N2}' -f ($newBytes/1MB)) MiB)"
 Write-Host "[AZTEC-W63-GROWTH] MEASURED DELTA vs prior protected candidate = $delta bytes"
 Write-Host "[AZTEC-W63-GROWTH] Native original-PC scalar+inline XString WeaponDef roots=$emitted/$Limit; full 7b graph in FF=0"
-Write-Host "[AZTEC-W63-GROWTH] Stage4D layout exact=$($e.LayoutReplayExact); OAT 8509 identity=$($e.ExactIdentitySequence); OAT 0/0=$($e.OatZeroWarningsZeroErrors)"
+Write-Host "[AZTEC-W63-GROWTH] Stage4D layout exact=$($summaryObj.nativeLayoutReplayExact); OAT 8509 identity=$($summaryObj.oatLoaded8509NativeAssetIdentities); OAT 0/0=$($summaryObj.oatZeroWarningsErrors)"
 Write-Host "[AZTEC-W63-GROWTH] STATUS=$($summaryObj.status)"
 Write-Host "[AZTEC-W63-GROWTH] JSON=$summary"
 Write-Host "[AZTEC-W63-GROWTH] Scratch FF=$ff"
