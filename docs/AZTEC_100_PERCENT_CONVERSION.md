@@ -622,3 +622,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Expect a once-only native OAT witness recompile (new image-name capability), source/retail OAT scans, then a conditional incremental .NET + FF build and native OAT regression. If the first audit reports different/missing native image pointers or non-null stream fields, **STOP** and report the actual log: this is intended safe behavior and no new FF is built. The protected previous candidate remains 4,510,629 B SHA-256 \`B832EDCE7EECFBBF2B0A141FF2C3D946595B317D7E7C7ACA0D21991277522883\`. No full Gate11 approval, no claimed texture pixels, no hardware deployment, release gates remain 10/13 until true image ownership and remaining runtime semantics are proved.
+
+### Gate11 source image headers first OAT load failure and native child-order fix (2026-10-31)
+
+**Exact user Windows first attempt:** git \`a831c93\`; **47/47 Windows PowerShell 5.1 scripts syntax PASS**, pinned x86 OpenAssetTools Unlinker rebuilt successfully at \`3beaa7c\`; both source and original-Xbox \`GfxWorldStreamInfo\` **0 streaming trees, 0 leafRefs, both NULL tree/leaf pointers**. All **six source PC star-prefixed generated world image names** matched actual native Xbox loaded GfxImage reference names **6/6**, both reflection origins exact, non-NULL native reference image pointers **6/6**. This is **name/origin STRUCT proof only**, NOT image pixels or binding equivalence.
+
+Then incremental .NET compile PASS and an isolated new image-header FF emitted **4,510,671 bytes** (+42 B from previously source-OAT passing 4,510,629 B). OAT FF loader REJECTED before asset readback:
+
+\`\`\`text
+ERROR: Loading fastfile failed: Zone referenced offset 536870911 of block
+T4Xenon::XFILE_BLOCK_PHYSICAL_RUNTIME which is larger than its size 0
+\`\`\`
+
+This is a **real new candidate failure**, not Gate11 closure and not Xbox-ready. The 4,510,629 B SHA-\`B832EDCE...\` passing lighting+shadows FF remains untouched.
+
+**Root cause strongly indicated by actual pinned OAT GfxWorld.txt child-loading contract:** original \`T4XenonAztecGate11ImageHeaders\` grouped reflection and lightmap arrays **after cells**. Pinned OAT requires: indices/sky → \`reflectionProbes\` → \`dpvsPlanes.planes/nodes\` → \`GfxCell[]\` → \`lightmaps\` → \`lightGrid\` → \`models\`, with separate nested child load operations. The incorrect stream caused a wrong type to be decoded where a native T4 child array was expected; the physical runtime oversized pointer \`0x1FFFFFFF\` is consistent with such an alignment/ordering error. This diagnosis requires a fresh independent OAT load for confirmation; DO NOT claim solved yet.
+
+**Fix committed:** split header plan/emit into \`PlanReflectionProbes\` / \`EmitReflectionProbes\` and \`PlanLightmaps\` / \`EmitLightmaps\`; emit probe array **after sky but before planes**, lightmaps **after cells but before light-grid**, identically in virtual plan and writer. Added \`Test-AztecGate11ImageHeaderNativeOrder.ps1\`, checking exactly this ordering in both C# flows, with optional direct cross-check of the local pinned OAT \`GfxWorld.txt\` contract; the full Gate11 image-header runner executes this fail-fast source test **before** OAT or the full FF build. The syntax gate now also parses it.
+
+Run (from PC2XB3 repo root):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Syntax failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-AztecGate11ImageHeaderNativeOrder.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'T4 native child order failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate11ImageHeaderProbe.ps1" -BuildDumper
+\`\`\`
+
+Expected after correction (still unproven until run): one new isolated \`pc_g11_image_headers_probe\` FF, native OAT first load, source 11-cell/740-AABB/14,974-index regression, native header XYZ/NULL pixel pointer scan, prior 4.82 MB light-grid and 1,903-shadow ref digests. No FF donor pixels, no stock reference payload, no Xbox hardware approval; **10/13 remains** until all image/root/runtime dependencies are genuinely proven.
