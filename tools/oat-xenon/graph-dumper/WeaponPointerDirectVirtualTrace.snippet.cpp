@@ -11,6 +11,49 @@
             // physical offset. Never write the source FF or produce a donor.
             if (flameRequested && *flameRequested)
             {
+                // Typed read-only source provenance: every C-string and
+                // 112B Material is accessed ONLY if the actual pointer lies
+                // inside an OAT-loaded x86 block. No arbitrary dereference.
+                const auto loadedBytes = [&](const uint32_t address, size_t count)
+                    -> const unsigned char*
+                {
+                    if (!address || !count) return nullptr;
+                    for (size_t bi=0;bi<m_blocks.size();++bi)
+                    {
+                        const auto* b=m_blocks[bi];
+                        if(!b || !b->m_buffer)continue;
+                        const auto start=reinterpret_cast<uintptr_t>(b->m_buffer.get());
+                        const auto loaded=std::min(b->m_buffer_size,m_block_offsets[bi]);
+                        const auto addr=static_cast<uintptr_t>(address);
+                        if(addr>=start && addr-start<=loaded &&
+                           count<=loaded-(addr-start))
+                            return reinterpret_cast<const unsigned char*>(b->m_buffer.get())+(addr-start);
+                    }
+                    return nullptr;
+                };
+                const auto read32 = [](const unsigned char* p)->uint32_t {
+                    return static_cast<uint32_t>(p[0]) |
+                        (static_cast<uint32_t>(p[1])<<8) |
+                        (static_cast<uint32_t>(p[2])<<16) |
+                        (static_cast<uint32_t>(p[3])<<24);
+                };
+                const auto loadedString = [&](uint32_t ptr)->std::string {
+                    if(!ptr)return {};
+                    // Require an owned NUL before the known loaded extent.
+                    std::string value;
+                    for(size_t i=0;i<96;i++)
+                    {
+                        const auto* ch=loadedBytes(ptr+static_cast<uint32_t>(i),1);
+                        if(!ch)return {};
+                        if(*ch==0)return value.empty()?std::string{}:value;
+                        if(!((*ch>='a'&&*ch<='z')||(*ch>='A'&&*ch<='Z')||
+                             (*ch>='0'&&*ch<='9')||*ch=='_'||*ch=='-'||
+                             *ch=='.'||*ch=='/'))
+                            return {};
+                        value.push_back(static_cast<char>(*ch));
+                    }
+                    return {};
+                };
                 std::stringstream flameTokens(flameRequested);
                 std::string flameToken;
                 std::unordered_set<uint32_t> flameSeen;
@@ -33,6 +76,8 @@
                     std::string status = "BLOCK_NOT_ALLOCATED";
                     std::string asciiName;
                     std::string headerHex;
+                    const unsigned char* typed=nullptr;
+                    size_t typedRemaining=0;
                     if (blockNum < m_blocks.size() && m_blocks[blockNum])
                     {
                         const auto* block = m_blocks[blockNum];
@@ -44,6 +89,8 @@
                                 loaded-blockOffset);
                             const auto* bytes = reinterpret_cast<const unsigned char*>(
                                 block->m_buffer.get()+blockOffset);
+                            typed=bytes;
+                            typedRemaining=remaining;
                             const auto sample = std::min(static_cast<size_t>(32),remaining);
                             const char hexDigits[]="0123456789ABCDEF";
                             for(size_t i=0;i<sample;i++)
@@ -78,6 +125,65 @@
                               << " header32=" << headerHex;
                     if(!asciiName.empty()) std::cerr << " name=" << asciiName;
                     std::cerr << std::endl;
+                    // Independent byte-level typed projection. Do not claim
+                    // runtime validity merely because a plausible source
+                    // structure is resident in OAT loaded memory.
+                    std::string materialName;
+                    std::string techniqueName;
+                    std::string aliasName;
+                    std::string imageNames;
+                    unsigned textures=0,constants=0,stateBits=0;
+                    unsigned imageNamesRead=0;
+                    bool materialShape=false;
+                    if(typed && typedRemaining>=112)
+                    {
+                        const auto name=read32(typed);
+                        textures=typed[91];
+                        constants=typed[92];
+                        stateBits=typed[93];
+                        if(textures<=64 && constants<=64 && stateBits<=64)
+                        {
+                            materialName=loadedString(name);
+                            materialShape=!materialName.empty();
+                            if(materialShape)
+                            {
+                                const auto tech=read32(typed+96);
+                                const auto* techHeader=loadedBytes(tech,4);
+                                if(techHeader)
+                                    techniqueName=loadedString(read32(techHeader));
+                                const auto tex=read32(typed+100);
+                                if(textures==0 || loadedBytes(tex,static_cast<size_t>(textures)*16))
+                                {
+                                    for(unsigned ix=0;ix<textures;ix++)
+                                    {
+                                        const auto* table=loadedBytes(tex+ix*16,16);
+                                        if(!table)break;
+                                        const auto* img=loadedBytes(read32(table+12),36);
+                                        // GfxImage.name is the 32-bit cell at +32.
+                                        const auto imageName=img?loadedString(read32(img+32)):std::string{};
+                                        if(!imageNames.empty())imageNames.push_back(';');
+                                        imageNames+=imageName.empty()?"?":imageName;
+                                        if(!imageName.empty())imageNamesRead++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // SndAliasCustom on T4 is precisely one pointer-sized
+                    // record to a real loaded alias name, NOT an audio sample.
+                    if(typed && typedRemaining>=4)
+                        aliasName=loadedString(read32(typed));
+                    std::cerr << "[WAW360-FLAMETYPED] raw=" << flameToken
+                              << " shape=" << (materialShape?"PC_MATERIAL112_NAME_MATCH":"NO_TYPED_MATERIAL_MATCH")
+                              << " materialName=" << (materialName.empty()?"-":materialName)
+                              << " techniqueName=" << (techniqueName.empty()?"-":techniqueName)
+                              << " textureCount=" << textures
+                              << " constantCount=" << constants
+                              << " stateBitsCount=" << stateBits
+                              << " namedImages=" << imageNamesRead
+                              << " images=" << (imageNames.empty()?"-":imageNames)
+                              << " sndAliasName=" << (aliasName.empty()?"-":aliasName)
+                              << std::endl;
                 }
             }
             if (!requested || !*requested)
