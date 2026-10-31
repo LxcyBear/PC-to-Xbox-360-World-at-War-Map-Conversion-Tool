@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$AllowIncompleteStockCache)
+param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
@@ -70,9 +70,8 @@ $targetByKey=New-Object 'System.Collections.Generic.Dictionary[string,object]' (
 foreach($e in $missing){
     $key=([string]$e.category).ToLowerInvariant()+'|'+[string]$e.nativeRootName
     if($targetByKey.ContainsKey($key)){throw "Duplicate native missing root key: $key"}
-    $targetByKey.Add($key,(
-        New-Object 'System.Collections.Generic.List[object]'
-    ))
+    $targetRows=New-Object 'System.Collections.Generic.List[object]'
+    $targetByKey.Add($key,$targetRows)
 }
 $metaFiles=@()
 if(Test-Path -LiteralPath $cacheRoot -PathType Container){
@@ -146,7 +145,7 @@ foreach($metaFile in $metaFiles){
     })
 }
 $completeCatalog=($validLogs -ge 67 -and $staleLogs -eq 0)
-if($validLogs -eq 0 -and -not $AllowIncompleteStockCache){
+if($validLogs -eq 0){
     Write-Host '[AZTEC-PROVENANCE] No eligible 67-zone stock OAT listing cache. Marking provenance UNKNOWN, not stock absent.'
 }
 Write-Host "[AZTEC-PROVENANCE] Xbox OAT cached zones accepted=$validLogs; stale/invalid=$staleLogs; complete67Evidence=$completeCatalog"
