@@ -820,3 +820,32 @@ Outputs in \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_
 - \`aztec_five_class_lightning_console.log\` with full CLI warnings and stage diagnostics.
 
 **Windows compile/test pending.** Do not treat the output as full Materials/XModels/FX/Localization/Weapons runtime closure; do not claim more than 10/13 native structural gates or approve Xbox deployment based on independent payload readbacks.
+
+### Windows five-class source-native sweep PASS, and next 586-root exact body-hash resolver (2026-10-31)
+
+User ran commit \`0fc708a\` on Windows: **55/55 PowerShell 5.1 AST syntax checks PASS**, **10/10 source-verification stages completed, 0 stage failures**. Verified original-PC source data (not integrated in native Xbox map):
+
+- Xbox XModel FULL OWNED proof: **304/304** (251 original map.ff, 53 mod.ff), exact named source proof matches **278/284** native roots; **6 names** lack exact typed source body match. This is a source-native model payload readback, NOT confirmation that any of these 304 bodies was grafted into the 8,509-root FF.
+- FX full owned T4 proof: **248/248** (174 map.ff, 74 mod.ff), **225/233** native root names match; **8** need source identity/body investigation.
+- Weapon T4 Xbox fixed-body plus owned-variable proof: **71/71** (61 map.ff, 10 mod.ff), **59/69** exact native root name matches; **10** remain unmatched. The full 7b proof is distinct from earlier fixed 6f only.
+- Localize PC source names and typed values **177/177**. Remaining **PACKED_VALUE_POINTERS_UNREBASABLE**: complete source-name/value presence does not mean native Xbox UTF-8/UTF-16 string payload/pointer child graph is usable. PC packed value pointer(s) need real native rebasing.
+- Material: **39/39** world source-converted material graphs load through native codec. They cover the 735 world surfaces, but the **other 498** native material roots lack proof via this special 39-world-material pipeline. Material TechniqueSet, shader, image and stateBits semantic closure still required.
+- Previous XAnim root selection remains **590/602** unique source choices; **12/602** different duplicate converted Xbox blobs intentionally blocked. These are carried into the five-class report.
+
+Source proof status from actual Windows run: \`AZTEC_FIVE_CLASS_SOURCE_DIAGNOSTIC_STAGES_PASS_CONTENT_CLOSURE_OPEN\`. The code produced native owned proof containers, **NOT** a new playable FF or console ready map. There is no basis to claim 100% asset closure from 10 successful parser stages; outstanding material/sound/images/runtime world content remains substantial. Current protected 4,510,695B OAT-passing FF still unchanged and Gate11 structural 10/13.
+
+**Next, exact native source body reconciliation without repeating the heavy converters:** \`Run-AztecThreeClassNativeRootResolution.ps1\` and CLI \`aztec-three-class-native-root-selection\`. The script SHA-locks the protected OAT FF and reuses the passing 55-script five-class source proof. For **284 XModel + 233 FX + 69 Weapon = 586 native roots**, it opens every existing SHA-verified source-native proof container (304 + 248 + 71 = **623** converted Xbox source bodies), independently reads and hashes every Xbox body in native serialized form, then assigns every native reference root one exact decision: **single body**, **multiple identical native blobs**, **multiple differing native blobs (BLOCKED)**, or **no exact typed PC source body**. This is the matching proof needed before any legitimate diagnostic native FF graft; it never copies stock retail Xbox body bytes or fakes a same-name match.
+
+Expected prior source-name gap from latest audit: 6 XModels, 8 FX, 10 Weapons, **24 unique native roots total** requiring identity/source investigation. The new stage prints **exact names and root ordinals**, plus any additional byte-hash duplicate conflicts that emerge. It carries forward 39 world materials, packed Localize value pointers, and 12 different XAnim duplicate-name payloads. It will NOT automatically select differing duplicates or promote matching names to confirmed runtime residency.
+
+From converter repo root (Windows test pending):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax check failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecThreeClassNativeRootResolution.ps1"
+\`\`\`
+
+Reports: \`pc_g11_lightning_three_class_native_root_resolution/aztec_three_class_native_root_body_resolution.json\` and \`.md\`, with source body hashes and per-root candidate byte offsets, conflict/quarantine decisions, and exact remaining names. Reuses previous proof files without writing new .ff or rerunning OAT. **First Windows .NET compile/execution not yet verified.** Never treat this stage as Xbox deployment approval.
