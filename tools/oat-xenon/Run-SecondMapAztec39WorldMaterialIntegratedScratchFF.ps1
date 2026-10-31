@@ -10,6 +10,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate11CellProbe,
       [switch]$Gate11PrimitiveProbe,
       [switch]$Gate11LightingProbe,
+      [switch]$Gate11ImageHeadersProbe,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -55,6 +56,9 @@ if($Gate11PrimitiveProbe -and -not $Gate11CellProbe){
 }
 if($Gate11LightingProbe -and -not $Gate11PrimitiveProbe){
     throw '-Gate11LightingProbe requires the entire proven Gate11 primitive/cell/1903-draw graph.'
+}
+if($Gate11ImageHeadersProbe -and -not $Gate11LightingProbe){
+    throw '-Gate11ImageHeadersProbe requires source-owned lighting/shadow, primitive, cell and draw children.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -146,6 +150,7 @@ $gate10Plan=''
 $gate11Summary=''
 $gate11Primitive=''
 $gate11Lighting=''
+$gate11ImageHeaders=''
 if($Gate10StaticDrawProbe){
     $sourceLights=Join-Path $base 'pc_gate8_source_light_codec_candidate'
     $latest=@(Get-ChildItem -LiteralPath $sourceLights -Recurse -File -Filter 'aztec_gate10_source_light_candidate_summary.json' -ErrorAction Stop |
@@ -176,9 +181,16 @@ if($Gate11LightingProbe){
         throw "Joint source-grid/reflection/shadow/region preflight must pass first: $gate11Lighting"
     }
 }
+if($Gate11ImageHeadersProbe){
+    $gate11ImageHeaders=Join-Path $base 'pc_g11_image_stream_closure\aztec_gate11_6_images_and_native_stream_shape.json'
+    if(-not(Test-Path -LiteralPath $gate11ImageHeaders -PathType Leaf)){
+        throw "Six native image-name and empty-stream structural witnesses must run first: $gate11ImageHeaders"
+    }
+}
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate11LightingProbe){'pc_g11_lighting_combined_probe'}
+        if($Gate11ImageHeadersProbe){'pc_g11_image_headers_probe'}
+        elseif($Gate11LightingProbe){'pc_g11_lighting_combined_probe'}
         elseif($Gate11PrimitiveProbe){'pc_g11_remaining_world_primitive_probe'}
         elseif($Gate11CellProbe){'pc_g11_cells_740'}
         elseif($Gate10StaticDrawProbe){'pc_g10_1903'}
@@ -341,6 +353,7 @@ try{
     $priorGate11=$env:WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT
     $priorGate11Primitive=$env:WAW360_AZTEC_GATE11_PRIMITIVE_BATCH
     $priorGate11Lighting=$env:WAW360_AZTEC_GATE11_LIGHTING_BATCH
+    $priorGate11Images=$env:WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -381,6 +394,13 @@ try{
             Write-Host '[AZTEC-GATE11-LIGHTING] Reflection/lightmap GfxImage payload bindings and Xbox streamInfo remain BLOCKED.'
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE11_LIGHTING_BATCH -ErrorAction SilentlyContinue
+        }
+        if($Gate11ImageHeadersProbe){
+            $env:WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH=$gate11ImageHeaders
+            Write-Host '[AZTEC-GATE11-IMG-HEADERS] Two source-owned 16B reflection heads, two 8B lightmap heads; all SIX missing GfxImage* stay NULL.'
+            Write-Host '[AZTEC-GATE11-IMG-HEADERS] streamInfo structurally 0/0/null per original Xbox ABI; no invented stream arrays.'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -425,6 +445,11 @@ try{
             Remove-Item Env:\WAW360_AZTEC_GATE11_LIGHTING_BATCH -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_GATE11_LIGHTING_BATCH=$priorGate11Lighting
+        }
+        if($null -eq $priorGate11Images){
+            Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH=$priorGate11Images
         }
         if($null -eq $priorGate10Plan){
             Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
@@ -489,7 +514,13 @@ if($IntegrateWorld){
     }
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate11LightingProbe){
+        status=if($Gate11ImageHeadersProbe){
+            if($core -and $candidateOatPass){
+                'AZTEC_GATE11_SOURCE_IMAGE_HEADERS_OAT_PASS_PIXELS_UNPROVEN'
+            }else{
+                'AZTEC_GATE11_SOURCE_IMAGE_HEADERS_OAT_BLOCKED'
+            }
+        }elseif($Gate11LightingProbe){
             if($core -and $candidateOatPass){
                 'AZTEC_GATE11_LIGHT_GRID_SHADOW_REGION_OAT_LOAD_PASS_FIELDS_UNVERIFIED'
             }else{
@@ -554,6 +585,12 @@ if($IntegrateWorld){
         gate11PhysicalCellDiagnostic=[bool]$Gate11CellProbe
         gate11PrimitiveProbe=[bool]$Gate11PrimitiveProbe
         gate11LightingCombinedProbe=[bool]$Gate11LightingProbe
+        gate11ImageHeadersProbe=[bool]$Gate11ImageHeadersProbe
+        gate11SourceReflectionHeaderCount=if($Gate11ImageHeadersProbe){2}else{0}
+        gate11SourceLightmapHeaderCount=if($Gate11ImageHeadersProbe){2}else{0}
+        gate11UnboundGeneratedImagePointers=if($Gate11ImageHeadersProbe){6}else{0}
+        gate11NativeEmptyStreamStructRequiredByReference=[bool]$Gate11ImageHeadersProbe
+        gate11ImageHeaderIndependentLoadedReadbackProven=$false
         gate11LightingGridBytes=if($Gate11LightingProbe){4822860L}else{0L}
         gate11LightingShadowModelReferences=if($Gate11LightingProbe){1903}else{0}
         gate11LightingEmptyRegionHeaders=if($Gate11LightingProbe){2}else{0}
@@ -592,7 +629,9 @@ if($IntegrateWorld){
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
-        note=if($Gate11LightingProbe){
+        note=if($Gate11ImageHeadersProbe){
+            'ONE ISOLATED PC-source candidate with two original-PC GfxReflectionProbe 16B heads and two GfxLightmapArray 8B heads, 6 unresolved generated-image GfxImage* pointers explicitly NULL. Native measured empty stream structure; source-owned grid/shadow/cell/draw regressions. All image pixels and material runtime semantics unresolved, no hardware deployment.'
+        }elseif($Gate11LightingProbe){
             'SINGLE new isolated candidate: 4.82MB original-PC typed lightgrid and 1903 shadow model indexes and two original-PC empty light-region headers. OAT FF load alone is NOT a byte-level lighting proof. Six GfxImage identity-name matches remain payload UNVERIFIED; runtime Xbox streaming metadata still missing. No hardware admission.'
         }elseif($Gate11CellProbe){
             'Gate11 experimental source-only 11-cell/740-AABB tree array plus nested original-PC model/reflection indices physically emitted in ISOLATED scratch GfxWorld and OAT list checked. Original 1903 Gate10 draws remain unmodified in old FF. Full GfxWorld lightmap/sky/dynamic DPVS/stock/light semantics are still incomplete. NOT deployable.'
