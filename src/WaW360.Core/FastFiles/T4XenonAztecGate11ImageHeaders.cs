@@ -17,16 +17,23 @@ public sealed class T4XenonAztecGate11ImageHeaders
     private readonly byte[] _probeHeads;
     private readonly byte[] _lightmapHeads;
     private readonly int _probeCountAt,_probeHeadsAt,_lightmapCountAt,_lightmapHeadsAt;
+    // Optional diagnostic only: 6 exact native GfxImage root INSERT aliases.
+    // Most target roots are name-only shells, NOT usable Xbox pixel bodies.
+    private readonly int[]? _imageRootIndices;
+    private bool _referencePointersApplied;
     public int ReflectionProbeHeaders => _probeHeads.Length / 16;
     public int LightmapHeaders => _lightmapHeads.Length / 8;
     public int VerifiedImagePointerBodies => 0;
+    public int NamedImageRootLinkProbeCount => _imageRootIndices?.Length ?? 0;
 
     private T4XenonAztecGate11ImageHeaders(byte[] probes, byte[] lightmaps,
-        int probeCount, int probePointer, int lightmapCount, int lightmapPointer)
+        int probeCount, int probePointer, int lightmapCount, int lightmapPointer,
+        int[]? imageRootIndices)
     {
         _probeHeads=probes;_lightmapHeads=lightmaps;
         _probeCountAt=probeCount;_probeHeadsAt=probePointer;
         _lightmapCountAt=lightmapCount;_lightmapHeadsAt=lightmapPointer;
+        _imageRootIndices=imageRootIndices;
     }
 
     private static void Demand(bool correct,string why)
@@ -38,7 +45,9 @@ public sealed class T4XenonAztecGate11ImageHeaders
     private static string Sha(byte[] b)=>Convert.ToHexString(SHA256.HashData(b));
 
     public static async Task<T4XenonAztecGate11ImageHeaders> LoadAsync(
-        string combinedImageStreamReport, byte[] root, CancellationToken ct=default)
+        string combinedImageStreamReport, byte[] root,
+        IReadOnlyList<T4XenonNativeIdentityEntry> nativeRoots,
+        bool linkNameOnlyRootShells=false, CancellationToken ct=default)
     {
         using var rd=JsonDocument.Parse(await File.ReadAllTextAsync(combinedImageStreamReport,ct));
         var r=rd.RootElement;
@@ -165,11 +174,93 @@ public sealed class T4XenonAztecGate11ImageHeaders
                 "existing world image slots are not zero/null; refusing overwrite.");
         Demand(root.AsSpan(streamAt,16).ToArray().All(x=>x==0),
             "streamInfo is not the expected native Xbox empty 0/0/null struct.");
-        return new(headers,lightmapHeaders,pc,pp,lc,lp);
+        int[]? imageIndices=null;
+        if(linkNameOnlyRootShells)
+        {
+            // This is intentionally a SOURCE ROOT REFERENCE/POINTER probe.
+            // Native image roots have name shells but do NOT carry original-PC
+            // generated reflection/lightmap pixel payloads. Never approve
+            // hardware or claim any genuine source-owned GfxImage body.
+            Demand(nativeRoots.Count==8509,"native 8509-root identity catalog changed.");
+            var rows=r.GetProperty("imageFields").EnumerateArray().ToArray();
+            Demand(rows.Length==6 && r.GetProperty("imageFieldsTotal").GetInt32()==6 &&
+                   r.GetProperty("pcOwnedXenonImageRoundtripFields").GetInt32()==0 &&
+                   r.GetProperty("imageFieldsWithoutAvailableOwnedPixelProof").GetInt32()==6 &&
+                   !r.GetProperty("sourceImagePayloadGraftCompleted").GetBoolean(),
+                "six generated images are not all exact-name-only unresolved root candidates.");
+            string[] expectedFields={
+                "GfxWorld.reflectionProbes[0].reflectionImage",
+                "GfxWorld.reflectionProbes[1].reflectionImage",
+                "GfxWorld.lightmaps[0].primary",
+                "GfxWorld.lightmaps[0].secondary",
+                "GfxWorld.lightmaps[1].primary",
+                "GfxWorld.lightmaps[1].secondary"
+            };
+            string[] names={
+                "*reflection_probe0","*reflection_probe1",
+                "*lightmap0_primary","*lightmap0_secondary",
+                "*lightmap1_primary","*lightmap1_secondary"
+            };
+            imageIndices=new int[6];
+            var used=new HashSet<int>();
+            for(int i=0;i<6;i++)
+            {
+                var slot=rows.SingleOrDefault(x=>
+                    x.GetProperty("worldPointerField").GetString()==expectedFields[i]);
+                Demand(slot.ValueKind!=JsonValueKind.Undefined,
+                    "missing original-PC to native root image field "+expectedFields[i]);
+                var index=slot.GetProperty("nativeImageRootIdentityIndex").GetInt32();
+                Demand(index>=0 && index<nativeRoots.Count && used.Add(index) &&
+                       nativeRoots[index].Index==index &&
+                       nativeRoots[index].OatTypeName=="image" &&
+                       Same(nativeRoots[index].Name,names[i]) &&
+                       Same(slot.GetProperty("originalPcImageName").GetString(),names[i]) &&
+                       slot.GetProperty("classification").GetString()=="NO_SOURCE_PIXEL_PROOF" &&
+                       !slot.GetProperty("verifiedPcOwnedXenonImageBody").GetBoolean() &&
+                       !slot.GetProperty("proofOfXboxRuntimeResidency").GetBoolean() &&
+                       !slot.GetProperty("fieldActuallyRebasedInGate11Ff").GetBoolean() &&
+                       !slot.GetProperty("copiedXboxReferencePixels").GetBoolean(),
+                    "named root binding is NOT the exact unowned GfxImage shell for "+names[i]);
+                imageIndices[i]=index;
+            }
+        }
+        return new(headers,lightmapHeaders,pc,pp,lc,lp,imageIndices);
+    }
+
+    /// <summary>
+    /// Stage 4E only: converts six exact named image ROOT references to the
+    /// stable VIRTUAL slot pointers allocated by Stage 4D. Does NOT upgrade
+    /// any of those six image shells or supply pixels/loadDefs.
+    /// Stage 4D uses the same allocation plan but never needs these values.
+    /// </summary>
+    public void ApplyNamedRootAliases(IReadOnlyDictionary<int,uint> stableByRoot)
+    {
+        if(_imageRootIndices is null)return;
+        Demand(!_referencePointersApplied,
+            "six source shell root aliases were already applied.");
+        var pointers=new uint[6];
+        for(int i=0;i<6;i++)
+        {
+            int idx=_imageRootIndices[i];
+            Demand(stableByRoot.TryGetValue(idx,out var ptr) &&
+                   T4ZonePointer.Decode(ptr).Kind==T4ZonePointerKind.Offset &&
+                   T4ZonePointer.Decode(ptr).Block==T4ZoneBlock.Virtual,
+                "missing native identity-backed VIRTUAL GfxImage INSERT slot for "+idx);
+            pointers[i]=ptr;
+        }
+        BinaryPrimitives.WriteUInt32BigEndian(_probeHeads.AsSpan(12,4),pointers[0]);
+        BinaryPrimitives.WriteUInt32BigEndian(_probeHeads.AsSpan(28,4),pointers[1]);
+        BinaryPrimitives.WriteUInt32BigEndian(_lightmapHeads.AsSpan(0,4),pointers[2]);
+        BinaryPrimitives.WriteUInt32BigEndian(_lightmapHeads.AsSpan(4,4),pointers[3]);
+        BinaryPrimitives.WriteUInt32BigEndian(_lightmapHeads.AsSpan(8,4),pointers[4]);
+        BinaryPrimitives.WriteUInt32BigEndian(_lightmapHeads.AsSpan(12,4),pointers[5]);
+        _referencePointersApplied=true;
     }
 
     public void ApplyRoot(byte[] body)
     {
+        Demand(_imageRootIndices is null || _referencePointersApplied,
+            "World image root alias pointers must be staged before emitting the 900B GfxWorld.");
         Demand(body.Length==900,"world buffer length not 900.");
         BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(_probeCountAt,4),2);
         BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(_probeHeadsAt,4),T4ZonePointer.Following);
