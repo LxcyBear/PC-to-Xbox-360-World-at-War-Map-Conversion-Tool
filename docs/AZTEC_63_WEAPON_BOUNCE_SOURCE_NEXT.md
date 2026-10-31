@@ -85,3 +85,32 @@ if ($LASTEXITCODE -ne 0) { throw "Original-PC 160 direct aliases FF/OAT gate blo
 On strict OAT success: \`AZTEC_W63_160_REAL_PC_DIRECT_SOUND_ALIASES_NATIVE_FF_OAT_PASS_FLAME_AND_AUDIO_BLOCKED\`. This would physically serialize 222/228 real alias records (62 bounce + 160 direct) and all 895 known inline name bytes (199 bounce + 696 direct) while still **fencing six nested FlameTable records and all real Xbox audio/XMA sample assets**. It does not imply full 179,775B WeaponDefs, runtime-compatible sounds, map dependencies, CodXe playability, or hardware approval.
 
 **Status:** source census PASS. New 160-record FF code committed but not yet tested on Windows/OAT.
+
+
+## FlameTable parent closure — source-only proof BEFORE the final six aliases
+
+At commit \`1112a89\`, the Windows 160-direct-alias build was **OAT PASS**:
+- 4,514,599-byte compressed native diagnostic FF; previous 4,514,324-byte bounce FF preserved; +275 B historical comparison **not** an exact same-source A/B.
+- 222/228 original-PC SndAliasCustom owned records in native scratch FF: 62 bounce + 160 direct. All 50 truly inline name strings / 895 name bytes were already serializable.
+- Layout replay exact; OAT recognized 8,509 native root identities, warnings 0 / errors 0. Still not runtime audio or hardware-ready.
+
+Six remaining owned 4-byte SndAliasCustom child records belong to optional \`FlameTable\` parents. The T4 typed walker consumes two parent pointer fields per WeaponDef at 7b body offsets **2460** (first-person) and **2464** (third-person). Each truly inline parent is a 476-byte native-endian source FlameTable fixed body with a name pointer at +424, eight material pointer cells at +428..+456, and four sound alias pointers at +460..+472. **Do not graft this 476-byte block as raw parent bytes:** all parent pointers must be fully rebased or fenced and any genuinely inline name/material children require source proof.
+
+The next stage \`Run-AztecWeapon63FlameParentSourceWitness.ps1\` reads only the original-PC-owned 7b proof files and previous independently hashed 228-alias source witness. It:
+- Revalidates 63 source-body SHA owners (including six packed-name direct sources), original protected OAT-good FF and the 4,514,599-byte 160-direct FF.
+- Performs a real typed T4 Alpha 7b read through both FlameTable fields for every WeaponDef, capturing actual inline 476-byte parent start offset, source byte SHA and all original pointer words, **not inferred parents**.
+- Rejoins the six already-proven original-PC inline flame sound alias records by typed label, nested field, record offset and independent original source record pointer.
+- Reports real INLINE, NULL and PACKED parents; parent physical bytes and all nested sound pointer classes, without creating any FastFile or changing the Xbox runtime.
+
+Run from repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "FlameTable witness PS5.1 syntax gate failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63FlameParentSourceWitness.ps1"
+if ($LASTEXITCODE -ne 0) { throw "Original-PC FlameTable genuine parent proof BLOCKED; no FF" }
+\`\`\`
+
+The proof report is \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lightning_weapon63_flame_parent/aztec_63_original_pc_flame_parent_source_witness.json\`. If this stage passes, the next FF attempt must still prove the FlameTable parent pointer layout, source-owned name/material dependencies, and non-reused native child rebases before counting any extra alias records. All audio samples/XMA assets remain absent. **Source-proof PASS does not imply a 228/228 FF or Xbox runtime support.**
