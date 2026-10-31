@@ -239,6 +239,11 @@ public static class T4XenonRendererGraphEmitter
             .ToDictionary(x => x.RootIndex);
         var stableByRoot = layout.RootInsertLayouts
             .ToDictionary(x => x.RootIndex, x => x.StablePointer);
+        // The opt-in Gate11 generated-image name-shell probe is the first
+        // GfxWorld branch pointing to existing top-level native image roots.
+        // The full Stage4D layout is required for FORWARD root INSERT aliases.
+        // No image pixels or map payloads are fabricated by this operation.
+        sourceWorld?.ApplyImageRootReferenceAliases(stableByRoot);
 
         var state = new EmitState();
         var blobIndex = BuildBlobIndex(dumpRoot);
