@@ -102,6 +102,17 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-pc-source-body-batch" when args.Length is 5 or 6:
+            {
+                var fastOnly=args.Length==6 &&
+                    args[5].Equals("--skip-deep-sound",StringComparison.OrdinalIgnoreCase);
+                if(args.Length==6 && !fastOnly)
+                    throw new ArgumentException("Optional sixth arg must be --skip-deep-sound.");
+                var report=await T4AztecSourceBodyQuickBatch.RunAsync(
+                    args[1],args[2],args[3],args[4],fastOnly);
+                Console.WriteLine("[AZTEC-SOURCE-BODIES] Read-only source body pointer/typed sound diagnostic: "+report);
+                return 0;
+            }
             case "assets" when args.Length >= 2:
             {
                 var zone = await T4ZoneParser.ParseFastFileAsync(args[1]);
