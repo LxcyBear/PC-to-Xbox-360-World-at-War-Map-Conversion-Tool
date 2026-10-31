@@ -653,3 +653,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Expected after correction (still unproven until run): one new isolated \`pc_g11_image_headers_probe\` FF, native OAT first load, source 11-cell/740-AABB/14,974-index regression, native header XYZ/NULL pixel pointer scan, prior 4.82 MB light-grid and 1,903-shadow ref digests. No FF donor pixels, no stock reference payload, no Xbox hardware approval; **10/13 remains** until all image/root/runtime dependencies are genuinely proven.
+
+### Gate11 4,510,670B source reflection/lightmap headers independently OAT PASS; six-image name-root alias next (2026-10-31)
+
+**User-confirmed Windows run on \`134cb56\`:** 48/48 PowerShell 5.1 syntax checks PASS; exact pinned native GfxWorld child-order planner/emitter regression PASS; specialized OAT source oracle shows original Xbox and converted world streamInfo **0 trees / 0 leaves with both pointers NULL**, and **6/6 named GfxImage pointers and both reflection XYZ origins** exact to original PC (names only; original Xbox pixels not harvested). Incremental .NET and native OAT PASS: 8,509-root candidate **4,510,670 bytes**, SHA-256 **\`D0120CE57CD558D680AF805A63752B19F97500B555295F7F548D4A2F4B1B9A09\`**; +41 compressed B vs protected 4,510,629B source lighting world. Second independent OAT source cell readback: **11/11 cells, 740/740 trees, 14,974 model indices and 11 reflection indices** exact. Third OAT: source-owned two reflection origins and two native lightmap structs loaded; all **six unknown generated-image pointers intentionally NULL**; four prior light-grid arrays, shadow and sky/brush/water regressions still exact. Success report: \`pc_g11_image_headers_probe/oat_loaded_generated_image_headers/aztec_gate11_independent_image_headers_and_zero_stream.json\`. This is structural image-header PASS, **NOT usable native reflection/lightmap image content**. Gate11 remains **10/13**, NOT Xbox-ready.
+
+**Next opt-in experimental root reference linking (code newly committed, Windows execution pending):** Existing 8,509-root candidate FF contains six correctly named \`image\` root identities \`*reflection_probe0/1\` and \`*lightmap0/1_primary/secondary\`. Currently these are emitted via the generic \`GfxImage\` name-only shell writer (no loadDef/pixel payload), while our verified source \`GfxWorld\` contains NULL pointers to them. We can now test stable **VIRTUAL root INSERT slot aliases** from the complete Stage4D \`RootInsertLayouts\` without adding fake images or touching the preceding PASS candidates:
+- New guarded \`WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE=1\` in \`T4XenonAztecGate11ImageHeaders\`, with strict \`imageFields\` source provenance, unique root index, name and \`NO_SOURCE_PIXEL_PROOF\` checks, writes six 32-bit big-endian native root aliases into two source reflection and two source lightmap headers.
+- \`T4XenonAztecWorldGraft.ApplyImageRootReferenceAliases\` is called **only** by Stage4E after full Stage4D native root offset planning, before world FF body emission. It does not change the Stage4D size/order or source header lengths and cannot be mistaken for real owned textures.
+- \`Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1 -Gate11ImageRootLinksProbe\` creates separate \`pc_g11_image_root_links_probe\` output folder and strict "OAT NAME SHELL ONLY" manifests, keeping 4,510,670B and 4,510,629B PASS FF SHA-protected.
+- \`Verify-AztecGate11OatLoadedCells.ps1 -ImageRootLinksCandidate\` independently compares all 11/740/14974 source topology. New \`Run-AztecGate11ImageRootLinksProbe.ps1\` then uses a third pinned Xenon OAT GfxWorld load to insist **all six GfxImage* pointers resolve to exactly the six original PC asset names**; additionally checks empty native stream and prior 4.82MB grid/shadow/primitive digests. All named image roots remain contentless shells; this is a **pointer/graph integrity** test, never pixel/runtime correctness.
+- Source compiling and full Windows native OAT results **pending**; if the loader cannot follow VIRTUAL root slots or any source name differs, the new FF must FAIL without contaminating prior 4.51MB FFs.
+
+Execute at the project root (no x86 OAT rebuild needed when the previous image-name witness is installed):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Syntax gate failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate11ImageRootLinksProbe.ps1"
+\`\`\`
+
+**Still required before Gate11 can close:** recover/prove actual six original-PC lightmap and reflection image content or authentic engine/runtime generation path, including native GfxImage/loadDef/Xenos texture/mip ownership and residency; resolve 1 stock static model dependency and unverified runtime Material stateBits; re-run real OAT and console validation. Do not use Xbox oracle image pixels, donor fastfile bodies, name-only shells or unbacked generated texture guesses as production content.
