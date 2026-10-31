@@ -38,6 +38,47 @@ function Test-Capability{
         [string]$c.oatRevision -eq '3beaa7c81af517f0c05f2b4612d477ed1541b676' -and
         @($c.capabilities) -contains 't4xenon-gfxworld-static-draw-60b-loaded-witness-v1')
 }
+# Old 76B-only OAT JSON is valid for surface diagnostics but does NOT
+# include the later 60B static draw witness properties. StrictMode 5.1
+# throws on missing members; classify that schema as a cache miss instead.
+# Never silently treat missing fields as zero or create synthetic values.
+function Test-CompleteStaticDrawWitness([object]$data){
+    if($null -eq $data){return $false}
+    foreach($name in @('schema','status','nativeStaticDrawWitnessOnly',
+        'nativeStaticDrawArrayAvailable','nativeStaticDrawCount',
+        'nativeStaticDraws','nativeStaticDrawAbi')){
+        if($null -eq $data.PSObject.Properties[$name]){return $false}
+    }
+    if($null -eq $data.nativeStaticDrawAbi -or
+       $null -eq $data.nativeStaticDraws){return $false}
+    $abi=$data.nativeStaticDrawAbi
+    $layout=[ordered]@{
+        stride=60;placementStride=28;cullDistAt=0;placementAt=4
+        originAt=4;axisAt=16;scaleAt=28;modelAt=32
+        reflectionAt=36;primaryLightAt=37;lightingHandleAt=38
+        flagsAt=40;padAt=41
+    }
+    foreach($name in $layout.Keys){
+        if($null -eq $abi.PSObject.Properties[$name] -or
+           [int]$abi.$name -ne [int]$layout[$name]){return $false}
+    }
+    if([string]$data.schema -ne 'WaW360.T4XenonGfxWorldSurfaceAbiWitness.v1' -or
+       [string]$data.status -ne 'NATIVE_XENON_GFXWORLD_SURFACE_ABI_LOADER_WITNESS' -or
+       -not [bool]$data.nativeStaticDrawWitnessOnly -or
+       -not [bool]$data.nativeStaticDrawArrayAvailable -or
+       [int]$data.nativeStaticDrawCount -ne 1903 -or
+       @($data.nativeStaticDraws).Count -ne 1903){return $false}
+    # Every loaded row must have the fields the scalar audit needs.
+    foreach($row in @($data.nativeStaticDraws)){
+        foreach($name in @('ordinal','model','cullDist','origin',
+            'packedAxisWords','scale','reflectionProbeIndex',
+            'primaryLightIndex','lightingHandle','flags',
+            'paddingNonZeroBytes')){
+            if($null -eq $row.PSObject.Properties[$name]){return $false}
+        }
+    }
+    return $true
+}
 # Fast path: a prior OAT-loaded 76B native GfxWorld witness may already
 # contain the 60B typed static draw array. Reuse it ONLY if the exact Xbox
 # provenance and fully loaded 1903 records are present. This avoids an
@@ -55,17 +96,7 @@ if(Test-Path -LiteralPath $priorNativeReport -PathType Leaf){
         if(-not [string]::IsNullOrWhiteSpace($candidateRaw) -and
            (Test-Path -LiteralPath $candidateRaw -PathType Leaf)){
             $candidateData=Get-Content -LiteralPath $candidateRaw -Raw | ConvertFrom-Json
-            if([string]$candidateData.schema -eq 'WaW360.T4XenonGfxWorldSurfaceAbiWitness.v1' -and
-               [string]$candidateData.status -eq 'NATIVE_XENON_GFXWORLD_SURFACE_ABI_LOADER_WITNESS' -and
-               [bool]$candidateData.nativeStaticDrawWitnessOnly -and
-               [bool]$candidateData.nativeStaticDrawArrayAvailable -and
-               [int]$candidateData.nativeStaticDrawCount -eq 1903 -and
-               @($candidateData.nativeStaticDraws).Count -eq 1903 -and
-               $null -ne $candidateData.nativeStaticDrawAbi -and
-               [int]$candidateData.nativeStaticDrawAbi.stride -eq 60 -and
-               [int]$candidateData.nativeStaticDrawAbi.modelAt -eq 32 -and
-               [int]$candidateData.nativeStaticDrawAbi.lightingHandleAt -eq 38 -and
-               [int]$candidateData.nativeStaticDrawAbi.flagsAt -eq 40){
+            if(Test-CompleteStaticDrawWitness $candidateData){
                 $prior=$candidate
                 $w=$candidateData
                 $raw=$candidateRaw
@@ -102,6 +133,14 @@ if(-not $reuse){
         throw "OAT raw native GfxWorld witness missing: $raw"
     }
     $w=Get-Content -LiteralPath $raw -Raw | ConvertFrom-Json
+}
+if(-not(Test-CompleteStaticDrawWitness $w)){
+    $actualProps=@($w.PSObject.Properties.Name)
+    $missing=@('nativeStaticDrawWitnessOnly','nativeStaticDrawArrayAvailable',
+        'nativeStaticDrawCount','nativeStaticDraws','nativeStaticDrawAbi') |
+        Where-Object { $actualProps -notcontains $_ }
+    Write-Host "[AZTEC-GATE8-NATIVE] Legacy/incomplete native GfxWorld witness. Missing fields: $($missing -join ', ')"
+    throw 'OAT native extractor did not expose the required 1903 loaded static draws. Do not reuse an old 76B-only witness. Run this script with -BuildDumper ONCE to refresh the specialized OAT binary, then retry. No FF rebuild is needed.'
 }
 $abi=$w.nativeStaticDrawAbi
 $rows=@($w.nativeStaticDraws)
