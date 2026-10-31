@@ -95,6 +95,7 @@ $pcRoles=New-Object 'System.Collections.Generic.Dictionary[string,object]' ([Str
 $sourceRuns=New-Object 'System.Collections.Generic.List[object]'
 $missingLogs=New-Object 'System.Collections.Generic.List[string]'
 $ffOrdinal=0
+$exactHashedSources=0
 foreach($ff in @($baseline.fastfiles)){
     $ffOrdinal++
     $role=[string]$ff.Role
@@ -118,6 +119,7 @@ foreach($ff in @($baseline.fastfiles)){
                 throw "Original-PC OAT evidence source content changed SHA: $pcFull"
             }
             $shaStatus='EXACT_PC_SOURCE_SHA_VERIFIED'
+            $exactHashedSources++
         }else{
             $shaStatus='PC_SOURCE_SHA_NOT_PINNED'
         }
@@ -328,6 +330,7 @@ $typeStats=@(
     }
 )
 $completePcLogs=($missingLogs.Count -eq 0 -and @($sourceRuns.ToArray()|Where-Object {[int]$_.Rows -le 0}).Count -eq 0)
+$completeCryptographicSourceEvidence=($completePcLogs -and -not $SkipSourceHash -and $exactHashedSources -eq 3)
 $summary=[ordered]@{
     schema='WaW360.AztecLightningAllRootSourceIdentityTriage.v1'
     status=$(if($completePcLogs){'AZTEC_ALL_8509_ROOTS_TRIAGED_CONTENT_CLOSURE_BLOCKED'}else{'AZTEC_ALL_8509_ROOTS_TRIAGED_PC_OAT_LIST_EVIDENCE_PARTIAL'})
@@ -336,7 +339,8 @@ $summary=[ordered]@{
     workingXboxReferenceSha256=$rsha
     originalPcSourceFastFiles=3
     existingPcOatListLogsComplete=$completePcLogs
-    originalPcFileHashesComparedToPinnedSourceInventory=([bool](-not $SkipSourceHash -and $pcSourceHashes.Count -eq 3))
+    originalPcOatListContentCryptographicallyCurrent=$false
+    originalPcFileHashesComparedToPinnedSourceInventory=$completeCryptographicSourceEvidence
     rawSourceFingerprintsAreHistoricalCacheOnly=$true
     sourceListRuns=$sourceRuns.ToArray()
     missingPcOatListFiles=$missingLogs.ToArray()
