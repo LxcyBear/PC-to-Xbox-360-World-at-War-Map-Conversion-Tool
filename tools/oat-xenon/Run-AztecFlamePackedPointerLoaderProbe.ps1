@@ -50,7 +50,8 @@ foreach($p in @($j.parents)){
     if(-not [bool]$p.originalPcGfxWorldFastFileByteProvenSameSource){
         throw "FlameTable parent source owner no longer matches PC zone: $($p.weapon)"
     }
-    foreach($c in @($p.sourceNameAndMaterialReferences)+@($p.sourceFlameSoundReferences)){
+    $fields=@($p.sourceNameAndMaterialReferences)+@($p.sourceFlameSoundReferences)
+    foreach($c in $fields){
         $raw=if($null -ne $c.PSObject.Properties['sourcePointer']){
             [string]$c.sourcePointer
         }else{[string]$c.raw}
