@@ -132,8 +132,8 @@ public static class T4AztecSixWeaponSourceRecovery
                 if(!St(md.RootElement,"Fingerprint").Equals(expectedFingerprint,StringComparison.Ordinal) ||
                    It(md.RootElement,"ExitCode")!=0)
                     throw new InvalidDataException("Original-PC OAT source listing fingerprint is stale.");
-                sha=Convert.ToHexString(await SHA256.HashDataAsync(
-                    File.OpenRead(original),ct));
+                await using(var srcStream=File.OpenRead(original))
+                    sha=Convert.ToHexString(await SHA256.HashDataAsync(srcStream,ct));
                 var zone=await FastFileAnalysisCache.GetZoneAsync(original,ct);
                 if(zone.Platform!=WaWPlatform.PC||zone.ZoneHeader.Endianness!=Endian.Little||
                    !Eq(zone.SourceSha256,sha))
@@ -161,7 +161,7 @@ public static class T4AztecSixWeaponSourceRecovery
                     var asset=owned.Assets[i];
                     if(!candidates.TryGetValue(asset.Name,out var ownFiles) ||
                        !ownFiles.ContainsKey(original))continue;
-                    if(index.Records[i].Name is not { } recordName || !Eq(recordName,asset.Name))
+                    if(index.Records[i].Name is null || !Eq(index.Records[i].Name!,asset.Name))
                         throw new InvalidDataException("Owned Xbox WeaponDef record/name changed.");
                     var blob=await T4NativeProofContainerReader.ReadBlobAsync(index.Records[i],ct);
                     if(!T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(
