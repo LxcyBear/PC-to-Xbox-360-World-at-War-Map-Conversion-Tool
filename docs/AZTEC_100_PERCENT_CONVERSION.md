@@ -211,3 +211,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-Az
 ```
 
 Only on independently loaded exact 1903 rows does the script report `AZTEC_GATE10_1903_ALL_SOURCE_DRAW_FIELDS_OAT_READBACK_PASS_STOCK_UNVERIFIED`; otherwise it saves a mismatch report and fails. Preserve the passing FF and avoid repetitive builds. Runtime light/probe semantics, native reference rotation quantization, the one stock body, remaining DPVS/cell/lightmap/world children, paired main/load FF and hardware tests remain open. The original 13-step smoke-test checklist is still 9/13 until production Gate 10 conditions close.
+
+## Gate 10 independent full OAT readback passed: four-axis and stock closure next
+
+The user verified that the SHA-pinned generated `pc_g10_1903` FF (`0BB41398C4236EF33CB9D60F923E09152966D52AA623DAEFC33D731A42630564`) is read back successfully by the specialized OAT Xenon loader. All **1903/1903** ordinals, cull distances, origins, scales, packed axes, reflection indices, primary light indices, BE16 lighting handles, flags, and zero padding match the *PC-derived native-format candidate*; all **1902/1902** owned-model names are resolved and the one stock reference stays NULL and unresolved. Script `Verify-AztecGate10OatLoaded1903Draws.ps1` saved a `AZTEC_GATE10_1903_ALL_SOURCE_DRAW_FIELDS_OAT_READBACK_PASS_STOCK_UNVERIFIED` report. This is actual physical serialization and independent loaded-child field validation, **not** proof of original Xbox reference identity or Xbox hardware readiness.
+
+New **read-only** `Audit-AztecGate10AxisAndStockClosure.ps1` compares the newly OAT-loaded GfxWorld draws against the ORIGINAL RETAIL XBOX OAT witness using the same pinned T4Xenon ThirdBased axis unpacker as the source preflight. It measures all component differences for the four known draw ordinals `4, 8, 10, 300` (six packed-word differences), with a conservative default maximum absolute component difference of `0.003`. This confirms or rejects a *quantization tolerance hypothesis*, never patches the converted FF with Xbox donor bytes, and cannot prove runtime transforms. It also reports the stock draw ordinal/name/root and summarizes any prior retail base-zone identity audit. No OAT/dotnet build or new FF is needed.
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS5.1 AST parser failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-AztecGate10AxisAndStockClosure.ps1'
+```
+
+If that output reports the retail stock body audit missing/unproven, separately use the EXISTING `Audit-AztecRuntimeLoadedStockXModelReferences.ps1` on the locally owned retail `common.ff`, `code_post_gfx.ff`, `patch.ff`. It reuses prior successful OAT list caches and does **not** rebuild the generated FF; if its default `-XboxGameRoot` differs from the actual retail folder, supply a verified path. Even an exact body name in a retail preloaded zone remains **identity evidence only**, not runtime hardware residency, so a diagnostic NULL pointer cannot be promoted to a valid hardware draw. The 13-step smoke-test checklist remains at **9/13** until every Gate10 release condition (stock residency/semantics and other relevant closure) is met.
