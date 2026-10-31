@@ -305,9 +305,11 @@ public static class T4AztecFiveClassLightningProof
         if(conflicts.Length!=12)throw new InvalidDataException("12 XAnim blockers unexpectedly changed.");
         var output=new {
             schema="WaW360.AztecFiveClassLightningSourceProof.v1",
-            status=errors.Count==0?
-                "AZTEC_FIVE_CLASS_SOURCE_PROOFS_COMPLETE_NATIVE_FF_STILL_INCOMPLETE":
-                "AZTEC_FIVE_CLASS_SOURCE_PROOFS_PARTIAL_BLOCKERS_REPORTED",
+            status=evidenceOnly?
+                "AZTEC_FIVE_CLASS_EVIDENCE_ONLY_NO_NEW_XBOX_BODY_PROOF":
+                errors.Count==0?
+                "AZTEC_FIVE_CLASS_SOURCE_DIAGNOSTIC_STAGES_PASS_CONTENT_CLOSURE_OPEN":
+                "AZTEC_FIVE_CLASS_SOURCE_DIAGNOSTICS_PARTIAL_BLOCKERS_REPORTED",
             originalPcSourceFastfiles=3,sourceShaVerified=true,nativeXAssetRootCount=8509,
             categories=counts,
             perOriginalPcTypedBodyProof=bodies,
