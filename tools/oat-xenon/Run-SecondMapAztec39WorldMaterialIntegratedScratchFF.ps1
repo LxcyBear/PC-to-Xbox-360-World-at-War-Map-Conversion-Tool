@@ -264,6 +264,8 @@ if($Weapon63SourceCanary){
            [string]$b.status -ne 'AZTEC_63_WEAPON_ORIGINAL_PC_BOUNCE_TABLE_INLINE_OWNERSHIP_PROVEN_NOT_IN_FF' -or
            [int]$b.originalPcWeaponRootsWithGenuineXbox7bOwnedProof -ne 63 -or
            [int]$b.inlineOriginalPcBounceTables -ne 2 -or
+           [int]$b.packedBounceTablesQuarantined -ne 0 -or
+           [int]$b.nullBounceTableFields -ne 61 -or
            [long]$b.originalPcOwnedInlineBouncePointerTableBytes -ne 248 -or
            [int]$b.inlineBounceEntryAliasRecords -ne 62 -or
            [int]$b.originalPcBounceChildInlineNameStrings -ne 9 -or
