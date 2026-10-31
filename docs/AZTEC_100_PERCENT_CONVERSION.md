@@ -234,3 +234,22 @@ Windows PowerShell 5.1 AST gate **29/29 PASS**. The read-only original Xbox comp
 The single stock reference is **`,viewmodel_default`**, draw **#27**, native Xbox root **7506**, intentionally NULL in the diagnostic FF. The earlier retail audit reported `AZTEC_SOURCE_MODEL_STOCK_REFERENCE_INDIVIDUAL_BASE_ZONE_IDENTITY_MATCH_CENSUS_INCOMPLETE`: by its own definitions, an exact body-name/root match exists in at least one individually OAT-verified retail base zone, but not all expected `common.ff`, `code_post_gfx.ff`, `patch.ff` listings are complete. That is **not** a runtime residency proof.
 
 The updated `Audit-AztecGate10AxisAndStockClosure.ps1` now validates the stock name and native root against the source relocation plan, and reports **independent base-zone identity match** separately from **full expected-zone census**, plus exactly which zones lack a valid OAT listing. Run only this fast read-only script after `git pull --ff-only`; repeating an FF build, OAT extraction or entire 29-script syntax gate is unnecessary for this follow-up. If a base zone is missing, use the existing stock audit with the correct local Xbox root to identify it rather than importing any Xbox reference body into the generated FF. Even complete offline base-zone listings cannot certify that CodXe/TU7 actually loads and resolves the stock pointer on console.
+
+## 2026-10-30 — Gate 10 tracker closure from actual independent draw FF readback
+
+**Definition of gate 10 in the existing 13-gate `Show-AztecFirstXboxFFProgress.ps1`:** `Physically link all 1,903 static-model GfxWorld draw records`. This is an **intermediate development-evidence gate**, *not* production completeness/hardware admission. The tracker was stale: it only checked `pc_gate8_29x_ff` (the pre-draw 28-model FF), so its 9/13 tally did not reflect the already-verified later FF at `pc_g10_1903`.
+
+Windows evidence now independently includes (a) real Stage4D/Stage4E source-GfxWorld `smodelDrawInsts` serialization, OAT loading and 8509 root order, and (b) a **second** OAT loaded typed record dump against the SHA-locked 3,625,073 B FF. Loaded 1903/1903 counts and exact PC-derived values for transforms, packed axes, reflection, primary light, BE16 handle, flags and padding; 1902/1902 model names; 1 deliberately NULL, externally referenced stock XModel `,viewmodel_default` at draw 27/root 7506. Retail base-zone identity found in `common.ff`, but `patch.ff` was absent from local library and hardware preload is not proven. Largest measured original Xbox axis component delta was 0.0019569695 (4 draw ordinals, 6 words) within the tested 0.003 tolerance. Do not copy reference/oracle bytes into output or auto-replace the null pointer.
+
+The progress tracker **now** evaluates Gate10 against the actual `pc_g10_1903` OAT FF report **and** the independent typed OAT readback report. It fails closed if the reports/flags are wrong, per-field counts are not exact, the source-PC draw digest mismatches, the emitted FF SHA doesn't match the readback report, the native dump SHA doesn't match the readback report, or any of the 1902 source-owned names or one stock NULL cases fail. The older FF is preserved. Only when *all* evidence validates does milestone 10 advance to PASS, **10/13 development gates**. Gates 11–13 remain PENDING: complete DPVS/cells/lightmaps/render/runtime child closure, valid main/load native pair and full dependency audit, and controlled hardware-admission release. Production approval is still FALSE even with 10/13.
+
+Run the existing fast tracker (no FF/OAT rebuild or Xbox):
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS5.1 syntax gate failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Show-AztecFirstXboxFFProgress.ps1'
+```
+
+Expect **10/13 only if** the user's on-disk verified FF and OAT witness manifests still pass all hash, file and source conditions. Never interpret this 10/13 tally as 77% of full conversion or a deployable Xbox map.
