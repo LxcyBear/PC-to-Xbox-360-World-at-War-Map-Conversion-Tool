@@ -12,6 +12,8 @@ param([switch]$IntegrateWorld,
       [switch]$Gate11LightingProbe,
       [switch]$Gate11ImageHeadersProbe,
       [switch]$Gate11ImageRootLinksProbe,
+      [switch]$Weapon63SourceCanary,
+      [ValidateSet(1,6,63)][int]$WeaponCanaryLimit=63,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -63,6 +65,9 @@ if($Gate11ImageHeadersProbe -and -not $Gate11LightingProbe){
 }
 if($Gate11ImageRootLinksProbe -and -not $Gate11ImageHeadersProbe){
     throw '-Gate11ImageRootLinksProbe requires source-owned reflection/lightmap headers and all prior Gate11 children.'
+}
+if($Weapon63SourceCanary -and (-not $IntegrateWorld -or -not $Gate11ImageRootLinksProbe)){
+    throw 'Weapon63 scratch canary requires the existing full Gate11 image-root-links native FF path. No other OAT baseline may be mutated.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -208,6 +213,24 @@ $work=Join-Path $base $(if($IntegrateWorld){
     elseif($ProbeLevel -eq 'Full'){'pc_735_39_gfxworld_integrated_ff_oat_run'}
     else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_'+$ProbeLevel.ToLowerInvariant()}
 }else{'pc_39_world_material_real_ff_scratch_integration'})
+if($Weapon63SourceCanary){
+    # OAT Win32 has a legacy MAX_PATH restriction. Keep the dedicated
+    # diagnostic FF short and OUTSIDE every previously passing output dir.
+    $work=Join-Path $repo '.deps\aztec-w63-ff-growth'
+    $weaponManifest=Join-Path $base 'pc_g11_lightning_weapon_69_unified_native_source\aztec_69_weapon_unified_original_pc_xbox_body_selections.json'
+    if(-not(Test-Path -LiteralPath $weaponManifest -PathType Leaf)){
+        throw "63-source WeaponDef SHA manifest missing: $weaponManifest"
+    }
+    $w=Get-Content -LiteralPath $weaponManifest -Raw|ConvertFrom-Json
+    if([string]$w.schema -ne 'WaW360.AztecWeapon69UnifiedOriginalPcXboxBodySelection.v1' -or
+       [string]$w.status -ne 'AZTEC_69_WEAPON_NATIVE_ROOTS_63_AUTHENTIC_PC_XBOX_BODIES_2_CONFLICT_4_STOCK_UNPROVEN_NOT_IN_FF' -or
+       [int]$w.uniqueSourceOwnedXboxWeaponBodyMappings -ne 63 -or
+       [int]$w.conflictingDifferentPcSourceBodiesStillFenced -ne 2 -or
+       [int]$w.offlineStockOnlyWeaponNamesNotRuntimeProven -ne 4 -or
+       [bool]$w.xboxRuntimeReady){
+        throw 'Source-owned Weapon63 FF diagnostic cannot use stale/unproven 69-root source report.'
+    }
+}
 $out=Join-Path $work 'scratch_emit'
 $log=Join-Path $work 'integrated_emitter.log'
 $buildLog=Join-Path $work 'build.log'
@@ -322,6 +345,11 @@ if($IntegrateWorld){
 }
 Write-Host '[AZTEC-WORLD39-FF] Material stateBits PC->Xbox semantic tail remains UNVERIFIED'
 Write-Host '[AZTEC-WORLD39-FF] OAT FULL LOAD + 8509 NATIVE ROOT ORDER OR FAIL CLOSED. NO XBOX'
+if($Weapon63SourceCanary){
+    Write-Host "[AZTEC-WEAPON-GROWTH] SOURCE PC SCALAR+INLINE-XSTRING CANARY, limit=$WeaponCanaryLimit/63; NOT full source-owned 7b WeaponDefs."
+    Write-Host '[AZTEC-WEAPON-GROWTH] 2 competing source versions and 4 offline-stock-only weapon roots stay identity shells.'
+    Write-Host '[AZTEC-WEAPON-GROWTH] This isolated FF must be OAT-loaded AND measured; it is NOT ready for Xbox.'
+}
 $save=$ErrorActionPreference
 try{
     $ErrorActionPreference='Continue'
@@ -360,6 +388,8 @@ try{
     $priorGate11Lighting=$env:WAW360_AZTEC_GATE11_LIGHTING_BATCH
     $priorGate11Images=$env:WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH
     $priorGate11Links=$env:WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE
+    $priorWeapon63=$env:WAW360_AZTEC_WEAPON63_DIAGNOSTIC
+    $priorWeaponLimit=$env:WAW360_AZTEC_WEAPON63_LIMIT
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -415,10 +445,26 @@ try{
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE -ErrorAction SilentlyContinue
         }
+        # Never allow an inherited canary environment variable to
+        # contaminate the ordinary, previously passing native FF path.
+        if($Weapon63SourceCanary){
+            $env:WAW360_AZTEC_WEAPON63_DIAGNOSTIC=$weaponManifest
+            $env:WAW360_AZTEC_WEAPON63_LIMIT=[string]$WeaponCanaryLimit
+            Write-Host "[AZTEC-WEAPON-GROWTH-PROGRESS] [##########----------] 50% | Stage4D/4E source-backed WeaponDef canaries -> isolated FF/OAT"
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIAGNOSTIC -ErrorAction SilentlyContinue
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_LIMIT -ErrorAction SilentlyContinue
+        }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
         $code=[int]$LASTEXITCODE
     }finally{
+        if($null -eq $priorWeapon63){
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIAGNOSTIC -ErrorAction SilentlyContinue
+        }else{$env:WAW360_AZTEC_WEAPON63_DIAGNOSTIC=$priorWeapon63}
+        if($null -eq $priorWeaponLimit){
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_LIMIT -ErrorAction SilentlyContinue
+        }else{$env:WAW360_AZTEC_WEAPON63_LIMIT=$priorWeaponLimit}
         if($null -eq $priorProbe){
             Remove-Item Env:\WAW360_AZTEC_WORLD_CHILD_PROBE -ErrorAction SilentlyContinue
         }else{
@@ -654,6 +700,8 @@ if($IntegrateWorld){
         fullNativeWorldSourceClosurePass=$false
         bothMainAndLoadFfsCompleted=$false
         hardwareReady=$false
+        sourcePcWeaponScalarXStringCanaryRoots=if($Weapon63SourceCanary){[int]$e.OriginalPcWeaponDiagnosticRoots}else{0}
+        sourcePcWeaponFullOwnedGraphsEmitted=$false
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
