@@ -909,3 +909,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 No FF/writer/model source-body mutation, no OAT or .NET execution. Full playable map remains **NOT** approved: Materials 498 source-unproven under the special 39-world pipeline, localization 177 source values but unrebased, six generated image pixels and numerous other source image/audio graphs unresolved, 43 original-PC body conflicts undecided, Xbox hardware playability unverified. Native gate still **10/13**. Windows run pending.
+
+### 6/6 missing original-PC WeaponDef NAME leads, 43/43 cross-FF conflicts; attempt real source-owned Xenon WeaponDef recovery (2026-10-31)
+
+User Windows results after \`f2ae405\`:
+- PowerShell 5.1 syntax **58/58 PASS**.
+- AZTEC-SIX-WEAPONS SOURCE audit read **one** original Aztec map IWD (no unreadable archives), found **zero** matching original Aztec loose weapon files.
+- Four previous original-PC OAT \`--list\` logs from analyzed source FastFiles were fingerprint-accepted **4/4** with zero rejected entries. Each of six missing Xbox native WeaponDef identities produced **two** candidate PC OAT asset-name records: \`zombie_perk_bottle_doubletap\`, \`zombie_perk_bottle_jugg\`, \`zombie_perk_bottle_revive\`, \`zombie_perk_bottle_sleight\`, \`m7_launcher_zombie\`, \`m7_launcher_zombie_upgraded\`. The audit intentionally did **not** assert that those 12 entries are actual owned WeaponDef **bodies**; some might be source FF reference-only entries. No missing 6 were written to the Aztec native FF.
+- All **43/43** differing converted Xbox-native source payload hashes occur **across** original PC FastFile roles, **zero** within a single role. **11/43** also have different total serialized byte lengths. Load/override semantics not independently proven: **zero** automatically selected. The 43 comprise 21 XModels, 8 FX, 2 Weapons, 12 XAnim. Do not infer "mod always wins" from this role-level evidence.
+
+**New isolated source-only genuine Xbox WeaponDef recovery batch**: \`src/WaW360.Core/FastFiles/T4AztecSixWeaponSourceRecovery.cs\`, CLI \`aztec-six-weapon-real-source-recovery\`, and single runner \`tools/oat-xenon/Run-AztecSixWeaponRealSourceRecovery.ps1\` (registered in PS5.1 syntax suite). It reads the six source hints from the prior JSON, **filters out IWD/loose-file name hints and OAT comma-prefixed reference-only names**, then deduplicates PC FFs that actually have OAT-owned name entries. It independently verifies every source FF's corresponding previous baseline \`Success\`, exact saved original OAT listing path/ordinal, path/length/last modified time fingerprint and SHA-256, PC little-endian zone, and physical inline/shared WeaponDef headers; then runs the existing original-PC \`T4WeaponSerializerProof.BuildProofAsync\` fixed 6f and \`T4WeaponVariableSerializerProof.BuildProofAsync\` 7b owned-graph serializer. It checks the native weapon proof container independently and byte-validates the real source-owned 7b Xbox WeaponDef blob. Exact six names not present as genuinely converted source-owned bodies remain **blocked**, even if OAT lists names. Multiple distinct converted original-PC blob SHA hashes per name remain **conflicting / unselected**.
+
+This stage may need to convert other PC maps' original source FastFiles *diagnostically* to discover a true source body; they are **forensic sources, not automatically admissible production donors**. **No source bytes are incorporated into Aztec output**, no Xbox retail donor asset bodies are copied, no OAT invocation, no FF map rebuild, no Xbox runtime proof. If a body is verified, separate legitimate Aztec asset ownership/semantic closure must be established before any later FF graft.
+
+Windows run from the converter repo root (first run pending):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if($LASTEXITCODE -ne 0){throw "Windows PS5.1 syntax check failed"}
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecSixWeaponRealSourceRecovery.ps1"
+\`\`\`
+
+Produces \`pc_g11_lightning_six_weapon_real_source_recovery/aztec_six_real_pc_weapon_source_body_proof.json\`, Markdown report, console log and optional original-PC-source-only Xbox weapon proof containers. A missing or unsupported PC WeaponDef source remains an explicit per-file blocker; no synthetic sound/weapon payloads. Asset families still incomplete (Materials 498+ other dep closure, Localization packed native values, Images, Audio, 43 source conflicts). Native Gate11 still 10/13; current OAT-passing FF unchanged.
