@@ -157,15 +157,15 @@ public sealed class T4XenonAztecGate11PrimitiveBatch
     public void PlanModels(Action<long,int,bool> alloc)=>alloc(_models.Length,4,true);
     public void PlanWater(Action<long,int,bool> alloc)
     {
-        alloc(_water0.Length,16,true);
-        alloc(_water1.Length,16,true);
+        alloc(_water0.Length,4,true);
+        alloc(_water1.Length,4,true);
     }
     public void EmitSky(Stream zone,Action<long,int,bool> alloc)=>Emit(zone,alloc,_sky,4);
     public void EmitModels(Stream zone,Action<long,int,bool> alloc)=>Emit(zone,alloc,_models,4);
     public void EmitWater(Stream zone,Action<long,int,bool> alloc)
     {
-        Emit(zone,alloc,_water0,16);
-        Emit(zone,alloc,_water1,16);
+        Emit(zone,alloc,_water0,4);
+        Emit(zone,alloc,_water1,4);
     }
     private static void Emit(Stream zone,Action<long,int,bool> alloc,byte[] bytes,int align)
     {
