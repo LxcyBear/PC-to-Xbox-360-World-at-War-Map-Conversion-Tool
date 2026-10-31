@@ -206,6 +206,69 @@ foreach($img in $refRoles){
 if($classified.Count -ne 6){throw 'Six image slots not fully classified.'}
 Write-Host "[AZTEC-GATE11-IMG-STREAM] 6 image slots: PC owned=$ownedCount partial-cache=$cachedCount external-name-only=$externalCount unresolved=$unresolved"
 
+# Use the independently source-compared 11-cell/740-AABB graph as the
+# TOPOLOGY input for future true Xbox streaming generation. This is not
+# itself a GfxStreamingAabbTree: native trees use different item/child
+# semantics, which are deliberately not guessed or copied from retail.
+$topoPath=Join-Path $base 'pc_g10_1903\gate11_cell_topology_source\aztec_gate11_pc_source_cells_native_abi.json'
+$topoReadback=Join-Path $root 'oat_loaded_11_cell_aabb_readback\aztec_gate11_independent_cells_aabb_readback.json'
+foreach($file in @($topoPath,$topoReadback)){
+    if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw "Previously loaded source cell topology missing: $file"}
+}
+$tr=Get-Content -LiteralPath $topoReadback -Raw|ConvertFrom-Json
+$topo=Get-Content -LiteralPath $topoPath -Raw|ConvertFrom-Json
+$pcCellFile=[string]$topo.originalPcTypedCellAabbGraph
+if([string]$tr.actualGfxWorldFfSha256 -ine $expectedFf -or
+   [int]$tr.exactLoadedCounts.cellOrdinals -ne 11 -or
+   [int]$tr.exactLoadedCounts.treeOrdinals -ne 740 -or
+   [int]$tr.exactLoadedCounts.treeModelIndexes -ne 14974 -or
+   [string]$tr.originalPcSourceTypedGraphSha256 -ine [string]$topo.originalPcTypedCellAabbGraphSha256 -or
+   -not(Test-Path -LiteralPath $pcCellFile -PathType Leaf) -or
+   (Get-FileHash -LiteralPath $pcCellFile -Algorithm SHA256).Hash -ine
+        [string]$topo.originalPcTypedCellAabbGraphSha256){
+    throw '11-cell/740-AABB source-only topology cannot be trusted for stream reconstruction.'
+}
+$pcCells=Get-Content -LiteralPath $pcCellFile -Raw|ConvertFrom-Json
+if(@($pcCells.cells).Count -ne 11){throw 'Original PC 11-cell source graph length changed'}
+$treeCounter=0;$sourceSmodelLinks=0
+$sourceBoundsMin=@([double]::PositiveInfinity,[double]::PositiveInfinity,[double]::PositiveInfinity)
+$sourceBoundsMax=@([double]::NegativeInfinity,[double]::NegativeInfinity,[double]::NegativeInfinity)
+foreach($cellRow in @($pcCells.cells)){
+    $trees=@($cellRow.aabbTrees)
+    if([int]$cellRow.aabbTreeCount -ne $trees.Count){
+        throw 'Original PC cell tree count and validated source index graph diverged.'
+    }
+    $treeCounter += $trees.Count
+    for($axis=0;$axis -lt 3;$axis++){
+        $low=[double]$cellRow.mins[$axis]
+        $high=[double]$cellRow.maxs[$axis]
+        if([double]::IsNaN($low) -or [double]::IsNaN($high) -or
+           [double]::IsInfinity($low) -or [double]::IsInfinity($high) -or
+           $low -gt $high){
+            throw 'Nonfinite/invalid source cell bounds in a source-backed stream topology.'
+        }
+        $sourceBoundsMin[$axis]=[math]::Min($sourceBoundsMin[$axis],$low)
+        $sourceBoundsMax[$axis]=[math]::Max($sourceBoundsMax[$axis],$high)
+    }
+    foreach($tree in $trees){
+        $sourceSmodelLinks+=@($tree.smodelIndexes).Count
+    }
+}
+if($treeCounter -ne 740 -or $sourceSmodelLinks -ne 14974){
+    throw "Source cell/tree model-indices changed: trees=$treeCounter, refs=$sourceSmodelLinks"
+}
+$sourceTopology=[ordered]@{
+    originalPcSourceCells=11
+    originalPcSourceCellAabbTrees=$treeCounter
+    originalPcCellAabbModelIndexLinks=$sourceSmodelLinks
+    sourceBoundsMins=$sourceBoundsMin
+    sourceBoundsMaxs=$sourceBoundsMax
+    sourceGraphSha256=[string]$topo.originalPcTypedCellAabbGraphSha256
+    sameAsNativeStreamingTreeSemanticLayout=$false
+    reconstructedNativeStreamingTreeBody=$false
+}
+Write-Host "[AZTEC-GATE11-IMG-STREAM] Original-PC topology: 11 cells, 740 source AABB trees, 14974 model refs; native stream tree is DISTINCT."
+
 function Has-Capability {
     if(-not(Test-Path -LiteralPath $oat -PathType Leaf) -or
        -not(Test-Path -LiteralPath $capPath -PathType Leaf)){return $false}
@@ -296,6 +359,7 @@ try{
         nativeLoadedCurrentWorldStreamShape=$present
         referenceOriginalXboxAbiOnlyAggregateStreamShape=$native
         nativeReferenceStreamStructureValid=$hasValidNativeTreeModel
+        sourceBackedValidatedCellTopology=$sourceTopology
         currentSourceCells=11
         currentSourceAabbTrees=740
         currentSourceStaticModelDraws=1903
