@@ -19,6 +19,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public const string ExtraInlineStringsEnvironment = "WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS";
     public const string AccuracyVec2WitnessEnvironment = "WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE";
     public const string SoundAliasWitnessEnvironment = "WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE";
+    public const string DirectSoundFrontierEnvironment = "WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER";
     private const int FixedBytes = 0x9AC;
 
     // Cross-validated 32-bit scalar-only slots in the original-PC Weapon
@@ -46,7 +47,9 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
         IReadOnlyList<OwnedChild>? OrderedOwnedChildren=null,
         int OwnedAccuracyArrays=0,int OwnedAccuracyKnots=0,long OwnedAccuracyBytes=0,
         int OwnedBounceTables=0,int OwnedSoundAliasRecords=0,
-        int OwnedSoundAliasNames=0,long OwnedSoundAliasNameBytes=0)
+        int OwnedSoundAliasNames=0,long OwnedSoundAliasNameBytes=0,
+        int OwnedDirectAliasRecords=0,int OwnedDirectAliasNames=0,
+        long OwnedDirectAliasNameBytes=0)
     {
         public long SerializedDiagnosticBytes => Body.LongLength +
             (OrderedOwnedChildren is not null
@@ -104,6 +107,9 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public int TotalOwnedSoundAliasRecords => ByRoot.Values.Sum(e=>e.OwnedSoundAliasRecords);
     public int TotalOwnedSoundAliasNames => ByRoot.Values.Sum(e=>e.OwnedSoundAliasNames);
     public long TotalOwnedSoundAliasNameBytes => ByRoot.Values.Sum(e=>e.OwnedSoundAliasNameBytes);
+    public int TotalOwnedDirectSoundAliasRecords => ByRoot.Values.Sum(e=>e.OwnedDirectAliasRecords);
+    public int TotalOwnedDirectSoundAliasNames => ByRoot.Values.Sum(e=>e.OwnedDirectAliasNames);
+    public long TotalOwnedDirectSoundAliasNameBytes => ByRoot.Values.Sum(e=>e.OwnedDirectAliasNameBytes);
     public long TotalDiagnosticEmittedBytes => ByRoot.Values.Sum(e=>e.SerializedDiagnosticBytes);
 
     private T4XenonAztecWeapon63ScalarCanary(
@@ -132,6 +138,11 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
         var emitAccuracyVec2=!string.IsNullOrWhiteSpace(accuracySourceFile);
         var soundSourceFile=Environment.GetEnvironmentVariable(SoundAliasWitnessEnvironment);
         var emitSoundAliases=!string.IsNullOrWhiteSpace(soundSourceFile);
+        var directFrontierFile=Environment.GetEnvironmentVariable(DirectSoundFrontierEnvironment);
+        var emitDirectAliases=!string.IsNullOrWhiteSpace(directFrontierFile);
+        if(emitDirectAliases && !emitSoundAliases)
+            throw new InvalidDataException(
+                "Original-PC source 160 direct sound-alias graft requires authenticated bounce graph, Vec2 and 63 WeaponDef source proofs.");
         if(emitSoundAliases && (!emitAccuracyVec2 || !expandedSourceStrings || rawLimit!="63"))
             throw new InvalidDataException(
                 "Authentic PC WeaponDef source sound aliases require all 63 original PC weapon bodies, typed XStrings and Vec2 prerequisites.");
@@ -237,6 +248,57 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                 row=>row,StringComparer.Ordinal);
             if(ss.Length!=63 || soundWitnesses.Count!=63)
                 throw new InvalidDataException("Original PC sound witness requires 63 unique source roots.");
+        }
+
+        // The read-only 228-alias frontier is independently tied to the
+        // OAT-passing two-bounce-table candidate, not synthesized alias names.
+        using var directDoc=emitDirectAliases
+            ? JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.GetFullPath(directFrontierFile!),cancellationToken))
+            : null;
+        Dictionary<string,JsonElement>? directWitnessRows=null;
+        if(emitDirectAliases)
+        {
+            var d=directDoc!.RootElement;
+            var cat=d.GetProperty("remainingDirectWeaponFixedSlots");
+            var bounce=d.GetProperty("alreadyGraftedBounce");
+            var flame=d.GetProperty("remainingNestedFlameParentBlocked");
+            var other=d.GetProperty("remainingOtherForeignParentBlocked");
+            if(d.GetProperty("schema").GetString()!="WaW360.AztecWeapon63RemainingSoundAliasFrontier.v1" ||
+               d.GetProperty("status").GetString()!="AZTEC_63_WEAPON_SOURCE_7B_SOUND_ALIAS_ORIGIN_CLASSIFIED_NOT_YET_IN_FF" ||
+               d.GetProperty("nativeWeaponRootSourceProofs").GetInt32()!=63 ||
+               d.GetProperty("sourceOnlyInlineSoundAliasRecords").GetInt32()!=228 ||
+               d.GetProperty("sourceOnlyInlineSoundAliasNameBytes").GetInt64()!=895 ||
+               cat.GetProperty("records").GetInt32()!=160 ||
+               cat.GetProperty("inlineNames").GetInt32()!=41 ||
+               cat.GetProperty("inlineNameBytes").GetInt64()!=696 ||
+               bounce.GetProperty("records").GetInt32()!=62 ||
+               bounce.GetProperty("inlineNameBytes").GetInt64()!=199 ||
+               flame.GetProperty("records").GetInt32()!=6 ||
+               other.GetProperty("records").GetInt32()!=0 ||
+               !d.GetProperty("all228RecordsConserved").GetBoolean() ||
+               !d.GetProperty("noDonorAudioOrInventedTables").GetBoolean() ||
+               d.GetProperty("producedAnyNewNativeFf").GetBoolean() ||
+               !d.GetProperty("sourceOnlyNoXboxHardware").GetBoolean())
+                 throw new InvalidDataException(
+                     "Original-PC 228-alias source frontier changed; cannot infer 160 fixed sound slots.");
+            var soundWitnessHash=Convert.ToHexString(SHA256.HashData(
+                await File.ReadAllBytesAsync(Path.GetFullPath(soundSourceFile!),cancellationToken)));
+            if(!string.Equals(
+                    d.GetProperty("originalPc63WeaponBounceSourceWitnessSha256").GetString(),
+                    soundWitnessHash,StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    "Original-PC source sound witness SHA changed after 160 direct alias census.");
+            var all=d.GetProperty("perSourceOwnedRecord").EnumerateArray().ToArray();
+            directWitnessRows=all.ToDictionary(
+                row=>(row.GetProperty("nativeWeaponRootName").GetString()??"")+"\n"+
+                    (row.GetProperty("proofLabel").GetString()??""),
+                row=>row,StringComparer.Ordinal);
+            if(all.Length!=228 || directWitnessRows.Count!=228 ||
+               all.Count(row=>row.GetProperty("category").GetString()=="DIRECT_WEAPON_FIXED_SLOT")!=160 ||
+               all.Any(row=>row.GetProperty("soundAssetPayloadOwned").GetBoolean()))
+                throw new InvalidDataException(
+                    "Original-PC 228 independently witnessed sound-alias records are incomplete, duplicated or claim audio asset ownership.");
         }
         var selected=manifestRows.Where(r=>IsSelected(r.GetProperty("conclusion").GetString()??""))
             .OrderBy(r=>r.GetProperty("nativeRootOrdinal").GetInt32()).Take(limit).ToArray();
