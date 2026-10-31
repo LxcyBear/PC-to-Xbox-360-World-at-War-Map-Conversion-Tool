@@ -36,6 +36,9 @@ public sealed class T4XenonRendererEmitResult
     public int OriginalPcWeaponOwnedBounceAliasRecords { get; init; }
     public int OriginalPcWeaponOwnedBounceAliasNames { get; init; }
     public long OriginalPcWeaponOwnedBounceAliasNameBytes { get; init; }
+    public int OriginalPcWeaponOwnedDirectSoundAliasRecords { get; init; }
+    public int OriginalPcWeaponOwnedDirectSoundAliasNames { get; init; }
+    public long OriginalPcWeaponOwnedDirectSoundAliasNameBytes { get; init; }
     public bool OriginalPcWeaponFullOwnedGraphsEmitted { get; init; }
     public required int XModelReferenceRoots { get; init; }
     public required long ZoneBytes { get; init; }
@@ -700,6 +703,8 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Original-PC source bounceSound tables in FF: {weaponCanary?.TotalOwnedBounceTables ?? 0:N0}/63; original-null non-table weapon roots remain NULL");
         report.AppendLine($"Source-owned bounce alias records in FF: {weaponCanary?.TotalOwnedSoundAliasRecords ?? 0:N0}");
         report.AppendLine($"Source-owned bounce alias name strings / bytes in FF: {weaponCanary?.TotalOwnedSoundAliasNames ?? 0:N0} / {weaponCanary?.TotalOwnedSoundAliasNameBytes ?? 0:N0}");
+        report.AppendLine($"AUTHENTIC original-PC inline fixed-slot sound aliases: {weaponCanary?.TotalOwnedDirectSoundAliasRecords ?? 0:N0} (160 source-backed records; flame/foreign still fenced)");
+        report.AppendLine($"Owned fixed-slot sound name strings / bytes: {weaponCanary?.TotalOwnedDirectSoundAliasNames ?? 0:N0} / {weaponCanary?.TotalOwnedDirectSoundAliasNameBytes ?? 0:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
@@ -753,6 +758,9 @@ public static class T4XenonRendererGraphEmitter
             OriginalPcWeaponOwnedBounceAliasRecords = weaponCanary?.TotalOwnedSoundAliasRecords ?? 0,
             OriginalPcWeaponOwnedBounceAliasNames = weaponCanary?.TotalOwnedSoundAliasNames ?? 0,
             OriginalPcWeaponOwnedBounceAliasNameBytes = weaponCanary?.TotalOwnedSoundAliasNameBytes ?? 0,
+            OriginalPcWeaponOwnedDirectSoundAliasRecords = weaponCanary?.TotalOwnedDirectSoundAliasRecords ?? 0,
+            OriginalPcWeaponOwnedDirectSoundAliasNames = weaponCanary?.TotalOwnedDirectSoundAliasNames ?? 0,
+            OriginalPcWeaponOwnedDirectSoundAliasNameBytes = weaponCanary?.TotalOwnedDirectSoundAliasNameBytes ?? 0,
             OriginalPcWeaponFullOwnedGraphsEmitted = false,
             XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             ZoneBytes = zoneBytes.LongLength,
