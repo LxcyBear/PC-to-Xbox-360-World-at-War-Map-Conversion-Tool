@@ -933,3 +933,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Produces \`pc_g11_lightning_six_weapon_real_source_recovery/aztec_six_real_pc_weapon_source_body_proof.json\`, Markdown report, console log and optional original-PC-source-only Xbox weapon proof containers. A missing or unsupported PC WeaponDef source remains an explicit per-file blocker; no synthetic sound/weapon payloads. Asset families still incomplete (Materials 498+ other dep closure, Localization packed native values, Images, Audio, 43 source conflicts). Native Gate11 still 10/13; current OAT-passing FF unchanged.
+
+### 71/71 authentic Xbox owned WeaponDefs but 0/6 original-PC names; packed-name identity witness (2026-10-31)
+
+User Windows execution on commit \`66cf45b\` cleared prior CS0136 variable shadowing, then passed the native Xbox 6f+7b serializer/readback:
+- \`mod.ff\`: **10/10** real owned-graph native Xbox WeaponDef bodies, PASS.
+- \`nazi_zombie_aztec.ff\`: **61/61** real owned-graph Xbox WeaponDef bodies, PASS.
+- All **six** native WeaponDef identities looked up through OAT ORIGINAL PC owned name rows: **0/6 exact converted proof labels**, no body selected or native map FF grafted. The run finished successfully: \`AZTEC_SIX_PC_WEAPON_SOURCE_PROOF_PARTIAL_OR_CONFLICTING\`. This is **NOT** failure of 71 Xbox body conversions, and not evidence that the six source bodies are absent. It is an unresolved identity/provenance join.
+- The existing 6f WeaponDef physical-body parser intentionally uses labels such as \`<packed-name@0x<PC-body-offset>:0x<packed-pointer>>\` if the PC internal-name pointer is a packed Virtual-block pointer. The 7b Xbox serializer carries these labels forward verbatim. The new six-target selector correctly refuses to equate a synthetic label to a real OAT string. The known name-audit scripts already warn that 7b proof records sort by physical PC body offset, whereas OAT names use XAsset table order. **Same ordinal is not a proven packed-pointer-to-string mapping.**
+- Next required real asset identity proof: independently map a packed PC WeaponDef internal-name pointer to its true Virtual-block string target (or another semantically proven alias identity), then reverify each existing 7b blob and its source provenance. Do NOT rewrite existing proof labels from guessed ordinal positions.
+
+**New zero-build, read-only root-name witness:** \`tools/oat-xenon/Run-AztecSixWeaponPackedNameWitness.ps1\`. It SHA-verifies the current protected OAT-passing map, the previous two PC source FFs and their 7b Xbox proof containers; parses the two real 7b binary proof files and validates record magic/version/0x9AC fixed size, names, source offsets, body size/bounds and packed-label body-offset identity; parses original saved PC OAT \`weapon, name\` lists, separating reference-only comma entries from true owned name entries. It compares counts, uniqueness, and all known literal-name ordinal anchors for each FF, and prints six targeted original-PC names, potential same-ordinal proof labels, virtual block pointer and offset for packed candidates.
+
+**Critical fence:** an ordinal match remains \`PACKED_NAME_ORDER_ONLY_PLAUSIBLE_NOT_VERIFIED\`, never actual native Xbox source-body selection. If known anchors conflict or source counts differ, the six names remain \`PACKED_NAME_UNRESOLVED_ORDER_NOT_PROVEN\` or \`NO_SOURCE_PROOF_ORDINAL_LINK\`. All six stay runtime/production unapproved. No new dotnet, OAT, FastFile build or Xbox test, and all 43 earlier competing PC source payloads remain unresolved.
+
+Run from converter root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS51 parser failure" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecSixWeaponPackedNameWitness.ps1"
+\`\`\`
+
+Report: \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lightning_six_weapon_packed_name_witness/aztec_six_weapon_packed_name_source_witness.json\` and \`.md\`. **First Windows execution pending.** Gate11 and native Xbox runtime residency not closed.
