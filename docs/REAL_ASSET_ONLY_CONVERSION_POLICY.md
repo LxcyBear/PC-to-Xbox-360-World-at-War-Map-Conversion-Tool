@@ -248,3 +248,37 @@ One local Windows sprint:
 Output is in the Aztec native material mapping folder: pc_g11_flame_loaded_virtual_target_proof/aztec_five_original_pc_real_material_memory_words.json, pc_g11_flame_real_xbox_xma_source/aztec_six_real_flame_xbox_sound_to_xma_chain_v4.json, and pc_g11_flame_loaded_virtual_target_proof/aztec_flame_v4_original_pc_real_material_memory_and_xbox_real_sound_source_sprint.json.
 
 Committed but NOT YET built or executed by the user. No new production fastfiles, stock runtime preload claim, synthetic Material/technique/image asset or silent XMA sample; 122/12/4 original NULLs and the old good native FF remain untouched.
+
+
+## 2026-10-31 actual original Xbox Flame sound bytes 6/6 (v4 PASS) + next typed-PC Material proof
+
+The user's v4 result at commit 94f06a3 was fully successful on their Windows 10 PS5.1 / VS2026 environment. 81/81 PS51 scripts parsed, pinned Xenon OAT Win32 built without errors, original source FF hashes checked and the prior accepted native diagnostic FF remained intact. The actual Xbox SoundFile -> LoadedSound source ownership witness recovered **all 6/6** PC-verifiable flamethrower sound aliases from original retail ber3.ff. All six have an actual linked RIFF-XMA sample with header validation, SHA256 identity and staged sample bytes:
+- weap_flamethrower_start -> sound/sfx/weapon/special/flame_thrower/wpn_flm_ignite.xma (20,608 bytes)
+- weap_flamethrower_fireloop -> sound/sfx/weapon/special/flame_thrower/wpn_flmthwr_st_flame.xma (45,232 bytes)
+- weap_flamethrower_cooldown -> sound/sfx/weapon/special/flame_thrower/wpn_flm_cooldown.xma (16,504 bytes)
+- weap_flamethrower_start_3p -> sound/sfx/weapon/special/flame_thrower/wpn_flm_ignite_mn.xma (10,348 bytes)
+- weap_flamethrower_fireloop_3p -> sound/sfx/weapon/special/flame_thrower/wpn_flmthwr_mn_flame.xma (22,660 bytes)
+- weap_flamethrower_cooldown_3p -> sound/sfx/weapon/special/flame_thrower/wpn_flm_cooldown_mn.xma (8,296 bytes)
+
+Status GENUiNE_XBOX_SOUND_TO_REAL_XMA_SAMPLE_NAME_AND_BYTES_LINK_PROVEN_OFFLINE means actual original Xbox source audio and alias-file provenance are now **complete**, NOT that the current native map package or CodXe runtime contains or plays those sounds. Any native sound package/import still needs exact real SoundFile metadata/root ordering and Xbox runtime evidence.
+
+The v4 original-PC memory ledger found 5 unique packed Material destination cells for the 17 non-NULL FlameTable Material field occurrences:
+- 0x83061811: 0x07B6D450 (4 fields)
+- 0x83061911: 0x07B6CFA0 (4 fields)
+- 0x83769AC1: 0x07BE5830 (3 fields)
+- 0x83769AC5: 0x07BE6370 (3 fields)
+- 0x83769AC9: 0x07BE5C68 (3 fields)
+
+These first-word values look like host x86 addresses in the original OAT process; they are NOT valid serialized FF offset or Material names by themselves. The earlier 0/5 direct Material header and 0/5 two-hop source probe remain valid, and no real material name has yet been proven by those methods.
+
+**Better next source proof:** pinned OAT already has a first-party original-PC T4 WeaponDumperT4::DumpFlameTables, which uses a typed loaded WeaponDef->FlameTable and standard InfoStringFromStructConverter::CSPFT_MATERIAL to export actual MaterialInfo.name without guessing serialized/host pointer decoding. The new zero-build tools/oat-xenon/Run-AztecFlamePcTypedWeaponMaterialAudit.ps1 reuses the previously built pinned Unlinker, SHA-pins the exact original-PC FF, executes OAT --include-assets weapon in an isolated temporary dump directory (not the user's game), parses only genuine FlameTable prefix source files, records the eight named material slots and authentic NULL fields per parent, SHA-stages only actual typed FlameTable exports, compares any names against the original PC OAT material root list and refuses to label any name as a working Xbox material shader/image/techset graph. Counts differing from 4 parents or 17 packed occurrences are reported as uncertainty; no filler is emitted. This is read-only evidence, not an original PC asset donor into production.
+
+From repo root, no C++ rebuild:
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax blocked" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlamePcTypedWeaponMaterialAudit.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "Original PC typed Material source audit blocked" }
+
+The typed material name audit code has been pushed but NOT yet Windows-executed. Its output is under pc_g11_flame_loaded_virtual_target_proof/aztec_four_pc_flame_tables_typed_weapon_material_names.json. Do not advance material graft or Xbox deployment until names match the actual loaded source and a real native image/technique graph can be provided. Original source NULLs (122 parent / 12 material / 4 sound) remain unchanged.
