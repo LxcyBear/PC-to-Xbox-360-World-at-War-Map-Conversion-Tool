@@ -1082,3 +1082,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Outputs \`.deps/aztec-w63-exact-ab/aztec_weapon63_exact_same_world_compressed_ff_delta.json\`, corresponding Markdown summary, both individually preserved FFs, OAT emit manifests and parent logs. No Xbox deployment, no changes to the protected 4,510,695 B source FF, Gate11 still 10/13 and all other renderer/image/material/audio dependencies still open.
+
+### Lightning A/B 0-vs-63 OAT builds BOTH PASS; post-build PowerShell function stdout contamination fixed (2026-10-31 morning)
+
+User ran \`Run-AztecWeapon63ExactABSizeLightning.ps1\` on \`e67df4a\`. **64/64 PowerShell syntax PASS.** The user's original 63-canary OAT good FF was independently archived, and **both fresh, identical-source-run cases OAT PASS** with exact **8,509-root** identity:
+- \`control_00\`: **0 original-PC weapon canaries, 4,510,695 B**, SHA-256 \`F74BE6EA0C402C56D9074D6B38F80F2D6D71A5C3297EFA703714FA9C1176A0B6\`, identical to original protected source candidate.
+- \`weapons_63\`: **63 original-PC-source scalar/inline-XString WeaponDef canaries, 4,512,790 B**, SHA-256 \`3DBA6CB661691065192B57D4A11A1E4DE5FA0E5FCF6937C8B86E70A57C9152D7\`.
+- Observed compressed difference **+2,095 B**. Both passed OAT 0/0 and were already **SHA-verified and archived separately** under \`.deps/aztec-w63-exact-ab/control_00/\` and \`weapons_63/\`.
+- Final A/B report stopped at a **PowerShell StrictMode object-shape error** after 85% and after both OAT pass reports: \`The property 'realMaterialRoots' cannot be found on this object\`. Root cause: inside \`Invoke-ExactCase\`, plain \`& powershell ...\` sent child build stdout LOG LINES to the **PowerShell function success stream**. The returned \`$control\`/\`$weapons\` variable was a collection of raw log strings plus the one PSCustomObject, instead of solely the validated per-case record. The comparison iterating \`$control.$key\` then read the wrong object. This is NOT a native-world/FF asset failure.
+
+**Code correction:** the child native PowerShell invocation uses \`& powershell ... | Out-Host\` so it writes to the visible console, not the parent function's success stream. Crucially the native process \`$LASTEXITCODE\` continues to gate case success. The parent function now returns only the explicit validated PSCustomObject, so a fresh A/B build can complete without confusing console messages for data.
+
+**Fast recovery without any compilation / OAT repeat:** new option \`-ReuseArchivedPasses\` on the SAME \`Run-AztecWeapon63ExactABSizeLightning.ps1\` reads both existing archived \`.ff\`, \`case_size_and_oat.json\`, and \`nuclear_xenon_renderer_emit.json\` files; checks their on-disk compressed FF SHA-256, original usermap baseline SHA, 0/63 expected typed source canaries, 8,509 OAT accepted root identities, zero-warning/error OAT flags, no full 7b source child graph, and equal non-weapon world counts. It then reports the exact byte delta in the existing A/B JSON + Markdown. It **does not invoke dotnet, OAT, or rebuild any FF**, and never overwrites the archived passing candidates. Since previous archived OAT manifests did NOT include the exact source Git SHA, this readback reports \`originalBuildRevisionCryptographicallyPinnedByArchivedEvidence=false\` and does not misrepresent archival evidence as cryptographic same-build-source proof (although the original observed user console did show both builds in one \`e67df4a\` invocation). To cryptographically re-pin both builds under one tracked source checkout, omit the switch and regenerate both fresh.
+
+**Run now from repo root (fast):**
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63ExactABSizeLightning.ps1" -ReuseArchivedPasses
+\`\`\`
+
+Expected measured compressed delta: **+2,095 bytes**, provided the existing archived FFs and reports remain unchanged. Outstanding: fully owned WeaponDef child pointer/native dependency rebase, two source conflicts, four stock-only roles, missing six genuine image payloads, world and audio closure. This is still an **OAT diagnostic FF, NOT Xbox runtime-approved**.
