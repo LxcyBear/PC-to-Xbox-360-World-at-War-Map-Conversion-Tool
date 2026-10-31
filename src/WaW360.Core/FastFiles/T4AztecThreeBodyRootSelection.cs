@@ -41,7 +41,6 @@ public static class T4AztecThreeBodyRootSelection
         var f=fd.RootElement;var n=nd.RootElement;var x=xd.RootElement;
         static string S(JsonElement e,string key)=>e.GetProperty(key).GetString()??"";
         static int I(JsonElement e,string key)=>e.GetProperty(key).GetInt32();
-        static long L(JsonElement e,string key)=>e.GetProperty(key).GetInt64();
         static bool B(JsonElement e,string key)=>e.GetProperty(key).GetBoolean();
         static bool Eq(string a,string b)=>string.Equals(a,b,StringComparison.OrdinalIgnoreCase);
 
