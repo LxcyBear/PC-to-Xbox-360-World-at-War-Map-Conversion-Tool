@@ -37,7 +37,9 @@ if([string]$m.schema -ne 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -or
    [bool]$m.gate11FullWorldClosureApproved -or [bool]$m.hardwareReady -or
    [string]$g.stage4EEmittedFfSha256 -ine '0BB41398C4236EF33CB9D60F923E09152966D52AA623DAEFC33D731A42630564' -or
    [string]$s.status -ne 'AZTEC_GATE11_11_CELL_740_AABB_TYPED_SOURCE_NATIVE_ABI_PASS_NOT_EMITTED' -or
-   -not [bool]$s.fullPcTypedCellsAndTreesPass){
+   -not [bool]$s.typedPcCellGraphSourcePass -or
+   -not [bool]$s.nativeCellAabbOffsetsProven -or
+   -not [bool]$s.nativeCellPortalAabbSizesAndCriticalOffsetsMatchPc){
     throw 'Gate11 source/FF evidence not a real isolated OAT-loaded 11-cell and 740-AABB diagnostic.'
 }
 $ff=[string]$m.outputFastFile
