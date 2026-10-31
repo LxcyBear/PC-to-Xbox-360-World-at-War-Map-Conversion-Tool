@@ -167,12 +167,16 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             if(!Convert.ToHexString(SHA256.HashData(original)).Equals(blobSha,StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException($"Weapon63 source Xbox owned-body SHA changed: {name}");
 
-            // Genuine 7b PC->Xbox full graph proof was independently verified
-            // beforehand; verify again, but DO NOT transplant its unre-based
-            // pointer graph into the runtime FF.
-            if(!T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(
-                    original,desc.Name??name,out var fullReason))
-                throw new InvalidDataException($"Source original WeaponDef owned graph fails recheck {name}: {fullReason}");
+            // This original-PC owned 7b stream was already endian-converted
+            // and SHA-verified, but its XModel/FX/etc asset pointers may still
+            // be authentic packed SOURCE pointers (e.g. 0x80001A51).
+            // Revalidate its typed OWNED stream, not its readiness for native
+            // FF relocation. Only the separate sanitized diagnostic below
+            // may pass the STRICT self-contained pointer gate.
+            if(!T4WeaponVariableSerializerProof.TryValidateSourceOwnedXboxBlob(
+                    original,desc.Name??name,out var sourceReason))
+                throw new InvalidDataException(
+                    $"Original PC-owned WeaponDef 7b source typed walk failed {name}: {sourceReason}");
 
             var childStrings=new List<string>{name};
             var fixedOut=new byte[FixedBytes];
