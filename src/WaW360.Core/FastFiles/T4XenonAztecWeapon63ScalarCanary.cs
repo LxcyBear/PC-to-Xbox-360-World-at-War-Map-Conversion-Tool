@@ -16,6 +16,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
 {
     public const string ManifestEnvironment = "WAW360_AZTEC_WEAPON63_DIAGNOSTIC";
     public const string LimitEnvironment = "WAW360_AZTEC_WEAPON63_LIMIT";
+    public const string ExtraInlineStringsEnvironment = "WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS";
     private const int FixedBytes = 0x9AC;
 
     // Cross-validated 32-bit scalar-only slots in the original-PC Weapon
@@ -34,7 +35,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public sealed record Entry(
         int RootIndex,string Name,byte[] Body,IReadOnlyList<string> Children,
         string SourceProofSha256,string SourceBlobSha256,int ProofRecordOrdinal,
-        int OriginalOwnedBlobBytes)
+        int OriginalOwnedBlobBytes,int ExtendedFixedSourceInlineStrings)
     {
         public long SerializedDiagnosticBytes =>
             Body.LongLength + Children.Sum(s => (long)Utf8.GetByteCount(s) + 1L);
@@ -62,6 +63,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public IReadOnlyDictionary<int,Entry> ByRoot { get; }
     public int AllSourceOwnedNamedBodies => 63;
     public long TotalOriginalOwnedProofBytes { get; }
+    public int TotalExtendedFixedSourceInlineStrings =>
+        ByRoot.Values.Sum(e => e.ExtendedFixedSourceInlineStrings);
     public long TotalDiagnosticEmittedBytes => ByRoot.Values.Sum(e=>e.SerializedDiagnosticBytes);
 
     private T4XenonAztecWeapon63ScalarCanary(
@@ -82,6 +85,10 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             throw new FileNotFoundException("Aztec 63-weapon native source SHA manifest absent",file);
 
         var rawLimit=Environment.GetEnvironmentVariable(LimitEnvironment);
+        var extras=Environment.GetEnvironmentVariable(ExtraInlineStringsEnvironment);
+        if(extras is not null && extras != "1")
+            throw new InvalidDataException("WeaponDef extra inline XString diagnostic mode must be unset or '1'.");
+        var expandedSourceStrings=extras=="1";
         if(!int.TryParse(rawLimit,out var limit) || limit is not (0 or 1 or 6 or 63))
             throw new InvalidDataException("Weapon63 scratch canary limit must be 0 (A/B control), 1, 6, or 63; missing is rejected.");
 
@@ -184,26 +191,72 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                 original.AsSpan(offset,4).CopyTo(fixedOut.AsSpan(offset,4));
             BinaryPrimitives.WriteUInt32BigEndian(fixedOut.AsSpan(0,4),T4ZonePointer.Following);
 
-            // T4 ZoneCode begins with internalName, displayName, overlayName
-            // in this exact order. Extract only ORIGINAL inline strings;
-            // offset aliases cannot be promoted without genuine rebase.
-            var cursor=FixedBytes;
-            for(var pointerSlot=0;pointerSlot<=8;pointerSlot+=4)
+            int extendedFixedFields=0;
+            if(expandedSourceStrings)
             {
-                var p=BinaryPrimitives.ReadUInt32BigEndian(original.AsSpan(pointerSlot,4));
-                if(p!=T4ZonePointer.Following && p!=T4ZonePointer.Insert)
-                    continue;
-                if(!TryReadSourceCString(original,ref cursor,out var value))
-                    throw new InvalidDataException($"Weapon63 original inline XString unreadable at +{pointerSlot}: {name}");
-                if(pointerSlot==0)
+                // SOURCE 7b ownership traversal proves the real byte offset
+                // of each original inline string even if earlier inline
+                // models/sounds consumed bytes in the original stream.
+                // Only the typed WeaponDef FIXED BODY XString slots are
+                // re-emitted, in ZoneCode traversal order. All packed PC
+                // string pointers and foreign asset/child pointers remain 0.
+                if(!T4WeaponVariableSerializerProof.TryCollectSourceOwnedFixedInlineXStrings(
+                        original,desc.Name??name,out var observed,out var inlineReason))
+                    throw new InvalidDataException(
+                        $"Source PC owned WeaponDef fixed XString provenance fails {name}: {inlineReason}");
+                foreach(var field in observed)
                 {
-                    if(!string.Equals(value,name,StringComparison.Ordinal))
-                        throw new InvalidDataException($"Original inline WeaponDef source string/name conflict: {name} vs {value}");
+                    if(field.FixedFieldOffset==0)
+                    {
+                        if(!string.Equals(field.SourceValue,name,StringComparison.Ordinal))
+                            throw new InvalidDataException(
+                                $"Source PC original WeaponDef internal-name proof differs from native name: {name} vs {field.SourceValue}");
+                        continue;
+                    }
+                    // 7b source uses Latin1 bytes. Only ASCII-safe strings
+                    // may be re-emitted as UTF8 without changing semantics;
+                    // others remain null rather than being fabricated or
+                    // lossy re-encoded.
+                    if(field.SourceValue.Length>512 ||
+                       field.SourceValue.Any(ch => ch<0x20 || ch>0x7e))
+                        continue;
+                    if(field.FixedFieldOffset<4 || field.FixedFieldOffset+4>FixedBytes)
+                        throw new InvalidDataException(
+                            $"Source fixed XString pointer offset out of bounds {name}: {field.ProofLabel}");
+                    var raw=BinaryPrimitives.ReadUInt32BigEndian(
+                        original.AsSpan(field.FixedFieldOffset,4));
+                    if(raw!=T4ZonePointer.Following && raw!=T4ZonePointer.Insert)
+                        throw new InvalidDataException(
+                            $"Source fixed XString is not genuinely inline {name}: {field.ProofLabel}");
+                    BinaryPrimitives.WriteUInt32BigEndian(
+                        fixedOut.AsSpan(field.FixedFieldOffset,4),T4ZonePointer.Following);
+                    childStrings.Add(field.SourceValue);
+                    extendedFixedFields++;
                 }
-                else
+            }
+            else
+            {
+                // Original already-OAT-passed 63-body case unchanged: only
+                // the opening original inline display/overlay strings.
+                var cursor=FixedBytes;
+                for(var pointerSlot=0;pointerSlot<=8;pointerSlot+=4)
                 {
-                    BinaryPrimitives.WriteUInt32BigEndian(fixedOut.AsSpan(pointerSlot,4),T4ZonePointer.Following);
-                    childStrings.Add(value);
+                    var p=BinaryPrimitives.ReadUInt32BigEndian(original.AsSpan(pointerSlot,4));
+                    if(p!=T4ZonePointer.Following && p!=T4ZonePointer.Insert)
+                        continue;
+                    if(!TryReadSourceCString(original,ref cursor,out var value))
+                        throw new InvalidDataException($"Weapon63 original inline XString unreadable at +{pointerSlot}: {name}");
+                    if(pointerSlot==0)
+                    {
+                        if(!string.Equals(value,name,StringComparison.Ordinal))
+                            throw new InvalidDataException($"Original inline WeaponDef source string/name conflict: {name} vs {value}");
+                    }
+                    else
+                    {
+                        BinaryPrimitives.WriteUInt32BigEndian(
+                            fixedOut.AsSpan(pointerSlot,4),T4ZonePointer.Following);
+                        childStrings.Add(value);
+                    }
                 }
             }
             var fullDiagnostic=new byte[checked(FixedBytes+childStrings.Sum(s=>Utf8.GetByteCount(s)+1))];
@@ -222,7 +275,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
 
             chosen.Add(ordinal,new Entry(
                 ordinal,name,fixedOut,childStrings,index.Sha256,blobSha,
-                proofOrdinal,original.Length));
+                proofOrdinal,original.Length,extendedFixedFields));
             allSourceBytes+=original.Length;
         }
         if(chosen.Count!=limit)
