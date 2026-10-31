@@ -442,6 +442,72 @@ namespace gfxworld
            << (cellArraysValid?"true":"false");
         out<<",\"hardwareRuntimeSemanticsProven\":false}";
 
+        // Gate11 independent ORIGINAL-PC-to-XENON loaded-byte semantic check.
+        // The x86 OAT loader has already endian-decoded native FF scalars.
+        // Hash the exact typed, pointer-free fields AS LOADED in host memory,
+        // comparing with the original-PC little-endian source in PowerShell.
+        // Do not export any native-reference or source FF payload bytes.
+        // This intentionally covers *every byte* of all four leaf arrays.
+        const auto fnv64 = [](const void* data, const std::size_t len)
+        {
+            auto value = std::uint64_t{14695981039346656037ull};
+            const auto* bytes = static_cast<const unsigned char*>(data);
+            for (std::size_t i = 0; i < len; ++i)
+            {
+                value ^= bytes[i];
+                value *= std::uint64_t{1099511628211ull};
+            }
+            return value;
+        };
+        const auto emitDigest = [&](const void* ptr, std::size_t bytes)
+        {
+            const auto value = fnv64(ptr, bytes);
+            out << '"'
+                << std::hex << std::setfill('0') << std::setw(16)
+                << value << std::dec << std::setfill(' ')
+                << '"';
+        };
+        const bool primitivesAvailable =
+            world.skySurfCount == 2 && world.skyStartSurfs != nullptr &&
+            world.modelCount == 183 && world.models != nullptr &&
+            world.waterBuffers[0].bufferSize == 1048704u &&
+            world.waterBuffers[0].buffer != nullptr &&
+            world.waterBuffers[1].bufferSize == 1048704u &&
+            world.waterBuffers[1].buffer != nullptr;
+        out << ",\"nativePrimitiveGraph\":{";
+        out << "\"schema\":\"WaW360.T4XenonLoadedGate11PrimitiveDigest.v1\"";
+        out << ",\"digest\":\"FNV1A64_LE_HOST_MEMORY_OF_TYPED_LOADED_FIELDS\"";
+        out << ",\"skySurfCount\":" << world.skySurfCount;
+        out << ",\"brushModelCount\":" << world.modelCount;
+        out << ",\"skySourceFieldBytes\":" << (2u * sizeof(*world.skyStartSurfs));
+        out << ",\"brushSourceFieldBytes\":" << (183u * sizeof(*world.models));
+        out << ",\"water0Bytes\":" << world.waterBuffers[0].bufferSize;
+        out << ",\"water1Bytes\":" << world.waterBuffers[1].bufferSize;
+        out << ",\"skyPointerPresent\":" << (world.skyStartSurfs ? "true":"false");
+        out << ",\"brushPointerPresent\":" << (world.models ? "true":"false");
+        out << ",\"water0PointerPresent\":" << (world.waterBuffers[0].buffer ? "true":"false");
+        out << ",\"water1PointerPresent\":" << (world.waterBuffers[1].buffer ? "true":"false");
+        out << ",\"arraysAvailable\":" << (primitivesAvailable ? "true":"false");
+        out << ",\"loadedHostMemoryIsLittleEndian\":true";
+        out << ",\"skyDigest\":";
+        if (primitivesAvailable)
+            emitDigest(world.skyStartSurfs, 2u * sizeof(*world.skyStartSurfs));
+        else out << "null";
+        out << ",\"brushDigest\":";
+        if (primitivesAvailable)
+            emitDigest(world.models, 183u * sizeof(*world.models));
+        else out << "null";
+        out << ",\"water0Digest\":";
+        if (primitivesAvailable)
+            emitDigest(world.waterBuffers[0].buffer, 1048704u);
+        else out << "null";
+        out << ",\"water1Digest\":";
+        if (primitivesAvailable)
+            emitDigest(world.waterBuffers[1].buffer, 1048704u);
+        else out << "null";
+        out << ",\"sourcePayloadDonorCopied\":false";
+        out << ",\"hardwareRuntimeSemanticsProven\":false}";
+
         out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
         out << ",\"surfaceCount\":" << world.surfaceCount;
         out << ",\"vertexCount\":" << world.vertexCount;
