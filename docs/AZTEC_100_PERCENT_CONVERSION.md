@@ -477,3 +477,26 @@ From the converter repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11CombinedNativePreflight.ps1'
 
 Expected source preparer: 13/13 typed endian round trips and a detailed list of image-reference candidates/gaps. These three brand-new PS scripts have **not yet run on Windows**; do not claim their native BE output is verified until the user's first run succeeds. Source census already PASSED. The passing 3,642,932B FF must NEVER be overwritten.
+
+## Gate11 next isolated primitive FF — sky, 183 brushes, two source water buffers (new code, Windows result pending)
+
+The earlier **13/13 primitive source endian conversion PASS** is valuable but is not physical FF serialization. New opt-in `T4XenonAztecGate11PrimitiveBatch` uses the already verified combined source report and SHA-locks the **previously OAT-passing** 3,642,932-byte 11-cell/740-AABB FF (`05CEEC82AF5D58706BA5A6EE24995D09A3FB764F3E547A8B4758A9347ECF2862`). It requires original-PC leaf records, native-only 900-byte root ABI offsets, zero original seed pointer sites, no original Xbox donor bytes, no hardware approval, and unmodified proof input. Stage 4D **Plan** and Stage 4E **Emit** have identical allocation order.
+
+The next isolated experimental FF adds only these original-PC-owned **non-XAsset** groups to the existing source-backed cell/draw world:
+
+- `skyStartSurfs`: 2 x 4 B (8 B), after source index array.
+- `brushModels`: 183 x 56 B (10,248 B), after cells and before MaterialMemory.
+- `waterBuffer0`, `waterBuffer1`: 65,544 x 16 B **each** (2,097,408 B total), after other GfxWorld children, with explicitly set Xenon buffer-byte lengths and FOLLOWING pointers.
+
+Combined **2,107,664 uncompressed source-native bytes**; the actual FF size will differ due to compression. The preflight still verifies all 13 typed leaf conversion results. Other nine nonemitted leaf families (including legitimate zero-count arrays), 8 IMAGE *name-only* candidates, reflection/lightmap payload semantics, light-grid header/children, shadow/light-region nested graphs, streamInfo, material stateBits and the one stock XModel remain unresolved. Do not characterize this probe as whole Gate11 or a finished native map.
+
+**One command** from the converter repository root, after pulling this change:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS5.1 syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11PrimitiveWorldProbe.ps1'
+```
+
+This runs one incremental .NET build and one new scratch FF/OAT load **only if the source preflight and protected FF checks pass**. It writes to `pc_g11_remaining_world_primitive_probe`, not `pc_g11_cells_740`; the earlier FF must remain hash-identical. New result status is `AZTEC_GATE11_PRIMITIVE_SKY_BRUSH_WATER_OAT_LOAD_PASS_REMAINDER_PENDING` **only after** native OAT accepts it. Actual loaded sky/brush/water **field-by-field** independent readback is not implemented; first OAT acceptance alone cannot advance 10/13 to 11/13. On failure, inspect `pc_g11_remaining_world_primitive_probe/build.log` and `integrated_emitter.log` and do not deploy. A future combined FF requires source-proven remaining groups/asset/streamer semantics and full independent OAT readback before Gate11 can pass.
