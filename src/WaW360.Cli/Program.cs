@@ -102,6 +102,17 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-five-class-lightning" when args.Length is 8 or 9:
+            {
+                var evidenceOnly=args.Length==9 &&
+                    args[8].Equals("--evidence-only",StringComparison.OrdinalIgnoreCase);
+                if(args.Length==9 && !evidenceOnly)
+                    throw new ArgumentException("Optional ninth argument must be --evidence-only.");
+                var report=await T4AztecFiveClassLightningProof.RunAsync(
+                    args[1],args[2],args[3],args[4],args[5],args[6],args[7],evidenceOnly);
+                Console.WriteLine("[AZTEC-5LIGHTNING] Source evidence with native proof/readback: "+report);
+                return 0;
+            }
             case "aztec-xanim-602-source-selection" when args.Length == 5:
             {
                 var report=await T4AztecXAnim602RootSelection.RunAsync(
