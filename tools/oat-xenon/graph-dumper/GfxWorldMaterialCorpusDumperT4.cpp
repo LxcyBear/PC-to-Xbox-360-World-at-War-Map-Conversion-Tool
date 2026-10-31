@@ -322,6 +322,137 @@ namespace gfxworld
         out << ",\"sourcePointerBytesExported\":false";
         out << ",\"xboxCellBodiesEmitted\":false";
         out << ",\"xboxHardwareReady\":false}";
+
+        // Gate11B: emit FULL typed PC-owned 11-cell + 740 AABB tree source
+        // graph as JSON numbers, NEVER process pointers or Xbox donor bytes.
+        // A separate file allows the next converter to endian-convert this
+        // verified data without copying T4 PC pointer-bearing structs.
+        const auto sourceGraphPath=root+"/gate11_cells_aabb_typed_source.json";
+        auto sourceGraphFile=context.OpenAssetFile(sourceGraphPath);
+        bool graphExportOk=hasCells && cellTopologyConsistent &&
+            totalAabb==740 && totalPortals==0 && totalCullRefs==0 &&
+            unresolvedPortalTargets==0 && static_cast<bool>(sourceGraphFile);
+        unsigned exportedTrees=0,exportedIndexes=0,exportedProbeIndexes=0;
+        if(sourceGraphFile)
+        {
+            auto& g=*sourceGraphFile;
+            g << std::setprecision(std::numeric_limits<float>::max_digits10);
+            g << "{\"schema\":\"WaW360.T4PcGate11TypedGfxCellAabbSource.v1\"";
+            g << ",\"originalPcWorld\":";
+            JsonString(g,worldName);
+            g << ",\"cellCount\":11,\"aabbTreeCountExpected\":740";
+            g << ",\"originalPcSourcePointerBytesExported\":false";
+            g << ",\"xboxReferencePayloadUsed\":false";
+            g << ",\"cells\":[";
+            auto vec3=[&](const float* v)
+            {
+                g << '[';
+                for(int k=0;k<3;k++)
+                {
+                    if(k)g<<',';
+                    if(!std::isfinite(v[k])){graphExportOk=false;g<<'0';}
+                    else g<<v[k];
+                }
+                g<<']';
+            };
+            for(int cidx=0;cidx<11 && hasCells;cidx++)
+            {
+                const auto& c=world.cells[cidx];
+                if(cidx)g<<',';
+                const unsigned probeCount=static_cast<unsigned>(
+                    static_cast<unsigned char>(c.reflectionProbeCount));
+                const bool bounded=c.aabbTreeCount>=0 &&
+                    c.aabbTreeCount<=32768 &&
+                    (c.aabbTreeCount==0 || c.aabbTree) &&
+                    c.portalCount==0 && c.cullGroupCount==0 &&
+                    (probeCount==0 || c.reflectionProbes);
+                if(!bounded)graphExportOk=false;
+                g<<"{\"ordinal\":"<<cidx<<",\"mins\":";
+                vec3(c.mins);
+                g<<",\"maxs\":";vec3(c.maxs);
+                g<<",\"aabbTreeCount\":"<<c.aabbTreeCount;
+                g<<",\"portalCount\":"<<c.portalCount;
+                g<<",\"cullGroupCount\":"<<c.cullGroupCount;
+                g<<",\"reflectionProbeCount\":"<<probeCount;
+                g<<",\"reflectionProbeIndices\":[";
+                if(bounded)
+                {
+                    for(unsigned j=0;j<probeCount;j++)
+                    {
+                        if(j)g<<',';
+                        const unsigned id=static_cast<unsigned>(
+                            static_cast<unsigned char>(c.reflectionProbes[j]));
+                        if(id>=world.reflectionProbeCount)
+                            graphExportOk=false;
+                        g<<id;
+                        exportedProbeIndexes++;
+                    }
+                }
+                g<<"],\"aabbTrees\":[";
+                if(bounded)
+                {
+                    for(int i=0;i<c.aabbTreeCount;i++)
+                    {
+                        if(i)g<<',';
+                        const auto& tree=c.aabbTree[i];
+                        const unsigned count=tree.smodelIndexCount;
+                        if(count>world.dpvs.smodelCount ||
+                           (count && !tree.smodelIndexes) ||
+                           tree.childCount>32768 ||
+                           tree.startSurfIndex>world.surfaceCount ||
+                           tree.surfaceCount>world.surfaceCount)
+                            graphExportOk=false;
+                        const bool safeIndexCount=count<=4096 &&
+                            (count==0 || tree.smodelIndexes!=nullptr);
+                        g<<"{\"ordinal\":"<<i<<",\"mins\":";
+                        vec3(tree.mins);
+                        g<<",\"maxs\":";vec3(tree.maxs);
+                        g<<",\"childCount\":"<<tree.childCount;
+                        g<<",\"surfaceCount\":"<<tree.surfaceCount;
+                        g<<",\"startSurfIndex\":"<<tree.startSurfIndex;
+                        g<<",\"smodelIndexCount\":"<<count;
+                        g<<",\"childrenOffset\":"<<tree.childrenOffset;
+                        g<<",\"smodelIndexes\":[";
+                        if(safeIndexCount)
+                        {
+                            for(unsigned k=0;k<count;k++)
+                            {
+                                if(k)g<<',';
+                                const unsigned index=tree.smodelIndexes[k];
+                                if(index>=world.dpvs.smodelCount)
+                                    graphExportOk=false;
+                                g<<index;
+                                exportedIndexes++;
+                            }
+                        }
+                        else graphExportOk=false;
+                        g<<"]}";
+                        exportedTrees++;
+                    }
+                }
+                g<<"]}";
+            }
+            g<<"]";
+            g<<",\"actualExportedTreeCount\":"<<exportedTrees;
+            g<<",\"actualExportedSmodelIndexes\":"<<exportedIndexes;
+            g<<",\"actualExportedCellReflectionIndexes\":"<<exportedProbeIndexes;
+            g<<",\"completeAndValidated\":"
+             << ((graphExportOk && exportedTrees==740)?"true":"false");
+            g<<",\"xboxGfxCellsPhysicallyEmitted\":false";
+            g<<",\"xboxHardwareReady\":false}";
+            graphExportOk=graphExportOk && g.good() &&
+                exportedTrees==740;
+        }
+        out << ",\"gate11CellSourceGraph\":{";
+        out << "\"schema\":\"WaW360.T4PcGate11TypedGfxCellAabbSourcePointerFree.v1\"";
+        out << ",\"path\":";JsonString(out,sourceGraphPath);
+        out << ",\"exportedTrees\":"<<exportedTrees;
+        out << ",\"exportedModelIndexes\":"<<exportedIndexes;
+        out << ",\"exportedCellReflectionIndexes\":"<<exportedProbeIndexes;
+        out << ",\"typedGraphExportValid\":"
+            << (graphExportOk?"true":"false");
+        out << ",\"nativeFfChildrenEmitted\":false}";
+
         
         // Gate8C: export the actual original-PC 1903 static draw placement
         // records AS TYPED FIELDS. Native PC XModel* process addresses MUST
