@@ -38,13 +38,11 @@ if(-not(Test-Path -LiteralPath ([string]$sz.converted.path) -PathType Leaf) -or
 function Read-Be32([IO.BinaryReader]$reader){
     $bytes=$reader.ReadBytes(4)
     if($bytes.Length -ne 4){throw 'Truncated Xbox WeaponDef proof u32'}
-    return [uint32](([uint64]$bytes[0] -shl 24) -bor
-        ([uint64]$bytes[1] -shl 16) -bor
-        ([uint64]$bytes[2] -shl 8) -bor [uint64]$bytes[3])
+    return [uint32](([uint64]$bytes[0]*16777216)+([uint64]$bytes[1]*65536)+([uint64]$bytes[2]*256)+[uint64]$bytes[3])
 }
 function Read-WeaponProof([string]$path){
     $stream=[IO.File]::OpenRead($path)
-    $reader=New-Object IO.BinaryReader($stream)
+    $reader=[IO.BinaryReader]::new($stream,[Text.Encoding]::UTF8,$true)
     try{
         $magic=[Text.Encoding]::ASCII.GetString($reader.ReadBytes(8)).TrimEnd([char]0)
         if($magic -ne 'W360A7W'){throw "Unexpected WeaponDef proof magic: $magic"}
