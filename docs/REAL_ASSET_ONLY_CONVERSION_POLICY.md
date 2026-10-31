@@ -129,3 +129,31 @@ Only use -BuildDumper for the first specialized OAT build; subsequent reruns use
 Audio remains dependent on actual original PC samples/archives and a verified Xbox-compatible XMA encoder/output/alias binding. A detected encoder executable is not sample conversion or runtime evidence. Preserve natural source NULL parent/material/sound slots (122/12/4) as true NULL. No filler or silent stub audio.
 
 This extension is committed but not yet run or compiled on the user's Windows PC. Source observation and complete native asset production remain distinct gates.
+
+
+## Next one-build FlameTable typed + audio alias recovery (v2)
+
+The user ran the original source-only packed-pointer witness at 319d391 successfully: all 75 PowerShell 5.1 scripts parsed; the pinned OAT specialized x86 Unlinker was built with Visual Studio 2026; the original 26 non-NULL FlameTable packed reference *occurrences* collapsed to 13 unique raw pointer targets; **all 13/13 targets were loaded**, no trace misses/ambiguities, two distinct direct ASCII source-string candidates, and 11 non-ASCII raw target headers. That was pointer recovery, **not** native asset conversion.
+
+This v2 stage extends the existing one-pass original-PC OAT loader memory witness to interpret those **11 previously untyped target headers**, plus all 13 pointer values consistently:
+
+- It reads a full **112-byte PC Material fixed header** only when bounded to the original loaded OAT block. It checks real material name, texture/constant/state table counts (max 64), technique-set name and texture image names via pointers that are independently proven to land inside the already loaded blocks. A plausible header/name is a PC-loaded source identity *candidate*, not the full material payload, shader or all technique/image children.
+- It treats **SndAliasCustom** as the genuine PC **4-byte name-pointer record**; only bounded, NUL-terminated loaded PC strings can be accepted as sound-alias name candidates. An alias record is not a SoundFile, not audio sample data and not valid XMA.
+- Names are compared to the original OAT --list output: exact Material XAsset root names and exact Sound XAsset root names are separate source witnesses (if those names are listed). Numeric pointer equality alone is never promoted. If a named original-PC Material is not in the independent OAT XAsset list, it remains a candidate only.
+- It counts precisely how many of the *three packed FlameTable name reference occurrences* map to the original two directly readable PC string targets, while the one previously inline 24-byte FlameTable name remains authentic as before. Any mixed-role pointer is fenced.
+- New OAT specialized capability identifier is **t4-pc-flame-packed-typed-material-and-alias-v2**; the older installed v1 OAT Unlinker does NOT satisfy this requirement. One -BuildDumper run rebuilds and installs v2. No production fastfiles are ever written by the probe.
+- Report: pc_g11_flame_loaded_virtual_target_proof/aztec_26_flame_packed_original_pc_typed_material_alias_probe_v2.json. Original v1 raw-target witness is left untouched.
+- The prior 4,514,599-byte 222/228 real alias record OAT-good diagnostic FF remains SHA-pinned and must stay unchanged. The 122/12/4 source-NULL parent/material/sound slots remain exactly NULL.
+
+From the repo root:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "PS 5.1 syntax failed" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlamePackedPointerLoaderProbe.ps1" -BuildDumper
+    if ($LASTEXITCODE -ne 0) { throw "Original PC typed FlameTable pointer witness blocked" }
+
+IMPORTANT: an XMA encoder executable was detected in a previous Windows test, but no actual original-PC WAV/MP3/sound archive sources were scanned. A genuine Sound XAsset name does not imply an audio sample/XMA asset is present or converted. Next native audio stage requires exact real input audio payload provenance/stream decoding, actual Xbox XMA encoding with roundtrip test, and correct source-owned SoundFile/Xbox SndAlias binding. Dummy/muted samples are disallowed.
+
+The v2 C++ OAT code and PowerShell parser have been pushed but have NOT YET compiled or run on the user's Windows PC. Do not claim v2 sample/Material child names were recovered until its results are verified.
