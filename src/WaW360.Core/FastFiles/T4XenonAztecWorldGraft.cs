@@ -120,6 +120,7 @@ public sealed class T4XenonAztecWorldGraft
     public int Gate11LightingRegionHeaders => _gate11Lighting?.RegionHeaders ?? 0;
     public int Gate11SourceReflectionHeaders => _gate11ImageHeaders?.ReflectionProbeHeaders ?? 0;
     public int Gate11SourceLightmapHeaders => _gate11ImageHeaders?.LightmapHeaders ?? 0;
+    public int Gate11NamedImageRootLinks => _gate11ImageHeaders?.NamedImageRootLinkProbeCount ?? 0;
 
     private T4XenonAztecWorldGraft(
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
@@ -491,14 +492,27 @@ public sealed class T4XenonAztecWorldGraft
                ProbeStage!=4 || !StaticDpvsProbeEnabled)
                 throw new InvalidDataException(
                     "Gate11 image header diagnostic requires existing source grid/shadow, 11 cells and 1903 draws.");
+            var refLink=Environment.GetEnvironmentVariable(
+                "WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE");
+            var linkNames=refLink=="1";
+            if(!string.IsNullOrEmpty(refLink) && !linkNames)
+                throw new InvalidDataException("Only '1' enables isolated image name-root reference linkage.");
             graft._gate11ImageHeaders=await T4XenonAztecGate11ImageHeaders.LoadAsync(
-                imageHeadersReport,graft._root,ct);
+                imageHeadersReport,graft._root,roots,linkNames,ct);
         }
         return graft;
     }
 
     // Both passes perform precisely the same VIRTUAL allocations. No
     // absolute FF pointers from a previous scratch build survive rebasing.
+    // Stage4E can call this after its complete Stage4D root-insert
+    // allocation layout is known. Stage4D intentionally requires no
+    // pointer values because named shell binding changes no allocations.
+    public void ApplyImageRootReferenceAliases(IReadOnlyDictionary<int,uint> rootStable)
+    {
+        _gate11ImageHeaders?.ApplyNamedRootAliases(rootStable);
+    }
+
     public void Plan(Action<long,int,bool> virtualAlloc,Action<int> tempRoot)
     {
         int stage=ProbeStage;
