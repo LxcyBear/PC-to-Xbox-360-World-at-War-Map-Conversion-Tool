@@ -102,6 +102,13 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-three-class-native-root-selection" when args.Length == 5:
+            {
+                var report=await T4AztecThreeBodyRootSelection.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-3ROOT] Model/FX/Weapon exact Xbox blob SHA roots and missing names (no FF): "+report);
+                return 0;
+            }
             case "aztec-five-class-lightning" when args.Length is 8 or 9:
             {
                 var evidenceOnly=args.Length==9 &&
