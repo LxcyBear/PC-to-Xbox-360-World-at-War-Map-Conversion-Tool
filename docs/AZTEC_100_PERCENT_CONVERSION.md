@@ -544,3 +544,26 @@ Machine-readable dependency report: \`output/second_map_baselines/nazi_zombie_az
 The specialized native GfxWorld ABI dumper also now records exact Xbox member offsets for grid scalars/arrays, shadow counts, light-region hull/axis pointers, and stream tree/leafRef pointers. Those extra fields will appear the next time the specialized OAT dumper and source/ABI census are rebuilt; the two-wave source audit uses **only already measured fields**, so no immediate OAT recompile is needed.
 
 **Acceptance before full Gate11:** finish real serializer and native FF emission for BOTH waves, independently OAT-read back actual values, validate the known one unresolved stock-XModel link plus material stateBits/image payload binding semantics, and retain Xbox hardware release fence until Gate12/13. This new script is a structural/source batch, **not** a claim that the two waves have already been emitted.
+
+### Gate11 first combined lighting/shadow/region FF (new emitter, Windows execution pending)
+
+**User-verified source batch:** Windows \`1f9b517\`: 44/44 PS5.1 script syntax, original-PC light-grid leaves \`gridRowDataStart=322 × 2=644 B\`, \`gridRawRowData=10320 B\`, \`gridEntries=1036024 × 4=4144096 B\`, \`gridColors=3975 × 168=667800 B\`, **4,822,860 B** total; reflection=2, lightmaps=2, six exact native image **NAME** candidates with zero missing/ambiguous (not real payloads); primary lights=2, shadow headers=2, shadow surface refs=0, shadow static-model index refs=1903; region headers=2 and **0 nested hulls or axes**; native streamInfo header ABI=16 B.
+
+**Implementation now pushed, NOT yet built/tested on Windows:**
+- \`T4XenonAztecGate11LightingShadowBatch.cs\`: requires SHA-locked two-wave report and native endian 13-leaf preflight; serializes all four light-grid arrays into native 56B embedded GfxLightGrid root, 2×12B shadow headers and nested original PC static-model index arrays, 2×8B source-owned zero-hull GfxLightRegion headers. Uses measured struct offsets, BE scalar conversion, and Stage4D/4E identical ordered planning. Does **not** invent image payload rebases or native streaming metadata.
+- \`Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1 -Gate11LightingProbe\`: opt-in isolated \`pc_g11_lighting_combined_probe\`, retaining old 3,650,170B FF and previously proved cell/primitive output. Emits first new FF, checks 8,509-root OAT full load and reports new FF size/delta.
+- \`GfxWorldSurfaceAbiWitnessT4Xenon.cpp\`: bounded independent loaded-native FNV1A-64 digests of all **4.82MB** of grid data; embedded scalar bounds/directions; source-owned shadow model indices and region header values. Rechecks 4 previously proven primitive digests.
+- \`Verify-AztecGate11OatLoadedCells.ps1 -LightingCandidate\`: independent **field-by-field** 11-cell/740-AABB/14974-index OAT comparison against the original PC source, for the NEW combined candidate, not the old FF.
+- \`Run-AztecGate11LightingWorldProbe.ps1\`: one workflow with a one-time specialized OAT x86 witness rebuild, ONE new FF, independent loaded cell/AABB test, and loaded grid/shadow/region digest test; fail closed on any missing prerequisite or mismatch. Status remains **Gate11 PENDING and not for Xbox** even on pass.
+
+Run under **PC2XB3 repo root** (not Mercenaries):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'Script syntax gate failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate11LightingWorldProbe.ps1" -BuildDumper
+\`\`\`
+
+This is the **first execution** of the new integrated C# emitter, so compilation/load may reveal ordering or root-scalar issues, which must be corrected from actual OAT evidence. Do not claim completion until new size, OAT and digest logs pass. The original Xbox FF remains ABI/reference only, not payload donor. Six reflection/lightmap image identity candidates **do not validate GfxImage contents/highmips**. Xbox streamInfo must be reconstructed from real source geometry/topology and independently verified. One stock XModel binding and material semantics are also release fences. If source asset identities remain unproven, they stay unbound, not filled with retail oracle bytes.
