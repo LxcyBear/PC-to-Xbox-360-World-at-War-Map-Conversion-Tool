@@ -74,8 +74,9 @@ if($code -ne 0 -or
 }
 $r=Get-Content -LiteralPath $json -Raw|ConvertFrom-Json
 $statuses=@(
-    'AZTEC_FIVE_CLASS_SOURCE_PROOFS_COMPLETE_NATIVE_FF_STILL_INCOMPLETE',
-    'AZTEC_FIVE_CLASS_SOURCE_PROOFS_PARTIAL_BLOCKERS_REPORTED'
+    'AZTEC_FIVE_CLASS_EVIDENCE_ONLY_NO_NEW_XBOX_BODY_PROOF',
+    'AZTEC_FIVE_CLASS_SOURCE_DIAGNOSTIC_STAGES_PASS_CONTENT_CLOSURE_OPEN',
+    'AZTEC_FIVE_CLASS_SOURCE_DIAGNOSTICS_PARTIAL_BLOCKERS_REPORTED'
 )
 if([string]$r.schema -ne 'WaW360.AztecFiveClassLightningSourceProof.v1' -or
    [string]$r.status -notin $statuses -or
