@@ -764,3 +764,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 Reports: \`pc_g11_lightning_xanim_614_native_proof/aztec_614_pc_xanim_native_conversion_and_name_diff.json\` and \`.md\`, with source-only proof blobs beneath \`pc_to_xenon_internal_proof_containers/\`. Does not alter prior OAT-passing map FF, no OAT rebuild, no retail Xbox donor asset bytes, no Xbox console deployment, and **does not graft transformed animations into 8,509-root FF or prove runtime gameplay**. Source-proof success does not close unfinished Gate11 images, stock XModel link, or material stateBits; still 10/13.
 
 The source-body script's unrelated CS8321 unused local function warning was also removed. Existing CS0652, CS8619, CA2014 and other warnings remain separate from conversion-closure evidence.
+
+### 614/614 real Xbox 12-bucket XAnim proof PASS, 602/602 root identity, and 602-root body selection (2026-10-31)
+
+User Windows results on commit \`9ea4f02\`: PowerShell 5.1 parser **53/53 PASS**; source-verified PC XAnim transform emitted and independently read back **330/330** bodies from map.ff, **284/284** from mod.ff, 0 from map_patch.ff: **614/614 PASS**, **8,494,093 real Xbox serialized native XAnim body bytes** in standalone internal proof containers. Original-PC exact typed XAnim names: **602 distinct** with 12 duplicate occurrences. All **602/602** native Xbox XAnim root identities exact same-name match, PC-only=0, native-only=0. Status \`AZTEC_614_PC_XANIM_TO_XENON_BLOBS_READBACK_PASS_ALL_602_NATIVE_NAMES_MATCH_NOT_IN_FF\`. The 12 repeated names may have *different bodies*, so name equality is insufficient to select one for native FF grafting. No animations inserted into current 4,510,695B 8,509-root FF; console runtime animation playback unverified.
+
+**New follow-on, committed, Windows execution pending:** \`tools/oat-xenon/Run-AztecXAnim602RootSelection.ps1\` and \`T4AztecXAnim602RootSelection.cs\`, CLI \`aztec-xanim-602-source-selection\`. Source image/corpus SHA-locked proof, exact 614 native XAnim 0x5C/12-bucket standalone blobs, original PC FF source SHA, native 602-name/root ordinal manifest, and existing XAnim transform report are all checked. It hashes each independently read-back-verified Xbox blob (SHA-256) and produces a **602-row manifest** describing the original PC source role, its pinned SHA, exact native proof-container SHA, record index, body offset/size, individual body SHA, and decision:
+- SINGLE_SOURCE_NATIVE_BODY: only one eligible PC source body with the native Xbox root name.
+- DUPLICATE_IDENTICAL_NATIVE_BODIES: multiple source bodies have **identical actual Xbox blob hashes**; deterministic choice is safe at the byte level.
+- DUPLICATE_CONFLICT_REFUSED: same name has different Xbox blob SHA, **no body selected or grafted**. Requires semantic/provenance/FF replacement-order investigation before building a native root.
+
+Output to \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lightning_xanim_602_root_selection/\` as \`aztec_602_xanim_source_body_selection.json\` and \`.md\`; no FF build, OAT rerun or Xbox test. If every selected native root has one unambiguous Xbox body, that's a source-graft input, **NOT** proof of successful Xbox runtime animation nor Gate11 closure.
+
+PowerShell from PC2XB3 repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if($LASTEXITCODE -ne 0){throw "Windows PS5.1 parser failed"}
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecXAnim602RootSelection.ps1"
+\`\`\`
+
+Prior XAnim and PC FF assets are protected; the source root selection's report is only an audit. Once duplicate bodies are resolved the next build can optionally integrate a **602-real-native-XAnim-graph** candidate under a new isolated output path and require independent native OAT full load/readback + world/image/renderer regression tests before considering hardware. Still **10/13**.
