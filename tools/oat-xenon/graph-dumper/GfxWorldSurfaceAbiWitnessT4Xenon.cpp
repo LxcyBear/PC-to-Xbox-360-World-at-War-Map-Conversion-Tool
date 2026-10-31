@@ -379,6 +379,16 @@ namespace gfxworld
         out << ",\"treeStructBytes\":" << sizeof(GfxStreamingAabbTree);
         out << ",\"treeCount\":" << stream.aabbTreeCount;
         out << ",\"leafRefCount\":" << stream.leafRefCount;
+        out << ",\"reflectionProbeCount\":" << world.reflectionProbeCount;
+        out << ",\"lightmapCount\":" << world.lightmapCount;
+        out << ",\"reflectionProbeArrayPresent\":"
+            << (world.reflectionProbes?"true":"false");
+        out << ",\"lightmapArrayPresent\":"
+            << (world.lightmaps?"true":"false");
+        out << ",\"skyImagePointerPresent\":"
+            << (world.skyImage?"true":"false");
+        out << ",\"outdoorImagePointerPresent\":"
+            << (world.outdoorImage?"true":"false");
         out << ",\"treePointerPresent\":"
             << (stream.aabbTrees?"true":"false");
         out << ",\"leafPointerPresent\":"
