@@ -40,6 +40,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11ImageStreamClosure.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11ImageHeaderProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11ImageRootLinksProbe.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecNativeFfSizeAudit.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-AztecGate11ImageHeaderNativeOrder.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PrimitiveWorldProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PhysicalCellWorldProbe.ps1') -ErrorAction Stop)
