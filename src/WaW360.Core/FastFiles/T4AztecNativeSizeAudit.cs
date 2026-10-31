@@ -111,7 +111,7 @@ public static class T4AztecNativeSizeAudit
                 throw new InvalidDataException("Unexpected original-PC asset count for "+pair.Key);
         var graph=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase)
         {
-            ["techset"]=Int(emit,"RendererTechniqueSets"),
+            ["techniqueset"]=Int(emit,"RendererTechniqueSets"),
             ["pixelshader"]=Int(emit,"RendererPixelShaders")
         };
         if(Int(emit,"OriginalPcGfxWorldGate11Cells")!=11 ||
