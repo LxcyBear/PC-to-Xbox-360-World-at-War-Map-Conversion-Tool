@@ -60,6 +60,8 @@ public sealed class T4XenonAztecWorldGraft
     private int _gate10DrawPointerAt;
     // Gate11 opt-in: 11 source-owned PC GfxCells, 740 AABB and nested index arrays.
     private T4XenonAztecGate11CellProbe? _gate11Cells;
+    // Opt-in isolated Gate11 original-PC-only sky/brush/water primitive batch.
+    private T4XenonAztecGate11PrimitiveBatch? _gate11Primitives;
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
@@ -106,6 +108,9 @@ public sealed class T4XenonAztecWorldGraft
     public int Gate11DiagnosticAabbTrees => _gate11Cells?.TreeCount ?? 0;
     public int Gate11DiagnosticSmodelIndexChildren => _gate11Cells?.ModelIndexCount ?? 0;
     public int Gate11DiagnosticReflectionIndices => _gate11Cells?.ReflectionIndexCount ?? 0;
+    public int Gate11PrimitiveSkySurfaces => _gate11Primitives?.SkySurfaces ?? 0;
+    public int Gate11PrimitiveBrushModels => _gate11Primitives?.BrushModels ?? 0;
+    public long Gate11PrimitiveWaterBytes => _gate11Primitives?.WaterBytes ?? 0;
 
     private T4XenonAztecWorldGraft(
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
@@ -445,6 +450,17 @@ public sealed class T4XenonAztecWorldGraft
                 throw new InvalidDataException(
                     "Gate11 requires a NULL GfxWorld::cells pointer and zero source-seed dpvsPlanes.cellCount at exact measured Xbox offsets. The cell count is activated only with the 11 source-owned native cell children.");
         }
+        var primitiveSource=Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE11_PRIMITIVE_BATCH");
+        if(!string.IsNullOrWhiteSpace(primitiveSource))
+        {
+            // Never allow this candidate to run outside the existing
+            // independently OAT-verified 11-cell/740-tree branch.
+            if(graft._gate11Cells is null || graft._gate10DrawProbe is null ||
+               ProbeStage!=4 || !StaticDpvsProbeEnabled)
+                throw new InvalidDataException("Gate11 primitives require verified Gate10 draws and full Gate11 cell graph.");
+            graft._gate11Primitives=await T4XenonAztecGate11PrimitiveBatch.LoadAsync(
+                primitiveSource,graft._root,ct);
+        }
         return graft;
     }
 
@@ -457,6 +473,7 @@ public sealed class T4XenonAztecWorldGraft
         virtualAlloc(Encoding.UTF8.GetByteCount(NativeRootName)+1L,1,true);
         virtualAlloc(Encoding.UTF8.GetByteCount("nazi_zombie_aztec")+1L,1,true);
         if(stage>=1)virtualAlloc(_indices.Length,2,true);
+        _gate11Primitives?.PlanSky(virtualAlloc);
         // Both source-owned arrays are loaded inside GfxWorldDpvsPlanes.
         // A single- or two-child probe must keep the same relative order.
         if(_gate8Planes is not null)
@@ -467,6 +484,7 @@ public sealed class T4XenonAztecWorldGraft
         // materialMemory/vd/vld reordered payloads, per pinned T4 Xenon
         // GfxWorld child layout. Nested AABB and index arrays follow cells.
         _gate11Cells?.Plan(virtualAlloc);
+        _gate11Primitives?.PlanModels(virtualAlloc);
         // Pinned OAT GfxWorld reorder: '... materialMemory vd vld'.
         // Its first member remains at the original position; vd/vld follow
         // immediately, while the embedded DPVS surfaces are loaded later.
@@ -488,6 +506,7 @@ public sealed class T4XenonAztecWorldGraft
         // then cull groups if loaded, then smodelDrawInsts.
         if(_gate10DrawProbe is not null)
             virtualAlloc(_gate10DrawProbe.SourceByteCount,4,true);
+        _gate11Primitives?.PlanWater(virtualAlloc);
     }
 
     public void Emit(Stream zone,Action<long,int,bool> virtualAlloc,
@@ -506,6 +525,7 @@ public sealed class T4XenonAztecWorldGraft
         if(stage>=2)Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
         if(_gate10DrawProbe is not null)
             Put(body,_gate10DrawPointerAt,T4ZonePointer.Following);
+        _gate11Primitives?.ApplyRoot(body);
         if(_gate11Cells is not null)
         {
             // CRITICAL NATIVE LOADER FIX: Gate10's intentionally partial
@@ -549,6 +569,7 @@ public sealed class T4XenonAztecWorldGraft
             virtualAlloc(_indices.Length,2,true);
             zone.Write(_indices);
         }
+        _gate11Primitives?.EmitSky(zone,virtualAlloc);
         if(_gate8Planes is not null)
         {
             virtualAlloc(_gate8Planes.Length,4,true);
@@ -560,6 +581,7 @@ public sealed class T4XenonAztecWorldGraft
             zone.Write(_gate8Nodes);
         }
         _gate11Cells?.Emit(zone,virtualAlloc);
+        _gate11Primitives?.EmitModels(zone,virtualAlloc);
         // OAT reads MaterialMemory, then GfxWorldVertexData, then embedded
         // GfxWorldDpvsStatic.surfaces. A surface-first stream causes the first
         // surface's vertexCount/triCount to be decoded as a TEMP-block pointer.
@@ -614,6 +636,7 @@ public sealed class T4XenonAztecWorldGraft
             virtualAlloc(nativeDraws.Length,4,true);
             zone.Write(nativeDraws);
         }
+        _gate11Primitives?.EmitWater(zone,virtualAlloc);
     }
 
     private static void EmitString(Stream zone,Action<long,int,bool> alloc,string s)
