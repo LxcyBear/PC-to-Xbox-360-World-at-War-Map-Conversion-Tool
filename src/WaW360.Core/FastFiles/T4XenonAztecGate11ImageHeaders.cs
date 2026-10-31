@@ -66,8 +66,8 @@ public sealed class T4XenonAztecGate11ImageHeaders
              !x.GetProperty("pixelsOrMipDataCompared").GetBoolean()),
              "original-PC and native Xbox names/reflect origins are not independently proved.");
 
-        var nativeDir=Path.GetDirectoryName(Path.GetDirectoryName(
-            Path.GetDirectoryName(Path.GetDirectoryName(combinedImageStreamReport))))!;
+        var nativeDir=Path.GetDirectoryName(
+            Path.GetDirectoryName(Path.GetFullPath(combinedImageStreamReport)))!;
         // Rather than copying the original Xbox world root, consume only
         // our already exported SHA-locked original-PC typed GfxWorld graph.
         var sourceManifest=Path.Combine(nativeDir,"pc_g11_cells_740",
