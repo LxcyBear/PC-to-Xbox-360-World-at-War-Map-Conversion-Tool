@@ -296,3 +296,22 @@ The existing Run-AztecGate11CellTopologySourceWitness.ps1 now requires two *new*
 PowerShell 5.1 command sequence: pull the branch, run Test-WaWMultiMapScriptSyntax.ps1, then run Run-AztecGate11CellTopologySourceWitness.ps1 with -BuildDumper. This builds only the specialized x86 OAT dumper and executes two OAT source/ABI dumps; **no map FF, .NET converter build or Xbox deployment**.
 
 Only after inspecting the typed source data and proving all children are safe should an opt-in isolated Stage4D/Stage4E emitter link GfxWorld::cells, the 11 native cells, 740 trees and their model-index/probe-index child arrays. Independently read those back through OAT before moving to reflection images, lightmaps, light-grid or dynamic visibility closure. Do not advance Gate11/13 or authorize hardware simply because this source exporter passes.
+
+
+## Gate11 real physical source-derived GfxCells/AABB — first opt-in FF and independent OAT readback
+
+**Actual Windows proof to date:** source-only full cell corpus PASS: 11 GfxCells, 740 AABB trees, 14,974 nested static-model indices, 11 reflection-probe index bytes, 0 portals, 0 cell-cull refs, 0 unresolved portal destinations; original-PC/Xbox structure sizes match 56B/40B/68B. No cells/trees were yet written into the diagnostic FF. Gate10 source draw FF remains independently OAT-proven, 10/13 development milestones PASS.
+
+NEW source-only cell FF path is opt-in and fully isolated:
+- C# T4XenonAztecGate11CellProbe.cs consumes a SHA-locked *original-PC typed JSON cell/tree graph*, native 900B/56B/40B Xbox ABI offsets and the already-verified original Gate10 FF provenance. It reconstructs 11 native 56B GfxCell bodies and 740 native 40B GfxAabbTree bodies from PC-owned scalar data; swaps floats, integer counts and all 14,974 16-bit smodel indexes to big endian; carries only the 11 PC-owned reflection-probe index bytes. All newly constructed pointers use current-zone FOLLOWING fixups; source process pointers and original Xbox reference body bytes are excluded. Source-proven empty portals/cull children remain NULL.
+- Stage4D/Stage4E T4XenonAztecWorldGraft.cs now accepts opt-in WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT. GfxWorld::cells is allocated after original-PC dpvsPlanes children and BEFORE the reordered materialMemory/vertex data. Per-cell AABB tree arrays, their nested smodel indexes, and per-cell reflection bytes follow each cell. New C# FF result telemetry records cell/tree/index/probe counts; all earlier builds skip this code entirely unless opt-in is provided.
+- Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1 accepts -Gate11CellProbe only WITH full Gate8+Gate10 source child flags and writes to NEW pc_g11_cells_740, never overwriting pc_g10_1903. Hardware and full-world closure stay FALSE. All original 1903 draw proof conditions continue to apply.
+- Specialized pinned Xenon OAT GfxWorldSurfaceAbiWitnessT4Xenon.cpp now independently dumps the LOADED 11 native cells, each of 740 loaded trees, nested model indexes and reflection index bytes. Verify-AztecGate11OatLoadedCells.ps1 opens the new FF with OAT independently and checks each field against the PC source, with baseline/input/output hashes and exact count checks. Only a real positive SECOND OAT readback grants the physical-cell subproof.
+- Run-AztecGate11PhysicalCellWorldProbe.ps1 combines the new isolated map FF emitter and the independent typed OAT witness, enforces SHA preservation of existing passing Gate10 FF, and writes progress/size/verification output. FIRST run needs ONE specialized x86 OAT rebuild because a new native loaded-cell witness was added, plus ONE map FF build; later runs reuse the native OAT. No Xbox deployment.
+
+First untested Windows command after git pull, from the PC2XB3 repo root:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate11PhysicalCellWorldProbe.ps1" -BuildDumper
+
+If first OAT load fails, inspect output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_cells_740/integrated_emitter.log and the new FF OAT hard-gate log. The old FF remains unchanged. Even if all 11 cells and 740 trees independently load, Gate11 OVERALL remains PENDING until lighting, reflection-image, remaining GfxWorld child and dynamic visibility/runtime closure are proven. This first physical Gate11 build and readback have NOT yet been run on Windows.
