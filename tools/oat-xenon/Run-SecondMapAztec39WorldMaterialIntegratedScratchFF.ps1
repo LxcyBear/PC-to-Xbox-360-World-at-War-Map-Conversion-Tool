@@ -13,7 +13,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate11ImageHeadersProbe,
       [switch]$Gate11ImageRootLinksProbe,
       [switch]$Weapon63SourceCanary,
-      [ValidateSet(1,6,63)][int]$WeaponCanaryLimit=63,
+      [ValidateSet('1','6','63')][int]$WeaponCanaryLimit=63,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
