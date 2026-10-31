@@ -351,3 +351,22 @@ Commands from converter repo root (one native OAT diagnostic build, **zero map F
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11ExistingFfOatPointerTrace.ps1' -BuildTrace
 
 Use the traced native `streamPos`, `currentBlock/currentCursor`, `rootIndex`, and *actual* raw word to correct the first wrong field or child traversal. Do not artificially enlarge the PHYSICAL block, mark Gate11 complete, or rebuild/re-extract the 740-tree source. The passing Gate10 FF is unchanged.
+
+## Gate11 actual native first-fault evidence (after 740/740 offline byte match)
+
+User's Windows `Run-AztecGate11ExistingFfOatPointerTrace.ps1 -BuildTrace` result (first native diagnostic pinned OAT build): **36/36 PowerShell 5.1 scripts PASS**, special x86 OAT **PASS**, replayed the **unchanged 3,642,925-byte rejected Gate11 FF** (no FF rebuild), OAT still rejects. The FIRST fault is on **XAsset root #7635, typeId=18 = GfxWorld**, with:
+
+    [AZTEC-OAT-BADPTR] raw=0xc527a800 targetBlock=6 targetOffset=86484991 blockSize=559280 streamPos=2613260 targetCursor=558848 currentBlock=0 currentCursor=900
+
+`0xC527A800` decodes to IEEE-754 single **-2682.5**, a plausible original-PC map coordinate. **This is not** the earlier offline diagnostic's incomplete raw candidate `0x0527A800` (which omitted the high block bits and had zero whole-zone hits). Source/header/index byte walk already matched 11/11 cells, 740/740 trees, 14974/14974 model entries, and 11/11 probe bytes in the emitter's stream sequence. Hence native OAT is interpreting a scalar word as a packed zone pointer, likely because of the *order/relocation semantics of the newly-added nested child graph*. Neither a bigger PHYSICAL block nor copying an oracle Xbox pointer will fix it.
+
+The new **no-build** `Audit-AztecGate11OatFaultWordProvenance.ps1` consumes the saved first-fault native trace, the previous SHA-pinned source-vs-emitted byte audit (which already recorded the unique 11×56B cell array zone offset), the original-PC typed 740 AABB JSON source, and the existing FF hashes. It decodes the real native raw pointer as float, enumerates exact 32-bit matching original-PC cell/tree bounds and their expected absolute zone positions, locates the native OAT streamPos relative to serialized cell-tree regions, and writes `pc_g11_cells_740/oat_first_bad_pointer_trace/aztec_gate11_bad_pointer_source_field_provenance.json`. No decompression, OAT invocation, FF or .NET rebuild; no Xbox deployment. An exact coordinate match is diagnostic only, NOT approval. Correct the FIRST native loader traversal/child allocation order indicated by this report before attempting one more isolated FF build/OAT readback.
+
+Run from PC2XB3 converter repo root:
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'PS5.1 syntax preflight failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-AztecGate11OatFaultWordProvenance.ps1'
+
+**Milestones remain 10/13** until Gate11's full native world/DPVS closure (not just 740 AABB children), paired final FF dependencies and genuine Xbox smoke-test admission are proven.
