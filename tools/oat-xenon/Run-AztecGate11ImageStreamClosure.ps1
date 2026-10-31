@@ -275,7 +275,8 @@ function Has-Capability {
     $cap=Get-Content -LiteralPath $capPath -Raw|ConvertFrom-Json
     return ([string]$cap.format -eq 'WaW360.OatGraphDumperCapabilities.v1' -and
         [string]$cap.oatRevision -eq '3beaa7c81af517f0c05f2b4612d477ed1541b676' -and
-        @($cap.capabilities) -contains 't4xenon-gfxworld-gate11-stream-structural-shape-v1')
+        @($cap.capabilities) -contains 't4xenon-gfxworld-gate11-stream-structural-shape-v1' -and
+        @($cap.capabilities) -contains 't4xenon-gfxworld-gate11-reflection-lightmap-native-name-references-v1')
 }
 Write-Host '[AZTEC-GATE11-PROGRESS] [########------------] 40% | native stream structural-only OAT capability'
 if(-not(Has-Capability)){
@@ -321,27 +322,129 @@ function Read-NativeStreamShape([string]$file,[string]$part,[string]$tempRoot,[s
        [bool]$v.runtimeHardwareValidated){
         throw "Native $part stream struct fields absent, unsafe or unexpectedly claimed complete."
     }
-    return $v
+    return [pscustomobject]@{Stream=$v;Image=$doc.gate11WorldImageSlots}
 }
 
 try{
     Write-Host '[AZTEC-GATE11-PROGRESS] [############--------] 60% | read CURRENT 4.51MB world native stream metadata shape'
-    $present=Read-NativeStreamShape $ff 'new_pc_world' $temp $out
+    $currentShape=Read-NativeStreamShape $ff 'new_pc_world' $temp $out
+    $present=$currentShape.Stream
     Write-Host "[AZTEC-GATE11-IMG-STREAM] Converted world: stream trees=$($present.treeCount), leafRefs=$($present.leafRefCount), image fields reflection=$($present.reflectionProbeCount) lightmaps=$($present.lightmapCount)"
     Write-Host '[AZTEC-GATE11-PROGRESS] [################----] 80% | read ORIGINAL Xbox native ABI stream shape (AGGREGATES ONLY)'
-    $native=Read-NativeStreamShape $retail 'retail_abi_only' $temp $out
+    $nativeShape=Read-NativeStreamShape $retail 'retail_abi_only' $temp $out
+    $native=$nativeShape.Stream
     Write-Host "[AZTEC-GATE11-IMG-STREAM] Xbox ABI oracle: stream trees=$($native.treeCount) leafRefs=$($native.leafRefCount) childSpansBad=$($native.outOfRangeChildSpans) itemSpansBad=$($native.outOfRangeItemSpans)"
     if((Get-FileHash -LiteralPath $ff -Algorithm SHA256).Hash -ine $expectedFf -or
        (Get-FileHash -LiteralPath $retail -Algorithm SHA256).Hash -ine $expectedRetail){
         throw 'CRITICAL: loaded native FF changed during read-only image/stream frontier audit.'
     }
-    $hasValidNativeTreeModel=([int]$native.treeCount -gt 0 -and [int]$native.leafRefCount -ge 0 -and
+    # If native Xbox STREAMING is empty, 0 nodes/0 leaves plus both null
+    # pointers is meaningful STRUCTURAL evidence. It does not turn the
+    # 740 original-PC CELL AABB trees into native stream AABB nodes.
+    function Is-EmptyNativeStream($shape){
+        return ([int]$shape.treeCount -eq 0 -and
+            [int]$shape.leafRefCount -eq 0 -and
+            -not [bool]$shape.treePointerPresent -and
+            -not [bool]$shape.leafPointerPresent -and
+            [int]$shape.sumItemCount -eq 0 -and
+            [int]$shape.sumChildCount -eq 0 -and
+            [int]$shape.outOfRangeChildSpans -eq 0 -and
+            [int]$shape.outOfRangeItemSpans -eq 0 -and
+            [int]$shape.invalidBoundsAxes -eq 0)
+    }
+    $originalStreamEmpty=Is-EmptyNativeStream $native
+    $convertedStreamEmpty=Is-EmptyNativeStream $present
+    $streamEmptyShapesMatch=($originalStreamEmpty -and $convertedStreamEmpty)
+    if($streamEmptyShapesMatch){
+        Write-Host '[AZTEC-GATE11-IMG-STREAM] VERIFIED EMPTY STREAM STRUCT: original Xbox and converted FF both 0/0 counts, NULL child pointers, zero spans.'
+        Write-Host '[AZTEC-GATE11-IMG-STREAM] No source-owned streaming AABB/leaf arrays to fabricate for THIS original Xbox world ABI.'
+    }else{
+        Write-Host '[AZTEC-GATE11-IMG-STREAM] STREAM ABI still unresolved: non-null pointers, counts or native stream graph invalid. No array emission approved.'
+    }
+    $hasValidNativeTreeModel=$streamEmptyShapesMatch -or (
+        [int]$native.treeCount -gt 0 -and [int]$native.leafRefCount -ge 0 -and
         [int]$native.outOfRangeItemSpans -eq 0 -and
         [int]$native.outOfRangeChildSpans -eq 0 -and [int]$native.invalidBoundsAxes -eq 0)
-    $status=if($hasValidNativeTreeModel){
-        'AZTEC_GATE11_IMAGES_CLASSIFIED_STREAM_ABI_TOPOLOGY_METRICS_PASS_ORIGINAL_PC_BUILD_PENDING'
+
+    # Compare native-reference LOADED image pointers by name with the
+    # source-owned original-PC GfxWorld descriptions. No GfxImage payloads
+    # are read, exported or interpreted as equivalent to PC source IWIs.
+    $sourceGraph=[string]$b.sourceOnlyTypedGraph
+    if(-not(Test-Path -LiteralPath $sourceGraph -PathType Leaf) -or
+       (Get-FileHash -LiteralPath $sourceGraph -Algorithm SHA256).Hash -ine
+        [string]$b.sourceOnlyTypedGraphSha256){
+        throw 'Original PC GfxWorld source image-reference document SHA drifted.'
+    }
+    $originalPc=Get-Content -LiteralPath $sourceGraph -Raw|ConvertFrom-Json
+    $imgSlots=$nativeShape.Image
+    if([string]$imgSlots.schema -ne 'WaW360.T4XenonGate11NativeWorldImageNameReferences.v1' -or
+       [bool]$imgSlots.imagePixelsReadOrCopied -or
+       [bool]$imgSlots.sourceOwnedImagePayloadsVerified -or
+       [bool]$imgSlots.hardwareRuntimeSemanticsProven){
+        throw 'Original native Xbox asset name witness missing or incorrectly claims image payload proof.'
+    }
+    $nameRows=New-Object 'System.Collections.Generic.List[object]'
+    $namedPointerCount=0;$matchedNames=0
+    $nativeSlotShapeValid=([bool]$imgSlots.slotHeadersReady -and
+        [int]$imgSlots.reflectionProbeCount -eq 2 -and
+        [int]$imgSlots.lightmapCount -eq 2 -and
+        @($imgSlots.reflectionProbeReferences).Count -eq 2 -and
+        @($imgSlots.lightmapReferences).Count -eq 2 -and
+        @($originalPc.reflectionProbeRefs).Count -eq 2 -and
+        @($originalPc.lightmapRefs).Count -eq 2)
+    if($nativeSlotShapeValid){
+        for($i=0;$i -lt 2;$i++){
+            $r=$imgSlots.reflectionProbeReferences[$i]
+            $s=$originalPc.reflectionProbeRefs[$i]
+            $originExact=([int]$r.ordinal -eq $i -and [int]$s.index -eq $i)
+            for($k=0;$k -lt 3;$k++){
+                if([math]::Abs([double]$r.origin[$k]-[double]$s.origin[$k]) -gt 0.0001){
+                    $originExact=$false
+                }
+            }
+            $nameOk=([string]$r.imageName -ceq [string]$s.image)
+            if($nameOk){$matchedNames++}
+            if([bool]$r.imagePointerPresent){$namedPointerCount++}
+            $nameRows.Add([ordered]@{
+                role="GfxWorld.reflectionProbes[$i].reflectionImage"
+                sourcePcName=[string]$s.image
+                nativeXboxLoadedName=[string]$r.imageName
+                exactNameMatch=$nameOk
+                nativePointerPresent=[bool]$r.imagePointerPresent
+                sourceAndNativeOriginMatch=$originExact
+                pixelsOrMipDataCompared=$false
+            })
+            $lm=$imgSlots.lightmapReferences[$i]
+            $lmSource=$originalPc.lightmapRefs[$i]
+            foreach($kind in @('primary','secondary')){
+                $pName=[string]$lmSource.$kind
+                $xName=if($kind -eq 'primary'){[string]$lm.primaryName}else{[string]$lm.secondaryName}
+                $ptr=if($kind -eq 'primary'){[bool]$lm.primaryPointerPresent}else{[bool]$lm.secondaryPointerPresent}
+                $nameOk=($pName -ceq $xName -and [int]$lm.ordinal -eq $i -and [int]$lmSource.index -eq $i)
+                if($nameOk){$matchedNames++}
+                if($ptr){$namedPointerCount++}
+                $nameRows.Add([ordered]@{
+                    role="GfxWorld.lightmaps[$i].$kind"
+                    sourcePcName=$pName
+                    nativeXboxLoadedName=$xName
+                    exactNameMatch=$nameOk
+                    nativePointerPresent=$ptr
+                    sourceAndNativeOriginMatch=$true
+                    pixelsOrMipDataCompared=$false
+                })
+            }
+        }
+    }
+    $referenceNameShapeMatch=$nativeSlotShapeValid -and $matchedNames -eq 6 -and
+        $namedPointerCount -eq 6 -and
+        @($nameRows.ToArray()|Where-Object {-not [bool]$_.sourceAndNativeOriginMatch}).Count -eq 0
+    Write-Host "[AZTEC-GATE11-IMG-STREAM] Reference typed image slots: native headers=$nativeSlotShapeValid, PC names exact=$matchedNames/6, non-null pointers=$namedPointerCount/6, source origins exact=$referenceNameShapeMatch. NO pixels inferred."
+    if($streamEmptyShapesMatch -and $referenceNameShapeMatch){
+        $status='AZTEC_GATE11_SIX_IMAGE_NAMES_NATIVE_REFERENCE_MATCH_AND_NATIVE_STREAM_EMPTY_STRUCT_PROVEN_PAYLOAD_PENDING'
+    }elseif($streamEmptyShapesMatch){
+        $status='AZTEC_GATE11_STREAM_EMPTY_STRUCT_PASS_WORLD_IMAGE_NATIVE_REF_MISMATCH'
     }else{
-        'AZTEC_GATE11_IMAGES_CLASSIFIED_STREAM_NATIVE_REFERENCE_TOPOLOGY_REQUIRES_REVIEW'
+        $status='AZTEC_GATE11_IMAGE_SOURCES_CLASSIFIED_NATIVE_STREAM_NEEDS_REVIEW'
     }
     $result=[ordered]@{
         schema='WaW360.AztecGate11JointImageSourceAndStreamStructuralFrontier.v1'
@@ -359,6 +462,14 @@ try{
         nativeLoadedCurrentWorldStreamShape=$present
         referenceOriginalXboxAbiOnlyAggregateStreamShape=$native
         nativeReferenceStreamStructureValid=$hasValidNativeTreeModel
+        nativeReferenceStreamingChildrenStructurallyAbsent=$originalStreamEmpty
+        currentConvertedStreamingChildrenStructurallyAbsent=$convertedStreamEmpty
+        originalAndCurrentNativeEmptyStreamStructsMatch=$streamEmptyShapesMatch
+        originalPcToNativeXboxImageReferences=$nameRows.ToArray()
+        originalAndNativeReflectionLightmapNamesMatch=$referenceNameShapeMatch
+        nativeReferenceImageNameMatches=$matchedNames
+        nativeReferenceImagePointersPresent=$namedPointerCount
+        imageReferencesValidatedOnlyAsNamesNotTextureBodies=$true
         sourceBackedValidatedCellTopology=$sourceTopology
         currentSourceCells=11
         currentSourceAabbTrees=740
@@ -369,12 +480,14 @@ try{
         copyNativeRootPointerPayloads=$false
         sourceImagePayloadGraftCompleted=$false
         sourceNativeStreamingReconstructionCompleted=$false
+        nativeStreamTreeBodyRequiredByMeasuredRetailShape=([int]$native.treeCount -gt 0)
+        previousZeroNativeStreamIsStructuralOnlyNoRuntimeApproval=$true
         fullGate11Passed=$false
         xboxHardwareReady=$false
-        nextStep='Derive streaming topology from original-PC source-owned cell/AABB/geometry; convert genuinely owned reflection/lightmap images and independently OAT-read back all new native FF fields'
+        nextStep=if($streamEmptyShapesMatch){'Keep streamInfo empty as measured; prove six star-prefixed image roots by original-PC and native-Xbox runtime semantics before rebasing pointers; independently OAT-load one new FF'}else{'Investigate native streaming pointer/count semantics; prove source-owned image bindings and OAT-load one new FF'}
     }
     $result|ConvertTo-Json -Depth 10|Set-Content -LiteralPath $report -Encoding UTF8
-    Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | six image source classes + loaded native stream shape measured, no new FF'
+    Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | original PC image names against native Xbox pointers + verified zero-stream structural test, no FF'
     Write-Host "[AZTEC-GATE11-IMG-STREAM] Report=$report"
     Write-Host '[AZTEC-GATE11-IMG-STREAM] 10/13 Gate11 still PENDING. No donor payloads, no Xbox hardware.'
 }finally{
