@@ -1,10 +1,10 @@
 [CmdletBinding()]
-param()
+param([switch]$PrimitiveCandidate)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
-$work=Join-Path $base 'pc_g11_cells_740'
+$work=Join-Path $base $(if($PrimitiveCandidate){'pc_g11_remaining_world_primitive_probe'}else{'pc_g11_cells_740'})
 $manifestPath=Join-Path $work 'aztec_pc_world_core_integrated_oat_run.json'
 $gate10Path=Join-Path $base 'pc_g10_1903\oat_loaded_1903_draw_readback\aztec_gate10_independent_1903_draw_readback.json'
 $sourcePath=Join-Path $base 'pc_g10_1903\gate11_cell_topology_source\aztec_gate11_pc_source_cells_native_abi.json'
@@ -24,10 +24,20 @@ if([string]$cap.format -ne 'WaW360.OatGraphDumperCapabilities.v1' -or
 $m=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
 $g=Get-Content -LiteralPath $gate10Path -Raw|ConvertFrom-Json
 $s=Get-Content -LiteralPath $sourcePath -Raw|ConvertFrom-Json
+$expectedStatus=if($PrimitiveCandidate){
+    'AZTEC_GATE11_PRIMITIVE_SKY_BRUSH_WATER_OAT_LOAD_PASS_REMAINDER_PENDING'
+}else{
+    'AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_PASS_REMAINDER_PENDING'
+}
 if([string]$m.schema -ne 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -or
-   [string]$m.status -ne 'AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_PASS_REMAINDER_PENDING' -or
+   [string]$m.status -ne $expectedStatus -or
    -not [bool]$m.OatPass -or
    -not [bool]$m.gate11PhysicalCellDiagnostic -or
+   ($PrimitiveCandidate -and (-not [bool]$m.gate11PrimitiveProbe -or
+      [int]$m.gate11PrimitiveSkySurfaces -ne 2 -or
+      [int]$m.gate11PrimitiveBrushModels -ne 183 -or
+      [long]$m.gate11PrimitiveWaterBytes -ne 2097408L -or
+      [bool]$m.gate11PrimitiveIndependentReadbackProven)) -or
    [int]$m.gate10DrawRecordsInEmittedFf -ne 1903 -or
    [int]$m.gate10StockModelDrawUnverified -ne 1 -or
    [int]$m.gate11SourceCellsInFf -ne 11 -or
@@ -159,6 +169,8 @@ $answer=[ordered]@{
     actualGfxWorldFf=$ff
     actualGfxWorldFfSha256=$ffSha
     preservedGate10FfSha256=$baselineHash
+    sourceOwnedPrimitiveCandidate=[bool]$PrimitiveCandidate
+    primitiveSkyBrushWaterTypedReadbackProven=$false
     originalPcSourceTypedGraphSha256=$sourceHash
     independentOatWitness=$witnessCopy
     independentOatWitnessSha256=$witnessSha
@@ -173,4 +185,9 @@ Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "[AZTEC-GATE11-READBACK] 11/11 cells; 740/740 trees; $($counts.treeModelIndexes) model indices and $($counts.cellReflectionIndices) probes match ORIGINAL PC"
 Write-Host "[AZTEC-GATE11-READBACK] New FF SHA=$ffSha"
 Write-Host "[AZTEC-GATE11-READBACK] Report=$report"
-Write-Host '[AZTEC-GATE11-READBACK] Independently OAT-loaded typed FF children PASS. Other GfxWorld dependencies and hardware approval STILL PENDING.'
+if($PrimitiveCandidate){
+    Write-Host '[AZTEC-GATE11-READBACK] New primitive FF preserves all source-owned cell/AABB fields in SECOND independent OAT readback.'
+    Write-Host '[AZTEC-GATE11-READBACK] Sky, brush and water FIELD readback is still PENDING. No Gate11 overall PASS.'
+}else{
+    Write-Host '[AZTEC-GATE11-READBACK] Independently OAT-loaded typed FF children PASS. Other GfxWorld dependencies and hardware approval STILL PENDING.'
+}
