@@ -49,8 +49,8 @@ $planOrder=@(
 $emitOrder=@(
     '_gate11Primitives?.EmitSky(zone,virtualAlloc);',
     '_gate11ImageHeaders?.EmitReflectionProbes(zone,virtualAlloc);',
-    'if(_gate8Planes is not null)',
-    'if(_gate8Nodes is not null)',
+    'zone.Write(_gate8Planes);',
+    'zone.Write(_gate8Nodes);',
     '_gate11Cells?.Emit(zone,virtualAlloc);',
     '_gate11ImageHeaders?.EmitLightmaps(zone,virtualAlloc);',
     '_gate11Lighting?.EmitGrid(zone,virtualAlloc);',
