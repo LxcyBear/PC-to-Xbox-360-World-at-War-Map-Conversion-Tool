@@ -454,7 +454,294 @@ namespace gfxworld
         out << ",\"nativeFfChildrenEmitted\":false}";
 
         
-        // Gate8C: export the actual original-PC 1903 static draw placement
+
+        // GATE11-REMAINDER: export ALL remaining GfxWorld child-family
+        // provenance together. Typed native PC OAT structures are read
+        // once; image/material asset pointers become NAMES, leaf arrays are
+        // original-PC LITTLE-ENDIAN binary blobs that need independent
+        // Xenon conversion. Never serialize x86 process pointer values.
+        // Runtime-only blocks are counted but NEVER exported as donor bytes.
+        const auto remainderPath=root+"/gate11_remaining_world_source.json";
+        auto remDest=context.OpenAssetFile(remainderPath);
+        bool remOk=static_cast<bool>(remDest);
+        const auto validArray=[&](auto count, auto limit, const auto* p)
+        {
+            return static_cast<uint64_t>(count)<=
+                static_cast<uint64_t>(limit) && (count==0 || p);
+        };
+        const bool lightGridRowsValid=world.lightGrid.rowAxis<3 &&
+            world.lightGrid.maxs[world.lightGrid.rowAxis]>=
+                world.lightGrid.mins[world.lightGrid.rowAxis];
+        const unsigned gridRows=lightGridRowsValid
+            ? (static_cast<unsigned>(world.lightGrid.maxs[
+                world.lightGrid.rowAxis])-
+               static_cast<unsigned>(world.lightGrid.mins[
+                world.lightGrid.rowAxis])+1u) : 0u;
+        const auto& grid=world.lightGrid;
+        const bool outerCountsValid=
+            validArray(world.skySurfCount,100000,world.skyStartSurfs) &&
+            validArray(world.reflectionProbeCount,4096,world.reflectionProbes) &&
+            validArray(world.coronaCount,4096,world.coronas) &&
+            validArray(world.lightmapCount,4096,world.lightmaps) &&
+            validArray(world.modelCount,4096,world.models) &&
+            validArray(world.cullGroupCount,8192,world.dpvs.cullGroups) &&
+            validArray(world.worldLodChainCount,100000,world.worldLodChains) &&
+            validArray(world.worldLodInfoCount,100000,world.worldLodInfos) &&
+            validArray(world.worldLodSurfaceCount,1000000,world.worldLodSurfaces) &&
+            validArray(world.primaryLightCount,4096,world.shadowGeom) &&
+            validArray(world.primaryLightCount,4096,world.lightRegion) &&
+            lightGridRowsValid &&
+            validArray(gridRows,65536,grid.rowDataStart) &&
+            validArray(grid.rawRowDataSize,128u*1024u*1024u,grid.rawRowData) &&
+            validArray(grid.entryCount,2000000u,grid.entries) &&
+            validArray(grid.colorCount,500000u,grid.colors);
+        remOk=remOk && outerCountsValid;
+        const auto emitVec=[&](std::ostream& stream, const float* v, unsigned n)
+        {
+            stream<<'[';
+            for(unsigned k=0;k<n;k++)
+            {
+                if(k)stream<<',';
+                if(!std::isfinite(v[k])){remOk=false;stream<<'0';}
+                else stream<<std::setprecision(std::numeric_limits<float>::max_digits10)<<v[k];
+            }
+            stream<<']';
+        };
+        auto blobWritten=[&](std::ostream& o,
+            const char* field, const auto* p, unsigned count)
+        {
+            const auto path=root+"/gate11_rem_"+std::string(field)+"_pc_le.bin";
+            // The WRITE is forbidden unless bounded pointer-aware source
+            // census first passed; otherwise preserve a manifest failure.
+            const bool good=outerCountsValid &&
+                WriteBlob(context,path,p,static_cast<size_t>(count));
+            if(!good)remOk=false;
+            o<<'"'<<field<<"\":{";
+            o<<"\"sourceLittleEndian\":true,\"containsProcessPointers\":false";
+            o<<",\"path\":";JsonString(o,path);
+            o<<",\"count\":"<<count;
+            o<<",\"elementBytes\":"<<sizeof(*p);
+            o<<",\"exported\":"<<(good?"true":"false")<<'}';
+        };
+        if(remDest)
+        {
+            auto& q=*remDest;
+            q<<"{\"schema\":\"WaW360.T4PcGate11WorldRemainderCensus.v1\"";
+            q<<",\"originalPcWorld\":";JsonString(q,worldName);
+            q<<",\"sourceOnly\":true,\"hardwareReady\":false";
+            q<<",\"originalPcProcessPointerValuesExported\":false";
+            q<<",\"nativeXboxPayloadBytesUsed\":false";
+            q<<",\"validCountAndPointerShape\":"
+             <<(outerCountsValid?"true":"false");
+            q<<",\"counts\":{";
+            q<<"\"skySurfaces\":"<<world.skySurfCount;
+            q<<",\"reflectionProbes\":"<<world.reflectionProbeCount;
+            q<<",\"coronas\":"<<world.coronaCount;
+            q<<",\"lightmaps\":"<<world.lightmapCount;
+            q<<",\"brushModels\":"<<world.modelCount;
+            q<<",\"cullGroups\":"<<world.cullGroupCount;
+            q<<",\"primaryLights\":"<<world.primaryLightCount;
+            q<<",\"worldLodChains\":"<<world.worldLodChainCount;
+            q<<",\"worldLodInfos\":"<<world.worldLodInfoCount;
+            q<<",\"worldLodSurfaces\":"<<world.worldLodSurfaceCount;
+            q<<",\"lightGridRows\":"<<gridRows;
+            q<<",\"lightGridRawBytes\":"<<grid.rawRowDataSize;
+            q<<",\"lightGridEntries\":"<<grid.entryCount;
+            q<<",\"lightGridColors\":"<<grid.colorCount;
+            q<<",\"waterBuffer0Bytes\":"<<world.waterBuffers[0].bufferSize;
+            q<<",\"waterBuffer1Bytes\":"<<world.waterBuffers[1].bufferSize;
+            q<<",\"dynamicWordCount0\":"<<world.dpvsDyn.dynEntClientWordCount[0];
+            q<<",\"dynamicWordCount1\":"<<world.dpvsDyn.dynEntClientWordCount[1];
+            q<<",\"dynamicClientCount0\":"<<world.dpvsDyn.dynEntClientCount[0];
+            q<<",\"dynamicClientCount1\":"<<world.dpvsDyn.dynEntClientCount[1];
+            q<<"}";
+            q<<",\"sourceImageAndMaterialReferences\":{";
+            q<<"\"skyImage\":";JsonNullable(q,world.skyImage?world.skyImage->name:nullptr);
+            q<<",\"outdoorImage\":";JsonNullable(q,world.outdoorImage?world.outdoorImage->name:nullptr);
+            q<<",\"skyBoxModel\":";JsonNullable(q,world.skyBoxModel);
+            q<<",\"sunLightPresent\":"<<(world.sunLight?"true":"false");
+            q<<",\"sunflareSpriteMaterialPresent\":"<<(world.sun.spriteMaterial?"true":"false");
+            q<<",\"sunflareFlareMaterialPresent\":"<<(world.sun.flareMaterial?"true":"false");
+            q<<",\"waterMaterialPresent\":"<<(world.waterMaterial?"true":"false");
+            q<<"}";
+            // Runtime allocation fields and Xbox-only world streaming
+            // structures must NEVER be mistaken for PC-source file payloads.
+            q<<",\"runtimeOnlyPointerPresence\":{";
+            q<<"\"cellCasterBits\":"<<(world.cellCasterBits?"true":"false");
+            q<<",\"sceneDynModel\":"<<(world.sceneDynModel?"true":"false");
+            q<<",\"sceneDynBrush\":"<<(world.sceneDynBrush?"true":"false");
+            q<<",\"primaryLightEntityShadowVis\":"
+             <<(world.primaryLightEntityShadowVis?"true":"false");
+            q<<",\"nonSunPrimaryLightForModelDynEnt\":"
+             <<(world.nonSunPrimaryLightForModelDynEnt?"true":"false");
+            q<<",\"smodelVis0\":"<<(world.dpvs.smodelVisData[0]?"true":"false");
+            q<<",\"surfaceVis0\":"<<(world.dpvs.surfaceVisData[0]?"true":"false");
+            q<<",\"lodData\":"<<(world.dpvs.lodData?"true":"false");
+            q<<",\"dpvsDynCellBits0\":"<<(world.dpvsDyn.dynEntCellBits[0]?"true":"false");
+            q<<"}";
+            q<<",\"requiresXenonStreamingMetadataReconstruction\":true";
+            q<<",\"requiresImageAssetRelocation\":true";
+            q<<",\"requiresMaterialStateBitsRuntimeSemanticProof\":true";
+            // All these raw source-side primitive/leaf arrays are safe to
+            // export as PC LITTLE-ENDIAN payload; the converter must do an
+            // independent type-aware Xenon conversion, NEVER a byte graft.
+            q<<",\"littleEndianSourceLeafBlobs\":{";
+            blobWritten(q,"skyStartSurfs",world.skyStartSurfs,
+                outerCountsValid?static_cast<unsigned>(world.skySurfCount):0);
+            q<<',';
+            blobWritten(q,"coronas",world.coronas,
+                outerCountsValid?world.coronaCount:0);
+            q<<',';
+            blobWritten(q,"brushModels",world.models,
+                outerCountsValid?static_cast<unsigned>(world.modelCount):0);
+            q<<',';
+            blobWritten(q,"cullGroups",world.dpvs.cullGroups,
+                outerCountsValid?static_cast<unsigned>(world.cullGroupCount):0);
+            q<<',';
+            blobWritten(q,"worldLodChains",world.worldLodChains,
+                outerCountsValid?world.worldLodChainCount:0);
+            q<<',';
+            blobWritten(q,"worldLodInfos",world.worldLodInfos,
+                outerCountsValid?world.worldLodInfoCount:0);
+            q<<',';
+            blobWritten(q,"worldLodSurfaces",world.worldLodSurfaces,
+                outerCountsValid?world.worldLodSurfaceCount:0);
+            q<<',';
+            blobWritten(q,"gridRowDataStart",grid.rowDataStart,
+                outerCountsValid?gridRows:0);
+            q<<',';
+            blobWritten(q,"gridRawRowData",grid.rawRowData,
+                outerCountsValid?grid.rawRowDataSize:0);
+            q<<',';
+            blobWritten(q,"gridEntries",grid.entries,
+                outerCountsValid?grid.entryCount:0);
+            q<<',';
+            blobWritten(q,"gridColors",grid.colors,
+                outerCountsValid?grid.colorCount:0);
+            for(unsigned n=0;n<2;n++)
+            {
+                const auto& w=world.waterBuffers[n];
+                bool waterOk=w.bufferSize<=(64u*1024u*1024u) &&
+                    (w.bufferSize%16u)==0 &&
+                    (w.bufferSize==0 || w.buffer);
+                if(!waterOk)remOk=false;
+                q<<',';
+                blobWritten(q,n==0?"waterBuffer0":"waterBuffer1",
+                    w.buffer,(outerCountsValid && waterOk)?
+                    static_cast<unsigned>(w.bufferSize/16u):0);
+            }
+            q<<"}";
+            q<<",\"reflectionProbeRefs\":[";
+            if(outerCountsValid)
+                for(unsigned n=0;n<world.reflectionProbeCount;n++)
+                {
+                    const auto& probe=world.reflectionProbes[n];
+                    if(n)q<<',';
+                    q<<"{\"index\":"<<n<<",\"origin\":";
+                    emitVec(q,probe.origin,3);
+                    q<<",\"image\":";
+                    JsonNullable(q,probe.reflectionImage?probe.reflectionImage->name:nullptr);
+                    q<<'}';
+                }
+            q<<"]";
+            q<<",\"lightmapRefs\":[";
+            if(outerCountsValid)
+                for(unsigned n=0;n<world.lightmapCount;n++)
+                {
+                    const auto& lm=world.lightmaps[n];
+                    if(n)q<<',';
+                    q<<"{\"index\":"<<n<<",\"primary\":";
+                    JsonNullable(q,lm.primary?lm.primary->name:nullptr);
+                    q<<",\"secondary\":";
+                    JsonNullable(q,lm.secondary?lm.secondary->name:nullptr);
+                    q<<'}';
+                }
+            q<<"]";
+            // GfxShadowGeometry has nested POINTERS; do not blob/copy it.
+            q<<",\"shadowGeometry\":[";
+            if(outerCountsValid)
+                for(unsigned n=0;n<world.primaryLightCount;n++)
+                {
+                    const auto& shadow=world.shadowGeom[n];
+                    const bool ok=validArray(shadow.surfaceCount,735,shadow.sortedSurfIndex) &&
+                        validArray(shadow.smodelCount,1903,shadow.smodelIndex);
+                    if(!ok)remOk=false;
+                    if(n)q<<',';
+                    q<<"{\"index\":"<<n<<",\"surfaceCount\":"<<shadow.surfaceCount;
+                    q<<",\"smodelCount\":"<<shadow.smodelCount;
+                    q<<",\"sortedSurfIndex\":[";
+                    if(ok)
+                        for(unsigned k=0;k<shadow.surfaceCount;k++)
+                        {
+                            if(k)q<<',';
+                            const unsigned id=shadow.sortedSurfIndex[k];
+                            if(id>=world.surfaceCount)remOk=false;
+                            q<<id;
+                        }
+                    q<<"],\"smodelIndex\":[";
+                    if(ok)
+                        for(unsigned k=0;k<shadow.smodelCount;k++)
+                        {
+                            if(k)q<<',';
+                            const unsigned id=shadow.smodelIndex[k];
+                            if(id>=world.dpvs.smodelCount)remOk=false;
+                            q<<id;
+                        }
+                    q<<"]}";
+                }
+            q<<"]";
+            // Nested hull/axis traversal normalized to numbers, no OAT
+            // process-address bytes. Bound every count before dereference.
+            q<<",\"lightRegions\":[";
+            if(outerCountsValid)
+                for(unsigned n=0;n<world.primaryLightCount;n++)
+                {
+                    const auto& region=world.lightRegion[n];
+                    const bool hullOk=validArray(region.hullCount,4096,region.hulls);
+                    if(!hullOk)remOk=false;
+                    if(n)q<<',';
+                    q<<"{\"index\":"<<n<<",\"hullCount\":"<<region.hullCount;
+                    q<<",\"hulls\":[";
+                    if(hullOk)
+                        for(unsigned k=0;k<region.hullCount;k++)
+                        {
+                            const auto& hull=region.hulls[k];
+                            const bool axisOk=validArray(hull.axisCount,128,hull.axis);
+                            if(!axisOk)remOk=false;
+                            if(k)q<<',';
+                            q<<"{\"index\":"<<k<<",\"kdopMidPoint\":";
+                            emitVec(q,hull.kdopMidPoint,9);
+                            q<<",\"kdopHalfSize\":";
+                            emitVec(q,hull.kdopHalfSize,9);
+                            q<<",\"axisCount\":"<<hull.axisCount;
+                            q<<",\"axis\":[";
+                            if(axisOk)
+                                for(unsigned h=0;h<hull.axisCount;h++)
+                                {
+                                    if(h)q<<',';
+                                    q<<"{\"dir\":";
+                                    emitVec(q,hull.axis[h].dir,3);
+                                    q<<",\"midPoint\":"<<hull.axis[h].midPoint;
+                                    q<<",\"halfSize\":"<<hull.axis[h].halfSize<<"}";
+                                }
+                            q<<"]}";
+                        }
+                    q<<"]}";
+                }
+            q<<"]";
+            q<<",\"sourceOnlyComplete\":"<<(remOk?"true":"false");
+            q<<",\"xboxSerializedWorldChildren\":false";
+            q<<",\"hardwareReady\":false}";
+            remOk=remOk && q.good();
+        }
+        out<<",\"gate11RemainingWorldCorpus\":{";
+        out<<"\"schema\":\"WaW360.T4PcGate11RemainingWorldSourceCorpus.v1\"";
+        out<<",\"path\":";JsonString(out,remainderPath);
+        out<<",\"pointerFreeSourceGraphWritten\":"<<(remOk?"true":"false");
+        out<<",\"singleFutureNativeFfBatchRequested\":true";
+        out<<",\"nativeFfBuildPerformed\":false}";
+
+                // Gate8C: export the actual original-PC 1903 static draw placement
         // records AS TYPED FIELDS. Native PC XModel* process addresses MUST
         // NEVER be serialized: each source model is identified by name.
         // PC GfxPackedPlacement has a 3x3 FLOAT axis; Xenon uses three
