@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet(1,6,63)][int]$Limit=63)
+param([ValidateSet('1','6','63')][int]$Limit=63)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
