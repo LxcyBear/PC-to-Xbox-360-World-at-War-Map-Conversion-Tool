@@ -158,3 +158,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Build-Azt
 ```
 
 **Next source-side blocker:** interpret reflection/primary light source indices relative to the PC and Xbox light/probe tables, derive `lightingHandle` from genuine original-PC cached light data (not the original Xbox row values), explain the four rotation XORs, and prove the last stock XModel's runtime residency. Then add the fully validated 1903 x 60B array to both Stage 4D and Stage 4E in OAT child order and make the parent DPVS draw pointer FOLLOWING. Do not label Gate 10 PASS until native OAT independently loads and validates the physically linked 1903 records. The old 9/13 count remains unchanged until then.
+
+## Gate 10 light-arithmetic hypothesis (original-PC source, not donor)
+
+User-verified source/native comparison: **1903/1903** model names, origins, scales, cull distances and flags; **1899/1903** exactly matching packed-axis record triplets. The differing words are at draws 4, 8, 10 and 300. Individual changed decoded 10-bit components differ by approximately **0.00195695** (not a full rotation error proof). Reflection PC `1` versus Xbox `0` for all 1903. Primary light PC `0` on 28 and `1` on 1875; native light handles are `256` on 28 and `257` on 1875. The last matching frequency **does not** prove they coincide per ordinal.
+
+`Audit-Aztec1903StaticDrawScalarEquivalence.ps1` now explicitly tests **all 1903 individual original-PC rows** for two empirical hypotheses: `Xbox reflectionProbeIndex = PC reflectionProbeIndex - 1`; `Xbox lightingHandle = 256 + PC primaryLightIndex`. It prints exact ordinal match counts and a PC primary -> native uint16 handle cross-table. No raw Xbox native body/field bytes are ever copied to output.
+
+If BOTH are **exactly 1903/1903**, `Build-AztecGate10SourceLightCandidate.ps1` uses the original PC typed records and the existing 1903-flags / 1902-pointers candidate to run the new reusable `T4XenonStaticDrawDerivedScalarCodec` in the .NET converter. The generic codec supports uint8 and **big-endian uint16** additive scalar fields for arbitrary map sizes/record strides; an independent synthetic **2 x 52-byte** selftest guards pointer and flags bytes, overflow, and field overlap. Aztec then independently compares source-derived light values to the OAT witness and writes a new 1903 x 60-byte diagnostic candidate with reflection at `+36` and uint16 lighting handle at `+38`, while preserving flags at `+40`, geometry and XModel* pointers. It does not populate the Xbox primary light index at `+37`, resolve external stock residency, fix rotation quantization, or link into the FF.
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS 5.1 syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-Aztec1903StaticDrawScalarEquivalence.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Light hypothesis audit failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Build-AztecGate10SourceLightCandidate.ps1'
+```
+
+If the light formulas fail, the script **fails closed before building any candidate** and prints exact counts. If they match, the arithmetic is still a **hypothesis for this one map**, not a fully validated general engine-light semantics rule. Xbox runtime light/probe table ownership, stable stock-model resolution, full native draw contents, and physical DPVS child-array integration remain prerequisites for Gate 10 PASS. OAT and hardware approval remain pending.
