@@ -29,3 +29,29 @@ Output: \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_map
 Once source ownership counts are known, use a **separate isolated scratch native FF** to encode validated T4 Xenon pointer arrays, allocate each genuinely owned inline SndAliasCustom child in correct 7b ZoneCode traversal order, rebase all genuine name pointers, and quarantine any unresolved packed/external references; prove exact root IDs and OAT 0/0. Do NOT write the original-PC raw packed pointer words into native FF; do not pretend sound-alias name strings are actual Xbox XMA audio.
 
 All remaining six GfxWorld image pixel bodies, streaming semantics, lightmap semantics, external stock XModel residency, original PC WeaponDef source conflicts and stock-only weapon roots, incomplete WeaponDef FX/Material/XModel/Audio graphs, and native runtime/code dependency closure remain **blocked**. Maintain the current protected FF SHA and the existing no-hardware-deployment rule until an independently verified complete package exists.
+
+
+## Two genuine inline bounce tables: opt-in native FF smoke-build (not yet Windows-tested)
+
+The first Windows source-only bounce witness at \`c2dc88d\` **PASS** established 63/63 source-owned WeaponDef bounce pointer fields classified:
+- **2 genuinely INLINE** 31-entry bounceSound tables, 248 real original-PC table bytes.
+- **61 source NULL** table slots, **0 packed/external** table slots. The 61 absent tables cannot be materialized without inventing source data.
+- **62 original-PC inline bounce SndAliasCustom pointer records** (248 bytes), and **9 actual inline sound-name XStrings** (199 bytes); 2 tables + 62 records + 9 names = **695 additional native diagnostic serialized bytes if accepted**.
+- The wider 63 WeaponDef owned 7b corpus additionally contains 228 inline sound-alias records and 895 bytes of inline name text across non-bounce sound fields; those **remain for a later separate graph stage**.
+
+The newly wired \`-OwnedBounceSound\` path in \`Run-AztecWeapon63FfGrowthCanary.ps1\` uses \`-Weapon63OwnedBounceSound\` only in \`Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1\`. The writer re-opens the same 63 independently SHA-verified original-PC 7b blobs, uses the typed source walker to prove every original byte offset and nested name SHA, copies ONLY 2 native 124-byte table bodies with 31 correctly rebased FOLLOWING references each, 62 inline 4-byte name-pointer records with source-packed/non-inline names set NULL, and 9 exact owned inline name strings. It includes all previously OAT-accepted scalar, 207 inline-XString and 96 Vec2 proof modes without replacing their archives.
+
+An isolated FastFile is generated under \`repo/.deps/aztec-w63-bounce-ff-growth/scratch_emit/nazi_zombie_aztec.ff\`. Previous 4,514,237 B OAT-good Vec2 candidate, two exact A/B archive cases, protected original 4,510,695 B FF, and other source proofs remain untouched. The stage MUST pass strict 7b self-contained typed walk, Stage4D native block replay, exact 8509 native root identity, OAT warnings/errors 0/0, and parent runner 2-table/62-record/9-name counts. No source FOREIGN audio/XMA assets, no fake 61 tables, no Xbox hardware. **No claim about compressed FF growth is possible before the first Windows build.**
+
+**First one-build Windows command from repo root:**
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PowerShell 5.1 parser BLOCKED; no build" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63FfGrowthCanary.ps1" -Limit 63 -ExpandedInlineXStrings -OwnedAccuracyVec2 -OwnedBounceSound
+if ($LASTEXITCODE -ne 0) { throw "Genuine two-table native scratch FF/OAT BLOCKED" }
+\`\`\`
+
+Success status is \`AZTEC_W63_TWO_REAL_PC_BOUNCE_TABLES_62_ALIAS_RECORDS_NATIVE_FF_OAT_PASS_NOT_FULL_AUDIO\`. This is **not** 63 real audio tables or Xbox-runtime approval. Follow-on speedrun target: **228 total genuine inline source SndAliasCustom records / 895 inline name bytes** across all 63 original PC weapons, after independent strict pointer rebasing and an isolated per-graph OAT pass.
