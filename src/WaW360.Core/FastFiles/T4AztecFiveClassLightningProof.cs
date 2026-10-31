@@ -77,9 +77,19 @@ public static class T4AztecFiveClassLightningProof
         var sourceFiles=new List<(string Role,string Path,T4ZoneDocument Doc,byte[] Bytes)>();
         var xanimAnchors=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         foreach(var ff in a.GetProperty("sourceFiles").EnumerateArray())
-            if(It(ff,"xboxXAnimReadbackVerifiedBodies")>0 &&
-               ff.GetProperty("internalXenonProofContainer").ValueKind==JsonValueKind.String)
-                xanimAnchors[St(ff,"role")]=St(ff,"internalXenonProofContainer");
+        {
+            var expectedCount=It(ff,"xboxXAnimReadbackVerifiedBodies");
+            if(expectedCount==0)continue;
+            if(ff.GetProperty("internalXenonProofContainer").ValueKind!=JsonValueKind.String ||
+               ff.GetProperty("proofSha256").ValueKind!=JsonValueKind.String)
+                throw new InvalidDataException("Prior Xbox XAnim alignment proof file/SHA missing.");
+            var proof=St(ff,"internalXenonProofContainer");
+            var idx=await T4NativeProofContainerReader.IndexAsync(proof,"xanim",ct);
+            if(idx.Version!=12 || idx.Records.Count!=expectedCount ||
+               !Eq(idx.Sha256,St(ff,"proofSha256")))
+                throw new InvalidDataException("Authentic XAnim anchor SHA/readback drift: "+St(ff,"role"));
+            xanimAnchors[St(ff,"role")]=proof;
+        }
 
         foreach(var e in pcRows)
         {
