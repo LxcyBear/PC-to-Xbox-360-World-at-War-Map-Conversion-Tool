@@ -55,11 +55,12 @@ public static class T4AztecNativeSizeAudit
            Int(proof,"realOriginalPcGeneratedImagePixelsProven")!=0 ||
            Yes(proof,"fullGate11Passed") || Yes(proof,"xboxHardwareReady"))
             throw new InvalidDataException("Independent proof of current 4,510,695-byte source-only FF changed.");
-        // The native OAT identity MANIFEST is serialized from an anonymous
-        // object and therefore uses camelCase: format/assets/entries/index/
-        // typeId/oatTypeName. The C# oracle result TYPE uses PascalCase, but
-        // that is NOT the JSON consumed here. Never silently case-fold field
-        // names because schema drift should stop the audit cleanly.
+        // The identity MANIFEST uses a camelCase anonymous outer object
+        // (format/assets/typeSequenceVerified/entries), but each entries[]
+        // element is a T4XenonNativeIdentityEntry record serialized with
+        // PascalCase properties (Index/TypeId/OatTypeName). JsonSerializer
+        // uses no global naming policy in the pinned identity exporter.
+        // Require the actual exact key case to fail closed on future drift.
         if(Str(id,"format")!="WaW360.T4Xenon.NativeIdentityManifest.v1" ||
            Int(id,"assets")!=Roots || !Yes(id,"typeSequenceVerified") ||
            Int(emit,"NativeRoots")!=Roots ||
@@ -95,11 +96,11 @@ public static class T4AztecNativeSizeAudit
         for(int i=0;i<Roots;i++)
         {
             var e=entries[i];
-            if(Int(e,"index")!=i ||
-               Int(e,"typeId")!=retail.Document.Assets[i].TypeId ||
-               Int(e,"typeId")!=current.Document.Assets[i].TypeId)
+            if(Int(e,"Index")!=i ||
+               Int(e,"TypeId")!=retail.Document.Assets[i].TypeId ||
+               Int(e,"TypeId")!=current.Document.Assets[i].TypeId)
                 throw new InvalidDataException("Native root ordinal/type mismatch at "+i);
-            var kind=Str(e,"oatTypeName").Trim().ToLowerInvariant();
+            var kind=Str(e,"OatTypeName").Trim().ToLowerInvariant();
             if(kind.Length==0)throw new InvalidDataException("OAT asset type missing at "+i);
             byType[kind]=byType.GetValueOrDefault(kind)+1;
         }
