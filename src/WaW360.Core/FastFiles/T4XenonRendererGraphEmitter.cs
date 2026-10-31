@@ -32,6 +32,10 @@ public sealed class T4XenonRendererEmitResult
     public int OriginalPcWeaponOwnedAccuracyVec2Arrays { get; init; }
     public int OriginalPcWeaponOwnedAccuracyVec2Knots { get; init; }
     public long OriginalPcWeaponOwnedAccuracyVec2Bytes { get; init; }
+    public int OriginalPcWeaponOwnedBounceSoundTables { get; init; }
+    public int OriginalPcWeaponOwnedBounceAliasRecords { get; init; }
+    public int OriginalPcWeaponOwnedBounceAliasNames { get; init; }
+    public long OriginalPcWeaponOwnedBounceAliasNameBytes { get; init; }
     public bool OriginalPcWeaponFullOwnedGraphsEmitted { get; init; }
     public required int XModelReferenceRoots { get; init; }
     public required long ZoneBytes { get; init; }
@@ -693,6 +697,9 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"AUTHENTIC ORIGINAL-PC INLINE WeaponDef Vec2 arrays: {weaponCanary?.TotalOwnedAccuracyVec2Arrays ?? 0:N0} (612 knots / 4896 source bytes if all 63 proven; no packed pointers)");
         report.AppendLine($"OWNED source WeaponDef accuracy Vec2 knots: {weaponCanary?.TotalOwnedAccuracyVec2Knots ?? 0:N0}");
         report.AppendLine($"OWNED source WeaponDef accuracy Vec2 bytes: {weaponCanary?.TotalOwnedAccuracyVec2PayloadBytes ?? 0:N0}");
+        report.AppendLine($"Original-PC source bounceSound tables in FF: {weaponCanary?.TotalOwnedBounceTables ?? 0:N0}/63; original-null non-table weapon roots remain NULL");
+        report.AppendLine($"Source-owned bounce alias records in FF: {weaponCanary?.TotalOwnedSoundAliasRecords ?? 0:N0}");
+        report.AppendLine($"Source-owned bounce alias name strings / bytes in FF: {weaponCanary?.TotalOwnedSoundAliasNames ?? 0:N0} / {weaponCanary?.TotalOwnedSoundAliasNameBytes ?? 0:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
@@ -742,6 +749,10 @@ public static class T4XenonRendererGraphEmitter
             OriginalPcWeaponOwnedAccuracyVec2Arrays = weaponCanary?.TotalOwnedAccuracyVec2Arrays ?? 0,
             OriginalPcWeaponOwnedAccuracyVec2Knots = weaponCanary?.TotalOwnedAccuracyVec2Knots ?? 0,
             OriginalPcWeaponOwnedAccuracyVec2Bytes = weaponCanary?.TotalOwnedAccuracyVec2PayloadBytes ?? 0,
+            OriginalPcWeaponOwnedBounceSoundTables = weaponCanary?.TotalOwnedBounceTables ?? 0,
+            OriginalPcWeaponOwnedBounceAliasRecords = weaponCanary?.TotalOwnedSoundAliasRecords ?? 0,
+            OriginalPcWeaponOwnedBounceAliasNames = weaponCanary?.TotalOwnedSoundAliasNames ?? 0,
+            OriginalPcWeaponOwnedBounceAliasNameBytes = weaponCanary?.TotalOwnedSoundAliasNameBytes ?? 0,
             OriginalPcWeaponFullOwnedGraphsEmitted = false,
             XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             ZoneBytes = zoneBytes.LongLength,
