@@ -50,6 +50,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecAssetConflictStockTriage.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecSixWeaponsAnd43Overrides.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecSixWeaponRealSourceRecovery.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecSixWeaponPackedNameWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-AztecGate11ImageHeaderNativeOrder.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PrimitiveWorldProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PhysicalCellWorldProbe.ps1') -ErrorAction Stop)
