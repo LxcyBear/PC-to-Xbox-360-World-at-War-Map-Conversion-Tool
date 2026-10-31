@@ -334,3 +334,20 @@ To run from the PC2XB3 repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-AztecGate11FailedFfPointerLayout.ps1'
 
 Interpretation: if the byte scan finds a mismatch, correct the recorded serialized stream order/offset at that earliest field before ONE new isolated OAT FF test; if the source-vs-FF sequence matches, look at pinned T4Xenon `GfxWorld.txt` **loader traversal order** (`GfxCell`, `GfxAabbTree`, reusable `smodelIndexes`) and identify the nested pointer field whose position in the file differs from native loader expectations. Do not repeat the full FF/OAT native build until this no-build provenance evidence narrows the cause.
+
+## Gate11 existing failed FF: 100% serialized data PASS, native OAT pointer fault remains
+
+User's 2026-10-31 Windows no-build forensic after fixing WinPS5.1 line 122: **35/35 script syntax PASS**, decompression of **existing** rejected `pc_g11_cells_740/scratch_emit/nazi_zombie_aztec.ff` PASS, original source/header witness SHA check PASS, decoded zone bytes **11,190,286**. Offline source-vs-emitted stream walk located **1/1 matching 11×56B GfxCell header array**, **740/740 40B GfxAabbTree records**, **14,974/14,974 big-endian 16-bit static-model indexes**, and **11/11 reflection-probe indices**, with **no first mismatch**. A literal byte search for the raw packed pointer candidate `0x0527A800` found **zero** occurrences. OAT's actual exception remains: `Zone referenced offset 86484991 of block T4Xenon::XFILE_BLOCK_PHYSICAL which is larger than its size 559280`. This does **not** mean the OAT validator passed; it distinguishes correct emitted source content under the serializer's byte order from native loader traversal/pointer interpretation.
+
+**Next native boundary evidence, NOT ANOTHER MAP FF BUILD:** the existing `Build-OatXenonGraphDumper.ps1 -TraceNativeAssetLoader` diagnostic mode has been extended, guarded against all **five** throw sites in the pinned OAT `ZoneInputStream.cpp`, to print `[AZTEC-OAT-BADPTR]` with actual raw pointer, target block and offset, stream position, current block index/cursor. Its existing `[AZTEC-OAT-FAULT]` wrapper additionally records first faulting Xbox XAsset root index/type. All added native source patches are temporarily applied for a special x86 OAT build and restored to a clean pinned checkout afterward. Capability `t4xenon-pointer-stream-fault-trace-v1` distinguishes the new binary.
+
+`Run-AztecGate11ExistingFfOatPointerTrace.ps1` SHA-checks the already rejected FF and the preserved Gate10 baseline against the independent readback reports; requires the offline matching 740-tree/14,974-index source audit; builds pinned diagnostic OAT **once** if `-BuildTrace` is supplied and the two trace capabilities are absent; then invokes `--list` on the **same failed FF** and captures native bad-pointer and asset-fault messages without editing any FF. Evidence is saved to `pc_g11_cells_740/oat_first_bad_pointer_trace/aztec_gate11_native_oat_first_bad_pointer.json` and `native_oat_first_bad_pointer.log`. An OAT failure is **expected** here and the script records context without promoting any conversion gate. Full GfxWorld/hardware status remains pending.
+
+Commands from converter repo root (one native OAT diagnostic build, **zero map FF/.NET build**):
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'WinPS5.1 syntax preflight failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11ExistingFfOatPointerTrace.ps1' -BuildTrace
+
+Use the traced native `streamPos`, `currentBlock/currentCursor`, `rootIndex`, and *actual* raw word to correct the first wrong field or child traversal. Do not artificially enlarge the PHYSICAL block, mark Gate11 complete, or rebuild/re-extract the 740-tree source. The passing Gate10 FF is unchanged.
