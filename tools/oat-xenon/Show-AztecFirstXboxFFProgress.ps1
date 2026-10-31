@@ -46,6 +46,10 @@ $pcIntegratedWorldCore=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run\azt
 $pcStaticDpvsProbe=Read-Report 'pc_735_39_gfxworld_integrated_ff_oat_run_probe_dpvs_static\aztec_pc_world_core_integrated_oat_run.json'
 $pcGate8ChildProbe=Read-Report 'pc_gate8_planes_nodes_layer\aztec_pc_world_core_integrated_oat_run.json'
 $pc28ModelWorld=Read-Report 'pc_gate8_29x_ff\aztec_pc_world_core_integrated_oat_run.json'
+# Gate 10 is a PHYSICAL draw link/OAT readback development milestone.
+# Do not inspect the older 28-model FF for this: it predated draw emission.
+$pcGate10Integrated=Read-Report 'pc_g10_1903\aztec_pc_world_core_integrated_oat_run.json'
+$pcGate10Readback=Read-Report 'pc_g10_1903\oat_loaded_1903_draw_readback\aztec_gate10_independent_1903_draw_readback.json'
 $pc28ModelStagingPath=Join-Path $repo '.deps\aztec8-all-static-xmodels\aztec_gate8_29_xmodel_staging.json'
 $pc1903Source=Read-Report 'pc_gate8_static_draw_source\aztec_gate8_pc_static_draw_source_report.json'
 $pc28ModelStaging=$null
@@ -217,15 +221,101 @@ if($modelsInOneFf -and
 }
 Add-Gate 'Extract 1,903 actual original-PC draw transforms and metadata' $typedDrawSourcePass 'OAT typed 92B PC draws, 52B placements; no host pointers, no Xbox draw array yet'
 
-# Explicit fail-closed 1,903 *physical GfxStaticModelDrawInst* gate.
-# Source name accounting (1903/1903) is NOT an emitted draw-array proof.
+# Gate 10 counts ONLY physically emitted and INDEPENDENTLY OAT-read-back
+# source-derived native draw records, not just source names or an old
+# 28-model FF. A NULL external-stock pointer remains hardware-blocked.
+# Its full residency and runtime light/probe semantics belong to later
+# production/world/runtime closure gates, not this physical-link gate.
 $drawLinksOatPass=$false
-if($modelsInOneFf -and
-   $null -ne $pc28ModelWorld.PSObject.Properties['actualWorldDrawRecordsLinked']){
-    $drawLinksOatPass=[int]$pc28ModelWorld.actualWorldDrawRecordsLinked -eq 1903 -and
-        [bool]$pc28ModelWorld.OatPass
+$gate10ActualFfBytes=0L
+$gate10OriginalPcSha=''
+if($modelsInOneFf -and $typedDrawSourcePass -and
+   (Test-ReportFields $pcGate10Integrated @(
+       'schema','status','probeLevel','gate10SourceDrawDiagnostic',
+       'gate10DrawRecordsInEmittedFf','gate10StockModelDrawUnverified',
+       'realXModelRootsInCurrentFf','realPcGfxSurfaceCount',
+       'realPcGfxWorldMaterialRoots','OatPass','gate10ProductionApproved',
+       'allOriginalPcGfxWorldDpvsChildrenComplete','hardwareReady',
+       'outputFastFile'
+   )) -and
+   (Test-ReportFields $pcGate10Readback @(
+       'schema','status','stage4EEmittedFf','stage4EEmittedFfSha256',
+       'independentOatLoadedWitness','independentOatLoadedWitnessSha256',
+       'originalPcDrawSourceSha256','actualNativeDrawCount',
+       'nativeRecordStride','sourceOwnedXModelRows',
+       'unresolvedStockModelRows','fieldMatchCounts','mismatches',
+       'originalXboxDonorBodyBytesUsed','XboxHardwareReady',
+       'gate10ProductionComplete'
+   ))){
+    $g=$pcGate10Integrated
+    $r=$pcGate10Readback
+    $gate10ActualFf=[string]$g.outputFastFile
+    $gate10ReadFf=[string]$r.stage4EEmittedFf
+    $gate10OatWitness=[string]$r.independentOatLoadedWitness
+    $g10ExpectedCounts=[ordered]@{
+        ordinal=1903;ownedXModelNames=1902;nullStockReference=1
+        cullDist=1903;origin=1903;scale=1903;packedAxes=1903
+        reflectionIndex=1903;primaryLightIndex=1903
+        lightingHandle=1903;flags=1903;zeroPadding=1903
+    }
+    $allOatFieldsMatch=(Test-ReportFields $r.fieldMatchCounts @($g10ExpectedCounts.Keys))
+    if($allOatFieldsMatch){
+        foreach($field in @($g10ExpectedCounts.Keys)){
+            if([int]$r.fieldMatchCounts.$field -ne [int]$g10ExpectedCounts[$field]){
+                $allOatFieldsMatch=$false
+                break
+            }
+        }
+    }
+    $reportsAgree=(
+        [string]$g.schema -eq 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -and
+        [string]$g.status -eq 'AZTEC_GATE10_1903_STATIC_DRAW_DIAGNOSTIC_OAT_PASS_STOCK_UNVERIFIED' -and
+        [string]$g.probeLevel -eq 'Full' -and
+        [bool]$g.gate10SourceDrawDiagnostic -and
+        [int]$g.gate10DrawRecordsInEmittedFf -eq 1903 -and
+        [int]$g.gate10StockModelDrawUnverified -eq 1 -and
+        [int]$g.realXModelRootsInCurrentFf -eq 28 -and
+        [int]$g.realPcGfxSurfaceCount -eq 735 -and
+        [int]$g.realPcGfxWorldMaterialRoots -eq 39 -and
+        [bool]$g.OatPass -and
+        -not [bool]$g.gate10ProductionApproved -and
+        -not [bool]$g.allOriginalPcGfxWorldDpvsChildrenComplete -and
+        -not [bool]$g.hardwareReady -and
+        [string]$r.schema -eq 'WaW360.AztecGate10IndependentOat1903DrawReadback.v1' -and
+        [string]$r.status -eq 'AZTEC_GATE10_1903_ALL_SOURCE_DRAW_FIELDS_OAT_READBACK_PASS_STOCK_UNVERIFIED' -and
+        [int]$r.actualNativeDrawCount -eq 1903 -and
+        [int]$r.nativeRecordStride -eq 60 -and
+        [int]$r.sourceOwnedXModelRows -eq 1902 -and
+        [int]$r.unresolvedStockModelRows -eq 1 -and
+        [string]$r.originalPcDrawSourceSha256 -ieq [string]$pc1903Source.typedDrawSha256 -and
+        @($r.mismatches).Count -eq 0 -and
+        -not [bool]$r.originalXboxDonorBodyBytesUsed -and
+        -not [bool]$r.XboxHardwareReady -and
+        -not [bool]$r.gate10ProductionComplete -and
+        $allOatFieldsMatch
+    )
+    # Hash each on-disk artifact AGAIN: an old success manifest must never
+    # grant Gate 10 when the FF or independent loaded witness changed.
+    if($reportsAgree -and
+       -not [string]::IsNullOrWhiteSpace($gate10ActualFf) -and
+       -not [string]::IsNullOrWhiteSpace($gate10ReadFf) -and
+       -not [string]::IsNullOrWhiteSpace($gate10OatWitness) -and
+       [IO.Path]::GetFullPath($gate10ActualFf) -ieq [IO.Path]::GetFullPath($gate10ReadFf) -and
+       (Test-Path -LiteralPath $gate10ActualFf -PathType Leaf) -and
+       (Test-Path -LiteralPath $gate10OatWitness -PathType Leaf)){
+        $ffSha=(Get-FileHash -LiteralPath $gate10ActualFf -Algorithm SHA256).Hash
+        $loadedSha=(Get-FileHash -LiteralPath $gate10OatWitness -Algorithm SHA256).Hash
+        $drawLinksOatPass=(
+            $ffSha -ieq [string]$r.stage4EEmittedFfSha256 -and
+            $loadedSha -ieq [string]$r.independentOatLoadedWitnessSha256
+        )
+        if($drawLinksOatPass){
+            $gate10ActualFfBytes=[long](Get-Item -LiteralPath $gate10ActualFf).Length
+            $gate10OriginalPcSha=[string]$r.originalPcDrawSourceSha256
+        }
+    }
 }
-Add-Gate 'Physically link all 1,903 static-model GfxWorld draw records' $drawLinksOatPass 'Needs original-PC placement array and 1,903 native XModel pointer relocations, then OAT'
+Add-Gate 'Physically link and OAT-read all 1,903 static-model GfxWorld draw records' $drawLinksOatPass '1903 loaded 60B PC-derived draw records + 1902 XModel names; FF and typed OAT witness SHA-bound; stock unresolved (diagnostic only)'
 
 # Keep release gates fail-closed until full required world child closure,
 # both native main/_load artifacts, and independent hardware evidence.
@@ -242,9 +332,13 @@ $bar=('='*$filled)+('-'*($segments-$filled))
 Write-Host '[AZTEC-FF-PROGRESS] ==================================================='
 Write-Host "[AZTEC-FF-PROGRESS] FIRST CONTROLLED XBOX TEST: [$bar] $percent% ($passed/$total milestones)"
 Write-Host '[AZTEC-FF-PROGRESS] Milestones count VERIFIED GATES, not time/effort or percentage of full conversion.'
-if($modelsInOneFf){
+if($drawLinksOatPass){
+    Write-Host ('[AZTEC-FF-PROGRESS] LATEST OAT-LOADED SOURCE FF: {0:N0} B ({1:N2} MiB) | 28 XModels + 735 surfaces + 39 Materials | 1903/1903 physical draw links VERIFIED' -f $gate10ActualFfBytes,($gate10ActualFfBytes/1MB))
+    Write-Host '[AZTEC-FF-PROGRESS] Gate 10 physical-link milestone PASS: 1902 real XModel names; 1 stock XModel pointer NULL; independently OAT-read all typed draw fields.'
+    Write-Host '[AZTEC-FF-PROGRESS] This is NOT Xbox hardware approval: stock runtime residency, light semantics and remaining world/DPVS are still OPEN.'
+}elseif($modelsInOneFf){
     $size=(Get-Item -LiteralPath ([string]$pc28ModelWorld.outputFastFile)).Length
-    Write-Host ('[AZTEC-FF-PROGRESS] LATEST COMBINED SOURCE FF: {0:N2} MiB | 28 XModels + 735 surfaces + 39 Materials | 0/1903 GfxWorld static draw links verified' -f ($size/1MB))
+    Write-Host ('[AZTEC-FF-PROGRESS] LAST VERIFIED PRE-GATE10 FF: {0:N2} MiB | 28 XModels + 735 surfaces + 39 Materials | current draw readback still pending' -f ($size/1MB))
 }
 for($i=0;$i -lt $gates.Count;$i++){
     $g=$gates[$i]
