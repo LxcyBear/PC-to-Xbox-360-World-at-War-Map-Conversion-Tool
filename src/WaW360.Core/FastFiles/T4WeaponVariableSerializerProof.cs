@@ -66,7 +66,7 @@ public static class T4WeaponVariableSerializerProof
 
     private sealed record PlannedInsertion(int Offset, byte[] Bytes);
 
-    internal sealed record OwnedFixedInlineXString(int FixedFieldOffset, string ProofLabel, string SourceValue);
+    internal sealed record OwnedFixedInlineXString(int FixedFieldOffset, string ProofLabel, string SourceValue, int SourceBodyByteOffset);
     // This is original-PC-sourced Xbox big-endian 7b proof data, NOT a native
     // FF relocation: no packed/external WeaponDef pointer may be carried out.
     internal sealed record OwnedFixedInlineAccuracyVec2(
@@ -602,7 +602,7 @@ public static class T4WeaponVariableSerializerProof
                     $"Weapon '{c.WeaponName}' original PC fixed XString '{label}' implausible length={length}.");
             var sourceValue = Encoding.Latin1.GetString(c.Source, cursor, length);
             c.ObservedFixedInlineXStrings.Add(
-                new OwnedFixedInlineXString(pointerOffset,label,sourceValue));
+                new OwnedFixedInlineXString(pointerOffset,label,sourceValue,cursor));
         }
         if (c.PlanIwdStrings &&
             raw != 0 &&
