@@ -78,6 +78,11 @@ public static class T4WeaponVariableSerializerProof
     internal sealed record OwnedInlineSndAliasName(
         string ProofLabel,int SourceRecordByteOffset,uint RawStringPointer,
         int? SourceInlineNameByteOffset,byte[]? InlineNameBytes);
+    // FlameTable parent: 476 genuine big-endian serialized bytes. Pointer
+    // cells at +424/428..456/460..472 are NOT native relocation values.
+    internal sealed record OwnedInlineFlameTable(
+        string ProofLabel,int FixedFieldOffset,int SourceBodyByteOffset,
+        byte[] BigEndianFixedBytes);
 
     private sealed class TraverseStats
     {
@@ -105,6 +110,7 @@ public static class T4WeaponVariableSerializerProof
         public List<OwnedFixedInlineAccuracyVec2>? ObservedFixedInlineAccuracyArrays { get; init; }
         public List<OwnedInlineBounceSoundTable>? ObservedBounceSoundTables { get; init; }
         public List<OwnedInlineSndAliasName>? ObservedSoundAliasNames { get; init; }
+        public List<OwnedInlineFlameTable>? ObservedFlameTables { get; init; }
         public byte[]? PatchDestination { get; init; }
         public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
         public List<PlannedInsertion>? PlannedInsertions { get; init; }
@@ -458,6 +464,59 @@ public static class T4WeaponVariableSerializerProof
             reason=ex.Message;
             tables=Array.Empty<OwnedInlineBounceSoundTable>();
             aliases=Array.Empty<OwnedInlineSndAliasName>();
+            return false;
+        }
+    }
+
+    // Read-only proof of the actual two optional FlameTable parent bodies in
+    // original PC-derived endian-correct 7b stream, independent of the six
+    // nested SndAliasCustom records. Not a native Xbox FF graft.
+    internal static bool TryCollectSourceOwnedFlameTables(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedInlineFlameTable> tables,
+        out IReadOnlyList<OwnedInlineSndAliasName> aliases,
+        out string reason)
+    {
+        var observedTables=new List<OwnedInlineFlameTable>();
+        var observedAliases=new List<OwnedInlineSndAliasName>();
+        tables=Array.Empty<OwnedInlineFlameTable>();
+        aliases=Array.Empty<OwnedInlineSndAliasName>();
+        reason=string.Empty;
+        try
+        {
+            var ctx=new WalkContext
+            {
+                Source=xboxSourceProofBlob,
+                Endianness=Endian.Big,
+                Header=null,
+                Output=null,
+                Stats=new TraverseStats(),
+                WeaponName=name,
+                RequireSelfContainedPointers=false,
+                ObservedFlameTables=observedTables,
+                ObservedSoundAliasNames=observedAliases
+            };
+            var end=WalkOwnedPayload(ctx,0);
+            if(end!=xboxSourceProofBlob.Length)
+                throw new InvalidDataException(
+                    $"Weapon '{name}' 7b FlameTable source ended 0x{end:X}, expected 0x{xboxSourceProofBlob.Length:X}.");
+            if(observedTables.Count>2 ||
+               observedTables.Select(t=>t.FixedFieldOffset).Distinct().Count()!=observedTables.Count ||
+               observedTables.Any(t=>t.FixedFieldOffset is not (2460 or 2464) ||
+                   t.SourceBodyByteOffset<FixedBodySize ||
+                   (long)t.SourceBodyByteOffset+FlameTableFixedSize>xboxSourceProofBlob.Length ||
+                   t.BigEndianFixedBytes.Length!=FlameTableFixedSize ||
+                   !xboxSourceProofBlob.AsSpan(t.SourceBodyByteOffset,FlameTableFixedSize)
+                       .SequenceEqual(t.BigEndianFixedBytes)))
+                throw new InvalidDataException(
+                    $"Weapon '{name}' original-PC FlameTable fixed-body ownership or offset invalid.");
+            tables=observedTables.AsReadOnly();
+            aliases=observedAliases.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason=ex.Message;
             return false;
         }
     }
@@ -845,6 +904,19 @@ public static class T4WeaponVariableSerializerProof
         cursor = Align4(c, cursor, label);
         Ensure(c.Source, cursor, FlameTableFixedSize, label + " fixed body");
         var tableStart = cursor;
+        if(c.ObservedFlameTables is not null)
+        {
+            var fixedField=label switch
+            {
+                "flameTableFirstPersonPtr"=>2460,
+                "flameTableThirdPersonPtr"=>2464,
+                _=>throw new InvalidDataException(
+                    $"Unknown original-PC 7b FlameTable parent field {label}.")
+            };
+            c.ObservedFlameTables.Add(new OwnedInlineFlameTable(
+                label,fixedField,tableStart,
+                c.Source.AsSpan(tableStart,FlameTableFixedSize).ToArray()));
+        }
 
         // All FlameTable fixed fields are 32-bit values/pointers.
         if (c.Output is not null)
