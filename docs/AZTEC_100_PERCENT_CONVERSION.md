@@ -177,3 +177,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Build-Azt
 ```
 
 If the light formulas fail, the script **fails closed before building any candidate** and prints exact counts. If they match, the arithmetic is still a **hypothesis for this one map**, not a fully validated general engine-light semantics rule. Xbox runtime light/probe table ownership, stable stock-model resolution, full native draw contents, and physical DPVS child-array integration remain prerequisites for Gate 10 PASS. OAT and hardware approval remain pending.
+
+## First physical 1903-draw Gate10 OAT integration probe
+
+User-verified **Gate10 rebase PASS**: 1902/1902 source-owned XModel root addresses regenerated from the previously verified 8509-root Stage4D layout; the entire resulting 114180-byte candidate's SHA is `2CDB6B42082EDEF00AC2EC4CE2BF429894BAFF02E1BDDA370C401383D98BC2A7`. The one stock XModel remains deliberately NULL and explicitly unverified for hardware.
+
+The integrated `T4XenonAztecWorldGraft` now supports opt-in environment variables `WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT` and `WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY`. They enable an **OAT diagnostic only**: after existing Gate8 children, the source-derived 1903 x 60-byte static-draw array is planned/emitted as `GfxWorldDpvsStatic.smodelDrawInsts` (Xbox DPVS +84, absolute GfxWorld +788). The verified T4 order is sorted surface indices, static model instances, surfaces, optional cull groups, then static draw instances. Stage4D reserves the array; Stage4E uses new current-build stable root pointers to rebase the model fields. Without BOTH env vars, existing world/FF output behavior remains unchanged.
+
+The shared runner `Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1 -Gate10StaticDrawProbe` requires the full original-PC Gate8 static DPVS, source child corpus, and all 28 real XModel owners. It selects **`pc_g10_1903`** for the new OAT scratch FF, not the previous passing `pc_gate8_29x_ff`. It reuses staged original-PC source proof and the latest 1903-light candidate, with no source XModel reconversion. The result manifest distinguishes `AZTEC_GATE10_1903_STATIC_DRAW_DIAGNOSTIC_OAT_PASS_STOCK_UNVERIFIED` from diagnostic blocked. An OAT LIST pass is not the independent full per-draw or Xbox hardware proof.
+
+First launch command (after a pull):
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Syntax preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate10RealDrawWorldProbe.ps1'
+```
+
+The new launcher checks the previous 28-model FF SHA **before and after** the test, reports the new FF's real byte size and change from the preserved baseline, and fails closed if OAT cannot load it. Do not copy the diagnostic FF to the Xbox. A full Gate10 PASS requires independent loaded draw fields including stock ownership, source-derived runtime light semantics and the four rotation discrepancies resolved. Full-map/hardware testing needs still more world and asset closure; the original smoke-test checklist stays **9/13** until then.
