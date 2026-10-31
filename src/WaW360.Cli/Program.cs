@@ -110,6 +110,14 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-W63-BOUNCE] NO Xbox donor audio, NO FF/OAT build, NO Xbox hardware.");
                 return 0;
             }
+            case "aztec-weapon63-original-pc-flame-parent-witness" when args.Length == 5:
+            {
+                var report=await T4XenonAztecWeaponFlameSourceWitness.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-W63-FLAME] Original-PC typed FlameTable 476B parent ownership and six nested sound aliases: "+report);
+                Console.WriteLine("[AZTEC-W63-FLAME] SOURCE ONLY. NO guessed parent, audio/XMA, donor, OAT, FF or Xbox.");
+                return 0;
+            }
             case "aztec-weapon63-original-pc-accuracy-vec2-witness" when args.Length == 4:
             {
                 var report=await T4XenonAztecWeaponAccuracySourceWitness.RunAsync(
