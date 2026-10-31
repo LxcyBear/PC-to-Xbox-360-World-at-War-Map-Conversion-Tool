@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param([ValidateSet('0','1','6','63')][int]$Limit=63,
       [switch]$ExpandedInlineXStrings,
-      [switch]$OwnedAccuracyVec2)
+      [switch]$OwnedAccuracyVec2,
+      [switch]$OwnedBounceSound)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
@@ -16,7 +17,10 @@ $sizeReport=Join-Path $base 'pc_g11_native_ff_size_audit\aztec_native_ff_size_an
 if($OwnedAccuracyVec2 -and (-not $ExpandedInlineXStrings -or $Limit -ne 63)){
     throw 'Authentic original-PC owned accuracy Vec2 arrays require -Limit 63 -ExpandedInlineXStrings. No unrebased packed pointer may be promoted.'
 }
-$work=Join-Path $repo $(if($OwnedAccuracyVec2){'.deps\aztec-w63-vec2-ff-growth'}elseif($ExpandedInlineXStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
+if($OwnedBounceSound -and (-not $OwnedAccuracyVec2 -or -not $ExpandedInlineXStrings -or $Limit -ne 63)){
+    throw 'Original-PC bounceSound native graft needs -Limit 63 -ExpandedInlineXStrings -OwnedAccuracyVec2; missing source tables cannot be synthesized.'
+}
+$work=Join-Path $repo $(if($OwnedBounceSound){'.deps\aztec-w63-bounce-ff-growth'}elseif($OwnedAccuracyVec2){'.deps\aztec-w63-vec2-ff-growth'}elseif($ExpandedInlineXStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
 $emitReport=Join-Path $work 'scratch_emit\nuclear_xenon_renderer_emit.json'
 $ff=Join-Path $work 'scratch_emit\nazi_zombie_aztec.ff'
 $summary=Join-Path $work ('aztec_weapon63_ff_growth_'+$Limit+'.json')
@@ -68,6 +72,10 @@ if($OwnedAccuracyVec2){
     Write-Host '[AZTEC-W63-VEC2-FF] SOURCE-PROVEN nested child experiment: 96 real inline vec2 arrays, 612 knots / 4896 bytes, never packed aliases.'
     Write-Host '[AZTEC-W63-VEC2-FF] Exact original typed Alpha 7b source byte offsets, order, and child SHA mandatory. No full 7b graph, not Xbox-ready.'
 }
+if($OwnedBounceSound){
+    Write-Host '[AZTEC-W63-BOUNCE-FF] SPEEDRUN: classify all 63 genuine PC sound-table fields; emit ONLY 2 real inline bounce tables / 62 alias records / 9 genuine source names.'
+    Write-Host '[AZTEC-W63-BOUNCE-FF] Missing 61 native sound tables stay NULL. This is source-authentic 7b child graph, NOT actual audio/XMA.'
+}
 Write-Host '[AZTEC-W63-GROWTH] Remaining 2 conflicting + 4 stock-only weapon roots remain shells.'
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [####----------------] 20% | protected FF and all 69 source-root SHA identities pinned'
 $runner=Join-Path $PSScriptRoot 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1'
@@ -79,6 +87,7 @@ $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$runner,
     '-Weapon63SourceCanary','-WeaponCanaryLimit',[string]$Limit)
 if($ExpandedInlineXStrings){$params+=@('-Weapon63ExtendedInlineStrings')}
 if($OwnedAccuracyVec2){$params+=@('-Weapon63OwnedAccuracyVec2')}
+if($OwnedBounceSound){$params+=@('-Weapon63OwnedBounceSound')}
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [########------------] 40% | existing world emitter + native Stage4D/4E weapon layout and OAT'
 & powershell @params
 $exit=[int]$LASTEXITCODE
@@ -110,11 +119,17 @@ $pass=($exit -eq 0 -and $null -ne $e -and $null -ne $newBytes -and
        (-not $OwnedAccuracyVec2 -or
         ([int]$e.OriginalPcWeaponOwnedAccuracyVec2Arrays -eq 96 -and
          [int]$e.OriginalPcWeaponOwnedAccuracyVec2Knots -eq 612 -and
-         [long]$e.OriginalPcWeaponOwnedAccuracyVec2Bytes -eq 4896)))
+         [long]$e.OriginalPcWeaponOwnedAccuracyVec2Bytes -eq 4896)) -and
+       (-not $OwnedBounceSound -or
+        ([int]$e.OriginalPcWeaponOwnedBounceSoundTables -eq 2 -and
+         [int]$e.OriginalPcWeaponOwnedBounceAliasRecords -eq 62 -and
+         [int]$e.OriginalPcWeaponOwnedBounceAliasNames -eq 9 -and
+         [long]$e.OriginalPcWeaponOwnedBounceAliasNameBytes -eq 199)))
 $summaryObj=[ordered]@{
     schema='WaW360.AztecWeapon63RealSourceScalarXstringFfGrowthCanary.v1'
     status=if($pass){
-        if($OwnedAccuracyVec2){'AZTEC_W63_96_ORIGINAL_PC_ACCURACY_VEC2_OWNED_CHILDREN_NATIVE_FF_OAT_PASS_NOT_FULL_GRAPH'}
+        if($OwnedBounceSound){'AZTEC_W63_TWO_REAL_PC_BOUNCE_TABLES_62_ALIAS_RECORDS_NATIVE_FF_OAT_PASS_NOT_FULL_AUDIO'}
+        elseif($OwnedAccuracyVec2){'AZTEC_W63_96_ORIGINAL_PC_ACCURACY_VEC2_OWNED_CHILDREN_NATIVE_FF_OAT_PASS_NOT_FULL_GRAPH'}
         elseif($ExpandedInlineXStrings){'AZTEC_W63_EXTENDED_ORIGINAL_PC_INLINE_XSTRINGS_NATIVE_FF_OAT_PASS_NOT_FULL_WEAPON_GRAPH'}
         elseif($Limit -eq 0){'AZTEC_W63_NO_WEAPON_SAME_SETTINGS_CONTROL_OAT_PASS'}
         else{'AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED'}
@@ -125,6 +140,11 @@ $summaryObj=[ordered]@{
     extendedOriginalPcFixedInlineXStringsMode=[bool]$ExpandedInlineXStrings
     extendedSourceFixedInlineStringFieldsEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponExpandedInlineXStringFields}else{0}
     originalPcAccuracyVec2OwnedChildMode=[bool]$OwnedAccuracyVec2
+    originalPcOwnedBounceSoundMode=[bool]$OwnedBounceSound
+    originalPcBounceTablesActuallyEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedBounceSoundTables}else{0}
+    originalPcBounceAliasRecordsActuallyEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedBounceAliasRecords}else{0}
+    originalPcBounceAliasNamesActuallyEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedBounceAliasNames}else{0}
+    originalPcBounceAliasNameBytesActuallyEmitted=if($null -ne $e){[long]$e.OriginalPcWeaponOwnedBounceAliasNameBytes}else{0L}
     originalPcAccuracyVec2OwnedArraysEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedAccuracyVec2Arrays}else{0}
     originalPcAccuracyVec2OwnedKnotsEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedAccuracyVec2Knots}else{0}
     originalPcAccuracyVec2OwnedPayloadBytesEmitted=if($null -ne $e){[long]$e.OriginalPcWeaponOwnedAccuracyVec2Bytes}else{0L}
@@ -155,7 +175,9 @@ $summaryObj=[ordered]@{
     gate11Closed=$false
     parentRunnerExitCode=$exit
     emitterManifest=$emitReport
-    note=if($OwnedAccuracyVec2){
+    note=if($OwnedBounceSound){
+        'Isolated diagnostic FF: all 63 authentic original PC WeaponDef bounce pointer fields source-censused; exactly 2 real 31-entry original-PC pointer tables, their 62 inline SndAliasCustom record children and 9 true inline name XStrings are independently SHA verified and sanitized to Xbox FOLLOWING/NULL references. The other 61 fields are legitimately NULL, not synthesized. This is NOT 63 real sound tables, not full sound asset payloads, and NOT Xbox runtime compatible.'
+    }elseif($OwnedAccuracyVec2){
         'Proof-gated partial WeaponDef: 63 original PC Xbox 7b SHA-owned scalars + authentic original fixed inline XStrings + 96 genuine source-owned big-endian 2-float knot arrays (612 knots, 4896 B). Exact typed original ZoneCode order and native layout replay. All original packed aliases and foreign Model/FX/Material/XAnim/Audio child graphs remain NULL; OAT acceptance only, never Xbox-ready.'
     }elseif($ExpandedInlineXStrings){
         'Experimental isolated FF: original-PC source typed 7b owned walk identifies direct fixed-body inline XStrings in correct ZoneCode order; only ASCII-safe inline fields rebased, all unverified packed source strings and XModel/FX/Material/XAnim/audio pointers stay NULL. Full 7b graphs NOT integrated, not playable, OAT list does not establish runtime correctness.'
@@ -205,6 +227,12 @@ if($ExpandedInlineXStrings){
             Write-Host '[AZTEC-W63-XSTR] Different Git revisions: archive-relative delta is not an exact same-revision A/B proof.'
         }
     }
+}
+if($OwnedBounceSound){
+    Write-Host "[AZTEC-W63-BOUNCE-FF] SOURCE-CENSUSED ORIGINAL-PC BOUNCE POINTERS=63/63"
+    Write-Host "[AZTEC-W63-BOUNCE-FF] REAL table children actually emitted=$($summaryObj.originalPcBounceTablesActuallyEmitted)"
+    Write-Host "[AZTEC-W63-BOUNCE-FF] Real nested alias records=$($summaryObj.originalPcBounceAliasRecordsActuallyEmitted); name strings=$($summaryObj.originalPcBounceAliasNamesActuallyEmitted); name bytes=$($summaryObj.originalPcBounceAliasNameBytesActuallyEmitted)"
+    Write-Host '[AZTEC-W63-BOUNCE-FF] Historical Vec2 FF=4514237 B; compare only as archival relative, NOT same-revision exact A/B.'
 }
 Write-Host "[AZTEC-W63-GROWTH] Stage4D layout exact=$($summaryObj.nativeLayoutReplayExact); OAT 8509 identity=$($summaryObj.oatLoaded8509NativeAssetIdentities); OAT 0/0=$($summaryObj.oatZeroWarningsErrors)"
 Write-Host "[AZTEC-W63-GROWTH] STATUS=$($summaryObj.status)"
