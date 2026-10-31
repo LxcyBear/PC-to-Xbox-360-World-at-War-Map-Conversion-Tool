@@ -83,6 +83,10 @@ public static class T4WeaponVariableSerializerProof
     internal sealed record OwnedInlineFlameTable(
         string ProofLabel,int FixedFieldOffset,int SourceBodyByteOffset,
         byte[] BigEndianFixedBytes);
+    // Exact 7b source child; packed references intentionally have null bytes.
+    internal sealed record OwnedFlameDependencyChild(
+        string ParentLabel,string ProofLabel,string AssetKind,int ParentPointerOffset,
+        uint RawPointer,int? SourceBodyByteOffset,byte[]? InlineOwnedBytes);
 
     private sealed class TraverseStats
     {
@@ -111,6 +115,7 @@ public static class T4WeaponVariableSerializerProof
         public List<OwnedInlineBounceSoundTable>? ObservedBounceSoundTables { get; init; }
         public List<OwnedInlineSndAliasName>? ObservedSoundAliasNames { get; init; }
         public List<OwnedInlineFlameTable>? ObservedFlameTables { get; init; }
+        public List<OwnedFlameDependencyChild>? ObservedFlameDependencyChildren { get; init; }
         public byte[]? PatchDestination { get; init; }
         public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
         public List<PlannedInsertion>? PlannedInsertions { get; init; }
@@ -476,10 +481,21 @@ public static class T4WeaponVariableSerializerProof
         out IReadOnlyList<OwnedInlineFlameTable> tables,
         out IReadOnlyList<OwnedInlineSndAliasName> aliases,
         out string reason)
+        =>TryCollectSourceOwnedFlameDependencies(
+            xboxSourceProofBlob,name,out tables,out _,out aliases,out reason);
+
+    internal static bool TryCollectSourceOwnedFlameDependencies(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedInlineFlameTable> tables,
+        out IReadOnlyList<OwnedFlameDependencyChild> children,
+        out IReadOnlyList<OwnedInlineSndAliasName> aliases,
+        out string reason)
     {
         var observedTables=new List<OwnedInlineFlameTable>();
+        var observedChildren=new List<OwnedFlameDependencyChild>();
         var observedAliases=new List<OwnedInlineSndAliasName>();
         tables=Array.Empty<OwnedInlineFlameTable>();
+        children=Array.Empty<OwnedFlameDependencyChild>();
         aliases=Array.Empty<OwnedInlineSndAliasName>();
         reason=string.Empty;
         try
@@ -494,6 +510,7 @@ public static class T4WeaponVariableSerializerProof
                 WeaponName=name,
                 RequireSelfContainedPointers=false,
                 ObservedFlameTables=observedTables,
+                ObservedFlameDependencyChildren=observedChildren,
                 ObservedSoundAliasNames=observedAliases
             };
             var end=WalkOwnedPayload(ctx,0);
@@ -510,7 +527,22 @@ public static class T4WeaponVariableSerializerProof
                        .SequenceEqual(t.BigEndianFixedBytes)))
                 throw new InvalidDataException(
                     $"Weapon '{name}' original-PC FlameTable fixed-body ownership or offset invalid.");
+            if(observedChildren.Count!=observedTables.Count*9 ||
+               observedChildren.Any(ch=>
+                   !observedTables.Any(parent=>parent.ProofLabel==ch.ParentLabel &&
+                       ch.ParentPointerOffset is >= 424 and <= 456) ||
+                   (ch.SourceBodyByteOffset is null)!=(ch.InlineOwnedBytes is null) ||
+                   IsInline(ch.RawPointer)!=(ch.InlineOwnedBytes is not null) ||
+                   ch.SourceBodyByteOffset is not null &&
+                   (ch.SourceBodyByteOffset.Value<FixedBodySize ||
+                    ch.InlineOwnedBytes is null ||
+                    (long)ch.SourceBodyByteOffset.Value+ch.InlineOwnedBytes.Length>xboxSourceProofBlob.Length ||
+                    !xboxSourceProofBlob.AsSpan(ch.SourceBodyByteOffset.Value,ch.InlineOwnedBytes.Length)
+                        .SequenceEqual(ch.InlineOwnedBytes))))
+                throw new InvalidDataException(
+                    $"Weapon '{name}' FlameTable 7b inline name/material source extents are not authentic.");
             tables=observedTables.AsReadOnly();
+            children=observedChildren.AsReadOnly();
             aliases=observedAliases.AsReadOnly();
             return true;
         }
@@ -942,9 +974,23 @@ public static class T4WeaponVariableSerializerProof
 
         cursor += FlameTableFixedSize;
         c.Stats.FlameTables++;
+        var nameStart=cursor;
         cursor = ConsumeXString(c, namePtr, cursor, label + ".name");
+        if(c.ObservedFlameDependencyChildren is not null)
+            c.ObservedFlameDependencyChildren.Add(new OwnedFlameDependencyChild(
+                label,label+".name","FlameName",424,namePtr,
+                IsInline(namePtr)?nameStart:null,
+                IsInline(namePtr)?c.Source.AsSpan(nameStart,cursor-nameStart).ToArray():null));
         for (var i = 0; i < materialPtrs.Length; i++)
+        {
+            var materialStart=cursor;
             cursor = ConsumeMaterialRef(c, materialPtrs[i], cursor, $"{label}.material[{i}]");
+            if(c.ObservedFlameDependencyChildren is not null)
+                c.ObservedFlameDependencyChildren.Add(new OwnedFlameDependencyChild(
+                    label,$"{label}.material[{i}]","FlameMaterial",428+i*4,materialPtrs[i],
+                    IsInline(materialPtrs[i])?materialStart:null,
+                    IsInline(materialPtrs[i])?c.Source.AsSpan(materialStart,cursor-materialStart).ToArray():null));
+        }
         for (var i = 0; i < soundPtrs.Length; i++)
             cursor = ConsumeSndAliasCustom(c, soundPtrs[i], cursor, $"{label}.sound[{i}]");
         return cursor;
