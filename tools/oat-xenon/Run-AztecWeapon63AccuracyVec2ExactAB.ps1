@@ -121,7 +121,6 @@ function Preserve-ExistingScratch([string]$work,[string]$label,[string]$expected
     $ff=Join-Path $work 'scratch_emit\nazi_zombie_aztec.ff'
     $json=Join-Path $work 'aztec_weapon63_ff_growth_63.json'
     $emit=Join-Path $work 'scratch_emit\nuclear_xenon_renderer_emit.json'
-    $exists=@(Test-Path -LiteralPath $ff -PathType Leaf,Test-Path -LiteralPath $json -PathType Leaf)
     # Missing pair is not necessarily an error; the runner has its own
     # dedicated scratch location. An incomplete pair is an error.
     $hasFf=Test-Path -LiteralPath $ff -PathType Leaf
