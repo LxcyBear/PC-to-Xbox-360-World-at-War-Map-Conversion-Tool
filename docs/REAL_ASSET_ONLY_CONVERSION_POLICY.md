@@ -88,3 +88,17 @@ Do **not** invent a sound folder path. No original-PC media source directory sup
 The authoritative summary is in output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_flame_real_source_sprint/aztec_real_asset_resolution_sprint.json.
 
 **Status:** code committed, not yet run in Windows; source candidates and actual XMA closure counts unknown until the user runs it. No production real-asset completion is claimed.
+
+## 2026-10-31 follow-up: same-original-PC-zone FlameTable join, zero world-material reuse
+
+At commit 08d689c, the user's Windows run verified all **four FlameTable parents** against the exact original PC GfxWorld FF using full WeaponDef fixed-body/parent endian conversion and SHA. The stricter typed pointer comparison found **0/17** packed FlameTable Material references equal to the 39 independently OAT-loaded GfxWorld surface Material identities. All **17/17** therefore remain unresolved; do not bind them by name guesses or zero them out. Continue with the original weapon/FlameTable **other material-family** source corpus, not only the 39 world-surface materials. No native FF changed.
+
+The same run stopped in the XMA inventory script with a Windows PowerShell 5.1 **Argument types do not match** runtime binder exception. This was caused by the old generic-list array expression when serializing a zero-input report. The fix converts both strongly typed List[object] collections using .ToArray(), preserving empty arrays correctly. Re-run the sprint with **-NoBuild** to reuse the already compiled Release CLI and avoid unnecessary .NET rebuild; only PowerShell XMA handling changed. When -AudioSourceRoot is omitted, audio source discovery remains **NOT YET PROVIDED**, not a claimed XMA conversion or source sample closure.
+
+Quick retry from the repo root:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\\tools\\oat-xenon\\Run-AztecRealAssetResolutionSprint.ps1" -NoBuild
+
+No silent audio, fake materials/images, raw source packed pointers in production, or zeroing non-NULL pointers is permitted. The 122 parent, 12 material, and four sound slots that were **actually source NULL** remain properly NULL.
