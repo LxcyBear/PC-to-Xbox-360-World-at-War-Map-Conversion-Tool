@@ -17,8 +17,8 @@ $oldFfReport=Join-Path $repo '.deps\aztec-w63-direct-ff-growth\aztec_weapon63_ff
 $dumper=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $capFile=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\waw360-graph-dumper-capabilities.json'
 $out=Join-Path $base 'pc_g11_flame_loaded_virtual_target_proof'
-$report=Join-Path $out 'aztec_26_flame_packed_original_pc_virtual_target_probe.json'
-$capability='t4-pc-flame-packed-pointer-virtual-byte-probe-v1'
+$report=Join-Path $out 'aztec_26_flame_packed_original_pc_typed_material_alias_probe_v2.json'
+$capability='t4-pc-flame-packed-typed-material-and-alias-v2'
 foreach($f in @($oldReport,$flame,$oldFf,$oldFfReport)){
     if(-not(Test-Path -LiteralPath $f -PathType Leaf)){throw "No genuine Aztec source/OAT proof file: $f"}
 }
@@ -125,7 +125,7 @@ $tmp=Join-Path ([IO.Path]::GetTempPath()) ('WFPL_'+[guid]::NewGuid().ToString('N
 New-Item -Path $tmp -ItemType Directory -Force|Out-Null
 $code=-1
 $traceText=''
-$log=Join-Path $out 'aztec_26_flame_packed_loader_trace.log'
+$log=Join-Path $out 'aztec_26_flame_packed_typed_material_alias_loader_v2.log'
 try{
     $copy=Join-Path $tmp ([IO.Path]::GetFileName($pc))
     Copy-Item -LiteralPath $pc -Destination $copy -Force
@@ -156,81 +156,174 @@ try{
 if($code -ne 0){
     throw "Pinned original PC OAT x86 load refused source FF exit=$code; see $log. No material or XMA identity claimed."
 }
-Write-Host '[AZTEC-FLAME-OAT-PROGRESS] [############--------] 60% | original PC source x86 loader completed; validating exact pointer logs'
-$trace=@($traceText -split '[\r\n]+'|Where-Object {$_ -match '^\[WAW360-FLAMEPTR\] raw='})
+Write-Host '[AZTEC-FLAME-OAT-PROGRESS] [############--------] 60% | original PC OAT loader completed; verify typed Material + SoundAlias source targets'
+$lines=@($traceText -split '[\r\n]+')
+$trace=@($lines|Where-Object {$_ -match '^\[WAW360-FLAMEPTR\] raw='})
+$typedTrace=@($lines|Where-Object {$_ -match '^\[WAW360-FLAMETYPED\] raw='})
+$materials=@($lines|ForEach-Object {
+    $m=[regex]::Match([string]$_,'^\s*material\s*,\s*(\S(?:.*\S)?)\s*$',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if($m.Success){$m.Groups[1].Value.Trim()}
+}|Sort-Object -Unique)
+$sounds=@($lines|ForEach-Object {
+    $m=[regex]::Match([string]$_,'^\s*sound\s*,\s*(\S(?:.*\S)?)\s*$',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if($m.Success){$m.Groups[1].Value.Trim()}
+}|Sort-Object -Unique)
 $results=New-Object 'System.Collections.Generic.List[object]'
 [int]$loaded=0;[int]$named=0;[int]$unloaded=0;[int]$bad=0
+[int]$typedMaterials=0;[int]$oatMaterialMatches=0;[int]$typedAlias=0;[int]$oatSoundMatches=0
+[int]$packedNamesDirect=0;[int]$materialRefNameMatches=0;[int]$soundRefNameMatches=0
+[int]$rawHeaderTargets=0;[int]$missingTyped=0
+$typedPattern='^\[WAW360-FLAMETYPED\] raw=([0-9A-Fa-f]{8}) shape=(PC_MATERIAL112_NAME_MATCH|NO_TYPED_MATERIAL_MATCH) materialName=(\S+) techniqueName=(\S+) textureCount=(\d+) constantCount=(\d+) stateBitsCount=(\d+) namedImages=(\d+) images=(\S+) sndAliasName=(\S+)$'
 foreach($raw in @($byRaw.Keys|Sort-Object)){
     $p=$byRaw[$raw]
     $hits=@($trace|Where-Object {$_ -match ('^\[WAW360-FLAMEPTR\] raw='+$raw+'\b')})
-    $status='NO_TRACE'
-    $hex=''
-    $text=''
-    if($hits.Count -eq 1){
-        $regex='^\[WAW360-FLAMEPTR\] raw=([0-9A-Fa-f]{8}) block=(\d+) offset=0x([0-9A-Fa-f]+) status=([A-Z_]+) header32=([0-9A-Fa-f]*)(?: name=([A-Za-z0-9_./-]+))?$'
-        $m=[regex]::Match($hits[0].Trim(),$regex)
-        if($m.Success -and [int]$m.Groups[2].Value -eq [int]$p.block -and
-           [Convert]::ToUInt64($m.Groups[3].Value,16) -eq [long]$p.virtualOffset){
-            $status=[string]$m.Groups[4].Value
-            $hex=[string]$m.Groups[5].Value
-            $text=[string]$m.Groups[6].Value
-            if($status -eq 'LOADED_DIRECT_STRING_TARGET'){$named++;$loaded++}
-            elseif($status -eq 'LOADED_RAW_TARGET_BYTES_UNTYPED'){$loaded++}
-            else{$unloaded++}
-        }else{$status='TRACE_MALFORMED_OR_WRONG_DECODE';$bad++}
-    }elseif($hits.Count -gt 1){$status='AMBIGUOUS_REPEATED_LOADER_TRACES';$bad++}
-    else{$bad++}
-    Write-Host "[AZTEC-FLAME-OAT] raw=$raw loaded=$status users=$($p.usages.Count)"
-    $results.Add([ordered]@{
+    $typedHits=@($typedTrace|Where-Object {$_ -match ('^\[WAW360-FLAMETYPED\] raw='+$raw+'\b')})
+    if($hits.Count -ne 1 -or $typedHits.Count -ne 1){
+        $missingTyped++
+        Write-Host "[AZTEC-FLAME-TYPED] Missing or repeated OAT loaded source trace raw=$raw basic=$($hits.Count) typed=$($typedHits.Count)"
+        continue
+    }
+    $m=[regex]::Match($hits[0].Trim(),'^\[WAW360-FLAMEPTR\] raw=([0-9A-Fa-f]{8}) block=(\d+) offset=0x([0-9A-Fa-f]+) status=([A-Z_]+) header32=([0-9A-Fa-f]*)(?: name=([A-Za-z0-9_./-]+))?$')
+    $tm=[regex]::Match($typedHits[0].Trim(),$typedPattern)
+    if(-not $m.Success -or -not $tm.Success -or
+       [int]$m.Groups[2].Value -ne [int]$p.block -or
+       [Convert]::ToUInt64($m.Groups[3].Value,16) -ne [long]$p.virtualOffset){
+        $missingTyped++
+        Write-Host "[AZTEC-FLAME-TYPED] Original PC loaded pointer/source-block or typed schema mismatch raw=$raw"
+        continue
+    }
+    $status=[string]$m.Groups[4].Value
+    $hex=[string]$m.Groups[5].Value
+    $directString=[string]$m.Groups[6].Value
+    $sourceMatName=[string]$tm.Groups[3].Value
+    $sourceTechnique=[string]$tm.Groups[4].Value
+    $sourceAlias=[string]$tm.Groups[10].Value
+    $materialShape=([string]$tm.Groups[2].Value -eq 'PC_MATERIAL112_NAME_MATCH')
+    $textureCount=[int]$tm.Groups[5].Value
+    $constantCount=[int]$tm.Groups[6].Value
+    $stateCount=[int]$tm.Groups[7].Value
+    $namedImageCount=[int]$tm.Groups[8].Value
+    $imageNames=[string]$tm.Groups[9].Value
+    if($textureCount -gt 64 -or $constantCount -gt 64 -or $stateCount -gt 64 -or
+       $namedImageCount -gt $textureCount -or
+       ($materialShape -and $sourceMatName -eq '-')){
+        $missingTyped++
+        continue
+    }
+    $roles=@($p.usages|ForEach-Object{[string]$_.kind}|Sort-Object -Unique)
+    $mixedRoles=$roles.Count -gt 1
+    $isMaterial=$roles -contains 'FlameMaterial'
+    $isSound=$roles -contains 'FlameSound'
+    $isName=$roles -contains 'FlameName'
+    $materialCandidate=($isMaterial -and $materialShape -and
+        $sourceMatName -ne '-' -and -not $mixedRoles)
+    $materialMatchesOat=($materialCandidate -and ($materials -contains $sourceMatName))
+    $aliasCandidate=($isSound -and $sourceAlias -ne '-' -and -not $mixedRoles)
+    $aliasMatchesOat=($aliasCandidate -and ($sounds -contains $sourceAlias))
+    $flameNameDirect=($isName -and -not $mixedRoles -and
+        $status -eq 'LOADED_DIRECT_STRING_TARGET' -and
+        -not [string]::IsNullOrWhiteSpace($directString))
+    if($status -in @('LOADED_DIRECT_STRING_TARGET','LOADED_RAW_TARGET_BYTES_UNTYPED')){$loaded++}
+    else{$unloaded++}
+    if($status -eq 'LOADED_DIRECT_STRING_TARGET'){$named++}
+    if($status -eq 'LOADED_RAW_TARGET_BYTES_UNTYPED'){$rawHeaderTargets++}
+    if($materialCandidate){$typedMaterials++}
+    if($materialMatchesOat){
+        $oatMaterialMatches++
+        $materialRefNameMatches+=@($p.usages|Where-Object {$_.kind -eq 'FlameMaterial'}).Count
+    }
+    if($aliasCandidate){$typedAlias++}
+    if($aliasMatchesOat){
+        $oatSoundMatches++
+        $soundRefNameMatches+=@($p.usages|Where-Object {$_.kind -eq 'FlameSound'}).Count
+    }
+    if($flameNameDirect){
+        $packedNamesDirect+=@($p.usages|Where-Object {$_.kind -eq 'FlameName'}).Count
+    }
+    Write-Host "[AZTEC-FLAME-TYPED] raw=$raw roles=$($roles -join ',') material=$sourceMatName OAT-Material-root=$materialMatchesOat alias=$sourceAlias OAT-Sound-root=$aliasMatchesOat nameDirect=$flameNameDirect"
+    $results.Add([pscustomobject][ordered]@{
         rawOriginalPcPackedPointer=('0x'+$raw)
-        block=[int]$p.block
+        originalPcVirtualBlock=[int]$p.block
         decodedVirtualOffsetHex=('0x{0:X8}' -f [long]$p.virtualOffset)
-        loaderObservation=$status
-        firstLoadedTargetBytesHex=$hex
-        directlyReadPcString=$text
-        genuineOriginalPcSourceZoneSha256=[string]$j.originalPcFastfileSha256
-        usingFields=$p.usages.ToArray()
-        originalPcStringCandidateOnly=($status -eq 'LOADED_DIRECT_STRING_TARGET')
-        completeMaterialBodyAndAllDependencyBytesVerified=$false
-        sourceSoundSampleAndXmaPayloadsVerified=$false
-        nativeXboxFfAssetBindingCreated=$false
+        directlyLoadedOriginalPcSourceStatus=$status
+        originalPcFirst32ByteHeaderHex=$hex
+        roles=@($roles)
+        differentAssetKindsSharePointer=$mixedRoles
+        actualOriginalPcFlameNameString=if($flameNameDirect){$directString}else{$null}
+        originalPcFlameNameDirectlyByteVerified=$flameNameDirect
+        pcLoadedMaterial112ShapeNameCandidate=$materialCandidate
+        materialNameFromActualPcLoadedMemory=if($materialCandidate){$sourceMatName}else{$null}
+        materialNameIndependentlyListedAsOriginalPcOatAsset=$materialMatchesOat
+        pcLoadedMaterialTechniqueName=if($sourceTechnique -ne '-'){$sourceTechnique}else{$null}
+        pcLoadedMaterialTextureCount=$textureCount
+        pcLoadedMaterialConstantCount=$constantCount
+        pcLoadedMaterialStateBitsCount=$stateCount
+        actualPcLoadedImageNamesRead=$namedImageCount
+        pcLoadedImageNameCandidates=if($imageNames -eq '-'){@()}else{@($imageNames.Split(';'))}
+        pcLoadedFourByteSndAliasCustomNameCandidate=$aliasCandidate
+        sourceSndAliasName=if($aliasCandidate){$sourceAlias}else{$null}
+        soundAliasNameIndependentlyListedAsOriginalPcOatAsset=$aliasMatchesOat
+        sourceZoneFastFileSha256=[string]$j.originalPcFastfileSha256
+        originalSourcePointerUses=@($p.usages.ToArray())
+        authenticMaterialHeaderAndNamesDoNotProveXboxImageTechniqueGraph=$true
+        authenticSoundAliasNameDoesNotProveXmaPayload=$true
+        nativeMaterialAssetRuntimeValid=$false
+        nativeSoundSampleXmaCodecAndBindingValid=$false
+        candidateFfEmitted=$false
     })
 }
-if($results.Count -ne $byRaw.Count -or $loaded+$unloaded+$bad -ne $byRaw.Count){
-    throw 'OAT original PC loader pointer proof accounting changed. All unresolved remain fenced.'
+if($missingTyped -ne 0 -or $typedTrace.Count -ne $byRaw.Count -or
+   $results.Count -ne $byRaw.Count -or
+   $loaded+$unloaded -ne $byRaw.Count -or
+   $packedNamesDirect -gt 3 -or $materialRefNameMatches -gt 17 -or
+   $soundRefNameMatches -gt 6){
+    throw "Original PC OAT typed-v2 trace incomplete, stale or inconsistent: missing=$missingTyped typed=$($typedTrace.Count) unique=$($byRaw.Count) nameRefs=$packedNamesDirect materialRefs=$materialRefNameMatches soundRefs=$soundRefNameMatches. No FF."
 }
 if((Get-FileHash -LiteralPath $oldFf -Algorithm SHA256).Hash -ine $ffHash){
-    throw 'Protected 222/228 OAT-good native FF changed during source-only OAT trace.'
+    throw 'Protected 222/228 original OAT-good Xbox diagnostic FF SHA changed during read-only source trace.'
 }
 $reportBody=[ordered]@{
-    schema='WaW360.AztecFlameOatOriginalPcPackedVirtualTargetProbe.v1'
-    status='AZTEC_ORIGINAL_PC_LOADED_PACKED_POINTER_BYTE_TARGETS_AUDITED_NO_NATIVE_ASSETS'
-    originalPcSource=$pc
+    schema='WaW360.AztecFlameOriginalPcOatLoadedTypedPointers.v2'
+    status='AZTEC_ORIGINAL_PC_FLAME_TYPED_MATERIAL_NAME_SOUND_SOURCE_RESOLVED_PARTIAL_NO_XBOX_ASSETS'
+    originalPcSourceFastfile=$pc
     originalPcSourceSha256=[string]$j.originalPcFastfileSha256
-    previousNativeGoodFastFileSha256=$ffHash
-    genuineSourceOwnedFlameTableParents=4
-    materialPackedReferenceFields=17
-    namePackedReferenceFields=3
-    soundPackedReferenceFields=6
-    uniquePackedOriginalPcPointerValues=$byRaw.Count
-    loadedVirtualBlockRawTargets=$loaded
-    loadedAsciiStringCandidateTargets=$named
-    absentOrNotLoadedVirtualTargets=$unloaded
-    missingOrAmbiguousTraceTargets=$bad
-    authenticNullParentSlotsPreserved=122
-    authenticNullMaterialSlotsPreserved=12
-    authenticNullSoundSlotsPreserved=4
-    fullRealXenonMaterialGraphsResolved=0
-    realXmaAudioSamplePayloadsVerified=0
-    previousXboxGoodFastfileModified=$false
-    noSynthesizedMaterialImageAudioOrStringAssets=$true
+    originalOatGoodXboxDiagnosticFfSha256=$ffHash
+    realOriginalPcFlameParents=4
+    packedSourceMaterialReferences=17
+    packedSourceNameReferences=3
+    packedSourceSoundReferences=6
+    uniqueSourcePackedPointerTargets=$byRaw.Count
+    genuineSourceLoadedTargets=$loaded
+    nonLoadedSourceTargets=$unloaded
+    rawPreviouslyUntypedTargetsNowInspected=$rawHeaderTargets
+    pcMaterial112TypedNameCandidates=$typedMaterials
+    sourceMaterialNamesAlsoInOatXAssetList=$oatMaterialMatches
+    packedMaterialReferenceOccurrencesWithSourceAssetNameCandidate=$materialRefNameMatches
+    originalPcOatMaterialAssetRootsListed=$materials.Count
+    sourceSndAliasCustomNamesRead=$typedAlias
+    sourceSoundAliasNamesAlsoInOatXAssetList=$oatSoundMatches
+    packedSoundReferenceOccurrencesWithSourceAssetNameCandidate=$soundRefNameMatches
+    originalPcOatSoundAssetRootsListed=$sounds.Count
+    directlyReadActualPackedFlameNameReferenceOccurrences=$packedNamesDirect
+    genuineOriginalPcNullParentSlotsPreserved=122
+    genuineOriginalPcNullMaterialSlotsPreserved=12
+    genuineOriginalPcNullSoundSlotsPreserved=4
+    nativeXenonImageTechniqueMaterialAssetGraphsValidated=0
+    realAudioXmaEncodedPayloadsProven=0
+    realAudioAliasToXmaBindingsProven=0
+    OatSourceFileReadOnly=$true
+    originalOatGoodFfUnmodified=$true
+    realPcAssetsOnlyNoFillerOrSilentAudio=$true
     xboxHardwareReady=$false
-    rawLoaderLog=$log
-    targets=$results.ToArray()
+    sourceLoaderTraceLog=$log
+    typedSourceTargets=@($results.ToArray())
 }
-$reportBody|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $report -Encoding UTF8
-Write-Host "[AZTEC-FLAME-OAT] Exact loaded raw targets=$loaded/$($byRaw.Count), directly readable string candidates=$named, unobserved/ambiguous=$($unloaded+$bad)"
-Write-Host '[AZTEC-FLAME-OAT] Loaded 32B headers are NOT complete typed materials; no XMA sample, no native FF.'
-Write-Host "[AZTEC-FLAME-OAT] STATUS=$($reportBody.status)"
-Write-Host "[AZTEC-FLAME-OAT] JSON=$report"
-Write-Host '[AZTEC-FLAME-OAT-PROGRESS] [####################] 100% | read-only original PC OAT virtual pointer witness; native FF preserved'
+$reportBody|ConvertTo-Json -Depth 16|Set-Content -LiteralPath $report -Encoding UTF8
+Write-Host '[AZTEC-FLAME-TYPED-PROGRESS] [################----] 80% | all 13 unique PC source pointer targets typed and reported'
+Write-Host "[AZTEC-FLAME-TYPED] Loaded source targets=$loaded/$($byRaw.Count); original packed FlameTable name refs directly read=$packedNamesDirect/3"
+Write-Host "[AZTEC-FLAME-TYPED] Genuine PC loaded Material112 names=$typedMaterials; OAT-listed roots=$oatMaterialMatches; material ref occurrences with OAT-name identity=$materialRefNameMatches/17"
+Write-Host "[AZTEC-FLAME-TYPED] SndAliasCustom name pointers readable=$typedAlias; OAT-listed sound roots=$oatSoundMatches; sound ref occurrences with OAT-name identity=$soundRefNameMatches/6"
+Write-Host '[AZTEC-FLAME-TYPED] Source material names, technique/image pointers and sound aliases ARE NOT native Xbox shaders/images or XMA samples. No filler, no FF.'
+Write-Host "[AZTEC-FLAME-TYPED] STATUS=$($reportBody.status)"
+Write-Host "[AZTEC-FLAME-TYPED] JSON=$report"
+Write-Host '[AZTEC-FLAME-TYPED-PROGRESS] [####################] 100% | one OAT build, typed original-PC source proof, native FF preserved'
