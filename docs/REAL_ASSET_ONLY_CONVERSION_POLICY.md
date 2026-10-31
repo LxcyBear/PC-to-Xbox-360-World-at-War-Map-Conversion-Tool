@@ -222,3 +222,29 @@ Run one sprint from the repository root:
 Only build once; later runs can omit -BuildDumper. You can cap real Xbox FF scans with -MaxXboxRetailZones 1 or explicitly skip Xbox sample extraction with -SkipXboxXmaExtract. Report files are pc_g11_flame_loaded_virtual_target_proof/aztec_five_original_pc_material_pointer_cells_and_real_xbox_xma_sprint.json and pc_g11_flame_real_xbox_xma_source/aztec_six_real_original_xbox_sound_xma_source_provenance.json under Aztec native material mapping output. The exact original PC FF and 4,514,599-byte previous OAT accepted Xbox test FF are read-only. Real source NULL fields (122 parent, 12 material, 4 sound) remain NULL. Production Xbox material graphs, alias-to-real-sample bindings and runtime validation remain fenced pending independent proof.
 
 The new code has not yet been Windows compiled or runtime tested by the user.
+
+
+## Original PC Flame v3 real results and Xbox alias-to-XMA v4
+
+The user's f9cb964 run COMPLETED without fatal error: PS51 syntax PASS 78/78, pinned OAT x86 build PASS, all 13/13 original PC loaded FlameTable targets found, all 3/3 packed name references resolved, and all 6/6 source SndAliasCustom sound names matched exactly to the original PC OAT Sound XAsset roots and to owned XAsset Sound names in all 67 valid Xbox retail FF lists. The v3 two-hop material-source test found 0/5 genuine Material112 names across five unique pointer targets covering 17 FlameMaterial field references. Do not assert the pointer-cell hypothesis has been proven; inspect their exact actual source bytes.
+
+The real Xbox sound stage selected ber3.ff and actually exported 1,049 Xbox XMA file candidates, but matching sound/aliasName.aliasIndex.xma files were 0/6. The pinned T4Xenon SoundFile schema explains why simple filename matching is insufficient: SAT_LOADED references a separate LoadedSound whose genuine name determines the OAT output filename. Only SAT_STREAMED has the aliasName.index.xma relationship.
+
+New v4 native Xbox SoundFile source witness: one pinned OAT Win32 rebuild with graph-dumper/XboxSoundAliasLoadedSampleTrace.snippet.cpp in the real T4Xenon SoundDumper. Controlled by WAW360_XBOX_FLAME_SOUND_CHAINS and scoped to the six already source-verified flamethrower aliases, it records actual loaded Sound alias-list root, per-record alias index and name, SoundFile exists flag, SAT_LOADED referenced LoadedSound.name/packet size, or SAT_STREAMED directory/name, without copying data into a production FF. OAT's original source checkout is restored clean after compilation. New capability t4xenon-real-flame-sound-to-loaded-xma-chain-v4.
+
+Run-AztecFlameXboxLoadedSampleChain.ps1 verifies the original 67-zone cache, prior v3 actual ber3.ff SHA, six PC and Xbox owned aliases and new v4 OAT capability; it runs the one actual Sound/LoadedSound dump, joins the real alias->SoundFile->LoadedSound name or streamed alias index to its native sample, SHA-pins only matching genuine .xma files and records RIFF XMA codec header validation separately. Unbound 1,049 other OAT sound dumps are NEVER used as donors. The Xbox stock residency and final native SoundFile/FlameTable binding remain unverified.
+
+Run-AztecFlameFiveMaterialCellEvidence.ps1 independently prints actual original-PC five 32-byte header samples as eight little-endian 32-bit words each, grouped by all 17 original material reference occurrences. None are typed into a native Material on mere numeric similarity. It reuses last successful v3 proof; no extra OAT build is needed for material evidence.
+
+One local Windows sprint:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax failed" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlameV4MaterialAndRealXboxSoundChains.ps1" -BuildDumper
+    if ($LASTEXITCODE -ne 0) { throw "Authentic original PC Flame and Xbox XMA sound sample-chain scan blocked" }
+
+Output is in the Aztec native material mapping folder: pc_g11_flame_loaded_virtual_target_proof/aztec_five_original_pc_real_material_memory_words.json, pc_g11_flame_real_xbox_xma_source/aztec_six_real_flame_xbox_sound_to_xma_chain_v4.json, and pc_g11_flame_loaded_virtual_target_proof/aztec_flame_v4_original_pc_real_material_memory_and_xbox_real_sound_source_sprint.json.
+
+Committed but NOT YET built or executed by the user. No new production fastfiles, stock runtime preload claim, synthetic Material/technique/image asset or silent XMA sample; 122/12/4 original NULLs and the old good native FF remain untouched.
