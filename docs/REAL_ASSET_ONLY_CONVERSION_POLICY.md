@@ -102,3 +102,30 @@ Quick retry from the repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File ".\\tools\\oat-xenon\\Run-AztecRealAssetResolutionSprint.ps1" -NoBuild
 
 No silent audio, fake materials/images, raw source packed pointers in production, or zeroing non-NULL pointers is permitted. The 122 parent, 12 material, and four sound slots that were **actually source NULL** remain properly NULL.
+
+
+## 2026-10-31: directly inspect the 17+3+6 packed original PC FlameTable source targets
+
+The user's e9e1390 test proved all four genuine FlameTable parent bodies belong to the identical original PC Aztec FF as the OAT world material corpus, but **none of 17** packed FlameTable Material* references matched the 39 known GfxWorld Material* source identities. XMA preflight succeeded and detected one installed encoder executable but zero actual source media files (no audio directory was supplied). No XMA samples were converted or bound to alias references.
+
+The next original-PC loaded-pointer witness is a one-specialized-OAT-build source-only stage. It uses an extension of the existing pinned OAT x86 loader's known 10-WeaponDef direct pointer tracing:
+
+- The optional WAW360_FLAME_POINTER_WITNESS environment variable reads up to 32 actual bytes from the **allocated original-PC loaded block**, not from an erroneously assumed decompressed-FF physical offset. It also detects truly terminated direct ASCII strings. It neither writes a FastFile nor uses an Xbox retail donor.
+- The script tools/oat-xenon/Run-AztecFlamePackedPointerLoaderProbe.ps1 first rechecks the old 4,514,599-byte OAT-good 222-alias FF SHA, the original compressed PC map source SHA and all four genuine FlameTable parent proof flags.
+- It visits exactly 17 packed FlameTable material pointer **occurrences**, three packed name references, and six packed sound references; duplicate raw pointer values are grouped and a **single OAT --list loader run** inspects each distinct virtual target.
+- All loader results remain source-provenance only. A 32-byte Material target header is NOT a complete typed converted Material body, image/technique dependency or Xbox runtime binding; a packed SoundAlias is NOT an XMA sample. Any missing or ambiguous target remains blocked.
+- One OAT x86 specialized build installs capability t4-pc-flame-packed-pointer-virtual-byte-probe-v1. It reuses the existing loader trace instrumentation, changes no production FF and leaves genuine NULL fields untouched.
+
+Run (repo root):
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "Syntax failure" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlamePackedPointerLoaderProbe.ps1" -BuildDumper
+
+Only use -BuildDumper for the first specialized OAT build; subsequent reruns use the installed binary. The report is pc_g11_flame_loaded_virtual_target_proof/aztec_26_flame_packed_original_pc_virtual_target_probe.json under the native material mapping folder.
+
+Audio remains dependent on actual original PC samples/archives and a verified Xbox-compatible XMA encoder/output/alias binding. A detected encoder executable is not sample conversion or runtime evidence. Preserve natural source NULL parent/material/sound slots (122/12/4) as true NULL. No filler or silent stub audio.
+
+This extension is committed but not yet run or compiled on the user's Windows PC. Source observation and complete native asset production remain distinct gates.
