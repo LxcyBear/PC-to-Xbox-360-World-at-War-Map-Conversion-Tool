@@ -35,7 +35,7 @@
                     std::cerr << "[WAW360-XMASOUND] root=" << asset.m_name
                               << " index=-1 type=INVALID exists=0 alias=-"
                               << " loaded=- streamDir=- streamName=-"
-                              << " sampleBytes=0" << std::endl;
+                              << " sampleBytes=0 loadedOwned=0" << std::endl;
                 }
                 else
                 {
@@ -46,14 +46,29 @@
                         std::string state=sf?"UNKNOWN":"NULL";
                         std::string loaded="-",dir="-",name="-";
                         uint32_t bytes=0;
+                        bool loadedOwned=false;
                         if(sf && sf->type==SAT_LOADED)
                         {
                             state="LOADED";
+                            // A non-NULL source SoundFile pointer is NOT
+                            // automatically a valid dereference. First match
+                            // its address to a loaded non-reference asset in
+                            // this exact original Xbox retail FF's XAsset
+                            // pool. The loaded asset's OWN name determines
+                            // the pinned OAT .xma output filename.
                             const auto* ptr=sf->u.loadSnd;
-                            if(ptr && ptr->name)
+                            if(ptr)
                             {
-                                loaded=safe(ptr->name);
-                                bytes=ptr->sound.packet.BufferSize;
+                                for(const auto* owner:
+                                    context.m_zone.m_pools.PoolAssets<AssetLoadedSound>())
+                                {
+                                    if(!owner || owner->IsReference() ||
+                                       owner->Asset()!=ptr)continue;
+                                    loadedOwned=true;
+                                    loaded=safe(owner->m_name.c_str());
+                                    bytes=ptr->sound.packet.BufferSize;
+                                    break;
+                                }
                             }
                         }
                         else if(sf && sf->type==SAT_STREAMED)
@@ -71,6 +86,7 @@
                                   << " streamDir=" << dir
                                   << " streamName=" << name
                                   << " sampleBytes=" << bytes
+                                  << " loadedOwned=" << (loadedOwned?1:0)
                                   << std::endl;
                     }
                 }
