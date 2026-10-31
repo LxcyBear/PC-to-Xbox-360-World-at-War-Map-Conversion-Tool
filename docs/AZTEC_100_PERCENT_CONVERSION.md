@@ -443,3 +443,16 @@ Use this command from PC2XB3 repository root:
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11UnifiedWorldBatchSource.ps1' -BuildDumper
 
 **User goal:** do not repeat one FF rebuild per child. Use this bundled source report to determine which typed PC-owned arrays and native root fields are safe and how many image/material references need rebinding, implement the verified families in one FF emitter, and build ONE new isolated pc_g11_remaining_world_single_batch FF with a first OAT gate and a second independent readback. That next bundled FF serializer is NOT implemented or validated yet, so batch-ready remains explicitly false until needed source and reference/streaming conversion rules are proven. No hardware test yet. Full Gate11 development milestone still 10/13.
+
+### October 31 — first unified source dumper OAT build blocked by two MSVC C4018 warnings (source-only)
+
+Windows first attempt built pinned x86 Release OAT dependencies and got to new GfxWorldMaterialCorpusDumperT4.cpp; MSVC /WX failed on signed vs unsigned comparisons **line 674** (unsigned loop variable n vs int world.lightmapCount) and **line 703** (unsigned smodel/surface index id vs int world.surfaceCount). This is a C++ source compilation warning/error, **not a map FF/serialization failure**. OAT source collector never ran, no new FF was emitted, and SHA-locked independently verified 3,642,932-byte Gate11 FF was unchanged. Fixed with signed int lightmap loop n and unsigned cast of the already-validated world.surfaceCount in the range check, retaining full bounds checks and not disabling warnings.
+
+One retry only (PowerShell 5.1 from repo root):
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'PS5.1 syntax gate failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11UnifiedWorldBatchSource.ps1' -BuildDumper
+
+This next run still needs Windows compilation/actual input census to establish all eight source-family results. No Gate11 overall milestone advancement or Xbox release is claimed.
