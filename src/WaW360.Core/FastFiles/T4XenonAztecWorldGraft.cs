@@ -435,10 +435,15 @@ public sealed class T4XenonAztecWorldGraft
             graft._gate11Cells=await T4XenonAztecGate11CellProbe.LoadAsync(gate11Source,ct);
             if(graft._gate11Cells.WorldCellPointerAt<=0 ||
                graft._gate11Cells.WorldCellPointerAt>=XboxRootSize-4 ||
+               graft._gate11Cells.WorldCellCountAt<=0 ||
+               graft._gate11Cells.WorldCellCountAt>=XboxRootSize-4 ||
+               graft._gate11Cells.WorldCellPointerAt==graft._gate11Cells.WorldCellCountAt ||
                BinaryPrimitives.ReadUInt32BigEndian(
-                   graft._root.AsSpan(graft._gate11Cells.WorldCellPointerAt,4))!=0)
+                   graft._root.AsSpan(graft._gate11Cells.WorldCellPointerAt,4))!=0 ||
+               BinaryPrimitives.ReadUInt32BigEndian(
+                   graft._root.AsSpan(graft._gate11Cells.WorldCellCountAt,4))!=0)
                 throw new InvalidDataException(
-                    "Gate11 source-owned GfxWorld::cells pointer was not NULL in the original seeded Xbox root.");
+                    "Gate11 requires a NULL GfxWorld::cells pointer and zero source-seed dpvsPlanes.cellCount at exact measured Xbox offsets. The cell count is activated only with the 11 source-owned native cell children.");
         }
         return graft;
     }
@@ -502,7 +507,16 @@ public sealed class T4XenonAztecWorldGraft
         if(_gate10DrawProbe is not null)
             Put(body,_gate10DrawPointerAt,T4ZonePointer.Following);
         if(_gate11Cells is not null)
+        {
+            // CRITICAL NATIVE LOADER FIX: Gate10's intentionally partial
+            // scalar-only 900B root advertises dpvsPlanes.cellCount=0.
+            // When the pointer becomes FOLLOWING, OAT needs the REAL 11
+            // to consume the 616B contiguous GfxCell array before walking
+            // 740 AABB trees and 14,974 model indices. Otherwise it reads
+            // cell[0].mins[0] (-2682.5 / 0xC527A800) as a zone pointer.
+            Put(body,_gate11Cells.WorldCellCountAt,(uint)_gate11Cells.CellCount);
             Put(body,_gate11Cells.WorldCellPointerAt,T4ZonePointer.Following);
+        }
         if(StaticDpvsProbeEnabled)
         {
             Put(body,_dpvsSortedAt,T4ZonePointer.Following);
