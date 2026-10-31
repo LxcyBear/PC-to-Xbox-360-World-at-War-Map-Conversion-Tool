@@ -671,7 +671,7 @@ namespace gfxworld
             q<<"]";
             q<<",\"lightmapRefs\":[";
             if(outerCountsValid)
-                for(unsigned n=0;n<world.lightmapCount;n++)
+                for(int n=0;n<world.lightmapCount;n++)
                 {
                     const auto& lm=world.lightmaps[n];
                     if(n)q<<',';
@@ -700,7 +700,7 @@ namespace gfxworld
                         {
                             if(k)q<<',';
                             const unsigned id=shadow.sortedSurfIndex[k];
-                            if(id>=world.surfaceCount)remOk=false;
+                            if(id>=static_cast<unsigned>(world.surfaceCount))remOk=false;
                             q<<id;
                         }
                     q<<"],\"smodelIndex\":[";
