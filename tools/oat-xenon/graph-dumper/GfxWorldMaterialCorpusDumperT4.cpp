@@ -488,8 +488,7 @@ namespace gfxworld
             validArray(world.worldLodChainCount,100000,world.worldLodChains) &&
             validArray(world.worldLodInfoCount,100000,world.worldLodInfos) &&
             validArray(world.worldLodSurfaceCount,1000000,world.worldLodSurfaces) &&
-            validArray(world.primaryLightCount,4096,world.shadowGeom) &&
-            validArray(world.primaryLightCount,4096,world.lightRegion) &&
+            world.primaryLightCount<=4096u &&
             lightGridRowsValid &&
             validArray(gridRows,65536,grid.rowDataStart) &&
             validArray(grid.rawRowDataSize,128u*1024u*1024u,grid.rawRowData) &&
@@ -544,6 +543,8 @@ namespace gfxworld
             q<<",\"worldLodChains\":"<<world.worldLodChainCount;
             q<<",\"worldLodInfos\":"<<world.worldLodInfoCount;
             q<<",\"worldLodSurfaces\":"<<world.worldLodSurfaceCount;
+            q<<",\"shadowGeomRootPresent\":"<<(world.shadowGeom?"true":"false");
+            q<<",\"lightRegionRootPresent\":"<<(world.lightRegion?"true":"false");
             q<<",\"lightGridRows\":"<<gridRows;
             q<<",\"lightGridRawBytes\":"<<grid.rawRowDataSize;
             q<<",\"lightGridEntries\":"<<grid.entryCount;
@@ -579,6 +580,16 @@ namespace gfxworld
             q<<",\"lodData\":"<<(world.dpvs.lodData?"true":"false");
             q<<",\"dpvsDynCellBits0\":"<<(world.dpvsDyn.dynEntCellBits[0]?"true":"false");
             q<<"}";
+            q<<",\"sourceGridShape\":{";
+            q<<"\"hasLightRegions\":"<<(grid.hasLightRegions?"true":"false");
+            q<<",\"sunPrimaryLightIndex\":"<<grid.sunPrimaryLightIndex;
+            q<<",\"rowAxis\":"<<grid.rowAxis;
+            q<<",\"colAxis\":"<<grid.colAxis;
+            q<<",\"mins\":[";
+            for(unsigned k=0;k<3;k++){if(k)q<<',';q<<grid.mins[k];}
+            q<<"],\"maxs\":[";
+            for(unsigned k=0;k<3;k++){if(k)q<<',';q<<grid.maxs[k];}
+            q<<"]}";
             q<<",\"requiresXenonStreamingMetadataReconstruction\":true";
             q<<",\"requiresImageAssetRelocation\":true";
             q<<",\"requiresMaterialStateBitsRuntimeSemanticProof\":true";
@@ -659,7 +670,7 @@ namespace gfxworld
             q<<"]";
             // GfxShadowGeometry has nested POINTERS; do not blob/copy it.
             q<<",\"shadowGeometry\":[";
-            if(outerCountsValid)
+            if(outerCountsValid && world.shadowGeom)
                 for(unsigned n=0;n<world.primaryLightCount;n++)
                 {
                     const auto& shadow=world.shadowGeom[n];
@@ -693,7 +704,7 @@ namespace gfxworld
             // Nested hull/axis traversal normalized to numbers, no OAT
             // process-address bytes. Bound every count before dereference.
             q<<",\"lightRegions\":[";
-            if(outerCountsValid)
+            if(outerCountsValid && world.lightRegion)
                 for(unsigned n=0;n<world.primaryLightCount;n++)
                 {
                     const auto& region=world.lightRegion[n];
