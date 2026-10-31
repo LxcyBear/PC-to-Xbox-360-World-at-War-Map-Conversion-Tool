@@ -46,6 +46,25 @@ if($protectedBytes -ne 4510695 -or $protectedHash -ine [string]$s.converted.sha2
 }
 $sourceHash=(Get-FileHash -LiteralPath $sourceReport -Algorithm SHA256).Hash
 $sizeHash=(Get-FileHash -LiteralPath $sizeReport -Algorithm SHA256).Hash
+# Code/content hashes matter in addition to HEAD: an uncommitted local edit
+# between A/B passes would make the compressed delta misleading.
+$codeInputs=@(
+    'src\WaW360.Core\FastFiles\T4XenonAztecWeapon63ScalarCanary.cs',
+    'src\WaW360.Core\FastFiles\T4XenonGraphBlockLayoutPlanner.cs',
+    'src\WaW360.Core\FastFiles\T4XenonRendererGraphEmitter.cs',
+    'src\WaW360.Core\FastFiles\T4WeaponVariableSerializerProof.cs',
+    'tools\oat-xenon\Run-AztecWeapon63FfGrowthCanary.ps1',
+    'tools\oat-xenon\Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1',
+    'tools\oat-xenon\Run-AztecWeapon63ExactABSizeLightning.ps1'
+)
+$codeHashes=@{}
+foreach($relative in $codeInputs){
+    $file=Join-Path $repo $relative
+    if(-not(Test-Path -LiteralPath $file -PathType Leaf)){
+        throw "Cannot pin A/B code input: $file"
+    }
+    $codeHashes[$relative]=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+}
 $revision=(& git -C $repo rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($revision)){
     throw 'Cannot pin current exact repository code revision.'
@@ -90,6 +109,13 @@ function Assert-InputsStillPinned {
     $now=(& git -C $repo rev-parse HEAD).Trim()
     if($LASTEXITCODE -ne 0 -or $now -ine $revision){
         throw 'Git source revision changed DURING A/B test; results not comparable.'
+    }
+    foreach($relative in $codeInputs){
+        $path=Join-Path $repo $relative
+        if(-not(Test-Path -LiteralPath $path -PathType Leaf) -or
+           (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine [string]$codeHashes[$relative]){
+            throw "A/B native FF tool source code changed between control and 63-case: $relative"
+        }
     }
 }
 function Invoke-ExactCase([int]$count,[string]$label){
@@ -216,6 +242,7 @@ $result=[ordered]@{
     revision=$revision
     inputOriginalPcWeapon69ManifestSha256=$sourceHash
     inputProtectedSizeLedgerSha256=$sizeHash
+    exactNativeFfEmitterAndRunnerCodeSha256=$codeHashes
     originalSourceOwnedWeaponRootsWithRealXboxSourceProof=63
     originalSourceOnlyFull7bWeaponGraphBytes=179775
     protectedOatPassingFfBytes=$protectedBytes
