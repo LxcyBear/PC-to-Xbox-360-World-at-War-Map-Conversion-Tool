@@ -104,8 +104,11 @@ $result=[ordered]@{
     observedRiffXmaFormatTags=$xmaHeaders
     totalSourceFileBytes=$totalBytes
     locallyFoundXmaEncoderExecutables=$toolsFound.Count
-    discoveredEncoderTools=@($toolsFound)
-    genuineSourceFiles=@($rows)
+    # PS 5.1 array-expression adapter can throw 'Argument types do not match'
+    # when materializing generic List[object] inside an OrderedDictionary.
+    # Explicit typed ToArray() is stable for both empty and populated lists.
+    discoveredEncoderTools=$toolsFound.ToArray()
+    genuineSourceFiles=$rows.ToArray()
     completeAudioStreamAssetAndXmaPayloadsVerified=$false
     xboxXmaEncodeRoundtripVerified=$false
     nativeSoundAliasSamplesBound=$false
