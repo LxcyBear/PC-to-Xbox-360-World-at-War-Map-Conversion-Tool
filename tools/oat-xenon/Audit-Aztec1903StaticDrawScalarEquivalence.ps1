@@ -117,6 +117,12 @@ foreach($name in $fields){
 $cachedEq=0
 $cachedAlignedEq=0
 $cachedLightPairCounts=@{}
+$primaryToHandlePairs=@{}
+$primaryToHandleByValue=@{}
+$primaryToHandleConflicts=@{}
+$handleEquals256PlusPrimaryCount=0
+$reflectionEqualsPcMinusOneCount=0
+$nativePrimaryZeroCount=0
 $cachedLightBySource=@{}
 $conflictingCachedLightSource=@{}
 $pcFlagOutOfByte=0
@@ -207,6 +213,22 @@ for($i=0;$i -lt 1903;$i++){
     if($pcFlags -lt 0 -or $pcFlags -gt 255){$sourceFlagsRangeOk=$false;$pcFlagOutOfByte++}
     $pcCached=[int](Field $p 'cachedLightSettingIndex')
     $xboxHandle=[int](Field $n 'lightingHandle')
+    $pcPrimary=[int](Field $p 'primaryLightIndex')
+    $xboxPrimary=[int](Field $n 'primaryLightIndex')
+    $pcReflection=[int](Field $p 'reflectionProbeIndex')
+    $xboxReflection=[int](Field $n 'reflectionProbeIndex')
+    $primaryPair=('{0}->{1}' -f $pcPrimary,$xboxHandle)
+    if(-not $primaryToHandlePairs.ContainsKey($primaryPair)){$primaryToHandlePairs[$primaryPair]=0}
+    $primaryToHandlePairs[$primaryPair]++
+    $primaryKey=[string]$pcPrimary
+    if(-not $primaryToHandleByValue.ContainsKey($primaryKey)){
+        $primaryToHandleByValue[$primaryKey]=$xboxHandle
+    }elseif([int]$primaryToHandleByValue[$primaryKey] -ne $xboxHandle){
+        $primaryToHandleConflicts[$primaryKey]=$true
+    }
+    if($xboxHandle -eq (256+$pcPrimary)){$handleEquals256PlusPrimaryCount++}
+    if($pcReflection -gt 0 -and $xboxReflection -eq ($pcReflection-1)){$reflectionEqualsPcMinusOneCount++}
+    if($xboxPrimary -eq 0){$nativePrimaryZeroCount++}
     $cachePair=('{0}->{1}' -f $pcCached,$xboxHandle)
     if(-not $cachedLightPairCounts.ContainsKey($cachePair)){$cachedLightPairCounts[$cachePair]=0}
     $cachedLightPairCounts[$cachePair]++
@@ -301,6 +323,20 @@ $report=Join-Path $OutputDirectory 'aztec_1903_pc_to_native_draw_scalar_equivale
         ([string]$_).Split(@('->'),[StringSplitOptions]::None)[1]
     } | Sort-Object -Unique).Count
     cachedLightObservedDeterministicMapping=($conflictingCachedLightSource.Count -eq 0)
+    originalPcPrimaryIndexToXboxHandleObservedPairs=@(
+        $primaryToHandlePairs.GetEnumerator() | Sort-Object Name |
+            ForEach-Object { [ordered]@{
+                pcPrimaryToXboxHandle=[string]$_.Key;count=[int]$_.Value
+            } }
+    )
+    primaryIndexToHandleMappingConflicts=$primaryToHandleConflicts.Count
+    xboxHandleEquals256PlusPcPrimaryCount=$handleEquals256PlusPrimaryCount
+    xboxHandleEquals256PlusPcPrimaryForAllRows=($handleEquals256PlusPrimaryCount -eq 1903)
+    xboxReflectionEqualsPcReflectionMinusOneCount=$reflectionEqualsPcMinusOneCount
+    xboxReflectionEqualsPcReflectionMinusOneForAllRows=($reflectionEqualsPcMinusOneCount -eq 1903)
+    nativeXboxPrimaryLightZeroRows=$nativePrimaryZeroCount
+    originalPcPrimaryToXboxHandleConversionSemanticsIndependentlyProven=$false
+    originalPcReflectionToXboxIndexBaseSemanticsIndependentlyProven=$false
     cachedLightConflictingSourceValues=@($conflictingCachedLightSource.Keys|Sort-Object)
     cachedLightSourceToXboxObservedPairs=@($cachedLightPairCounts.GetEnumerator()|
         Sort-Object Name|ForEach-Object {
@@ -334,6 +370,12 @@ foreach($f in @($proofs.ToArray())){
 }
 Write-Host "[AZTEC-DRAW-SCALAR] cachedLightSettingIndex == Xbox lightingHandle: $cachedEq/1903 (exact mapping proven=$lightingHypothesis; field SEMANTICS not yet independently proven)"
 Write-Host "[AZTEC-DRAW-SCALAR] cachedLight unique PC source indices=$($cachedLightBySource.Count), mapping conflicts=$($conflictingCachedLightSource.Count). Observed lookup is NOT a source-owned light conversion rule."
+Write-Host "[AZTEC-DRAW-SCALAR] HYPOTHESIS lightingHandle = 256 + PC primaryLightIndex: $handleEquals256PlusPrimaryCount/1903; conflicts=$($primaryToHandleConflicts.Count) (SEMANTICS NOT VERIFIED)"
+Write-Host "[AZTEC-DRAW-SCALAR] HYPOTHESIS Xbox reflectionIndex = PC reflectionIndex - 1: $reflectionEqualsPcMinusOneCount/1903 (SEMANTICS NOT VERIFIED)"
+Write-Host "[AZTEC-DRAW-SCALAR] Xbox primaryLightIndex 0 on $nativePrimaryZeroCount/1903 source matched draws."
+foreach($item in @($primaryToHandlePairs.GetEnumerator()|Sort-Object Name)){
+    Write-Host "[AZTEC-DRAW-SCALAR] PRIMARY-TO-HANDLE pcPrimary->xboxHandle=$($item.Key) rows=$($item.Value)"
+}
 foreach($item in @($cachedLightPairCounts.GetEnumerator()|Sort-Object Name|Select-Object -First 18)){
     Write-Host "[AZTEC-DRAW-SCALAR] LIGHT-PAIR pcCached->xboxHandle=$($item.Key) rows=$($item.Value)"
 }
