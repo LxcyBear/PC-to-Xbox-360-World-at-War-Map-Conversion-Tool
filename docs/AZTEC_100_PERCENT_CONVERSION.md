@@ -370,3 +370,22 @@ Run from PC2XB3 converter repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-AztecGate11OatFaultWordProvenance.ps1'
 
 **Milestones remain 10/13** until Gate11's full native world/DPVS closure (not just 740 AABB children), paired final FF dependencies and genuine Xbox smoke-test admission are proven.
+
+## October 31 — Gate11 OAT invalid pointer root cause and targeted C# fix
+
+Windows source-field audit: all 37 PS5.1 scripts PASS. OAT's first GfxWorld root #7635 fault was raw 0xC527A800 (IEEE754 float -2682.5), target block PHYSICAL offset 86484991 > 559280, with native streamPos 2613260. Source-owned original-PC cell bounds contain EXACTLY ONE matching float, GfxCell[0].mins[0] at decompressed zone offset 7336126. All 11 cell headers, 740 AABB records, 14974 model indices and 11 reflection index bytes previously matched original-PC source bytes, but the Xbox OAT loader rejected the FF.
+
+**Root cause grounded in converter source:** T4AztecPcGfxWorldRootDpvsSeed.cs intentionally initializes only three top-level root scalars (indexCount, surfaceCount, vertexCount) and ten dpvsStatic counters. It **leaves GfxWorld.dpvsPlanes.cellCount ZERO** in the 900-byte Xenon root. This is valid in Gate10 because GfxWorld.cells pointer is NULL. Gate11 incorrectly set GfxWorld.cells to FOLLOWING and serialized 11 cells without activating native dpvsPlanes.cellCount = 11. OAT can consequently skip the 616B array and misinterpret cell[0].mins[0] (-2682.5 / 0xC527A800) as a packed pointer. The source-code root-cause explanation fits the observed bad pointer; only a new FF and independent native OAT readback prove resolution.
+
+**Targeted fix only when Gate11 cell graph is opted in:** T4XenonAztecGate11CellProbe.cs now obtains GfxWorld.dpvsPlanes and GfxWorldDpvsPlanes.cellCount offsets from the independently pinned native T4Xenon OAT ABI JSON; validates native struct size 16B, relative cellCount offset 0, original Xbox loaded cell count 11 and offsets inside the native 900B root; exposes WorldCellCountAt. T4XenonAztecWorldGraft.cs requires source scalar-only seed has zero in that exact native count field and NULL cells pointer, then writes BE32 cellCount=11 before writing cells=FOLLOWING. Gate10 code/FF and old incomplete seed are unchanged.
+
+**Next meaningful test:** Original-PC typed source 740-AABB JSON, SHA-locked Gate10 FF, and specialized native independently loaded OAT 11-cell witness are already available. One fresh isolated pc_g11_cells_740 FF/.NET build should suffice, with NO new specialized OAT rebuild and no source re-extraction. Use existing Run-AztecGate11PhysicalCellWorldProbe.ps1 WITHOUT -BuildDumper; it SHA-guards Gate10, builds ONLY the isolated FF, performs actual native OAT load then separately compares loaded cell/tree/index values field-by-field against original-PC typed source. The result prints new FF size. Failure remains an OAT diagnostic, not Xbox approval.
+
+Commands from converter repo root:
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'PS5.1 script syntax failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11PhysicalCellWorldProbe.ps1'
+
+Gate11 OVERALL remains pending until the rest of GfxWorld renderer/lightmap/lightgrid/dynamic DPVS and runtime dependencies are proven. Gate10 remains a verified 10/13 developer milestone and old FF untouched. No Xbox deployment authorized.
