@@ -366,8 +366,8 @@ try {
         $streamText=[IO.File]::ReadAllText($streamPath).Replace([string][char]13+[char]10,[string][char]10)
         $badOffsetNeedle='throw InvalidOffsetBlockOffsetException(block, blockOffset);'
         $instances=($streamText.Split([string[]]@($badOffsetNeedle),[StringSplitOptions]::None).Count-1)
-        if($instances -ne 4){
-            throw "Pinned OAT ZoneInputStream invalid-pointer throw sites changed; expected four, found $instances."
+        if($instances -ne 5){
+            throw "Pinned OAT ZoneInputStream invalid-pointer throw sites changed; expected five, found $instances."
         }
         $badOffsetTrace=@'
 {
