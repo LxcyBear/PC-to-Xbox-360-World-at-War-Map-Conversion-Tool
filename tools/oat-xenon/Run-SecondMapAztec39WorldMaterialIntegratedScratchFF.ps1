@@ -7,6 +7,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate8FiveModelProbe,
       [switch]$Gate8AllModelProbe,
       [switch]$Gate10StaticDrawProbe,
+      [switch]$Gate11CellProbe,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -43,6 +44,9 @@ if($Gate10StaticDrawProbe -and
     -not $DpvsStaticProbe -or -not $Gate8ChildProbe -or
     $ProbeLevel -ne 'Full' -or $Gate8ChildLevel -ne 'All')){
     throw '-Gate10StaticDrawProbe requires the full source DPVS, Gate8 all-model/plane/node and current original-PC world diagnostic.'
+}
+if($Gate11CellProbe -and -not $Gate10StaticDrawProbe){
+    throw '-Gate11CellProbe requires -Gate10StaticDrawProbe and the full verified Gate8 original-PC children.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -131,6 +135,7 @@ if($Gate8ChildProbe -and -not(Test-Path -LiteralPath $gate8Source -PathType Leaf
 }
 $gate10Light=''
 $gate10Plan=''
+$gate11Summary=''
 if($Gate10StaticDrawProbe){
     $sourceLights=Join-Path $base 'pc_gate8_source_light_codec_candidate'
     $latest=@(Get-ChildItem -LiteralPath $sourceLights -Recurse -File -Filter 'aztec_gate10_source_light_candidate_summary.json' -ErrorAction Stop |
@@ -143,9 +148,16 @@ if($Gate10StaticDrawProbe){
     }
     Write-Host '[AZTEC-GATE10-FF] Isolated OAT-only candidate: 1903 original-PC draws, one stock XModel still UNVERIFIED.'
 }
+if($Gate11CellProbe){
+    $gate11Summary=Join-Path $base 'pc_g10_1903\gate11_cell_topology_source\aztec_gate11_pc_source_cells_native_abi.json'
+    if(-not(Test-Path -LiteralPath $gate11Summary -PathType Leaf)){
+        throw "Source-owned typed 11-cell/740-AABB SHA report is missing: $gate11Summary"
+    }
+}
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate10StaticDrawProbe){'pc_g10_1903'}
+        if($Gate11CellProbe){'pc_g11_cells_740'}
+        elseif($Gate10StaticDrawProbe){'pc_g10_1903'}
         elseif($Gate8AllModelProbe){'pc_gate8_29x_ff'}
         elseif($Gate8FiveModelProbe){'pc_gate8_5x_ff'}
         elseif($Gate8ChildLevel -eq 'All'){'pc_gate8_planes_nodes_layer'}
@@ -302,6 +314,7 @@ try{
     $priorGate8Level=$env:WAW360_AZTEC_GATE8_CHILD_LEVEL
     $priorGate10Light=$env:WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT
     $priorGate10Plan=$env:WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY
+    $priorGate11=$env:WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -323,6 +336,12 @@ try{
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
+        }
+        if($Gate11CellProbe){
+            $env:WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT=$gate11Summary
+            Write-Host '[AZTEC-GATE11-PROGRESS] [########------------] 40% | emit source-owned 11 GfxCells and 740 AABB trees in isolated new FF'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -352,6 +371,11 @@ try{
             Remove-Item Env:\WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT=$priorGate10Light
+        }
+        if($null -eq $priorGate11){
+            Remove-Item Env:\WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT=$priorGate11
         }
         if($null -eq $priorGate10Plan){
             Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
@@ -393,6 +417,15 @@ if($IntegrateWorld){
             [int]$e.OriginalPcGfxWorldGate10UnverifiedStockDraws -eq 1 -and
             [bool]$e.ValidationOnly -and -not [bool]$e.ReadyForHardware
     }
+    if($Gate11CellProbe){
+        $typed=Get-Content -LiteralPath $gate11Summary -Raw | ConvertFrom-Json
+        $candidateOatPass=$candidateOatPass -and
+            [int]$e.OriginalPcGfxWorldGate11Cells -eq 11 -and
+            [int]$e.OriginalPcGfxWorldGate11AabbTrees -eq 740 -and
+            [int]$e.OriginalPcGfxWorldGate11SmodelIndexes -eq [int]$typed.originalPcTypedSmodelIndicesCount -and
+            [int]$e.OriginalPcGfxWorldGate11ReflectionIndexes -eq [int]$typed.originalPcTypedCellReflectionProbeIndicesCount -and
+            [bool]$e.ValidationOnly -and -not [bool]$e.ReadyForHardware
+    }
     if($Gate8AllModelProbe){
         $candidateOatPass=$candidateOatPass -and
             [bool]$e.ValidationOnly -and
@@ -407,7 +440,13 @@ if($IntegrateWorld){
     }
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate10StaticDrawProbe){
+        status=if($Gate11CellProbe){
+            if($core -and $candidateOatPass){
+                'AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_PASS_REMAINDER_PENDING'
+            }else{
+                'AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_BLOCKED'
+            }
+        }elseif($Gate10StaticDrawProbe){
             if($core -and $candidateOatPass){
                 'AZTEC_GATE10_1903_STATIC_DRAW_DIAGNOSTIC_OAT_PASS_STOCK_UNVERIFIED'
             }else{
@@ -451,6 +490,12 @@ if($IntegrateWorld){
         gate10DrawRecordsInEmittedFf=[int]$e.OriginalPcGfxWorldGate10DrawRecords
         gate10StockModelDrawUnverified=[int]$e.OriginalPcGfxWorldGate10UnverifiedStockDraws
         gate10ProductionApproved=$false
+        gate11PhysicalCellDiagnostic=[bool]$Gate11CellProbe
+        gate11SourceCellsInFf=[int]$e.OriginalPcGfxWorldGate11Cells
+        gate11AabbTreesInFf=[int]$e.OriginalPcGfxWorldGate11AabbTrees
+        gate11SmodelIndicesInFf=[int]$e.OriginalPcGfxWorldGate11SmodelIndexes
+        gate11ReflectionIndicesInFf=[int]$e.OriginalPcGfxWorldGate11ReflectionIndexes
+        gate11FullWorldClosureApproved=$false
         all27SourceModelStagingManifest=if($Gate8AllModelProbe){$allStaging}else{''}
         unresolvedNativeSourceModelReferences=if($Gate8AllModelProbe){[int]$allStage.unresolvedNativeReferenceModelTypes}else{0}
         unresolvedNativeSourceModelDraws=if($Gate8AllModelProbe){[int]$allStage.unresolvedNativeReferenceDraws}else{0}
@@ -474,7 +519,9 @@ if($IntegrateWorld){
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
-        note=if($Gate10StaticDrawProbe){
+        note=if($Gate11CellProbe){
+            'Gate11 experimental source-only 11-cell/740-AABB tree array plus nested original-PC model/reflection indices physically emitted in ISOLATED scratch GfxWorld and OAT list checked. Original 1903 Gate10 draws remain unmodified in old FF. Full GfxWorld lightmap/sky/dynamic DPVS/stock/light semantics are still incomplete. NOT deployable.'
+        }elseif($Gate10StaticDrawProbe){
             'Diagnostic-only source-owned 1903 x 60B smodelDrawInsts child physically serialized with CURRENT Stage4D XModel pointer rebases. One stock model NULL; lighting handle hypotheses and four packed rotations still need semantic proof. Complete world children, runtime assets and Xbox test blocked.'
         }elseif($Gate8AllModelProbe){
             'SCRATCH-ONLY: source 27 model NAMES are accounted by actual converted source mesh bodies, proven native refs, and explicitly UNRESOLVED PC reference/native-root mismatches. Only real source bodies are serialized; unresolved models remain identity shells. OAT must accept real FF. No 1903 GfxWorld static draws, external residency, complete DPVS, images, runtime dependency closure or Xbox hardware approval.'
@@ -491,7 +538,13 @@ if($IntegrateWorld){
         }
     }
     $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $report -Encoding UTF8
-    if($Gate10StaticDrawProbe){
+    if($Gate11CellProbe){
+        $ffPath=[string]$e.OutputFastFile
+        $newLength=if(Test-Path -LiteralPath $ffPath -PathType Leaf){[long](Get-Item -LiteralPath $ffPath).Length}else{0L}
+        Write-Host "[AZTEC-GATE11-SIZE] new FF=$newLength B, cells=$($e.OriginalPcGfxWorldGate11Cells) trees=$($e.OriginalPcGfxWorldGate11AabbTrees), modelIndexes=$($e.OriginalPcGfxWorldGate11SmodelIndexes)"
+        Write-Host "[AZTEC-GATE11-PROGRESS] [####################] 100% | OAT list=$candidateOatPass; independent per-cell readback still required. NOT Xbox."
+    }
+    if($Gate10StaticDrawProbe -and -not $Gate11CellProbe){
         $ffPath=[string]$e.OutputFastFile
         if(Test-Path -LiteralPath $ffPath -PathType Leaf){
             $newLength=[long](Get-Item -LiteralPath $ffPath).Length
