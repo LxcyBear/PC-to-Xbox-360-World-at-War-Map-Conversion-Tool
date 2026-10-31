@@ -358,6 +358,36 @@ try {
         [IO.File]::WriteAllText($loader,
             $loaderText.TrimEnd([char]13,[char]10) + [char]10,
             [Text.UTF8Encoding]::new($false))
+        # The first-asset trace identifies the XAsset root. For the SAME
+        # exception, trace failing zone-pointer conversion, decompressed
+        # stream cursor and active block cursor. These logs are diagnostic;
+        # unlike native offsets they are never used as conversion donors.
+        $streamPath=Join-Path $oat 'src\ZoneLoading\Zone\Stream\ZoneInputStream.cpp'
+        $streamText=[IO.File]::ReadAllText($streamPath).Replace([string][char]13+[char]10,[string][char]10)
+        $badOffsetNeedle='throw InvalidOffsetBlockOffsetException(block, blockOffset);'
+        $instances=($streamText.Split([string[]]@($badOffsetNeedle),[StringSplitOptions]::None).Count-1)
+        if($instances -ne 4){
+            throw "Pinned OAT ZoneInputStream invalid-pointer throw sites changed; expected four, found $instances."
+        }
+        $badOffsetTrace=@'
+{
+    std::cerr << "[AZTEC-OAT-BADPTR] raw=0x" << std::hex
+              << reinterpret_cast<uintptr_t>(offset) << std::dec
+              << " targetBlock=" << static_cast<int>(blockNum)
+              << " targetOffset=" << blockOffset
+              << " blockSize=" << block->m_buffer_size
+              << " streamPos=" << m_stream.Pos()
+              << " targetCursor=" << m_block_offsets[block->m_index]
+              << " currentBlock="
+              << (m_block_stack.empty() ? -1 : static_cast<int>(m_block_stack.top()->m_index))
+              << " currentCursor="
+              << (m_block_stack.empty() ? 0uz : m_block_offsets[m_block_stack.top()->m_index])
+              << std::endl;
+    throw InvalidOffsetBlockOffsetException(block, blockOffset);
+}
+'@
+        $streamText=$streamText.Replace($badOffsetNeedle,$badOffsetTrace.TrimEnd([char]13,[char]10))
+        [IO.File]::WriteAllText($streamPath,$streamText.TrimEnd([char]13,[char]10)+[char]10,[Text.UTF8Encoding]::new($false))
         Write-Host '[OAT-GRAPH] Native loader first-exception index tracing enabled (diagnostic build).'
     }
 
@@ -450,6 +480,7 @@ try {
     }
     if ($TraceNativeAssetLoader) {
         $capabilities.capabilities += 't4xenon-asset-fault-trace-v1'
+        $capabilities.capabilities += 't4xenon-pointer-stream-fault-trace-v1'
     }
     if ($TraceWeaponNamePointers) {
         $capabilities.capabilities += 't4-pc-weapon-virtual-pointer-direct-string-v1'
