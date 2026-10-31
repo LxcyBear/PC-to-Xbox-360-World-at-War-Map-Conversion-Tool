@@ -132,12 +132,16 @@ public static class T4XenonGraphBlockLayoutPlanner
             throw new InvalidDataException("Stage 4D requires an Xbox360 native oracle.");
 
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var weaponCanary = await T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync(
+            roots,cancellationToken);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
         var pcMapEnts = T4XenonAztecMapEntsGraft.Load(mapEntsCanaryManifest, roots);
         var pcComWorld = await T4XenonAztecComWorldGraft.LoadAsync(comWorldProofManifest, roots, cancellationToken);
         var bindings = LoadBindings(bindingManifest);
         var blockers = new List<string>();
         var notes = new List<string>();
+        if(weaponCanary is not null)
+            notes.Add($"WEAPON63 SCRATCH diagnostic: {weaponCanary.ByRoot.Count} native weapon roots with original PC source scalar fields and real inline XStrings only; full source-owned 7b child graph NOT in FF; source SHA-pinned proof bytes={weaponCanary.TotalOriginalOwnedProofBytes:N0}; not hardware-ready.");
 
         T4XenonMaterialCorpus? materialCorpus = null;
         if (!string.IsNullOrWhiteSpace(materialGraphRoot) ||
@@ -456,6 +460,18 @@ public static class T4XenonGraphBlockLayoutPlanner
                 state.TempRoot(12);
                 state.VirtualAlloc(Utf8Z(root.Name), 1, true);
                 state.VirtualAlloc(graftedRaw.Bytes.Length + 1L, 1, true);
+                continue;
+            }
+
+            if(weaponCanary is not null &&
+               weaponCanary.ByRoot.TryGetValue(root.Index,out var weaponEntry))
+            {
+                // Original-PC owned source WeaponDef scalars/XStrings ONLY.
+                // Layout replays exactly the same typed temporary-root and
+                // serialized VIRTUAL child allocations as the FF emitter.
+                weaponEntry.Plan(
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot);
                 continue;
             }
 
