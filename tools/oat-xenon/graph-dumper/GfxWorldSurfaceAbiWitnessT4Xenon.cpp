@@ -259,6 +259,30 @@ namespace gfxworld
         out << ",\"gridColorsAt\":" << offsetof(GfxLightGrid, colors);
         out << ",\"gridEntryBytes\":" << sizeof(GfxLightGridEntry);
         out << ",\"gridColorsBytes\":" << sizeof(GfxLightGridColors);
+        // Gate11 two-wave serialization plan: exact measured 32-bit native
+        // member offsets. No original-Xbox GfxWorld instance bytes are used.
+        // Lightgrid source may be native-BE encoded but the 56B GfxLightGrid
+        // embedded root still needs these exact scalar offsets/realloc order.
+        out << ",\"gridHasLightRegionsAt\":" << offsetof(GfxLightGrid, hasLightRegions);
+        out << ",\"gridSunPrimaryLightIndexAt\":" << offsetof(GfxLightGrid, sunPrimaryLightIndex);
+        out << ",\"gridMinsAt\":" << offsetof(GfxLightGrid, mins);
+        out << ",\"gridMaxsAt\":" << offsetof(GfxLightGrid, maxs);
+        out << ",\"gridRowAxisAt\":" << offsetof(GfxLightGrid, rowAxis);
+        out << ",\"gridColAxisAt\":" << offsetof(GfxLightGrid, colAxis);
+        out << ",\"gridRawRowDataSizeAt\":" << offsetof(GfxLightGrid, rawRowDataSize);
+        out << ",\"gridEntryCountAt\":" << offsetof(GfxLightGrid, entryCount);
+        out << ",\"gridColorCountAt\":" << offsetof(GfxLightGrid, colorCount);
+        out << ",\"shadowSurfaceCountAt\":" << offsetof(GfxShadowGeometry, surfaceCount);
+        out << ",\"shadowSmodelCountAt\":" << offsetof(GfxShadowGeometry, smodelCount);
+        out << ",\"lightRegionHullCountAt\":" << offsetof(GfxLightRegion, hullCount);
+        out << ",\"lightRegionHullsAt\":" << offsetof(GfxLightRegion, hulls);
+        out << ",\"lightRegionHullAxisCountAt\":" << offsetof(GfxLightRegionHull, axisCount);
+        out << ",\"lightRegionHullAxisAt\":" << offsetof(GfxLightRegionHull, axis);
+        out << ",\"streamTreeCountAt\":" << offsetof(GfxWorldStreamInfo, aabbTreeCount);
+        out << ",\"streamTreesAt\":" << offsetof(GfxWorldStreamInfo, aabbTrees);
+        out << ",\"streamLeafRefCountAt\":" << offsetof(GfxWorldStreamInfo, leafRefCount);
+        out << ",\"streamLeafRefsAt\":" << offsetof(GfxWorldStreamInfo, leafRefs);
+        out << ",\"streamAabbTreeBytes\":" << sizeof(GfxStreamingAabbTree);
         out << ",\"coronaBytes\":" << sizeof(GfxLightCorona);
         out << ",\"brushModelBytes\":" << sizeof(GfxBrushModel);
         out << ",\"cullGroupBytes\":" << sizeof(GfxCullGroup);
