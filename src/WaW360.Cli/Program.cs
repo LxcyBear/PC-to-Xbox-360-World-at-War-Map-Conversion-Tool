@@ -26,6 +26,23 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));
                 return 0;
             }
+            case "xenon-static-draw-scalar-selftest" when args.Length == 1:
+            {
+                T4XenonStaticDrawScalarCodec.SelfTest();
+                Console.WriteLine("[XENON-DRAW-SCALAR] PASS: arbitrary 3 x 48B byte fields, byte bounds, model-pointer preservation.");
+                Console.WriteLine("[XENON-DRAW-SCALAR] No map FF or Xbox deployment.");
+                return 0;
+            }
+            case "xenon-static-draw-scalar-encode" when args.Length == 4:
+            {
+                var result = await T4XenonStaticDrawScalarCodec.EncodeFromManifestAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("[XENON-DRAW-SCALAR] SOURCE-ONLY: rows=" + result.RecordCount +
+                    " source scalar slots=" + result.FieldSlotsWritten +
+                    " fields=" + string.Join(",", result.FieldNames));
+                Console.WriteLine("[XENON-DRAW-SCALAR] Incomplete: no light remap, no DPVS links, no FF or hardware approval.");
+                return 0;
+            }
             case "xenon-static-draw-pointer-selftest" when args.Length == 1:
             {
                 T4XenonStaticDrawPointerCodec.SelfTest();
@@ -1964,6 +1981,8 @@ static void PrintHelp()
     Console.WriteLine("WaW360Converter Linker V2 / legacy proof CLI");
     Console.WriteLine("  inspect <file.ff>                       Probe PC/Xbox wrapper + XFile header");
     Console.WriteLine("  xenon-static-draw-pointer-selftest      Regression for generic T4 native draw XModel pointer codec");
+    Console.WriteLine("  xenon-static-draw-scalar-selftest       Generic source byte-overlay and pointer preservation test");
+    Console.WriteLine("  xenon-static-draw-scalar-encode <source.json> <out.bin> <report.json>  PC-owned, exact-audited uint8 fields only; not an Xbox FF");
     Console.WriteLine("  xenon-static-draw-pointer-encode <input.json> <output.bin> <report.json>  Encode source-owned static draw pointers from verified native roots; no FF");
     Console.WriteLine("  decompress <file.ff> <out.zone>        Decompress to raw zone");
     Console.WriteLine("  aztec-pc-gameworldsp-hunt <PC map.ff> <report.json>  Find source 44-byte path-header candidates");
