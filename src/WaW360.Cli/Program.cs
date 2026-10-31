@@ -102,6 +102,17 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-xanim-614-source-native" when args.Length is 6 or 7:
+            {
+                var namesOnly=args.Length==7 &&
+                    args[6].Equals("--names-only",StringComparison.OrdinalIgnoreCase);
+                if(args.Length==7 && !namesOnly)
+                    throw new ArgumentException("Optional seventh argument must be --names-only.");
+                var report=await T4AztecXAnim614SourceNativeProof.RunAsync(
+                    args[1],args[2],args[3],args[4],args[5],namesOnly);
+                Console.WriteLine("[AZTEC-XANIM-614] Real PC->native Xbox proof containers only; report: "+report);
+                return 0;
+            }
             case "aztec-pc-source-body-batch" when args.Length is 5 or 6:
             {
                 var fastOnly=args.Length==6 &&
