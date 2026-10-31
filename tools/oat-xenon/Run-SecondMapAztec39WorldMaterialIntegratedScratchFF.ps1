@@ -257,7 +257,11 @@ if($IntegrateWorld){
     }
     if($Gate8AllModelProbe){
         Write-Host "[AZTEC-WORLD39-FF] ALL PC static model identities: $($allStage.modelCount) real source bodies, $($allStage.nativeExternalReferenceModelTypes) native references."
-        Write-Host '[AZTEC-WORLD39-FF] IMPORTANT: still 0/1903 GfxStaticModelDrawInst links; not a finished native map.'
+        if($Gate10StaticDrawProbe){
+            Write-Host '[AZTEC-GATE10-FF] Attempting 1903 source-owned GfxStaticModelDrawInst links during THIS isolated build. OAT still pending.'
+        }else{
+            Write-Host '[AZTEC-WORLD39-FF] IMPORTANT: still 0/1903 GfxStaticModelDrawInst links; not a finished native map.'
+        }
     }
     Write-Host '[AZTEC-WORLD39-FF] Only partial DPVS scalar+surface graph: other DPVS/cell/lightmap/runtime children remain incomplete'
 }else{
