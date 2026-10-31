@@ -456,3 +456,24 @@ One retry only (PowerShell 5.1 from repo root):
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11UnifiedWorldBatchSource.ps1' -BuildDumper
 
 This next run still needs Windows compilation/actual input census to establish all eight source-family results. No Gate11 overall milestone advancement or Xbox release is claimed.
+
+## October 30 — Unified Gate11 source census REAL WINDOWS PASS and next one-build source preparation
+
+Windows result after `e13664d`: **38/38 PS5.1 syntax PASS**. The one specialized T4/T4Xenon OAT combined source audit actually completed, without a new FF build, and validated ALL **8/8 remaining world source families** plus **13 pointer-free source leaf arrays**, total **6,930,524 original-PC source bytes** with SHA-locked original PC input and unchanged independently OAT-verified 3,642,932-byte Gate11 FF (`05CEEC82AF5D58706BA5A6EE24995D09A3FB764F3E547A8B4758A9347ECF2862`).
+
+**Measured source census:** sky surfaces **2**; reflection probes **2**; coronas **0**; lightmaps **2**; light-grid **322 rows, 10,320 raw bytes, 1,036,024 entries and 3,975 colors**; brush models **183**, cull groups **0**; primary lights **2**, original-PC shadow and light-region roots PRESENT; world LOD chain/info/surface counts **0/0/0**; water buffers **1,048,704 bytes each**. No speculative dummy corona, cull or LOD arrays should be emitted for genuine zero counts. Runtime-only arrays stay excluded. Source images/materials and native-only streaming structures remain outstanding.
+
+**New no-FF-build typed native source batch** `Prepare-AztecGate11NativeLeafBatch.ps1` uses the existing SHA-verified `aztec_gate11_remaining_world_batch_source_gate.json` and measured native Xbox 900-byte GfxWorld ABI metadata. Converts all 13 original-PC endian-sensitive leaf families in a single in-memory typed endian swap pass: sky starts (u32), coronas (8 float32), brush models (14 four-byte fields), cull groups (8 four-byte fields), world LOD chains/info (float/u32/u16 fields), LOD surface refs (u32), light-grid row start (u16), packed raw bytes (no endian change), 1,036,024 grid entries (u16 colors index + byte flags), color bytes (unchanged), and water buffers (4 float32 per 16B vector). A second independent reverse swap must yield the EXACT original-PC source byte array for EACH family, and every record source/native sizeof must be independently equal or fail closed. No native Xbox payload bytes; no FF build. SHA-locks all endian-converted output files in `native_leaf_batch/aztec_gate11_native_leaf_batch_conversion.json` and preserves old passing FF digest.
+
+**Native asset-reference audit** `Audit-AztecGate11WorldAssetBindings.ps1` inventories the original-PC sky, outdoor, reflection probe and lightmap image names against the 666 pinned Xbox image-root NAME identities (8509 roots total) without assuming matching names mean interchangeable payloads. It records NULL, unique exact native NAME candidate, absent and ambiguous identities; records missing original-PC sunflare/water material NAME information and refuses automatic native pointer binding. No Xbox donor pixels, no OAT, no .NET/FF build.
+
+**One simple preflight command** `Run-AztecGate11CombinedNativePreflight.ps1` runs the 13 source-endian conversions plus the full image NAME audit and writes one combined Gate11 native serializer/readiness report. IMPORTANT: this proves only source leaf endianness and inventories native root identities; it deliberately retains FALSE for name-to-payload equivalence, actual FF rebasing, nested shadow-region emission, required Xenon streamInfo graph reconstruction, material-state semantics, overall Gate11 PASS, and Xbox test. The next real FF build should happen once these named dependency and streamer rules are actually implemented in ONE isolated native world emitter instead of many partial rebuilds.
+
+From the converter repo root:
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'PS5.1 syntax gate failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11CombinedNativePreflight.ps1'
+
+Expected source preparer: 13/13 typed endian round trips and a detailed list of image-reference candidates/gaps. These three brand-new PS scripts have **not yet run on Windows**; do not claim their native BE output is verified until the user's first run succeeds. Source census already PASSED. The passing 3,642,932B FF must NEVER be overwritten.
