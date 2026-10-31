@@ -66,6 +66,8 @@ public static class T4WeaponVariableSerializerProof
 
     private sealed record PlannedInsertion(int Offset, byte[] Bytes);
 
+    internal sealed record OwnedFixedInlineXString(int FixedFieldOffset, string ProofLabel, string SourceValue);
+
     private sealed class TraverseStats
     {
         public int InlineStrings;
@@ -88,6 +90,7 @@ public static class T4WeaponVariableSerializerProof
         public required TraverseStats Stats { get; init; }
         public required string WeaponName { get; init; }
         public bool RequireSelfContainedPointers { get; init; }
+        public List<OwnedFixedInlineXString>? ObservedFixedInlineXStrings { get; init; }
         public byte[]? PatchDestination { get; init; }
         public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
         public List<PlannedInsertion>? PlannedInsertions { get; init; }
@@ -282,6 +285,54 @@ public static class T4WeaponVariableSerializerProof
         catch (Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
         {
             reason = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Reuse the exact Alpha 7b big-endian T4 owned graph traversal to identify
+    /// inline XString values whose pointer lives DIRECTLY in the fixed
+    /// WeaponDef body. Packed source pointers and nested foreign assets are
+    /// intentionally NOT promoted; this is forensic source content only.
+    /// The caller must independently rebase/validate a fresh Xbox FF body.
+    /// </summary>
+    internal static bool TryCollectSourceOwnedFixedInlineXStrings(
+        byte[] blob, string name,
+        out IReadOnlyList<OwnedFixedInlineXString> strings,
+        out string reason)
+    {
+        var observed = new List<OwnedFixedInlineXString>();
+        strings = Array.Empty<OwnedFixedInlineXString>();
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = false,
+                ObservedFixedInlineXStrings = observed
+            };
+            var end = WalkOwnedPayload(ctx, 0);
+            if(end != blob.Length)
+                throw new InvalidDataException(
+                    $"original-PC source inline XString walk ended at 0x{end:X}, expected 0x{blob.Length:X}");
+            if(observed.Any(s => s.FixedFieldOffset < 0 || s.FixedFieldOffset >= FixedBodySize ||
+                                  (s.FixedFieldOffset & 3) != 0) ||
+               observed.Select(s => s.FixedFieldOffset).Distinct().Count() != observed.Count)
+                throw new InvalidDataException(
+                    "original-PC source owned fixed XString offset duplicated, unaligned or out of bounds.");
+            strings = observed.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            strings = Array.Empty<OwnedFixedInlineXString>();
             return false;
         }
     }
@@ -485,6 +536,18 @@ public static class T4WeaponVariableSerializerProof
     private static int ConsumeWeaponXString(WalkContext c, int pointerOffset, int cursor, string label)
     {
         var raw = ReadU32(c.Source, pointerOffset, c.Endianness);
+        if(c.ObservedFixedInlineXStrings is not null &&
+           pointerOffset >= 0 && pointerOffset < FixedBodySize && IsInline(raw))
+        {
+            var next = FindCStringEnd(c.Source, cursor, label);
+            var length = next - cursor - 1;
+            if(length < 0 || length > 512)
+                throw new InvalidDataException(
+                    $"Weapon '{c.WeaponName}' original PC fixed XString '{label}' implausible length={length}.");
+            var sourceValue = Encoding.Latin1.GetString(c.Source, cursor, length);
+            c.ObservedFixedInlineXStrings.Add(
+                new OwnedFixedInlineXString(pointerOffset,label,sourceValue));
+        }
         if (c.PlanIwdStrings &&
             raw != 0 &&
             !IsInline(raw) &&
