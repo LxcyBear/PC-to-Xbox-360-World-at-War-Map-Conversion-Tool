@@ -97,10 +97,10 @@ $counts=[ordered]@{
     treeOrdinals=0;treeBounds=0;treeMetadata=0;treeModelIndexes=0
 }
 function VecSame($a,$b,[string]$note){
-    if(@($a).Count -ne 3 -or @($b).Count -ne 3){throw "$note: vector length differs"}
+    if(@($a).Count -ne 3 -or @($b).Count -ne 3){throw "${note}: vector length differs"}
     for($k=0;$k -lt 3;$k++){
         $x=[double]$a[$k];$y=[double]$b[$k]
-        if([math]::Abs($x-$y) -gt 0.0001){throw "$note: value mismatch on axis $k source=$x loaded=$y"}
+        if([math]::Abs($x-$y) -gt 0.0001){throw "${note}: value mismatch on axis $k source=$x loaded=$y"}
     }
 }
 for($ci=0;$ci -lt 11;$ci++){
