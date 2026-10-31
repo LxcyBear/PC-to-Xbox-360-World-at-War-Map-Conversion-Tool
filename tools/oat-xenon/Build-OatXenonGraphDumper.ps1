@@ -392,6 +392,35 @@ try {
     }
 
     if ($TraceWeaponNamePointers) {
+        # Original Xbox loaded sound chain provenance, one source-only C++
+        # instrumented native OAT build. Never mutates audio samples.
+        $soundRel='src/ObjWriting/Game/T4Xenon/Sound/SoundDumperT4Xenon.cpp'
+        $soundPath=Join-Path $oat ($soundRel.Replace('/',[IO.Path]::DirectorySeparatorChar))
+        $soundSnippet=Join-Path $graphSrc 'XboxSoundAliasLoadedSampleTrace.snippet.cpp'
+        if(-not(Test-Path -LiteralPath $soundSnippet -PathType Leaf)){
+            throw 'Pinned Xbox sound sample-chain trace snippet missing.'
+        }
+        $soundText=[IO.File]::ReadAllText($soundPath).Replace(
+            [string][char]13+[char]10,[string][char]10)
+        $soundAnchor='        const auto* sound = asset.Asset();'
+        $soundInc='#include <format>'
+        if($soundText.IndexOf($soundAnchor,[StringComparison]::Ordinal) -lt 0 -or
+           $soundText.IndexOf($soundAnchor,[StringComparison]::Ordinal) -ne $soundText.LastIndexOf($soundAnchor,[StringComparison]::Ordinal) -or
+           $soundText.IndexOf($soundInc,[StringComparison]::Ordinal) -lt 0 -or
+           $soundText.IndexOf($soundInc,[StringComparison]::Ordinal) -ne $soundText.LastIndexOf($soundInc,[StringComparison]::Ordinal)){
+            throw 'Pinned native Xbox Sound dumper snippet insertion anchors changed.'
+        }
+        $soundText=$soundText.Replace($soundInc,$soundInc+[char]10+'#include <cstdlib>'+
+            [char]10+'#include <iostream>'+[char]10+'#include <sstream>')
+        $trace=[IO.File]::ReadAllText($soundSnippet).Replace(
+            [string][char]13+[char]10,[string][char]10).TrimEnd([char]13,[char]10)
+        $soundText=$soundText.Replace($soundAnchor,$soundAnchor+[char]10+$trace)
+        [IO.File]::WriteAllText($soundPath,$soundText.TrimEnd([char]13,[char]10)+
+            [char]10,[Text.UTF8Encoding]::new($false))
+        Write-Host '[OAT-GRAPH] Genuine Xbox 360 Sound/LoadedSound source sample-chain trace enabled.'
+    }
+
+    if ($TraceWeaponNamePointers) {
         # Original PC T4 loader witness. The raw pointers come from exact
         # previously verified WeaponDef source-body proof labels.
         $streamPath=Join-Path $oat 'src\ZoneLoading\Zone\Stream\ZoneInputStream.cpp'
@@ -494,6 +523,7 @@ try {
         $capabilities.capabilities += 't4-pc-flame-packed-pointer-virtual-byte-probe-v1'
         $capabilities.capabilities += 't4-pc-flame-packed-typed-material-and-alias-v2'
         $capabilities.capabilities += 't4-pc-flame-real-material-pointer-slot-hop-v3'
+        $capabilities.capabilities += 't4xenon-real-flame-sound-to-loaded-xma-chain-v4'
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
@@ -508,6 +538,7 @@ finally {
         Push-Location $oat
         try {
             & git checkout -- 'src/ObjWriting/Game/T4Xenon/ObjWriterT4Xenon.cpp' 2>$null
+            & git checkout -- 'src/ObjWriting/Game/T4Xenon/Sound/SoundDumperT4Xenon.cpp' 2>$null
             & git checkout -- 'src/ObjWriting/Game/T4/ObjWriterT4.cpp' 2>$null
             & git checkout -- 'src/ZoneLoading/Game/T4Xenon/ContentLoaderT4Xenon.cpp' 2>$null
             & git checkout -- 'src/ZoneLoading/Zone/Stream/ZoneInputStream.cpp' 2>$null
