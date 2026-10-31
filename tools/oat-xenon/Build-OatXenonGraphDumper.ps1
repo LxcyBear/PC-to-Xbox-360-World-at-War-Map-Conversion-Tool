@@ -410,7 +410,7 @@ try {
         $snippet=[IO.File]::ReadAllText($patchPath).Replace([string][char]13+[char]10,[string][char]10)
         $source=$source.Replace($classAnchor,$snippet+[char]10+$classAnchor)
         [IO.File]::WriteAllText($streamPath,$source.TrimEnd([char]13,[char]10)+[char]10,[Text.UTF8Encoding]::new($false))
-        Write-Host '[OAT-GRAPH] Experimental PC T4 loaded VIRTUAL pointer-to-string trace enabled.'
+        Write-Host '[OAT-GRAPH] Experimental PC T4 loaded VIRTUAL pointer-to-string + read-only FlameTable packed-target byte trace enabled.'
     }
     & git diff --check
     if ($LASTEXITCODE -ne 0) { throw 'OAT graph patch failed git diff --check.' }
@@ -491,6 +491,7 @@ try {
     }
     if ($TraceWeaponNamePointers) {
         $capabilities.capabilities += 't4-pc-weapon-virtual-pointer-direct-string-v1'
+        $capabilities.capabilities += 't4-pc-flame-packed-pointer-virtual-byte-probe-v1'
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
