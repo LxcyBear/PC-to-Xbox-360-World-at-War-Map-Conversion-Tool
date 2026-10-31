@@ -250,6 +250,42 @@ public static class T4WeaponVariableSerializerProof
         }
     }
 
+    /// <summary>
+    /// Validates the ORIGINAL source-owned endian-converted Xbox 7b stream
+    /// with the exact source-aware traversal used by BuildProofAsync.
+    /// Existing packed PC Virtual/asset pointers are acceptable EVIDENCE
+    /// here but must NOT be copied into a runtime FF. For an emitted FF
+    /// canary, validate its separately sanitized blob with
+    /// TryValidateSelfContainedXboxBlob (which rejects all packed pointers).
+    /// </summary>
+    internal static bool TryValidateSourceOwnedXboxBlob(byte[] blob, string name, out string reason)
+    {
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = false
+            };
+            var end = WalkOwnedPayload(ctx, 0);
+            if (end != blob.Length)
+                throw new InvalidDataException(
+                    $"typed source-owned Xbox walk ended at 0x{end:X}, expected 0x{blob.Length:X}.");
+            return true;
+        }
+        catch (Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            return false;
+        }
+    }
+
     internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, string name, out string reason)
     {
         reason = string.Empty;
