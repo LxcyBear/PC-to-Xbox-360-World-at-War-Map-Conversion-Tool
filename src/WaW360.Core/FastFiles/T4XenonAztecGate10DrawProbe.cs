@@ -53,7 +53,13 @@ public sealed class T4XenonAztecGate10DrawProbe
         var planBytes=await File.ReadAllBytesAsync(planPath,ct);
         if(!Eq(Sha(planBytes),summary.GetProperty("planSha256").GetString()))
             throw new InvalidDataException("Original PC draw-to-root relocation plan SHA changed.");
-        using var planDoc=JsonDocument.Parse(planBytes);
+        // Windows PowerShell 5.1 Set-Content -Encoding UTF8 creates a
+        // three-byte UTF-8 BOM. Keep those exact original bytes for the
+        // SHA-256 check above, but omit the BOM for System.Text.Json.
+        // No source proof or output file is modified by this normalization.
+        var jsonStart=planBytes.AsSpan().StartsWith(
+            new byte[] { 0xEF, 0xBB, 0xBF }) ? 3 : 0;
+        using var planDoc=JsonDocument.Parse(planBytes.AsMemory(jsonStart));
         var plan=planDoc.RootElement;
         if(plan.GetProperty("schema").GetString()!="WaW360.Aztec1903ModelRootRelocations.v1" ||
            plan.GetProperty("drawCount").GetInt32()!=1903 ||
