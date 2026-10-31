@@ -196,3 +196,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-Aztec
 ```
 
 The new launcher checks the previous 28-model FF SHA **before and after** the test, reports the new FF's real byte size and change from the preserved baseline, and fails closed if OAT cannot load it. Do not copy the diagnostic FF to the Xbox. A full Gate10 PASS requires independent loaded draw fields including stock ownership, source-derived runtime light semantics and the four rotation discrepancies resolved. Full-map/hardware testing needs still more world and asset closure; the original smoke-test checklist stays **9/13** until then.
+
+## Gate 10 first physical FF and independent OAT draw-record readback
+
+**User-verified Windows pass:** `Run-AztecGate10RealDrawWorldProbe.ps1` (after all 27 PS 5.1 syntax checks) emitted a second isolated FF at `pc_g10_1903/scratch_emit/nazi_zombie_aztec.ff`. Stage4D/Stage4E integration and the first real OAT loader/list gate passed with `AZTEC_GATE10_1903_STATIC_DRAW_DIAGNOSTIC_OAT_PASS_STOCK_UNVERIFIED` and 8509 native roots. Original verified 28-body FF: **3,615,230 bytes**; new compressed FF: **3,625,073 bytes** (**+9,843 bytes**), SHA-256 **`0BB41398C4236EF33CB9D60F923E09152966D52AA623DAEFC33D731A42630564`**. The uncompressed new draw child is 1903 x 60B = 114180B. The previous FF was SHA-confirmed unchanged. These are *verified FF build facts*, not evidence of a playable map.
+
+**Next no-FF-build validation:** `Verify-AztecGate10OatLoaded1903Draws.ps1` invokes the **already installed** specialized x86 OAT GfxWorld dumper against that exact SHA-pinned *newly generated* FF, stores the independent typed loader record data under `pc_g10_1903/oat_loaded_1903_draw_readback`, and compares all 1903 ordinal rows against the original-PC typed source and source-derived 60-byte candidate. Checks per-row model names and pointers for all 1902 owned models, the one deliberately NULL stock reference, cull, origin, scale, three packed axis words, reflection, primary-light, BE16 lighting handle, flags and zero padding. This is **not** a new OAT build or another FF emission. The 4 original-PC-vs-Xbox-reference packed-axis differences do not by themselves fail this test: the emitted source candidate's axes must read back unchanged.
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS5.1 syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-AztecGate10OatLoaded1903Draws.ps1'
+```
+
+Only on independently loaded exact 1903 rows does the script report `AZTEC_GATE10_1903_ALL_SOURCE_DRAW_FIELDS_OAT_READBACK_PASS_STOCK_UNVERIFIED`; otherwise it saves a mismatch report and fails. Preserve the passing FF and avoid repetitive builds. Runtime light/probe semantics, native reference rotation quantization, the one stock body, remaining DPVS/cell/lightmap/world children, paired main/load FF and hardware tests remain open. The original 13-step smoke-test checklist is still 9/13 until production Gate 10 conditions close.
