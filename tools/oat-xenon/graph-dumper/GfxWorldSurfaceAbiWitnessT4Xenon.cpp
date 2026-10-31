@@ -280,6 +280,94 @@ namespace gfxworld
         }
         out << ']';
         out << ",\"nativeStaticDrawWitnessOnly\":true";
+
+        // Gate11 independent Xenon AFTER-LOAD witness. The output is typed
+        // GfxCell/AABB data, not a byte copy of the original Xbox reference.
+        // This probes both retail reference and NEW source-derived FF; no
+        // producer manifest is consulted by the OAT loaded witness itself.
+        const bool cellArrayAvailable=
+            world.dpvsPlanes.cellCount==11 && world.cells!=nullptr;
+        bool cellArraysValid=cellArrayAvailable;
+        unsigned loadedTreeCount=0,loadedIndexes=0,loadedProbeIndexes=0;
+        out << ",\"nativeCellGraph\":{";
+        out << "\"schema\":\"WaW360.T4XenonLoadedGfxCellAabbWitness.v1\"";
+        out << ",\"cellCount\":" << world.dpvsPlanes.cellCount;
+        out << ",\"cellsPresent\":" << (cellArrayAvailable?"true":"false");
+        out << ",\"cells\":[";
+        if(cellArrayAvailable)
+        {
+            for(int c=0;c<11;c++)
+            {
+                if(c)out<<',';
+                const auto& cell=world.cells[c];
+                const unsigned refl=cell.reflectionProbeCount;
+                const bool safe=cell.aabbTreeCount>=0 &&
+                    cell.aabbTreeCount<=740 &&
+                    cell.portalCount==0 && cell.cullGroupCount==0 &&
+                    (cell.aabbTreeCount==0 || cell.aabbTree) &&
+                    (refl==0 || cell.reflectionProbes);
+                if(!safe)cellArraysValid=false;
+                out<<"{\"ordinal\":"<<c<<",\"mins\":";
+                WriteTriple(out,cell.mins);
+                out<<",\"maxs\":";WriteTriple(out,cell.maxs);
+                out<<",\"aabbTreeCount\":"<<cell.aabbTreeCount;
+                out<<",\"portalCount\":"<<cell.portalCount;
+                out<<",\"cullGroupCount\":"<<cell.cullGroupCount;
+                out<<",\"reflectionProbeCount\":"<<refl;
+                out<<",\"reflectionProbeIndices\":[";
+                if(safe)
+                {
+                    for(unsigned j=0;j<refl;j++)
+                    {
+                        if(j)out<<',';
+                        out<<static_cast<unsigned>(cell.reflectionProbes[j]);
+                        loadedProbeIndexes++;
+                    }
+                }
+                out<<"],\"aabbTrees\":[";
+                if(safe)
+                {
+                    for(int j=0;j<cell.aabbTreeCount;j++)
+                    {
+                        if(j)out<<',';
+                        const auto& tree=cell.aabbTree[j];
+                        const unsigned entries=tree.smodelIndexCount;
+                        const bool safeIndexes=entries<=1903 &&
+                            (entries==0 || tree.smodelIndexes!=nullptr);
+                        if(!safeIndexes)cellArraysValid=false;
+                        out<<"{\"ordinal\":"<<j<<",\"mins\":";
+                        WriteTriple(out,tree.mins);
+                        out<<",\"maxs\":";WriteTriple(out,tree.maxs);
+                        out<<",\"childCount\":"<<tree.childCount;
+                        out<<",\"surfaceCount\":"<<tree.surfaceCount;
+                        out<<",\"startSurfIndex\":"<<tree.startSurfIndex;
+                        out<<",\"smodelIndexCount\":"<<entries;
+                        out<<",\"childrenOffset\":"<<tree.childrenOffset;
+                        out<<",\"smodelIndexes\":[";
+                        if(safeIndexes)
+                        {
+                            for(unsigned k=0;k<entries;k++)
+                            {
+                                if(k)out<<',';
+                                out<<tree.smodelIndexes[k];
+                                loadedIndexes++;
+                            }
+                        }
+                        out<<"]}";
+                        loadedTreeCount++;
+                    }
+                }
+                out<<"]}";
+            }
+        }
+        out<<"]";
+        out<<",\"loadedTreeCount\":"<<loadedTreeCount;
+        out<<",\"loadedSmodelIndexCount\":"<<loadedIndexes;
+        out<<",\"loadedReflectionProbeIndexCount\":"<<loadedProbeIndexes;
+        out<<",\"loadedCellArraysValid\":"
+           << (cellArraysValid?"true":"false");
+        out<<",\"hardwareRuntimeSemanticsProven\":false}";
+
         out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
         out << ",\"surfaceCount\":" << world.surfaceCount;
         out << ",\"vertexCount\":" << world.vertexCount;
