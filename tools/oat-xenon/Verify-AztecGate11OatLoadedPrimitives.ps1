@@ -81,7 +81,6 @@ if(-not(Test-Capability)){
     }
 }
 
-using namespace System
 if(-not ('AztecGate11Fnv64' -as [type])){
     Add-Type -TypeDefinition @'
 using System;
