@@ -492,6 +492,7 @@ try {
     if ($TraceWeaponNamePointers) {
         $capabilities.capabilities += 't4-pc-weapon-virtual-pointer-direct-string-v1'
         $capabilities.capabilities += 't4-pc-flame-packed-pointer-virtual-byte-probe-v1'
+        $capabilities.capabilities += 't4-pc-flame-packed-typed-material-and-alias-v2'
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
