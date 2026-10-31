@@ -660,6 +660,101 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                     throw new InvalidDataException(
                         $"Weapon {name} original-PC null/packed bounce table classification changed.");
             }
+            // Authenticated WeaponDef FIXED-BODY sound fields only.
+            // The only source-owned inline children promoted here are a
+            // 4-byte SndAliasCustom name pointer record and, when actually
+            // INLINE in the original PC 7b payload, its exact C string.
+            // FlameTable sound children require the FlameTable parent and
+            // remain fenced: NO borrowed/donor sound asset or invented name.
+            int realDirectSoundAliasRecords=0,realDirectSoundAliasNames=0;
+            long realDirectSoundAliasNameBytes=0;
+            if(emitDirectAliases)
+            {
+                var seenSourceLabels=new HashSet<string>(StringComparer.Ordinal);
+                foreach(var alias in aliases)
+                {
+                    var witnessKey=name+"\n"+alias.ProofLabel;
+                    if(!seenSourceLabels.Add(witnessKey) ||
+                       !directWitnessRows!.TryGetValue(witnessKey,out var witness) ||
+                       witness.GetProperty("originalPcRecordOffset").GetInt32()!=alias.SourceRecordByteOffset ||
+                       witness.GetProperty("originalPcOwnedNameBytes").GetInt32()!=(alias.InlineNameBytes?.Length??0) ||
+                       !string.Equals(
+                           witness.GetProperty("originalPcOwnedNameSha256").GetString(),
+                           alias.InlineNameBytes is null?null:
+                               Convert.ToHexString(SHA256.HashData(alias.InlineNameBytes)),
+                           StringComparison.OrdinalIgnoreCase) ||
+                       BinaryPrimitives.ReadUInt32BigEndian(
+                           original.AsSpan(alias.SourceRecordByteOffset,4))!=alias.RawStringPointer)
+                        throw new InvalidDataException(
+                            $"Weapon {name} owned sound alias label/source byte/SHA drift: {alias.ProofLabel}");
+                    var kind=witness.GetProperty("category").GetString()??"";
+                    if(kind!="DIRECT_WEAPON_FIXED_SLOT")
+                    {
+                        if(kind!="BOUNCE_ALREADY_GRAFTED" &&
+                           kind!="NESTED_FLAME_PARENT_NOT_GRAFTED" &&
+                           kind!="OTHER_FOREIGN_PARENT_FENCED")
+                            throw new InvalidDataException(
+                                $"Weapon {name} unknown original-PC sound parent type: {alias.ProofLabel}");
+                        continue;
+                    }
+
+                    int fixedOffset=-1;
+                    if(alias.ProofLabel.StartsWith("sound@0x",StringComparison.Ordinal))
+                    {
+                        if(!int.TryParse(alias.ProofLabel[8..],
+                               System.Globalization.NumberStyles.HexNumber,
+                               System.Globalization.CultureInfo.InvariantCulture,out fixedOffset) ||
+                           fixedOffset<388 || fixedOffset>620 || fixedOffset%4!=0)
+                            throw new InvalidDataException(
+                                $"Weapon {name} invalid direct source sound offset: {alias.ProofLabel}");
+                    }
+                    else
+                        fixedOffset=alias.ProofLabel switch
+                        {
+                            "projExplosionSound"=>1684,
+                            "projDudSound"=>1688,
+                            "mortarShellSound"=>1692,
+                            "tankShellSound"=>1696,
+                            "projIgnitionSound"=>2012,
+                            _=>-1
+                        };
+                    if(fixedOffset<0 ||
+                       BinaryPrimitives.ReadUInt32BigEndian(original.AsSpan(fixedOffset,4))
+                            is not (T4ZonePointer.Following or T4ZonePointer.Insert))
+                        throw new InvalidDataException(
+                            $"Weapon {name} supposedly direct sound alias has no authentic PC owned inline parent pointer: {alias.ProofLabel}");
+
+                    var sourceNameIsInline=alias.RawStringPointer is
+                        T4ZonePointer.Following or T4ZonePointer.Insert;
+                    if(sourceNameIsInline!=(alias.InlineNameBytes is not null) ||
+                       sourceNameIsInline!=(alias.SourceInlineNameByteOffset is not null))
+                        throw new InvalidDataException(
+                            $"Weapon {name} direct source name pointer and child ownership conflict: {alias.ProofLabel}");
+                    var safeNamePtr=new byte[4];
+                    BinaryPrimitives.WriteUInt32BigEndian(
+                        safeNamePtr,sourceNameIsInline?T4ZonePointer.Following:0u);
+                    BinaryPrimitives.WriteUInt32BigEndian(
+                        fixedOut.AsSpan(fixedOffset,4),T4ZonePointer.Following);
+                    orderedSourceChildren!.Add(new OwnedChild(
+                        alias.SourceRecordByteOffset,fixedOffset,alias.ProofLabel,
+                        safeNamePtr,4,false,true));
+                    realDirectSoundAliasRecords++;
+                    if(sourceNameIsInline)
+                    {
+                        var offset=alias.SourceInlineNameByteOffset!.Value;
+                        var bytes=alias.InlineNameBytes!;
+                        if(bytes.Length<=0 || bytes[^1]!=0 ||
+                           !original.AsSpan(offset,bytes.Length).SequenceEqual(bytes))
+                            throw new InvalidDataException(
+                                $"Weapon {name} direct sound name is not exact original-PC source bytes: {alias.ProofLabel}");
+                        orderedSourceChildren.Add(new OwnedChild(
+                            offset,fixedOffset,alias.ProofLabel+".soundName",
+                            bytes.ToArray(),1,false));
+                        realDirectSoundAliasNames++;
+                        realDirectSoundAliasNameBytes+=bytes.Length;
+                    }
+                }
+            }
             byte[] fullDiagnostic;
             if(orderedSourceChildren is not null)
             {
@@ -721,7 +816,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                 ordinal,name,fixedOut,childStrings,index.Sha256,blobSha,
                 proofOrdinal,original.Length,extendedFixedFields,
                 orderedSourceChildren,realOwnedArrays,realOwnedKnots,realOwnedArrayBytes,
-                realBounceTables,realBounceAliasRecords,realBounceInlineNames,realBounceInlineNameBytes));
+                realBounceTables,realBounceAliasRecords,realBounceInlineNames,realBounceInlineNameBytes,
+                realDirectSoundAliasRecords,realDirectSoundAliasNames,realDirectSoundAliasNameBytes));
             allSourceBytes+=original.Length;
         }
         if(chosen.Count!=limit)
@@ -741,6 +837,14 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             chosen.Values.Sum(x=>x.OwnedSoundAliasNameBytes)!=199))
             throw new InvalidDataException(
                 "Original-PC sound bounce graft no longer has exactly 2 real tables / 62 inline alias records / 9 original source names / 199 name bytes.");
+        if(emitDirectAliases &&
+           (chosen.Values.Sum(x=>x.OwnedDirectAliasRecords)!=160 ||
+            chosen.Values.Sum(x=>x.OwnedDirectAliasNames)!=41 ||
+            chosen.Values.Sum(x=>x.OwnedDirectAliasNameBytes)!=696 ||
+            chosen.Values.Sum(x=>x.OwnedSoundAliasRecords+x.OwnedDirectAliasRecords)!=222 ||
+            chosen.Values.Sum(x=>x.OwnedSoundAliasNameBytes+x.OwnedDirectAliasNameBytes)!=895))
+            throw new InvalidDataException(
+                "Original-PC direct sound alias graft lost source ownership: 160 distinct fixed 4B records + 41 genuine inline names/696 bytes required; 6 nested flame records remain fenced.");
         return new T4XenonAztecWeapon63ScalarCanary(chosen,allSourceBytes);
     }
 
