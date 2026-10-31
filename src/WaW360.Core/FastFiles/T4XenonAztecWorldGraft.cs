@@ -55,6 +55,9 @@ public sealed class T4XenonAztecWorldGraft
     private byte[]? _gate8Planes, _gate8Nodes, _gate8Layer;
     private int _gate8PlanePointerAt, _gate8NodePointerAt;
     private int _gate8LayerPointerAt, _gate8LayerSizeAt;
+    // Gate10 OAT-only source draw probe: never hardware-approved.
+    private T4XenonAztecGate10DrawProbe? _gate10DrawProbe;
+    private int _gate10DrawPointerAt;
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
@@ -95,6 +98,8 @@ public sealed class T4XenonAztecWorldGraft
     public bool FullDpvsChildGraphComplete => false;
     public int SourceSurfaces => _surfaceOwners.Count;
     public int RealMaterialOwners => _materialOwners.Count;
+    public int Gate10OatDiagnosticDrawRecords => _gate10DrawProbe?.DrawCount ?? 0;
+    public int Gate10UnverifiedStockDraws => _gate10DrawProbe?.UnverifiedStockDraws ?? 0;
 
     private T4XenonAztecWorldGraft(
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
@@ -391,6 +396,27 @@ public sealed class T4XenonAztecWorldGraft
             graft._gate8LayerPointerAt=vldAt;
             graft._gate8LayerSizeAt=vldAt-4;
         }
+        // GfxWorldDpvsStatic.smodelDrawInsts is +84 within the 100-byte
+        // original Xbox T4 32-bit DPVS struct (smodelInsts +72,
+        // surfaces +76, cullGroups +80, smodelDrawInsts +84).
+        // Gate10 opt-in is deliberately separate from passing FF outputs.
+        var lightProof=Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT");
+        var relocationProof=Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY");
+        if(!string.IsNullOrWhiteSpace(lightProof) ||
+           !string.IsNullOrWhiteSpace(relocationProof))
+        {
+            if(string.IsNullOrWhiteSpace(lightProof) ||
+               string.IsNullOrWhiteSpace(relocationProof) ||
+               !StaticDpvsProbeEnabled || ProbeStage!=4 ||
+               graft._gate8Planes is null || graft._gate8Nodes is null ||
+               graft._gate8Layer is null || dpvsRootAt!=704 ||
+               dpvsRootAt+84!=788 ||
+               BinaryPrimitives.ReadUInt32BigEndian(root.AsSpan(dpvsRootAt,4))!=1903)
+                throw new InvalidDataException("Gate10 draw probe requires exact 1903-count source DPVS and all verified Gate8 children.");
+            graft._gate10DrawProbe=await T4XenonAztecGate10DrawProbe.LoadAsync(
+                lightProof,relocationProof,ct);
+            graft._gate10DrawPointerAt=dpvsRootAt+84;
+        }
         return graft;
     }
 
@@ -426,6 +452,10 @@ public sealed class T4XenonAztecWorldGraft
                 virtualAlloc(_staticModelInsts.Length,4,true);
         }
         if(stage>=2)virtualAlloc(_surfaces.Length,4,true);
+        // T4 Xenon source DPVS children: sorted, smodelInsts, surfaces,
+        // then cull groups if loaded, then smodelDrawInsts.
+        if(_gate10DrawProbe is not null)
+            virtualAlloc(_gate10DrawProbe.SourceByteCount,4,true);
     }
 
     public void Emit(Stream zone,Action<long,int,bool> virtualAlloc,
@@ -442,6 +472,8 @@ public sealed class T4XenonAztecWorldGraft
         if(stage>=1)Put(body,_indicesAt,T4ZonePointer.Following);
         if(stage>=4)Put(body,_verticesAt,T4ZonePointer.Following);
         if(stage>=2)Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
+        if(_gate10DrawProbe is not null)
+            Put(body,_gate10DrawPointerAt,T4ZonePointer.Following);
         if(StaticDpvsProbeEnabled)
         {
             Put(body,_dpvsSortedAt,T4ZonePointer.Following);
@@ -529,6 +561,14 @@ public sealed class T4XenonAztecWorldGraft
                     finalRootPointers[_surfaceOwners[i]]);
             virtualAlloc(linkedSurfaces.Length,4,true);
             zone.Write(linkedSurfaces);
+        }
+        if(_gate10DrawProbe is not null)
+        {
+            // Must rebase to THIS Stage4D root layout, never reuse old FF
+            // pointers. A nonresident stock XModel stays unlinked.
+            var nativeDraws=_gate10DrawProbe.RebaseForLayout(finalRootPointers);
+            virtualAlloc(nativeDraws.Length,4,true);
+            zone.Write(nativeDraws);
         }
     }
 
