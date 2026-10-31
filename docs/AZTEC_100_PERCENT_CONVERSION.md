@@ -986,3 +986,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Output: \`pc_g11_lightning_six_weapon_direct_pointer_closure/aztec_six_weapon_direct_pointer_body_closure.json\` and \`.md\`. All prior source FFs, proof bodies, OAT baseline candidate and Xbox files untouched.
+
+### 6/6 original-PC direct pointer to verified Xbox 7b WeaponDef source proof PASS; 69-root unified source manifest (2026-10-31)
+
+User Windows run at \`a3f7b52\` established **61/61 PowerShell AST parser PASS** and independently joined existing authentic original-PC OAT **10/10 DIRECT Virtual-block pointer/name identity proofs** to all ten packed-name Xbox WeaponDef 7b proof records. Each source case matches exact compressed original PC FF SHA-256, source file role, original physical WeaponDef body offset, packed 32-bit Virtual block pointer, actual loaded OAT Virtual-block target string, and unchanged native Xbox proof container SHA. No filename-order inference. All six previously missing native WeaponDef source names are directly proven:
+- \`zombie_perk_bottle_doubletap\` — original \`mod.ff\`, proof ordinal 3, raw packed pointer \`0x805D3129\`, native body **2,565 bytes**.
+- \`zombie_perk_bottle_jugg\` — \`mod.ff\`, ordinal 4, pointer \`0x805E404D\`, **2,476 bytes**.
+- \`zombie_perk_bottle_revive\` — \`mod.ff\`, ordinal 5, pointer \`0x805E4669\`, **2,476 bytes**.
+- \`zombie_perk_bottle_sleight\` — \`mod.ff\`, ordinal 6, pointer \`0x805E4C99\`, **2,476 bytes**.
+- \`m7_launcher_zombie\` — original map \`nazi_zombie_aztec.ff\`, ordinal 28, pointer \`0x830A21C7\`, **3,486 bytes**.
+- \`m7_launcher_zombie_upgraded\` — original map, ordinal 29, pointer \`0x830A26B3\`, **2,564 bytes**.
+
+Status **\`AZTEC_SIX_REAL_PC_NAME_DIRECT_POINTER_AND_VERIFIED_XBOX_OWNED_BODIES_PROVEN_NOT_IN_FF\`**. This means valid original-PC-source converted Xbox owned-payload bytes and correct physical source-name mappings, not production FF grafting, runtime weapon dependencies or Xbox console playability. Previously protected 4,510,695-byte OAT-good FF unchanged.
+
+**Next one-command read-only manifest (Windows run pending):** \`tools/oat-xenon/Run-AztecWeapon69UnifiedNativeSourceManifest.ps1\`. Combines prior 57 single exact native WeaponDef source body SHA matches from the 586-root XModel/FX/Weapon report, 6 newly direct-verified packed source-name bodies, 2 explicitly conflicting native WeaponDef roots \`fraggrenade\` and \`mine_bouncing_betty\` (different real original-PC body hashes, no override choice), and 4 offline Xbox retail-zone name-only stock dependencies \`molotov\`, \`ray_gun\`, \`kar98k\`, \`30cal\` (no claim those zones are loaded when Aztec runs). Thus expected **63/69 original-PC-source Xbox 7b owned WeaponDef blobs uniquely tied to true native root names**, **2/69 conflicting**, **4/69 only offline stock-name evidence**. The manifest reopens Xbox 7b binary proof records for both the earlier 57 and newly direct-proven 6, re-hashes every actual serialized source-owned body, checks container SHA, original source FF hash and direct pointer original physical proof record identity. All results are *standalone original-PC-source bytes*, NOT new assets written to an Xbox FF.
+
+Run from repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax regression" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon69UnifiedNativeSourceManifest.ps1"
+\`\`\`
+
+Reports: \`pc_g11_lightning_weapon_69_unified_native_source/aztec_69_weapon_unified_original_pc_xbox_body_selections.json\` and \`.md\`. One command, no dotnet, no OAT or hardware, no FastFile overwrite. The **63** is the count of source-identifiable genuine owned Xbox bodies, NOT a measured production FF payload count or native game runtime-ready weapon tally. Mismatched source SHA/identity, invalid binary proof bounds, changed conflicting names, or unknown stock closure cause a hard refusal. Gate11 stays open (10/13). Materials, FX, XModels, XAnim, localization, images, world and audio still have significant source/body graph/runtime integration work.
