@@ -225,6 +225,104 @@ namespace gfxworld
         }
         out << "]}";
 
+        // Gate11: ONE original-PC-loaded 11-cell typed topology pass.
+        // No host pointer values or Xbox-reference bodies are exported.
+        // Portals refer to target cells by validated ordinal, not address.
+        const bool hasCells =
+            world.dpvsPlanes.cellCount == 11 && world.cells != nullptr;
+        bool cellTopologyConsistent = hasCells;
+        unsigned totalAabb = 0, totalPortals = 0, totalCullRefs = 0;
+        unsigned unresolvedPortalTargets = 0;
+        out << ",\"gate11CellTopology\":{";
+        out << "\"schema\":\"WaW360.T4PcGate11CellTopology.v1\"";
+        out << ",\"cellCount\":" << world.dpvsPlanes.cellCount;
+        out << ",\"cellsPresent\":" << (hasCells ? "true" : "false");
+        out << ",\"worldCellsPointerAt\":" << offsetof(GfxWorld, cells);
+        out << ",\"pcCellSize\":" << sizeof(GfxCell);
+        out << ",\"pcAabbTreeSize\":" << sizeof(GfxAabbTree);
+        out << ",\"pcPortalSize\":" << sizeof(GfxPortal);
+        out << ",\"pcPortalCellPointerAt\":" << offsetof(GfxPortal, cell);
+        out << ",\"pcPortalVerticesPointerAt\":" << offsetof(GfxPortal, vertices);
+        out << ",\"pcCellAabbTreePointerAt\":" << offsetof(GfxCell, aabbTree);
+        out << ",\"pcCellPortalsPointerAt\":" << offsetof(GfxCell, portals);
+        out << ",\"pcCellCullGroupsPointerAt\":" << offsetof(GfxCell, cullGroups);
+        out << ",\"pcCellReflectionProbesPointerAt\":" << offsetof(GfxCell, reflectionProbes);
+        out << ",\"cells\":[";
+        if (hasCells)
+        {
+            for(int cidx=0;cidx<11;cidx++)
+            {
+                if(cidx) out << ',';
+                const auto& c=world.cells[cidx];
+                const unsigned probeCount =
+                    static_cast<unsigned>(static_cast<unsigned char>(c.reflectionProbeCount));
+                const bool bounded =
+                    c.aabbTreeCount >= 0 && c.aabbTreeCount <= 32768 &&
+                    c.portalCount >= 0 && c.portalCount <= 8192 &&
+                    c.cullGroupCount >= 0 && c.cullGroupCount <= 32768 &&
+                    (!c.aabbTreeCount || c.aabbTree) &&
+                    (!c.portalCount || c.portals) &&
+                    (!c.cullGroupCount || c.cullGroups) &&
+                    (!probeCount || c.reflectionProbes);
+                if(!bounded) cellTopologyConsistent=false;
+                out << "{\"ordinal\":" << cidx;
+                out << ",\"aabbTreeCount\":" << c.aabbTreeCount;
+                out << ",\"aabbTreePresent\":" << (c.aabbTree?"true":"false");
+                out << ",\"portalCount\":" << c.portalCount;
+                out << ",\"portalsPresent\":" << (c.portals?"true":"false");
+                out << ",\"cullGroupCount\":" << c.cullGroupCount;
+                out << ",\"cullGroupsPresent\":" << (c.cullGroups?"true":"false");
+                out << ",\"reflectionProbeCount\":" << probeCount;
+                out << ",\"reflectionProbesPresent\":"
+                    << (c.reflectionProbes?"true":"false");
+                out << ",\"pointerAndCountShapeValid\":"
+                    << (bounded?"true":"false");
+                out << ",\"portals\":[";
+                if(bounded)
+                {
+                    totalAabb+=static_cast<unsigned>(c.aabbTreeCount);
+                    totalPortals+=static_cast<unsigned>(c.portalCount);
+                    totalCullRefs+=static_cast<unsigned>(c.cullGroupCount);
+                    for(int pidx=0;pidx<c.portalCount;pidx++)
+                    {
+                        if(pidx)out<<',';
+                        const auto& portal=c.portals[pidx];
+                        int targetIndex=-1;
+                        for(int k=0;k<11;k++)
+                        {
+                            if(portal.cell==&world.cells[k])
+                            {
+                                targetIndex=k;
+                                break;
+                            }
+                        }
+                        if(targetIndex<0)unresolvedPortalTargets++;
+                        const auto vertexCount=static_cast<unsigned>(
+                            static_cast<unsigned char>(portal.vertexCount));
+                        if((vertexCount && !portal.vertices) || vertexCount>128)
+                            cellTopologyConsistent=false;
+                        out << "{\"ordinal\":" << pidx;
+                        out << ",\"targetCellIndex\":" << targetIndex;
+                        out << ",\"vertexCount\":" << vertexCount;
+                        out << ",\"verticesPresent\":"
+                            << (portal.vertices?"true":"false");
+                        out << ",\"sourcePortalPointerBytesExported\":false}";
+                    }
+                }
+                out << "]}";
+            }
+        }
+        out << ']';
+        out << ",\"totalAabbTrees\":" << totalAabb;
+        out << ",\"totalPortals\":" << totalPortals;
+        out << ",\"totalCellCullGroupReferences\":" << totalCullRefs;
+        out << ",\"unresolvedCrossCellPortalTargets\":" << unresolvedPortalTargets;
+        out << ",\"cellTopologyConsistent\":"
+            << (cellTopologyConsistent?"true":"false");
+        out << ",\"sourcePointerBytesExported\":false";
+        out << ",\"xboxCellBodiesEmitted\":false";
+        out << ",\"xboxHardwareReady\":false}";
+        
         // Gate8C: export the actual original-PC 1903 static draw placement
         // records AS TYPED FIELDS. Native PC XModel* process addresses MUST
         // NEVER be serialized: each source model is identified by name.
