@@ -17,6 +17,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public const string ManifestEnvironment = "WAW360_AZTEC_WEAPON63_DIAGNOSTIC";
     public const string LimitEnvironment = "WAW360_AZTEC_WEAPON63_LIMIT";
     public const string ExtraInlineStringsEnvironment = "WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS";
+    public const string AccuracyVec2WitnessEnvironment = "WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE";
     private const int FixedBytes = 0x9AC;
 
     // Cross-validated 32-bit scalar-only slots in the original-PC Weapon
@@ -32,30 +33,57 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
         2200,2204,2208,2212
     };
     private static readonly UTF8Encoding Utf8 = new(false, true);
+    // Source-owned INLINE children only, in original 7b ZoneCode order;
+    // NEVER a packed/external XModel/FX/Material/Audio pointer or donor.
+    public sealed record OwnedChild(int SourceBodyByteOffset,int FixedPointerSlot,
+        string ProofLabel,byte[] Payload,int VirtualAlignment,bool AccuracyVec2);
     public sealed record Entry(
         int RootIndex,string Name,byte[] Body,IReadOnlyList<string> Children,
         string SourceProofSha256,string SourceBlobSha256,int ProofRecordOrdinal,
-        int OriginalOwnedBlobBytes,int ExtendedFixedSourceInlineStrings)
+        int OriginalOwnedBlobBytes,int ExtendedFixedSourceInlineStrings,
+        IReadOnlyList<OwnedChild>? OrderedOwnedChildren=null,
+        int OwnedAccuracyArrays=0,int OwnedAccuracyKnots=0,long OwnedAccuracyBytes=0)
     {
-        public long SerializedDiagnosticBytes =>
-            Body.LongLength + Children.Sum(s => (long)Utf8.GetByteCount(s) + 1L);
+        public long SerializedDiagnosticBytes => Body.LongLength +
+            (OrderedOwnedChildren is not null
+                ? OrderedOwnedChildren.Sum(x => (long)x.Payload.Length)
+                : Children.Sum(s => (long)Utf8.GetByteCount(s) + 1L));
 
         public void Plan(Action<long,int,bool> virtualAlloc,Action<int> tempRoot)
         {
             tempRoot(FixedBytes);
-            foreach(var value in Children)
-                virtualAlloc(Utf8.GetByteCount(value)+1L,1,true);
+            if(OrderedOwnedChildren is not null)
+            {
+                foreach(var child in OrderedOwnedChildren)
+                    virtualAlloc(child.Payload.Length,child.VirtualAlignment,true);
+            }
+            else
+            {
+                foreach(var value in Children)
+                    virtualAlloc(Utf8.GetByteCount(value)+1L,1,true);
+            }
         }
         public void Emit(Stream zone,Action<long,int,bool> virtualAlloc,Action<int> tempRoot)
         {
             tempRoot(FixedBytes);
             zone.Write(Body);
-            foreach(var value in Children)
+            if(OrderedOwnedChildren is not null)
             {
-                var bytes=Utf8.GetBytes(value);
-                virtualAlloc(bytes.Length+1L,1,true);
-                zone.Write(bytes);
-                zone.WriteByte(0);
+                foreach(var child in OrderedOwnedChildren)
+                {
+                    virtualAlloc(child.Payload.Length,child.VirtualAlignment,true);
+                    zone.Write(child.Payload);
+                }
+            }
+            else
+            {
+                foreach(var value in Children)
+                {
+                    var bytes=Utf8.GetBytes(value);
+                    virtualAlloc(bytes.Length+1L,1,true);
+                    zone.Write(bytes);
+                    zone.WriteByte(0);
+                }
             }
         }
     }
@@ -65,6 +93,9 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public long TotalOriginalOwnedProofBytes { get; }
     public int TotalExtendedFixedSourceInlineStrings =>
         ByRoot.Values.Sum(e => e.ExtendedFixedSourceInlineStrings);
+    public int TotalOwnedAccuracyVec2Arrays => ByRoot.Values.Sum(e=>e.OwnedAccuracyArrays);
+    public int TotalOwnedAccuracyVec2Knots => ByRoot.Values.Sum(e=>e.OwnedAccuracyKnots);
+    public long TotalOwnedAccuracyVec2PayloadBytes => ByRoot.Values.Sum(e=>e.OwnedAccuracyBytes);
     public long TotalDiagnosticEmittedBytes => ByRoot.Values.Sum(e=>e.SerializedDiagnosticBytes);
 
     private T4XenonAztecWeapon63ScalarCanary(
@@ -89,6 +120,11 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
         if(extras is not null && extras != "1")
             throw new InvalidDataException("WeaponDef extra inline XString diagnostic mode must be unset or '1'.");
         var expandedSourceStrings=extras=="1";
+        var accuracySourceFile=Environment.GetEnvironmentVariable(AccuracyVec2WitnessEnvironment);
+        var emitAccuracyVec2=!string.IsNullOrWhiteSpace(accuracySourceFile);
+        if(emitAccuracyVec2 && (!expandedSourceStrings || rawLimit!="63"))
+            throw new InvalidDataException(
+                "Weapon63 accuracy Vec2 native FF canary requires all 63 source bodies and typed expanded inline XStrings.");
         if(!int.TryParse(rawLimit,out var limit) || limit is not (0 or 1 or 6 or 63))
             throw new InvalidDataException("Weapon63 scratch canary limit must be 0 (A/B control), 1, 6, or 63; missing is rejected.");
 
@@ -117,6 +153,40 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
            ScalarOffsets.Distinct().Count()!=ScalarOffsets.Length)
             throw new InvalidDataException("WeaponDef original PC scalar whitelist is invalid.");
 
+        // The independent previous source-only Vec2 witness is a hard,
+        // per-array SHA and physical-offset proof, not a guess based on
+        // how much an FF should grow. Never promote packed aliases.
+        using var accuracyDoc=emitAccuracyVec2
+            ? JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.GetFullPath(accuracySourceFile!),cancellationToken))
+            : null;
+        Dictionary<string,JsonElement>? accuracyWitnesses=null;
+        if(emitAccuracyVec2)
+        {
+            var a=accuracyDoc!.RootElement;
+            if(a.GetProperty("schema").GetString()!="WaW360.Aztec63WeaponOriginalPcAccuracyVec2OwnedSourceWitness.v1" ||
+               a.GetProperty("status").GetString()!="AZTEC_63_WEAPON_ORIGINAL_PC_INLINE_VEC2_CHILD_GRAPH_SOURCE_PROVEN_NOT_IN_FF" ||
+               a.GetProperty("originalPcWeaponRootsWithGenuineXbox7bOwnedProof").GetInt32()!=63 ||
+               a.GetProperty("provenInlineSourceOwnedVec2ArrayRecords").GetInt32()!=96 ||
+               a.GetProperty("provenInlineSourceOwnedVec2Knots").GetInt32()!=612 ||
+               a.GetProperty("provenInlineBigEndianXenonOwnedBytes").GetInt64()!=4896 ||
+               a.GetProperty("weaponRootsWithRealInlineVec2Children").GetInt32()!=49 ||
+               a.GetProperty("packedSourceArrayPointersQuarantined").GetInt32()!=96 ||
+               a.GetProperty("nullSourceArrayPointers").GetInt32()!=60 ||
+               !a.GetProperty("sourcePcWeaponBodySourceProofHashesAllRevalidated").GetBoolean() ||
+               !a.GetProperty("noXboxFfGeneratedOrModified").GetBoolean() ||
+               a.GetProperty("xboxRuntimeGameplayReady").GetBoolean())
+                throw new InvalidDataException(
+                    "Original PC accuracy vec2 array witness changed. This FF graft requires 96 authenticated inline arrays (612 knots, 4896 B) across 49 original source weapon roots.");
+            var rr=a.GetProperty("weapons").EnumerateArray().ToArray();
+            if(rr.Length!=63 || rr.Any(v=>v.GetProperty("fourAccuracySourceFields").GetArrayLength()!=4))
+                throw new InvalidDataException("Source-owned PC accuracy report must include 63 four-slot weapon decisions.");
+            accuracyWitnesses=rr.ToDictionary(
+                v=>v.GetProperty("nativeWeaponRootName").GetString()??"",
+                v=>v,StringComparer.Ordinal);
+            if(accuracyWitnesses.Count!=63)
+                throw new InvalidDataException("Original PC accuracy source proof native WeaponDef names duplicated.");
+        }
         var selected=manifestRows.Where(r=>IsSelected(r.GetProperty("conclusion").GetString()??""))
             .OrderBy(r=>r.GetProperty("nativeRootOrdinal").GetInt32()).Take(limit).ToArray();
         var rootByOrdinal=nativeWeapons.ToDictionary(r=>r.Index);
