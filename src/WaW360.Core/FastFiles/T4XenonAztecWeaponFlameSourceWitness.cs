@@ -74,6 +74,9 @@ public static class T4XenonAztecWeaponFlameSourceWitness
         int inlineParents=0,nullParents=0,packedParents=0;
         int inlineNestedSoundAliases=0,inlineNestedAliasNames=0;
         long parentBytes=0,inlineNestedNameBytes=0;
+        int inlineNameChildren=0,packedNameChildren=0,nullNameChildren=0;
+        int inlineMaterialChildren=0,packedMaterialChildren=0,nullMaterialChildren=0;
+        long genuineInlineFlameNameBytes=0,genuineInlineMaterialChildBytes=0;
         foreach(var root in selected)
         {
             ct.ThrowIfCancellationRequested();
@@ -119,8 +122,9 @@ public static class T4XenonAztecWeaponFlameSourceWitness
                !string.Equals(prior.GetProperty("originalPcWeapon7bProofContainerSha256").GetString(),proofSha,StringComparison.OrdinalIgnoreCase) ||
                !string.Equals(prior.GetProperty("sourceOwnedXbox7bProofBodySha256").GetString(),bodySha,StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException($"Independent 228-alias prior witness does not match WeaponDef proof SHA: {name}");
-            if(!T4WeaponVariableSerializerProof.TryCollectSourceOwnedFlameTables(
-                   blob,record.Name??name,out var tables,out var aliases,out var reason))
+            if(!T4WeaponVariableSerializerProof.TryCollectSourceOwnedFlameDependencies(
+                   blob,record.Name??name,out var tables,out var ownedChildren,
+                   out var aliases,out var reason))
                 throw new InvalidDataException($"Original-PC 7b FlameTable typed walk failed: {name}: {reason}");
 
             var aliasSource=aliases.Where(a=>a.ProofLabel.StartsWith("flameTable",StringComparison.Ordinal)).ToArray();
@@ -149,6 +153,75 @@ public static class T4XenonAztecWeaponFlameSourceWitness
                        !blob.AsSpan(table.SourceBodyByteOffset,FlameBytes).SequenceEqual(textBytes))
                         throw new InvalidDataException($"Weapon {name} original FlameTable fixed body exact bytes mismatch: {label}");
                     parentBytes+=FlameBytes;
+                }
+                // Every one of these 9 child slots is captured by the
+                // real typed original-PC 7b walker. INLINE means exact owned
+                // source bytes+SHA; packed means unresolved source reference.
+                var actualChildren=ownedChildren
+                    .Where(ch=>ch.ParentLabel==label).ToArray();
+                if((table is null && actualChildren.Length!=0) ||
+                   (table is not null && actualChildren.Length!=9))
+                    throw new InvalidDataException(
+                        $"Weapon {name} FlameTable original-PC owned name/material child count disagrees: {label}");
+                var ownedDependencyRows=new List<object>();
+                foreach(var ch in actualChildren)
+                {
+                    if(textBytes is null ||
+                       ch.ParentPointerOffset<424 || ch.ParentPointerOffset>456 ||
+                       ((ch.ParentPointerOffset-428)%4!=0 && ch.ParentPointerOffset!=424) ||
+                       ch.ProofLabel!=(ch.ParentPointerOffset==424?label+".name":
+                           $"{label}.material[{(ch.ParentPointerOffset-428)/4}]") ||
+                       BinaryPrimitives.ReadUInt32BigEndian(
+                           textBytes.AsSpan(ch.ParentPointerOffset,4))!=ch.RawPointer ||
+                       (Inline(ch.RawPointer)!=(ch.InlineOwnedBytes is not null)) ||
+                       (ch.InlineOwnedBytes is null)!=(ch.SourceBodyByteOffset is null))
+                        throw new InvalidDataException(
+                            $"Weapon {name} FlameTable source name/material pointer, type or owned child bytes drift: {ch.ProofLabel}");
+                    var owned=ch.InlineOwnedBytes;
+                    if(owned is not null &&
+                       (owned.Length==0 || ch.SourceBodyByteOffset is null ||
+                        !blob.AsSpan(ch.SourceBodyByteOffset.Value,owned.Length)
+                            .SequenceEqual(owned)))
+                        throw new InvalidDataException(
+                            $"Weapon {name} genuine inline FlameTable source child bytes mismatch: {ch.ProofLabel}");
+                    var originalNull=ch.RawPointer==0;
+                    if(ch.AssetKind=="FlameName")
+                    {
+                        if(originalNull)nullNameChildren++;
+                        else if(owned is not null)
+                        {
+                            if(owned[^1]!=0)throw new InvalidDataException(
+                                $"Weapon {name} original-PC FlameTable inline name missing source terminator.");
+                            inlineNameChildren++;
+                            genuineInlineFlameNameBytes+=owned.Length;
+                        }
+                        else packedNameChildren++;
+                    }
+                    else if(ch.AssetKind=="FlameMaterial")
+                    {
+                        if(originalNull)nullMaterialChildren++;
+                        else if(owned is not null)
+                        {
+                            inlineMaterialChildren++;
+                            genuineInlineMaterialChildBytes+=owned.Length;
+                        }
+                        else packedMaterialChildren++;
+                    }
+                    else throw new InvalidDataException(
+                        $"Weapon {name} unknown original-PC FlameTable typed child type {ch.AssetKind}");
+                    ownedDependencyRows.Add(new{
+                        label=ch.ProofLabel,kind=ch.AssetKind,
+                        originalPcParentPointerOffset=ch.ParentPointerOffset,
+                        originalPcRawPointer=$"0x{ch.RawPointer:X8}",
+                        sourceVerdict=originalNull?"AUTHENTIC_SOURCE_NULL":
+                            owned is not null?"GENUINE_ORIGINAL_PC_7B_INLINE_OWNED_BYTES_SHA_VERIFIED":
+                            "SOURCE_PACKED_REFERENCE_REQUIRES_REAL_TARGET_ASSET",
+                        source7bOwnedBodyOffset=ch.SourceBodyByteOffset,
+                        source7bOwnedBodyBytes=owned?.Length??0,
+                        source7bOwnedBodySha256=owned is null?null:Hash(owned),
+                        nativeMaterialBodyAndXenonBindingsVerified=false,
+                        xboxRuntimeReady=false
+                    });
                 }
                 var children=new List<object>();
                 if(textBytes is not null)
@@ -193,7 +266,8 @@ public static class T4XenonAztecWeaponFlameSourceWitness
                     originalPcMaterialPointerCells= textBytes is null?Array.Empty<string>():
                         Enumerable.Range(0,8).Select(i=>
                             $"0x{BinaryPrimitives.ReadUInt32BigEndian(textBytes.AsSpan(428+i*4,4)):X8}").ToArray(),
-                    nestedSounds=children
+                    nestedSounds=children,
+                    originalPcNameAndMaterialTypedChildren=ownedDependencyRows
                 });
             }
             rows.Add(new{
@@ -205,7 +279,12 @@ public static class T4XenonAztecWeaponFlameSourceWitness
         }
         if(inlineParents+nullParents+packedParents!=126 ||
            inlineNestedSoundAliases!=6 || inlineNestedAliasNames!=0 ||
-           parentBytes!=inlineParents*FlameBytes)
+           parentBytes!=inlineParents*FlameBytes ||
+           inlineNameChildren+packedNameChildren+nullNameChildren!=inlineParents ||
+           inlineNameChildren+packedNameChildren!=4 ||
+           inlineMaterialChildren+packedMaterialChildren+nullMaterialChildren!=inlineParents*8 ||
+           inlineMaterialChildren+packedMaterialChildren!=20 ||
+           nullMaterialChildren!=12)
             throw new InvalidDataException(
                 $"Original-PC typed FlameTable parent census did not close: inline={inlineParents} null={nullParents} packed={packedParents} nestedSound={inlineNestedSoundAliases} names={inlineNestedAliasNames}.");
         var result=new{
@@ -220,6 +299,16 @@ public static class T4XenonAztecWeaponFlameSourceWitness
             originalPcOwnedNestedFlameSoundAliasRecords=inlineNestedSoundAliases,
             originalPcOwnedNestedFlameSoundAliasNames=inlineNestedAliasNames,
             originalPcOwnedNestedFlameSoundAliasNameBytes=inlineNestedNameBytes,
+            originalPcFlameNamePointersInlineOwned=inlineNameChildren,
+            originalPcFlameNamePointersPackedUnresolved=packedNameChildren,
+            originalPcFlameNamePointersAuthenticallyNull=nullNameChildren,
+            originalPcGenuineInlineFlameNameBytes=genuineInlineFlameNameBytes,
+            originalPcFlameMaterialPointersInlineOwned=inlineMaterialChildren,
+            originalPcFlameMaterialPointersPackedUnresolved=packedMaterialChildren,
+            originalPcFlameMaterialPointersAuthenticallyNull=nullMaterialChildren,
+            originalPcGenuineInlineFlameMaterial7bSerializedBytes=genuineInlineMaterialChildBytes,
+            originalPcNameMaterialInlineSourceChildrenShaVerified=true,
+            packedSourceMaterialPointersNotConvertedOrInvented=true,
             parentTablesIncludePotentialForeignMaterialAndNamePointers=true,
             parentSourcePointersMustNotBeCopiedRawIntoNativeFf=true,
             previousBounceSourceWitnessSha256=Hash(await File.ReadAllBytesAsync(bounceWitnessFile,ct)),
