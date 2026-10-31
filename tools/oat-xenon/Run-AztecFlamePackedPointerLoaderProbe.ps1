@@ -54,7 +54,10 @@ foreach($p in @($j.parents)){
         $raw=if($null -ne $c.PSObject.Properties['sourcePointer']){
             [string]$c.sourcePointer
         }else{[string]$c.raw}
-        $kind=if($null -ne $c.PSObject.Properties['kind']){
+        # Sound rows carry a decoded pointer kind named 'kind' (Offset),
+        # NOT a FlameMaterial/FlameName asset kind. Discriminate by the
+        # schema-owned original sourcePointer vs raw key.
+        $kind=if($null -ne $c.PSObject.Properties['sourcePointer']){
             [string]$c.kind
         }else{'FlameSound'}
         if($raw -notmatch '^0x[0-9A-Fa-f]{8}$'){throw "Invalid original source pointer: $raw"}
@@ -176,7 +179,7 @@ foreach($raw in @($byRaw.Keys|Sort-Object)){
         }else{$status='TRACE_MALFORMED_OR_WRONG_DECODE';$bad++}
     }elseif($hits.Count -gt 1){$status='AMBIGUOUS_REPEATED_LOADER_TRACES';$bad++}
     else{$bad++}
-    Write-Host "[AZTEC-FLAME-OAT] raw=$raw loaded=$status users=$(@($p.usages).Count)"
+    Write-Host "[AZTEC-FLAME-OAT] raw=$raw loaded=$status users=$($p.usages.Count)"
     $results.Add([ordered]@{
         rawOriginalPcPackedPointer=('0x'+$raw)
         block=[int]$p.block
