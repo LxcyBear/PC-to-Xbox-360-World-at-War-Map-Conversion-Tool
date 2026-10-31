@@ -315,3 +315,22 @@ First untested Windows command after git pull, from the PC2XB3 repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate11PhysicalCellWorldProbe.ps1" -BuildDumper
 
 If first OAT load fails, inspect output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_cells_740/integrated_emitter.log and the new FF OAT hard-gate log. The old FF remains unchanged. Even if all 11 cells and 740 trees independently load, Gate11 OVERALL remains PENDING until lighting, reflection-image, remaining GfxWorld child and dynamic visibility/runtime closure are proven. This first physical Gate11 build and readback have NOT yet been run on Windows.
+
+## Gate11 FIRST real FF result — OAT physical block offset fault (do not recompile blindly)
+
+Windows actual test (2026-10-31) ran from `e4a507e`: WinPS5.1 preflight **34/34 PASS**, pinned specialized OAT graph dumper build **PASS**, .NET Stage4E incremental build **PASS**, isolated `pc_g11_cells_740/scratch_emit/nazi_zombie_aztec.ff` physically emitted **3,642,925 bytes**, and builder reported **11 cells, 740 AABB trees, 14,974 model-index children**. But the *first native OAT load rejected this FF*, with the exact error:
+
+    Zone referenced offset 86484991 of block T4Xenon::XFILE_BLOCK_PHYSICAL which is larger than its size 559280
+
+Source FF zone ~11,190,286 bytes; actual emitter reported PHYSICAL `0x888B0` (= 559,280 bytes), VIRTUAL `0x82B158`. OAT loaded **0/8509 roots**. OAT first-loader outcome `AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_BLOCKED`. This proves the new FF is **invalid** even though `layoutReplayExact=True` for the converter's own planner; the latter is necessary but not an independent native pointer proof. Gate 10's previously verified FF remains unchanged. Gate11 stays pending; no Xbox deployment. **Do not grow the PHYSICAL block merely to satisfy an absurd out-of-range decoded pointer.**
+
+The follow-up diagnostic `Audit-AztecGate11FailedFfPointerLayout.ps1` is read-only and operates on the **already failed** FF. It uses existing Release .NET CLI with `--no-build` to decompress the failed FF to a disposable local temp file; scans for the raw packed candidate corresponding to OAT's invalid 86484991 offset; locates the native 11×56B cell header array by the first original-PC cell's source-owned bounds; checks the contiguous 11 cell headers and the emitted 740×40B tree records, 14,974 uint16 source-model indices and 11 reflection-probe indices in their expected physical serialized sequence. It reports any first mismatch and pointer-word occurrence in `pc_g11_cells_740/gate11_failed_ff_pointer_layout_audit.json`, then deletes only the temp decompressed zone. **No .NET build, no FF rebuild, no OAT call, no Xbox work.**
+
+To run from the PC2XB3 repo root:
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax gate failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-AztecGate11FailedFfPointerLayout.ps1'
+
+Interpretation: if the byte scan finds a mismatch, correct the recorded serialized stream order/offset at that earliest field before ONE new isolated OAT FF test; if the source-vs-FF sequence matches, look at pinned T4Xenon `GfxWorld.txt` **loader traversal order** (`GfxCell`, `GfxAabbTree`, reusable `smodelIndexes`) and identify the nested pointer field whose position in the file differs from native loader expectations. Do not repeat the full FF/OAT native build until this no-build provenance evidence narrows the cause.
