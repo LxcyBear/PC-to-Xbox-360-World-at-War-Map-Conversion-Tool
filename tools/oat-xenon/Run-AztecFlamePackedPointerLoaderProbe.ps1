@@ -204,19 +204,28 @@ foreach($raw in @($byRaw.Keys|Sort-Object)){
     $stateCount=[int]$tm.Groups[7].Value
     $namedImageCount=[int]$tm.Groups[8].Value
     $imageNames=[string]$tm.Groups[9].Value
-    if($textureCount -gt 64 -or $constantCount -gt 64 -or $stateCount -gt 64 -or
-       $namedImageCount -gt $textureCount -or
-       ($materialShape -and $sourceMatName -eq '-')){
-        $missingTyped++
-        continue
-    }
     $roles=@($p.usages|ForEach-Object{[string]$_.kind}|Sort-Object -Unique)
     $mixedRoles=$roles.Count -gt 1
     $isMaterial=$roles -contains 'FlameMaterial'
     $isSound=$roles -contains 'FlameSound'
     $isName=$roles -contains 'FlameName'
-    $materialCandidate=($isMaterial -and $materialShape -and
-        $sourceMatName -ne '-' -and -not $mixedRoles)
+    # The OAT trace prints Material-only diagnostic bytes for EVERY raw
+    # target, including genuine strings and 4-byte SndAliasCustom records.
+    # Their bytes at Material offsets 91-93 are NOT typed counts! In v2,
+    # rejecting those arbitrary values silently discarded five of thirteen
+    # fully loaded source targets (including actual name/sound references).
+    # Check Material field invariants ONLY after the PC Material112 shape
+    # has been established on a genuine FlameMaterial reference.
+    if($isMaterial -and $materialShape -and
+       ($textureCount -gt 64 -or $constantCount -gt 64 -or
+        $stateCount -gt 64 -or $namedImageCount -gt $textureCount -or
+        $sourceMatName -eq '-')){
+        $missingTyped++
+        Write-Host "[AZTEC-FLAME-TYPED] REAL Material112 contradictory typed counts at $raw; no candidate promoted"
+        continue
+    }
+    $materialCountsRelevant=($isMaterial -and $materialShape -and -not $mixedRoles)
+    $materialCandidate=$materialCountsRelevant
     $materialMatchesOat=($materialCandidate -and ($materials -contains $sourceMatName))
     $aliasCandidate=($isSound -and $sourceAlias -ne '-' -and -not $mixedRoles)
     $aliasMatchesOat=($aliasCandidate -and ($sounds -contains $sourceAlias))
@@ -255,11 +264,12 @@ foreach($raw in @($byRaw.Keys|Sort-Object)){
         materialNameFromActualPcLoadedMemory=if($materialCandidate){$sourceMatName}else{$null}
         materialNameIndependentlyListedAsOriginalPcOatAsset=$materialMatchesOat
         pcLoadedMaterialTechniqueName=if($sourceTechnique -ne '-'){$sourceTechnique}else{$null}
-        pcLoadedMaterialTextureCount=$textureCount
-        pcLoadedMaterialConstantCount=$constantCount
-        pcLoadedMaterialStateBitsCount=$stateCount
-        actualPcLoadedImageNamesRead=$namedImageCount
-        pcLoadedImageNameCandidates=if($imageNames -eq '-'){@()}else{@($imageNames.Split(';'))}
+        pcLoadedMaterialTextureCount=if($materialCountsRelevant){$textureCount}else{$null}
+        pcLoadedMaterialConstantCount=if($materialCountsRelevant){$constantCount}else{$null}
+        pcLoadedMaterialStateBitsCount=if($materialCountsRelevant){$stateCount}else{$null}
+        actualPcLoadedImageNamesRead=if($materialCountsRelevant){$namedImageCount}else{$null}
+        pcLoadedImageNameCandidates=if($materialCountsRelevant -and $imageNames -ne '-')
+            {@($imageNames.Split(';'))}else{@()}
         pcLoadedFourByteSndAliasCustomNameCandidate=$aliasCandidate
         sourceSndAliasName=if($aliasCandidate){$sourceAlias}else{$null}
         soundAliasNameIndependentlyListedAsOriginalPcOatAsset=$aliasMatchesOat
