@@ -36,6 +36,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-AztecGate11WorldAssetBindings.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11CombinedNativePreflight.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11TwoWaveWorldClosure.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11LightingWorldProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PrimitiveWorldProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PhysicalCellWorldProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-AztecGate11FailedFfPointerLayout.ps1') -ErrorAction Stop)
