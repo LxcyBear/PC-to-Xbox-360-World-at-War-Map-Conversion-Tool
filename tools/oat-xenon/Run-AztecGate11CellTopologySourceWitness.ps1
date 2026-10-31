@@ -197,6 +197,9 @@ $summary=[ordered]@{
     note='First TWO-sided PC source GfxCell topology / pinned Xbox native struct ABI only. This is not 11 complete portal/AABB typed payloads, not a source-child serializer, not hardware-authorized; preserve the verified 10/13 milestone.'
 }
 $summary|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $report -Encoding UTF8
+# The full material/asset extraction was only a disposable source witness.
+# Keep compact hashes and JSON copies; avoid accumulating duplicate OAT dumps.
+Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | typed original-PC cell topology & Xbox native ABI measured'
 Write-Host "[AZTEC-GATE11-CELLS] World cells=$($summary.sourceWorldCellCount) AABB trees=$totalTrees portals=$totalPortals cell cull refs=$totalCull"
 Write-Host "[AZTEC-GATE11-CELLS] Original-PC/Xbox sizes: GfxCell $($summary.originalPcCellBytes)/$($summary.nativeXboxCellBytes), Portal $($summary.originalPcPortalBytes)/$($summary.nativeXboxPortalBytes), AABB $($summary.originalPcAabbTreeBytes)/$($summary.nativeXboxAabbTreeBytes)"
