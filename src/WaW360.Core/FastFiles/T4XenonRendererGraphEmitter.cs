@@ -24,6 +24,11 @@ public sealed class T4XenonRendererEmitResult
     public required int RealMaterialRoots { get; init; }
     public required int MaterialReferenceRoots { get; init; }
     public required int RealXModelRoots { get; init; }
+    // Diagnostic source-owned scalars and inline strings; NOT complete 7b graphs.
+    public int OriginalPcWeaponDiagnosticRoots { get; init; }
+    public long OriginalPcWeaponDiagnosticSerializedBytes { get; init; }
+    public long OriginalPcWeaponSourceProofBytes { get; init; }
+    public bool OriginalPcWeaponFullOwnedGraphsEmitted { get; init; }
     public required int XModelReferenceRoots { get; init; }
     public required long ZoneBytes { get; init; }
     public required long MainZoneBytes { get; init; }
@@ -162,6 +167,8 @@ public static class T4XenonRendererGraphEmitter
 
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var weaponCanary = await T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync(
+            roots,cancellationToken);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
         var pcMapEnts = T4XenonAztecMapEntsGraft.Load(mapEntsCanaryManifest, roots);
         var pcComWorld = await T4XenonAztecComWorldGraft.LoadAsync(comWorldProofManifest, roots, cancellationToken);
@@ -487,6 +494,19 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            if(weaponCanary is not null &&
+               weaponCanary.ByRoot.TryGetValue(root.Index,out var weaponEntry))
+            {
+                // REAL original PC scalar/inline XString data, SHA-matched to
+                // the standalone 7b Xbox source graph, but ALL other child
+                // pointers deliberately remain NULL in this scratch test.
+                // No full 7b payload or cross-asset dependencies are claimed.
+                weaponEntry.Emit(zone,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot);
+                continue;
+            }
+
             var shell = BuildShell(root.TypeName, root.Name, canonicalBaseName);
             if (!directVirtualRoot)
                 state.TempRoot(shell.Body.Length);
@@ -630,7 +650,8 @@ public static class T4XenonRendererGraphEmitter
         // native identity + OAT pass cannot certify hardware readiness until
         // PC-owned StringTable values have a real serializer.
         var emptyStringTableShells = roots.Count(r => Normalize(r.TypeName) == "stringtable");
-        var validationOnly = aztecSourceOnly39MaterialFfScratch ||
+        var validationOnly = weaponCanary is not null ||
+                             aztecSourceOnly39MaterialFfScratch ||
                              (imageGraph is not null && imageGraphValidationOnly) ||
                              emptyStringTableShells != 0;
         var validationPass =
@@ -661,6 +682,9 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"PC ComWorld zone offset:     0x{comWorldZoneOffset:X}");
         report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
+        report.AppendLine($"Original-PC WeaponDef SCRATCH scalar+XString roots: {weaponCanary?.ByRoot.Count ?? 0:N0} (NOT full Xbox 7b graphs)");
+        report.AppendLine($"Weapon canary real isolated source proof bytes: {weaponCanary?.TotalOriginalOwnedProofBytes ?? 0:N0}");
+        report.AppendLine($"Weapon diagnostic bytes serialized in FF: {weaponCanary?.TotalDiagnosticEmittedBytes ?? 0:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
@@ -703,6 +727,10 @@ public static class T4XenonRendererGraphEmitter
             RealMaterialRoots = realMaterials,
             MaterialReferenceRoots = materialCorpus?.ReferenceRoots ?? 0,
             RealXModelRoots = realXModels,
+            OriginalPcWeaponDiagnosticRoots = weaponCanary?.ByRoot.Count ?? 0,
+            OriginalPcWeaponDiagnosticSerializedBytes = weaponCanary?.TotalDiagnosticEmittedBytes ?? 0,
+            OriginalPcWeaponSourceProofBytes = weaponCanary?.TotalOriginalOwnedProofBytes ?? 0,
+            OriginalPcWeaponFullOwnedGraphsEmitted = false,
             XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             ZoneBytes = zoneBytes.LongLength,
             MainZoneBytes = mainBytes.LongLength,
