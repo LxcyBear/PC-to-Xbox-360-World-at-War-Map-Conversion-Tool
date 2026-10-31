@@ -11,6 +11,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate11PrimitiveProbe,
       [switch]$Gate11LightingProbe,
       [switch]$Gate11ImageHeadersProbe,
+      [switch]$Gate11ImageRootLinksProbe,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -59,6 +60,9 @@ if($Gate11LightingProbe -and -not $Gate11PrimitiveProbe){
 }
 if($Gate11ImageHeadersProbe -and -not $Gate11LightingProbe){
     throw '-Gate11ImageHeadersProbe requires source-owned lighting/shadow, primitive, cell and draw children.'
+}
+if($Gate11ImageRootLinksProbe -and -not $Gate11ImageHeadersProbe){
+    throw '-Gate11ImageRootLinksProbe requires source-owned reflection/lightmap headers and all prior Gate11 children.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -189,7 +193,8 @@ if($Gate11ImageHeadersProbe){
 }
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate11ImageHeadersProbe){'pc_g11_image_headers_probe'}
+        if($Gate11ImageRootLinksProbe){'pc_g11_image_root_links_probe'}
+        elseif($Gate11ImageHeadersProbe){'pc_g11_image_headers_probe'}
         elseif($Gate11LightingProbe){'pc_g11_lighting_combined_probe'}
         elseif($Gate11PrimitiveProbe){'pc_g11_remaining_world_primitive_probe'}
         elseif($Gate11CellProbe){'pc_g11_cells_740'}
@@ -354,6 +359,7 @@ try{
     $priorGate11Primitive=$env:WAW360_AZTEC_GATE11_PRIMITIVE_BATCH
     $priorGate11Lighting=$env:WAW360_AZTEC_GATE11_LIGHTING_BATCH
     $priorGate11Images=$env:WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH
+    $priorGate11Links=$env:WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -401,6 +407,13 @@ try{
             Write-Host '[AZTEC-GATE11-IMG-HEADERS] streamInfo structurally 0/0/null per original Xbox ABI; no invented stream arrays.'
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH -ErrorAction SilentlyContinue
+        }
+        if($Gate11ImageRootLinksProbe){
+            $env:WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE='1'
+            Write-Host '[AZTEC-GATE11-IMG-LINKS] Six original-PC star-image pointers rebased to existing native GfxImage ROOT INSERT identities.'
+            Write-Host '[AZTEC-GATE11-IMG-LINKS] The six target images are still NAME-ONLY shells, NO pixel bodies; NO hardware.'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -450,6 +463,11 @@ try{
             Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH=$priorGate11Images
+        }
+        if($null -eq $priorGate11Links){
+            Remove-Item Env:\WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE11_IMAGE_REFERENCE_REBASE=$priorGate11Links
         }
         if($null -eq $priorGate10Plan){
             Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
@@ -514,7 +532,13 @@ if($IntegrateWorld){
     }
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate11ImageHeadersProbe){
+        status=if($Gate11ImageRootLinksProbe){
+            if($core -and $candidateOatPass){
+                'AZTEC_GATE11_SIX_IMAGE_ROOT_NAME_SHELL_LINKS_OAT_PASS_PIXELS_UNPROVEN'
+            }else{
+                'AZTEC_GATE11_SIX_IMAGE_ROOT_NAME_SHELL_LINKS_OAT_BLOCKED'
+            }
+        }elseif($Gate11ImageHeadersProbe){
             if($core -and $candidateOatPass){
                 'AZTEC_GATE11_SOURCE_IMAGE_HEADERS_OAT_PASS_PIXELS_UNPROVEN'
             }else{
@@ -586,6 +610,10 @@ if($IntegrateWorld){
         gate11PrimitiveProbe=[bool]$Gate11PrimitiveProbe
         gate11LightingCombinedProbe=[bool]$Gate11LightingProbe
         gate11ImageHeadersProbe=[bool]$Gate11ImageHeadersProbe
+        gate11ImageRootLinksProbe=[bool]$Gate11ImageRootLinksProbe
+        gate11ImageRootNamesLinked=if($Gate11ImageRootLinksProbe){6}else{0}
+        gate11ImageShellPixelPayloadsVerified=0
+        gate11ImageRootLinksIndependentReadbackProven=$false
         gate11SourceReflectionHeaderCount=if($Gate11ImageHeadersProbe){2}else{0}
         gate11SourceLightmapHeaderCount=if($Gate11ImageHeadersProbe){2}else{0}
         gate11UnboundGeneratedImagePointers=if($Gate11ImageHeadersProbe){6}else{0}
@@ -629,7 +657,9 @@ if($IntegrateWorld){
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
-        note=if($Gate11ImageHeadersProbe){
+        note=if($Gate11ImageRootLinksProbe){
+            'ISOLATED name-only structural pointer probe: 2 reflection and 2 lightmap source headers; six PC-named image references now point to their exact native 8509-root GfxImage SHELL aliases, but all six remain unverified dummy shells without genuine pixel/texture payload. OAT load is not runtime/texture verification, no hardware.'
+        }elseif($Gate11ImageHeadersProbe){
             'ONE ISOLATED PC-source candidate with two original-PC GfxReflectionProbe 16B heads and two GfxLightmapArray 8B heads, 6 unresolved generated-image GfxImage* pointers explicitly NULL. Native measured empty stream structure; source-owned grid/shadow/cell/draw regressions. All image pixels and material runtime semantics unresolved, no hardware deployment.'
         }elseif($Gate11LightingProbe){
             'SINGLE new isolated candidate: 4.82MB original-PC typed lightgrid and 1903 shadow model indexes and two original-PC empty light-region headers. OAT FF load alone is NOT a byte-level lighting proof. Six GfxImage identity-name matches remain payload UNVERIFIED; runtime Xbox streaming metadata still missing. No hardware admission.'
