@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([ValidateSet('0','1','6','63')][int]$Limit=63)
+param([ValidateSet('0','1','6','63')][int]$Limit=63,
+      [switch]$ExpandedInlineXStrings)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
@@ -11,7 +12,7 @@ $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $sourceReport=Join-Path $base 'pc_g11_lightning_weapon_69_unified_native_source\aztec_69_weapon_unified_original_pc_xbox_body_selections.json'
 $sizeReport=Join-Path $base 'pc_g11_native_ff_size_audit\aztec_native_ff_size_and_source_ledger.json'
-$work=Join-Path $repo '.deps\aztec-w63-ff-growth'
+$work=Join-Path $repo $(if($ExpandedInlineXStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
 $emitReport=Join-Path $work 'scratch_emit\nuclear_xenon_renderer_emit.json'
 $ff=Join-Path $work 'scratch_emit\nazi_zombie_aztec.ff'
 $summary=Join-Path $work ('aztec_weapon63_ff_growth_'+$Limit+'.json')
@@ -56,6 +57,9 @@ Write-Host '[AZTEC-W63-GROWTH] ACTUAL isolated Xbox FF size experiment from orig
 Write-Host "[AZTEC-W63-GROWTH] Baseline protected OAT-good FF: $baselineBytes bytes"
 Write-Host "[AZTEC-W63-GROWTH] Mode=$(if($Limit -eq 0){'SAME-SETTINGS NO-WEAPON A/B CONTROL'}else{'SOURCE-OWNED WEAPON CANARY'}) ; original-PC WeaponDef diagnostic roots=$Limit/63."
 Write-Host '[AZTEC-W63-GROWTH] 179775B full 7b blobs remain standalone: NOT copied into FF.'
+if($ExpandedInlineXStrings){
+    Write-Host '[AZTEC-W63-XSTR] Opt-in: additional source-owned typed FIXED BODY inline XStrings; packed source/foreign child pointers fenced.'
+}
 Write-Host '[AZTEC-W63-GROWTH] Remaining 2 conflicting + 4 stock-only weapon roots remain shells.'
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [####----------------] 20% | protected FF and all 69 source-root SHA identities pinned'
 $runner=Join-Path $PSScriptRoot 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1'
@@ -65,6 +69,7 @@ $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$runner,
     '-Gate10StaticDrawProbe','-Gate11CellProbe','-Gate11PrimitiveProbe',
     '-Gate11LightingProbe','-Gate11ImageHeadersProbe','-Gate11ImageRootLinksProbe',
     '-Weapon63SourceCanary','-WeaponCanaryLimit',[string]$Limit)
+if($ExpandedInlineXStrings){$params+=@('-Weapon63ExtendedInlineStrings')}
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [########------------] 40% | existing world emitter + native Stage4D/4E weapon layout and OAT'
 & powershell @params
 $exit=[int]$LASTEXITCODE
@@ -96,12 +101,15 @@ $pass=($exit -eq 0 -and $null -ne $e -and $null -ne $newBytes -and
 $summaryObj=[ordered]@{
     schema='WaW360.AztecWeapon63RealSourceScalarXstringFfGrowthCanary.v1'
     status=if($pass){
-        if($Limit -eq 0){'AZTEC_W63_NO_WEAPON_SAME_SETTINGS_CONTROL_OAT_PASS'}
+        if($ExpandedInlineXStrings){'AZTEC_W63_EXTENDED_ORIGINAL_PC_INLINE_XSTRINGS_NATIVE_FF_OAT_PASS_NOT_FULL_WEAPON_GRAPH'}
+        elseif($Limit -eq 0){'AZTEC_W63_NO_WEAPON_SAME_SETTINGS_CONTROL_OAT_PASS'}
         else{'AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED'}
     }else{'AZTEC_W63_ISOLATED_NATIVE_FF_OAT_OR_LAYOUT_BLOCKED'}
     originalPcAuthenticXboxWeaponDefBodiesSourceProven=63
     originalPcNativeOwnedProofBytesAvailable=179775
     nativeWeaponRootScalarXstringCanariesEmitted=$emitted
+    extendedOriginalPcFixedInlineXStringsMode=[bool]$ExpandedInlineXStrings
+    extendedSourceFixedInlineStringFieldsEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponExpandedInlineXStringFields}else{0}
     fullWeaponDefChildrenAndDependenciesEmitted=$false
     requestedCanaries=$Limit
     originalPcSourceWeaponBodyUsedForEachCanary=($Limit -gt 0)
@@ -129,7 +137,11 @@ $summaryObj=[ordered]@{
     gate11Closed=$false
     parentRunnerExitCode=$exit
     emitterManifest=$emitReport
-    note='This isolated FF includes real original-PC numeric WeaponDef scalars and original inline WeaponDef display/overlay strings, but nulls all other WeaponDef pointers. It does not contain 63 complete 7b source-owned weapon graphs, nor make the map playable. Size alone never certifies source closure.'
+    note=if($ExpandedInlineXStrings){
+        'Experimental isolated FF: original-PC source typed 7b owned walk identifies direct fixed-body inline XStrings in correct ZoneCode order; only ASCII-safe inline fields rebased, all unverified packed source strings and XModel/FX/Material/XAnim/audio pointers stay NULL. Full 7b graphs NOT integrated, not playable, OAT list does not establish runtime correctness.'
+    }else{
+        'This isolated FF includes real original-PC numeric WeaponDef scalars and original inline WeaponDef display/overlay strings, but nulls all other WeaponDef pointers. It does not contain 63 complete 7b source-owned weapon graphs, nor make the map playable. Size alone never certifies source closure.'
+    }
 }
 $summaryObj|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $summary -Encoding UTF8
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [################----] 80% | measured new actual compressed FF size, OAT result and source-derived child bytes'
@@ -142,6 +154,25 @@ if($null -ne $newBytes){
     Write-Host '[AZTEC-W63-GROWTH] MEASURED DELTA = N/A (build failed before writing FF; no size change proven)'
 }
 Write-Host "[AZTEC-W63-GROWTH] Native original-PC scalar+inline XString WeaponDef roots=$emitted/$Limit; full 7b graph in FF=0"
+if($ExpandedInlineXStrings){
+    Write-Host "[AZTEC-W63-XSTR] NEW typed source-owned fixed WeaponDef inline XString fields=$($summaryObj.extendedSourceFixedInlineStringFieldsEmitted)"
+    $old63=Join-Path $repo '.deps\aztec-w63-exact-ab\weapons_63\nazi_zombie_aztec.ff'
+    $oldProof=Join-Path $repo '.deps\aztec-w63-exact-ab\weapons_63\case_size_and_oat.json'
+    if((Test-Path -LiteralPath $old63 -PathType Leaf) -and
+       (Test-Path -LiteralPath $oldProof -PathType Leaf)){
+        $old=Get-Content -LiteralPath $oldProof -Raw|ConvertFrom-Json
+        $oldSha=(Get-FileHash -LiteralPath $old63 -Algorithm SHA256).Hash
+        if([string]$old.status -eq 'AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED' -and
+           [int]$old.nativeWeaponRootScalarXstringCanariesEmitted -eq 63 -and
+           $oldSha -ieq [string]$old.newScratchFastFileSha256 -and
+           $oldSha -ieq '3DBA6CB661691065192B57D4A11A1E4DE5FA0E5FCF6937C8B86E70A57C9152D7' -and
+           $null -ne $newBytes){
+            $oldBytes=[long](Get-Item -LiteralPath $old63).Length
+            Write-Host "[AZTEC-W63-XSTR] Historic OAT-good 63-canary FF: $oldBytes B; expanded: $newBytes B; archival-relative compressed delta: $($newBytes-$oldBytes) B"
+            Write-Host '[AZTEC-W63-XSTR] Different Git revisions: archive-relative delta is not an exact same-revision A/B proof.'
+        }
+    }
+}
 Write-Host "[AZTEC-W63-GROWTH] Stage4D layout exact=$($summaryObj.nativeLayoutReplayExact); OAT 8509 identity=$($summaryObj.oatLoaded8509NativeAssetIdentities); OAT 0/0=$($summaryObj.oatZeroWarningsErrors)"
 Write-Host "[AZTEC-W63-GROWTH] STATUS=$($summaryObj.status)"
 Write-Host "[AZTEC-W63-GROWTH] JSON=$summary"
