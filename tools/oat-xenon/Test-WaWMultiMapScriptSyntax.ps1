@@ -61,6 +61,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecWeapon63RemainingSoundAliasFrontier.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecWeapon63FlameParentSourceWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecWeapon63FlameRealAssetDependencyAudit.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecWeapon63FlameInlineRealSourceBodies.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecWeapon63AccuracyVec2ExactAB.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-AztecGate11ImageHeaderNativeOrder.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PrimitiveWorldProbe.ps1') -ErrorAction Stop)
