@@ -57,7 +57,7 @@ if(-not [string]::IsNullOrWhiteSpace($AudioSourceRoot)){
             sourceBytes=[long]$file.Length
             sourceSha256=$sha
             extension=$ext
-            first24BytesHex=[Convert]::ToHexString($head,0,$n)
+            first24BytesHex=if($n -eq 0){''}else{(-join ($head[0..($n-1)]|ForEach-Object {$_.ToString('X2')}))}
             waveFormatTag=$fmt
             evidence=$format
             decodedToPcmAndCompared=$false
