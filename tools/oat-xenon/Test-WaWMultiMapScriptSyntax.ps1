@@ -33,6 +33,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11CellTopologySourceWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11PhysicalCellWorldProbe.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-AztecGate11FailedFfPointerLayout.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11ExistingFfOatPointerTrace.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecGate11OatLoadedCells.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate8NativeStaticDrawAbiWitness.ps1') -ErrorAction Stop)
