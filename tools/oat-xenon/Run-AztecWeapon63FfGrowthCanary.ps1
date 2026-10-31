@@ -68,19 +68,22 @@ $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$runner,
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [########------------] 40% | existing world emitter + native Stage4D/4E weapon layout and OAT'
 & powershell @params
 $exit=[int]$LASTEXITCODE
-$newBytes=0L
+$newBytes=$null
 $sha=$null
 if(Test-Path -LiteralPath $ff -PathType Leaf){
     $newBytes=[long](Get-Item -LiteralPath $ff).Length
     $sha=(Get-FileHash -LiteralPath $ff -Algorithm SHA256).Hash
 }
-$delta=$newBytes-$baselineBytes
+# A missing candidate is not a zero-byte FF. Never claim shrinkage
+# when Stage 4D/4E failed before writing anything.
+$delta=if($null -ne $newBytes){[long]$newBytes-$baselineBytes}else{$null}
 $e=$null
 if(Test-Path -LiteralPath $emitReport -PathType Leaf){
     try{$e=Get-Content -LiteralPath $emitReport -Raw|ConvertFrom-Json}catch{}
 }
 $emitted=if($null -ne $e){[int]$e.OriginalPcWeaponDiagnosticRoots}else{0}
-$pass=($exit -eq 0 -and $null -ne $e -and
+$pass=($exit -eq 0 -and $null -ne $e -and $null -ne $newBytes -and
+       $newBytes -gt 0 -and
        [int]$e.NativeRoots -eq 8509 -and
        $emitted -eq $Limit -and
        [bool]$e.LayoutReplayExact -and
@@ -109,11 +112,11 @@ $summaryObj=[ordered]@{
     newScratchFastFileBytes=$newBytes
     newScratchFastFileSha256=$sha
     deltaBytesComparedToProtectedBaseline=$delta
-    growthPercentComparedToProtectedBaseline=if($newBytes -gt 0){[Math]::Round(100.0*$delta/$baselineBytes,3)}else{$null}
+    growthPercentComparedToProtectedBaseline=if($null -ne $delta){[Math]::Round(100.0*$delta/$baselineBytes,3)}else{$null}
     oatLoaded8509NativeAssetIdentities=if($null -ne $e){[bool]$e.ExactIdentitySequence}else{$false}
     oatZeroWarningsErrors=if($null -ne $e){[bool]$e.OatZeroWarningsZeroErrors}else{$false}
     nativeLayoutReplayExact=if($null -ne $e){[bool]$e.LayoutReplayExact}else{$false}
-    wrapperRoundTripVerified=if($null -ne $e){[bool]$e.LayoutReplayExact}else{$false}
+    wrapperRoundTripVerified=if($null -ne $e){[bool]$e.ValidationPass}else{$false}
     sourceOwnedScalarXstringSerializedBytes=if($null -ne $e){[long]$e.OriginalPcWeaponDiagnosticSerializedBytes}else{0L}
     sourceOwnedFullProofBytesForSelectedCanaries=if($null -ne $e){[long]$e.OriginalPcWeaponSourceProofBytes}else{0L}
     previous43ConflictsResolved=0
@@ -129,8 +132,13 @@ $summaryObj=[ordered]@{
 $summaryObj|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $summary -Encoding UTF8
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [################----] 80% | measured new actual compressed FF size, OAT result and source-derived child bytes'
 Write-Host "[AZTEC-W63-GROWTH] PROTECTED BASELINE FF = $baselineBytes bytes ($('{0:N2}' -f ($baselineBytes/1MB)) MiB)"
-Write-Host "[AZTEC-W63-GROWTH] NEW SCRATCH FF = $newBytes bytes ($('{0:N2}' -f ($newBytes/1MB)) MiB)"
-Write-Host "[AZTEC-W63-GROWTH] MEASURED DELTA vs prior protected candidate = $delta bytes"
+if($null -ne $newBytes){
+    Write-Host "[AZTEC-W63-GROWTH] NEW SCRATCH FF = $newBytes bytes ($('{0:N2}' -f ($newBytes/1MB)) MiB)"
+    Write-Host "[AZTEC-W63-GROWTH] MEASURED DELTA vs prior protected candidate = $delta bytes"
+}else{
+    Write-Host '[AZTEC-W63-GROWTH] NEW SCRATCH FF = NO CANDIDATE GENERATED'
+    Write-Host '[AZTEC-W63-GROWTH] MEASURED DELTA = N/A (build failed before writing FF; no size change proven)'
+}
 Write-Host "[AZTEC-W63-GROWTH] Native original-PC scalar+inline XString WeaponDef roots=$emitted/$Limit; full 7b graph in FF=0"
 Write-Host "[AZTEC-W63-GROWTH] Stage4D layout exact=$($summaryObj.nativeLayoutReplayExact); OAT 8509 identity=$($summaryObj.oatLoaded8509NativeAssetIdentities); OAT 0/0=$($summaryObj.oatZeroWarningsErrors)"
 Write-Host "[AZTEC-W63-GROWTH] STATUS=$($summaryObj.status)"
