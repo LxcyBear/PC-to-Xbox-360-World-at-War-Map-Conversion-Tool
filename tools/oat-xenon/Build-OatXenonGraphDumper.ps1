@@ -478,6 +478,7 @@ try {
             't4xenon-gfxworld-gate11-loaded-cell-aabb-typed-witness-v1',
             't4xenon-gfxworld-gate11-loaded-primitive-digest-v1',
             't4xenon-gfxworld-gate11-loaded-lighting-shadow-region-digest-v1',
+            't4xenon-gfxworld-gate11-stream-structural-shape-v1',
             't4xenon-gfxworld-static-draw-60b-loaded-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
         )
