@@ -744,3 +744,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 **Windows compile and source typed-sound scan pending** (no claim of pass before user run). All 1,532 LoadedSound identities need their own actual ownership/residency investigation (PC SoundFile node counts and external usermap XMA are separate from standalone Xbox LoadedSound root names). Stage still 10/13; no original Xbox donor bytes, fake payloads, Xbox size-padding, or automatic deployment.
+
+### Native Xbox 12-bucket XAnim source-proof batch, 614 PC vs 602 native identities (2026-10-31; Windows execution pending)
+
+The previous **source-body Lightning Batch** completed on Windows at commit \`9efc6f1\`: **52/52 PowerShell syntax PASS**; all three original PC FF sources SHA-verified; PC \`sound\` physical headers **3,774/3,774** parsed as real typed SoundAliasList structures, with **0 parser failures**. Source SoundFile node distribution: **loaded 1,630**, **streamed 1,863**, **primed 2**. This is meaningful PC Sound ownership/header structural proof; **no Xbox XMA audio conversions**, and loaded sound node count is not directly comparable to the separate Xbox \`loadedsound\` native 1,532 root count. Original PC XAnim physical headers **614 total** (map.ff 330, mod.ff 284); Xbox native XAnim reference has **602** roots and earlier source NAME index showed 602/602 native names. Do NOT infer 12 duplicates without a typed name-level reconciliation. All 614 original PC animation headers were inline; still not native converted bodies in the current 4,510,695-byte diagnostic FF.
+
+**Next one-command proof (implemented and committed, user Windows run pending):** \`tools/oat-xenon/Run-AztecXAnim614NativeProof.ps1\`, with CLI \`aztec-xanim-614-source-native\` and class \`T4AztecXAnim614SourceNativeProof.cs\`. It SHA-locks the three original PC FFs against the prior PC image/source inventory; independently recovers strict PC typed inline XAnim source candidates and names, deduplicates them, and compares exact PC typed animation names with **all 602 native Xbox XAnim root identities**. Then, for each original source with XAnim, it calls the established \`T4XboxXAnimTransformProof.BuildAsync\` (correct 0x58/10-bucket PC → 0x5C/12-bucket Xbox quaternion, rotation/translation bone-index conversion), independently validates all transformed native Xbox blobs with \`T4NativeProofContainerReader.IndexAsync\` and the existing readback checks, and writes **internal source-authentic Xbox animation proof containers** rather than a game fastfile. Reports verified transformed body counts, real Xbox serialized body bytes, PC-vs-native name intersection, PC-only names, native-only names, source duplicate names, and fail-closed per-file exceptions. Any failed transformation stays marked PARTIAL; no invented success. The \`-NamesOnly\` option skips transformation for fastest root-name differential.
+
+Run from the converter repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if($LASTEXITCODE -ne 0){throw "PS51 syntax gate failed"}
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecXAnim614NativeProof.ps1"
+\`\`\`
+
+Reports: \`pc_g11_lightning_xanim_614_native_proof/aztec_614_pc_xanim_native_conversion_and_name_diff.json\` and \`.md\`, with source-only proof blobs beneath \`pc_to_xenon_internal_proof_containers/\`. Does not alter prior OAT-passing map FF, no OAT rebuild, no retail Xbox donor asset bytes, no Xbox console deployment, and **does not graft transformed animations into 8,509-root FF or prove runtime gameplay**. Source-proof success does not close unfinished Gate11 images, stock XModel link, or material stateBits; still 10/13.
+
+The source-body script's unrelated CS8321 unused local function warning was also removed. Existing CS0652, CS8619, CA2014 and other warnings remain separate from conversion-closure evidence.
