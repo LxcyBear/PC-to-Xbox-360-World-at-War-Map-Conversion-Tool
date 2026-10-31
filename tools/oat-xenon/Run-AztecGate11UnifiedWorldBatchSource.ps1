@@ -203,6 +203,61 @@ try{
     # These are source-OWNED, NOT completed Xenon asset dependencies.
     # One bundled FF build is intended only after every required serializer
     # and original-PC image/material/root identity relocation passes.
+    $families=[ordered]@{
+        sky=[ordered]@{
+            sourceCount=[int]$c.skySurfaces
+            hasSkyImage=-not [string]::IsNullOrWhiteSpace([string]$world.sourceImageAndMaterialReferences.skyImage)
+            nextRule='bind PC-owned sky image and skyBox identity to proven native asset roots'
+            xenonEmitted=$false
+        }
+        reflection=[ordered]@{
+            sourceCount=[int]$c.reflectionProbes
+            referenceRows=@($world.reflectionProbeRefs).Count
+            nextRule='rebase every reflection probe image identity and create typed Xenon probe array'
+            xenonEmitted=$false
+        }
+        coronas=[ordered]@{
+            sourceCount=[int]$c.coronas
+            nextRule='BE-convert 28B native/source GfxLightCorona float records using pinned ABI'
+            xenonEmitted=$false
+        }
+        lightmaps=[ordered]@{
+            sourceCount=[int]$c.lightmaps
+            referenceRows=@($world.lightmapRefs).Count
+            nextRule='resolve every primary and secondary lightmap GfxImage root'
+            xenonEmitted=$false
+        }
+        lightGrid=[ordered]@{
+            rows=[int]$c.lightGridRows
+            rawBytes=[long]$c.lightGridRawBytes
+            entries=[long]$c.lightGridEntries
+            colors=[long]$c.lightGridColors
+            nextRule='BE-convert row starts/entry indices and native root grid scalars; retain encoded color bytes'
+            xenonEmitted=$false
+        }
+        brushAndCull=[ordered]@{
+            brushes=[int]$c.brushModels
+            cullGroups=[int]$c.cullGroups
+            nextRule='BE-convert source-owned primitive root records, retaining source material and surface counts'
+            xenonEmitted=$false
+        }
+        shadowsAndRegions=[ordered]@{
+            primaryLights=[int]$c.primaryLights
+            shadowRootPresent=[bool]$c.shadowGeomRootPresent
+            regionRootPresent=[bool]$c.lightRegionRootPresent
+            nextRule='recreate nested Xenon shadow geometry and light-region hull/axis pointer graphs'
+            xenonEmitted=$false
+        }
+        lodAndWater=[ordered]@{
+            chains=[int]$c.worldLodChains
+            infos=[int]$c.worldLodInfos
+            surfaces=[int]$c.worldLodSurfaces
+            water0Bytes=[long]$c.waterBuffer0Bytes
+            water1Bytes=[long]$c.waterBuffer1Bytes
+            nextRule='convert LOD scalar graph and native water buffer float arrays'
+            xenonEmitted=$false
+        }
+    }
     $needsRebind=[bool]$world.requiresImageAssetRelocation
     $needsStream=[bool]$world.requiresXenonStreamingMetadataReconstruction
     $needsMaterial=[bool]$world.requiresMaterialStateBitsRuntimeSemanticProof
@@ -222,6 +277,9 @@ try{
         originalPcSourceLeafByteCount=$totalBytes
         originalPcLeafFiles=$blobs
         originalPcWorldCounts=$c
+        sourceFamiliesCollectedTogether=$families
+        sourceFamilyCount=8
+        nativeFFsNeededForNextBatch=1
         runtimeOnlyBuffersCopyAllowed=$false
         imageAndMaterialRootRelocationStillNeeded=$needsRebind
         xenonOnlyWorldStreamingMetadataStillNeeded=$needsStream
@@ -235,7 +293,11 @@ try{
     }
     $summary|ConvertTo-Json -Depth 12|
         Set-Content -LiteralPath $report -Encoding UTF8
-    Write-Host "[AZTEC-GATE11-BATCH] PC native world counts: reflection=$($c.reflectionProbes) lightmaps=$($c.lightmaps) gridEntries=$($c.lightGridEntries) brushModels=$($c.brushModels) primaryLights=$($c.primaryLights) LODchains=$($c.worldLodChains)"
+    Write-Host "[AZTEC-GATE11-BATCH] Source families collected=8/8 (SERIALIZER + REBINDING not yet built)."
+    Write-Host "[AZTEC-GATE11-BATCH] Sky=$($c.skySurfaces) Reflection=$($c.reflectionProbes) Coronas=$($c.coronas) Lightmaps=$($c.lightmaps)"
+    Write-Host "[AZTEC-GATE11-BATCH] Grid rows=$($c.lightGridRows) rawBytes=$($c.lightGridRawBytes) entries=$($c.lightGridEntries) colors=$($c.lightGridColors)"
+    Write-Host "[AZTEC-GATE11-BATCH] Brush=$($c.brushModels) cull=$($c.cullGroups) primaryLights=$($c.primaryLights) shadowRoot=$($c.shadowGeomRootPresent) regionRoot=$($c.lightRegionRootPresent)"
+    Write-Host "[AZTEC-GATE11-BATCH] LOD=$($c.worldLodChains)/$($c.worldLodInfos)/$($c.worldLodSurfaces); water=$($c.waterBuffer0Bytes)/$($c.waterBuffer1Bytes) bytes"
     Write-Host "[AZTEC-GATE11-BATCH] PC leaf arrays: $($fields.Count) families, $totalBytes source bytes; all SHA-locked."
     Write-Host "[AZTEC-GATE11-BATCH] Report=$report"
     Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | source-only combined census complete; no FF rebuild'
