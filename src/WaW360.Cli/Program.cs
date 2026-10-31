@@ -102,6 +102,12 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-six-weapon-real-source-recovery" when args.Length == 4:
+            {
+                var report=await T4AztecSixWeaponSourceRecovery.RunAsync(args[1],args[2],args[3]);
+                Console.WriteLine("[AZTEC-SIX-RECOVERY] Authentic original-PC WeaponDef source-to-Xbox proof only; no native map FF: "+report);
+                return 0;
+            }
             case "aztec-three-class-native-root-selection" when args.Length == 5:
             {
                 var report=await T4AztecThreeBodyRootSelection.RunAsync(
