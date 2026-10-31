@@ -325,6 +325,78 @@ namespace gfxworld
         out << ",\"surfaceMaterialsPresent\":"
             << (world.dpvs.surfaceMaterials ? "true":"false");
         out << "}";
+
+        // Gate11 streaming architecture calibration: ONLY aggregated
+        // scalar shape/invariants. No original-Xbox streaming AABB or
+        // leaf-index payload is written, replayed or exposed as donor bytes.
+        // A native ref FF gives STRUCTURAL bounds, never a content source.
+        const auto& stream=world.streamInfo;
+        constexpr int maxSafeStreamTrees=250000;
+        constexpr int maxSafeStreamLeafRefs=3000000;
+        const bool streamCountsValid=
+            stream.aabbTreeCount>=0 && stream.aabbTreeCount<=maxSafeStreamTrees &&
+            stream.leafRefCount>=0 && stream.leafRefCount<=maxSafeStreamLeafRefs;
+        const bool streamPointersValid=streamCountsValid &&
+            (stream.aabbTreeCount==0 || stream.aabbTrees!=nullptr) &&
+            (stream.leafRefCount==0 || stream.leafRefs!=nullptr);
+        std::uint64_t treeItems=0,treeChildren=0;
+        unsigned emptyItems=0,branchNodes=0,invalidItems=0,invalidChildren=0;
+        unsigned invalidBounds=0,nonnegativeLeafRefs=0,negativeLeafRefs=0;
+        int maxReferencedLeaf=-1;
+        if(streamPointersValid)
+        {
+            for(int i=0;i<stream.aabbTreeCount;i++)
+            {
+                const auto& node=stream.aabbTrees[i];
+                treeItems+=node.itemCount;
+                treeChildren+=node.childCount;
+                if(node.itemCount==0)emptyItems++;
+                if(node.childCount>0)branchNodes++;
+                if(std::uint64_t(node.firstItem)+node.itemCount>
+                   std::uint64_t(stream.leafRefCount))invalidItems++;
+                if(std::uint64_t(node.firstChild)+node.childCount>
+                   std::uint64_t(stream.aabbTreeCount))invalidChildren++;
+                for(int axis=0;axis<3;axis++)
+                    if(!std::isfinite(node.mins[axis]) ||
+                       !std::isfinite(node.maxs[axis]) ||
+                       node.mins[axis]>node.maxs[axis])
+                        invalidBounds++;
+            }
+            for(int i=0;i<stream.leafRefCount;i++)
+            {
+                const int value=stream.leafRefs[i];
+                if(value<0)negativeLeafRefs++;
+                else
+                {
+                    nonnegativeLeafRefs++;
+                    if(value>maxReferencedLeaf)maxReferencedLeaf=value;
+                }
+            }
+        }
+        out << ",\"gate11StreamShape\":{";
+        out << "\"schema\":\"WaW360.T4XenonGate11LoadedStreamStructuralShape.v1\"";
+        out << ",\"streamStructBytes\":" << sizeof(GfxWorldStreamInfo);
+        out << ",\"treeStructBytes\":" << sizeof(GfxStreamingAabbTree);
+        out << ",\"treeCount\":" << stream.aabbTreeCount;
+        out << ",\"leafRefCount\":" << stream.leafRefCount;
+        out << ",\"treePointerPresent\":"
+            << (stream.aabbTrees?"true":"false");
+        out << ",\"leafPointerPresent\":"
+            << (stream.leafRefs?"true":"false");
+        out << ",\"boundedCountsAndPointers\":" << (streamPointersValid?"true":"false");
+        out << ",\"sumItemCount\":" << treeItems;
+        out << ",\"sumChildCount\":" << treeChildren;
+        out << ",\"treeNodesWithNoItems\":" << emptyItems;
+        out << ",\"treeNodesWithChildren\":" << branchNodes;
+        out << ",\"outOfRangeItemSpans\":" << invalidItems;
+        out << ",\"outOfRangeChildSpans\":" << invalidChildren;
+        out << ",\"invalidBoundsAxes\":" << invalidBounds;
+        out << ",\"nonnegativeLeafRefs\":" << nonnegativeLeafRefs;
+        out << ",\"negativeLeafRefs\":" << negativeLeafRefs;
+        out << ",\"maxNonnegativeLeafRef\":" << maxReferencedLeaf;
+        out << ",\"sourceOwnedStreamingReconstructionProven\":false";
+        out << ",\"containsXboxReferenceStreamPayload\":false";
+        out << ",\"runtimeHardwareValidated\":false}";
         // A completely separate read-only calibration of ORIGINAL Xbox
         // draw fields, not serialized Xbox draw bytes and not a fixup list.
         // Only publish rows if the original loader actually fixed the
