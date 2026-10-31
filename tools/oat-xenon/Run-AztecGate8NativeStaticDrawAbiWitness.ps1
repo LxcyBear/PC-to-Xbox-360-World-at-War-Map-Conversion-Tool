@@ -60,7 +60,12 @@ if(Test-Path -LiteralPath $priorNativeReport -PathType Leaf){
                [bool]$candidateData.nativeStaticDrawWitnessOnly -and
                [bool]$candidateData.nativeStaticDrawArrayAvailable -and
                [int]$candidateData.nativeStaticDrawCount -eq 1903 -and
-               @($candidateData.nativeStaticDraws).Count -eq 1903){
+               @($candidateData.nativeStaticDraws).Count -eq 1903 -and
+               $null -ne $candidateData.nativeStaticDrawAbi -and
+               [int]$candidateData.nativeStaticDrawAbi.stride -eq 60 -and
+               [int]$candidateData.nativeStaticDrawAbi.modelAt -eq 32 -and
+               [int]$candidateData.nativeStaticDrawAbi.lightingHandleAt -eq 38 -and
+               [int]$candidateData.nativeStaticDrawAbi.flagsAt -eq 40){
                 $prior=$candidate
                 $w=$candidateData
                 $raw=$candidateRaw
