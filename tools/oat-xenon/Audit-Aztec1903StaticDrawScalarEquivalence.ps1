@@ -98,14 +98,20 @@ if([string]$pc.format -ne 'WaW360.T4PcGate8StaticDrawSource.v1' -or
     throw 'Loaded 1903 PC/native typed draw corpus is missing.'
 }
 $names=0;$axesExact=0;$origins=0;$scales=0;$culls=0
-$rowsFullyAligned=0;$mismatches=New-Object 'System.Collections.Generic.List[object]'
+$rowsFullyAligned=0;$identityAnchoredRows=0
+$mismatches=New-Object 'System.Collections.Generic.List[object]'
+$axisDetails=New-Object 'System.Collections.Generic.List[object]'
 $fields=@('reflectionProbeIndex','primaryLightIndex','flags')
 $allCounters=@{}
 $alignedCounters=@{}
+$identityCounters=@{}
+$mappingCounts=@{}
 $nonMatchingExamples=@{}
 foreach($name in $fields){
     $allCounters[$name]=0
     $alignedCounters[$name]=0
+    $identityCounters[$name]=0
+    $mappingCounts[$name]=@{}
     $nonMatchingExamples[$name]=New-Object 'System.Collections.Generic.List[object]'
 }
 $cachedEq=0
@@ -126,9 +132,20 @@ for($i=0;$i -lt 1903;$i++){
     }
     $matchName=(Canon ([string]$p.model)) -ceq (Canon ([string]$n.model))
     $matchAxis=$true;$matchOrigin=$true
+    $axisWords=New-Object 'System.Collections.Generic.List[object]'
     for($j=0;$j -lt 3;$j++){
         $v=[Convert]::ToUInt32(([string]$x.axisPackedWords[$j]).Substring(2),16)
-        if([uint32]$n.packedAxisWords[$j] -ne $v){$matchAxis=$false}
+        [uint32]$nativeAxisWord=[uint32]$n.packedAxisWords[$j]
+        if($nativeAxisWord -ne $v){
+            $matchAxis=$false
+            $axisWords.Add([ordered]@{
+                axisOrdinal=$j
+                sourceOwnedPcPackedWord=('0x{0:X8}' -f $v)
+                originalXboxReferencePackedWord=('0x{0:X8}' -f $nativeAxisWord)
+                xorMask=('0x{0:X8}' -f ($v -bxor $nativeAxisWord))
+                originalPcUnpackedAxis=@($p.axis[$j])
+            })
+        }
         if(-not(EqualNum $p.origin[$j] $n.origin[$j] 0.00001)){$matchOrigin=$false}
     }
     $matchScale=EqualNum $p.scale $n.scale 0.00001
@@ -138,8 +155,24 @@ for($i=0;$i -lt 1903;$i++){
     if($matchOrigin){$origins++}
     if($matchScale){$scales++}
     if($matchCull){$culls++}
-    $aligned=$matchName -and $matchAxis -and $matchOrigin -and $matchScale -and $matchCull
+    # A name+position+scale+cull row anchor can independently establish
+    # correspondence even when its 10-bit packed rotation differs.
+    # This is weaker than a full draw geometry match; track both.
+    $identityAnchored=$matchName -and $matchOrigin -and $matchScale -and $matchCull
+    if($identityAnchored){$identityAnchoredRows++}
+    $aligned=$identityAnchored -and $matchAxis
     if($aligned){$rowsFullyAligned++}
+    if(-not $matchAxis){
+        $axisDetails.Add([ordered]@{
+            ordinal=$i
+            originalPcModel=[string]$p.model
+            originalXboxModel=[string]$n.model
+            identityAnchored=$identityAnchored
+            originalPcFlags=[int64](Field $p 'flags')
+            originalXboxReferenceFlags=[int64](Field $n 'flags')
+            differentAxisWords=@($axisWords.ToArray())
+        })
+    }
     elseif($mismatches.Count -lt 15){
         $mismatches.Add([ordered]@{
             ordinal=$i;pcModel=[string]$p.model;xboxModel=[string]$n.model
@@ -150,9 +183,13 @@ for($i=0;$i -lt 1903;$i++){
     foreach($name in $fields){
         $pv=[int64](Field $p $name)
         $nv=[int64](Field $n $name)
+        $pair=('{0}->{1}' -f $pv,$nv)
+        if(-not $mappingCounts[$name].ContainsKey($pair)){$mappingCounts[$name][$pair]=0}
+        $mappingCounts[$name][$pair]++
         if($pv -eq $nv){
             $allCounters[$name]++
             if($aligned){$alignedCounters[$name]++}
+            if($identityAnchored){$identityCounters[$name]++}
         }elseif($nonMatchingExamples[$name].Count -lt 10){
             $nonMatchingExamples[$name].Add([ordered]@{
                 ordinal=$i;pc=$pv;xbox=$nv;geometryIdentityAligned=$aligned
@@ -186,14 +223,23 @@ foreach($name in $fields){
         primaryLightIndex{$sourcePrimaryRangeOk}
         flags{$sourceFlagsRangeOk}
     }
-    $pass=$fullAligned -and $rangeOk -and [int]$allCounters[$name] -eq 1903
+    $fullGeometryPass=$fullAligned -and $rangeOk -and [int]$allCounters[$name] -eq 1903
+    $identityOnlyCandidate=($identityAnchoredRows -eq 1903 -and
+        $rangeOk -and [int]$allCounters[$name] -eq 1903)
     $proofs.Add([ordered]@{
         field=$name
         originalPcMatchesOriginalXboxOrdinalValues=[int]$allCounters[$name]
         valuesEqualOnCorrespondingGeometry=[int]$alignedCounters[$name]
+        valuesEqualOnNameOriginScaleCullAnchors=[int]$identityCounters[$name]
         nativeTypeUnsignedByteRangeProven=[bool]$rangeOk
-        candidateExactIdentitySemanticsProven=[bool]$pass
-        sourceOwnedFieldSerializationPermittedByThisAudit=[bool]$pass
+        candidateExactIdentitySemanticsProven=[bool]$fullGeometryPass
+        sourceFieldOnlyDiagnosticCandidateSupported=[bool]$identityOnlyCandidate
+        sourceOwnedFieldSerializationPermittedByThisAudit=[bool]$fullGeometryPass
+        sourceToXboxObservedPairCounts=@(
+            $mappingCounts[$name].GetEnumerator() |
+            Sort-Object Name |
+            ForEach-Object { [ordered]@{sourceToReferencePair=[string]$_.Key;count=[int]$_.Value} }
+        )
         differences=@($nonMatchingExamples[$name].ToArray())
     })
 }
@@ -214,6 +260,11 @@ $report=Join-Path $OutputDirectory 'aztec_1903_pc_to_native_draw_scalar_equivale
     ordinalCullMatches=$culls
     fullyEquivalentGeometryAndIdentityRows=$rowsFullyAligned
     directOrdinalPCToXboxCorrespondenceProven=$fullAligned
+    independentNameOriginScaleCullAnchoredRows=$identityAnchoredRows
+    all1903IdentityAnchoredWithoutRotation=$identityAnchoredRows -eq 1903
+    sourcePackedAxisVsReferenceMismatchCount=$axisDetails.Count
+    packedAxisMismatchDetails=@($axisDetails.ToArray())
+    packedAxisMismatchRequiresIndependentCodecReview=($axisDetails.Count -gt 0)
     fields=@($proofs.ToArray())
     cachedLightSettingIndexEqualsXboxLightingHandleCount=$cachedEq
     cachedLightEqualsHandleOnAlignedGeometryRows=$cachedAlignedEq
@@ -226,14 +277,22 @@ $report=Join-Path $OutputDirectory 'aztec_1903_pc_to_native_draw_scalar_equivale
     xboxDrawRecordsEmitted=0
     nativeFFModified=$false
     productionReady=$false
-    note='Read-only original-PC/source versus original Xbox reference scalar comparison. Equality across 1903 geometry-matched rows is an empirically supported direct-field hypothesis for this map, not a general Xbox ABI law. No native donor bytes, padding, lightingHandle or flags are copied to FF.'
+    note='Read-only original-PC versus original Xbox reference. A full geometry match requires identical packed axes. A source-field-only diagnostic candidate may be supported by all 1903 name/origin/scale/cull anchors plus exact field-value matches even when 4 packed rotations differ. This is not permission to graft any game FF and cannot establish unknown light semantics. Reference values are evidence only; no donor bytes are copied.'
 }|ConvertTo-Json -Depth 9|Set-Content -LiteralPath $report -Encoding UTF8
 Write-Host '[AZTEC-DRAW-SCALAR] ====================================================='
 Write-Host "[AZTEC-DRAW-SCALAR] PC/native corresponding complete geometry rows: $rowsFullyAligned/1903"
+Write-Host "[AZTEC-DRAW-SCALAR] Identity anchors model+origin+scale+cull: $identityAnchoredRows/1903; packed axis mismatches=$($axisDetails.Count)"
+foreach($item in @($axisDetails.ToArray())){
+    foreach($word in @($item.differentAxisWords)){
+        Write-Host "[AZTEC-DRAW-SCALAR] AXIS-DIFF draw=$($item.ordinal) axis=$($word.axisOrdinal) PC=$($word.sourceOwnedPcPackedWord) Xbox=$($word.originalXboxReferencePackedWord) XOR=$($word.xorMask)"
+    }
+}
 Write-Host "[AZTEC-DRAW-SCALAR] Ordinal model=$names/1903 axis=$axesExact/1903 origin=$origins/1903 scale=$scales/1903 cull=$culls/1903"
 foreach($f in @($proofs.ToArray())){
-    $state=if([bool]$f.candidateExactIdentitySemanticsProven){'SOURCE-DIRECT-CANDIDATE'}else{'BLOCKED'}
-    Write-Host "[AZTEC-DRAW-SCALAR] $($f.field) equal=$($f.originalPcMatchesOriginalXboxOrdinalValues)/1903 checkedGeometry=$($f.valuesEqualOnCorrespondingGeometry)/$rowsFullyAligned -> $state"
+    $state=if([bool]$f.candidateExactIdentitySemanticsProven){'FULL-GEOMETRY-CANDIDATE'}
+        elseif([bool]$f.sourceFieldOnlyDiagnosticCandidateSupported){'SOURCE-FIELD-DIAGNOSTIC-ONLY'}
+        else{'BLOCKED'}
+    Write-Host "[AZTEC-DRAW-SCALAR] $($f.field) equal=$($f.originalPcMatchesOriginalXboxOrdinalValues)/1903 checkedGeometry=$($f.valuesEqualOnCorrespondingGeometry)/$rowsFullyAligned identityAnchors=$($f.valuesEqualOnNameOriginScaleCullAnchors)/$identityAnchoredRows -> $state"
 }
 Write-Host "[AZTEC-DRAW-SCALAR] cachedLightSettingIndex == Xbox lightingHandle: $cachedEq/1903 (exact mapping proven=$lightingHypothesis; field SEMANTICS not yet independently proven)"
 Write-Host "[AZTEC-DRAW-SCALAR] Native padding nonzero rows=$padRowsNonZero. NO native pad bytes are imported."
