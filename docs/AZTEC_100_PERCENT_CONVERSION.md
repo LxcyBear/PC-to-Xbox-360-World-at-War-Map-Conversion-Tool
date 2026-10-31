@@ -676,3 +676,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 **Still required before Gate11 can close:** recover/prove actual six original-PC lightmap and reflection image content or authentic engine/runtime generation path, including native GfxImage/loadDef/Xenos texture/mip ownership and residency; resolve 1 stock static model dependency and unverified runtime Material stateBits; re-run real OAT and console validation. Do not use Xbox oracle image pixels, donor fastfile bodies, name-only shells or unbacked generated texture guesses as production content.
+
+### Exact native Aztec FF compressed/decompressed + source-root body coverage audit (2026-10-31, first run pending)
+
+**Pinned latest user-confirmed PASS:** 49/49 Windows PowerShell scripts; SHA-verified source-owned native 8,509-root FF **4,510,695 bytes**, SHA \`F74BE6EA0C402C56D9074D6B38F80F2D6D71A5C3297EFA703714FA9C1176A0B6\`. Native OAT three passes: world root aliases 6/6 exact star-prefixed GfxImage NAME-only identity pointers, 11/11 GfxCells + 740/740 trees + 14,974 source model indices, four light-grid source digests + shadows and prior sky/brush/water all maintained. Runtime/sixel image pixel bodies 0/6; 1 stock XModel and material stateBits and world DPVS still open. Golden native reference **82,739,469 bytes**, SHA \`E0F3C244DD7B72D0FE71C05FAF014C2C9BFB05F770183954B3E7CDE625EBA98F\`. The compressed gap is **78,228,774 bytes**, and NOT necessarily "missing 78 MB of image pixels".
+
+**New one-shot source-aware byte-size audit** (NO FF or specialized OAT build, Windows execution pending): \`tools/oat-xenon/Run-AztecNativeFfSizeAudit.ps1\`. It SHA-locks both original/candidate FFs, validates native OAT image-pointer/cell/lighting proof, and uses new \`T4AztecNativeSizeAudit.cs\` via the existing WaW360.Cli to decompress BOTH Xbox FastFiles. This reports exact original/candidate compressed file lengths, decompressed zone bytes, main serialized zoneSize, appended runtime bytes, script/string/XAsset counts, plus all **seven native XFile block allocated CAPACITIES**. It independently compares all **8,509 XAsset type IDs and sequence** against exact native OAT identity. It then combines current Stage4E EMITTER manifest (actual content serialized, not identities alone) to produce per-type native-root categories **source-origin promoted body**, **native renderer graph replay**, **partially source-owned GfxWorld**, and **name-only/unverified root**. Source-owned counts strictly pinned: 2 images, 28 XModels, 39 materials, 114 RawFiles, 1 MapEnts, 1 ComWorld = **185 promoted source roots**, plus 1 partially converted GfxWorld. Actual renderer TechniqueSet/PixelShader replay counts come from emission manifest, and all remaining roots are classified as shell/unverified. This is per-root BODY PROVENANCE, not per-asset byte attribution or full runtime semantic proof.
+
+**Critical limitation:** Neither native root count nor seven block allocation capacities attribute actual byte mass to individual image/model/animation/sound/weapon roots. The report deliberately does not calculate "missing image bytes" from those quantities or conflate compressed difference with missing pixel payload. For true per-type byte-mass accounting, an additional native ZoneCode loader/emitter serialized per-root byte-span witness is required. Also shared external game zones/highmip/sounds can affect runtime residency beyond the map FF. Never pad FF to 82 MB or copy retail Xbox content.
+
+Windows first run, project root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PowerShell syntax failed" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecNativeFfSizeAudit.ps1"
+\`\`\`
+
+Output:
+- \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_native_ff_size_audit/aztec_native_ff_size_and_source_ledger.md\`
+- Same folder \`aztec_native_ff_size_and_source_ledger.json\`
+- Same folder \`aztec_native_ff_size_audit_cli.log\`
+
+The new C# CLI command is \`aztec-native-ff-size-audit <retail.ff> <candidate.ff> <native-identity.json> <candidate-emitter.json> <independent-OAT-proof.json> <output-dir>\`. One .NET incremental build and 2 FF decompressions; **no new .ff is generated**. This is the most actionable structural/root coverage ledger to prioritize true content conversion work. It does not close Gate11 or enable Xbox deployment: still **10/13**.
