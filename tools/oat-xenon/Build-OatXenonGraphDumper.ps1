@@ -437,10 +437,12 @@ try {
             't4-pc-gfxworld-39-material-source-graph-corpus-v1',
             't4-pc-gfxworld-gate8-child-source-v1',
             't4-pc-gfxworld-gate11-cell-topology-v1',
+            't4-pc-gfxworld-gate11-cell-typed-aabb-graph-v1',
             't4-pc-gfxworld-gate8-static-draw-source-v1',
             't4xenon-gfxworld-surface-abi-loaded-pointer-witness-v1',
             't4xenon-gfxworld-root-dpvs-layout-witness-v1',
             't4xenon-gfxworld-gate11-cell-abi-v1',
+            't4xenon-gfxworld-gate11-full-cell-aabb-abi-v1',
             't4xenon-gfxworld-static-draw-60b-loaded-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
         )
