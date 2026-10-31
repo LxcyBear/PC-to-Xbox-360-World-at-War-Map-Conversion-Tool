@@ -326,4 +326,10 @@ Write-Host "[AZTEC-FLAME-TYPED] SndAliasCustom name pointers readable=$typedAlia
 Write-Host '[AZTEC-FLAME-TYPED] Source material names, technique/image pointers and sound aliases ARE NOT native Xbox shaders/images or XMA samples. No filler, no FF.'
 Write-Host "[AZTEC-FLAME-TYPED] STATUS=$($reportBody.status)"
 Write-Host "[AZTEC-FLAME-TYPED] JSON=$report"
-Write-Host '[AZTEC-FLAME-TYPED-PROGRESS] [####################] 100% | one OAT build, typed original-PC source proof, native FF preserved'
+# Verify any real PC SndAliasCustom identity against already-cached genuine
+# Xbox 360 retail Sound XAsset lists. The match is offline name evidence
+# only: no Xbox resident SoundFile/XMA asset is inferred.
+Write-Host '[AZTEC-FLAME-TYPED] Original PC sound aliases -> Xbox retail OAT Sound asset-name crosswalk (source only)'
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Run-AztecFlameXboxSoundStockCrosswalk.ps1')
+if($LASTEXITCODE -ne 0){throw 'Original PC sound alias / Xbox retail name source-only evidence crosswalk blocked; no FF.'}
+Write-Host '[AZTEC-FLAME-TYPED-PROGRESS] [####################] 100% | one OAT build, typed PC source and Xbox retail sound name evidence; native FF preserved'
