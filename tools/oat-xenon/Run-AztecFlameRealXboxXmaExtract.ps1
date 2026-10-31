@@ -17,7 +17,7 @@ $goodGrowth=Join-Path $repo '.deps\aztec-w63-direct-ff-growth\aztec_weapon63_ff_
 $unlinker=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $reportDir=Join-Path $base 'pc_g11_flame_real_xbox_xma_source'
 $report=Join-Path $reportDir 'aztec_six_real_original_xbox_sound_xma_source_provenance.json'
-$sampleDir=Join-Path $reportDir 'genuine_xbox_xma_evidence'
+$sampleDir=Join-Path $repo '.deps\aztec-real-xma-samples' # short path for Windows native MAX_PATH
 if($MaxZones -lt 1 -or $MaxZones -gt 3){throw 'Select between 1 and 3 authentic Xbox retail source FFs.'}
 foreach($f in @($source,$nativeGood,$goodGrowth,$unlinker)){
     if(-not(Test-Path -LiteralPath $f -PathType Leaf)){
@@ -129,6 +129,8 @@ for($zi=0;$zi -lt $chosen.Count;$zi++){
                 throw 'Refusing excessive native XMA candidate file count from an unexpected retail dump.'
             }
             foreach($file in $candidateFiles){
+                # Empty or too-short dumped files cannot be valid evidence for a real XMA sample.
+                if([long]$file.Length -lt 32L){continue}
                 $relative=$file.FullName.Substring($dump.Length).TrimStart('\','/').Replace('\','/')
                 $aliasMatch=$null
                 foreach($name in @($byName.Keys)){
@@ -184,7 +186,8 @@ for($zi=0;$zi -lt $chosen.Count;$zi++){
                     })
                 }
             }
-            Write-Host "[AZTEC-XMA-REAL] zone=$($zone.name) authentic sample files=$($candidateFiles.Count), exact flame matches=$(@($allSamples|Where-Object {$_.originalXboxRetailZoneName -eq $zone.name}).Count)"
+            $zoneMatches=@($allSamples.ToArray()|Where-Object {$_.originalXboxRetailZoneName -eq $zone.name})
+            Write-Host "[AZTEC-XMA-REAL] zone=$($zone.name) XMA sample candidates=$($candidateFiles.Count), exact flame-alias files=$($zoneMatches.Count)"
         }
     }finally{
         Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
