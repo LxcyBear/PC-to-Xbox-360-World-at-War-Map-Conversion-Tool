@@ -120,3 +120,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-Azt
 ```
 
 The native original-Xbox ABI witness must already exist from prior `Run-AztecGate8NativeStaticDrawAbiWitness.ps1`; this script does **not** rebuild or rerun native OAT. A hard missing prerequisite is reported explicitly. This calibration applies to Aztec and is evidence for a source-owned mapping rule, **not** generic certification for arbitrary PC maps. The decoder/editor must still correctly map per-map light handles, non-owned model availability and full DPVS serialized children before any native production attempt.
+
+### Restoring the missing native 60-byte ABI report (without unnecessary OAT work)
+
+Gate8G's first Windows run parsed correctly (21/21 scripts), but halted because `xenon_native_gate8_static_draw_60b_abi_witness/aztec_native_1903_static_draw_abi_witness_report.json` did not exist. This is a **prerequisite gap**, not a failed scalar-equivalence test.
+
+`Run-AztecGate8NativeStaticDrawAbiWitness.ps1` now attempts a **strict cache hit** from the existing Xbox native 76B GfxWorld OAT witness when its pinned reference SHA, 1,903 typed records, and exact 60B/model/light/flags ABI are present. Only a cache miss reruns OAT (and only a missing specialized capability requires the explicit one-time `-BuildDumper` switch). No game FF is modified by the witness or audit.
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PS 5.1 preflight failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate8NativeStaticDrawAbiWitness.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Native 60B draw witness did not pass; inspect the exact cache/capability message' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-Aztec1903StaticDrawScalarEquivalence.ps1'
+```
+
+If the witness reports the specialized OAT dumper capability missing, run **that witness script only** with `-BuildDumper` once, then repeat the scalar audit. No need to rerun the already verified 28-XModel integrated-world build or generic pointer regression. Strict release gates remain blocked.
