@@ -880,3 +880,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 **Current unchanged limits:** native material 39/39 world codec is source graph-only; 498 other native materials lack that specific source-typed proof. Localization 177/177 PC names/values but native packed value pointer rebasing unverified. Sound 3,774 PC alias structures source-proven but no native Xbox audio conversion. Images/pixels, shader technique/stateBits, real world/runtime load remain incomplete. The native FF is NOT rebuilt/deployed by these audits. **10/13** structural checkpoint, Xbox hardware readiness still blocked. The successful XModel/FX/Weapon source proof containers are *not* integrated into the current map.
+
+### Six still-undiscovered WeaponDef source names + 43 original-PC source-body conflicts (2026-10-31)
+
+**User Windows run:** \`a0ab0fe\` returned \`AZTEC_43_DIFFERENT_PC_BODIES_24_MISSING_ROOTS_CATALOGED_NOT_RESOLVED\`, with **67/67** Xbox retail FastFiles cached and fingerprint-accepted for OAT \`--list\` metadata (0 stale); **18/24 missing exact original PC source bodies have OFFLINE Xbox retail owned-body type/name listings**. Of these **13** are in expected base zones (\`common.ff\`, \`code_post_gfx.ff\`, \`patch.ff\`) and **5** in other retail zones (e.g., a campaign/zombie zone). Neither category establishes the map runtime load set or permission to graft donor bytes. The remaining **6** names have NO matching owned-body or reference name in 67 listed Xbox FFs:
+
+- \`zombie_perk_bottle_doubletap\`
+- \`zombie_perk_bottle_jugg\`
+- \`zombie_perk_bottle_revive\`
+- \`zombie_perk_bottle_sleight\`
+- \`m7_launcher_zombie\`
+- \`m7_launcher_zombie_upgraded\`
+
+They are **all WeaponDef native roots**, and may require original-PC mod-specific weapon sources, shared-zone references not in the Xbox retail corpus, or genuine PC source content grafts. The 67-zone result is only an offline named-asset listing; no original source FF body was recovered by that audit. The separate **43** converted Xbox blob conflicts (21 XModels, 8 FX, 2 Weapons and 12 XAnim) represent different SHA-256s of genuine source-authentic converted bodies; do NOT mark them conversion failures or arbitrarily prefer the mod.ff body. Source file runtime override rules must be demonstrated independently before any FF insertion.
+
+**New one-command lightweight source search (committed; first Windows execution pending):** \`tools/oat-xenon/Run-AztecSixWeaponsAnd43Overrides.ps1\`, included in \`Test-WaWMultiMapScriptSyntax.ps1\`. It pins the 4,510,695B known OAT-passing Aztec FF SHA and the previous 67-zone exact evidence, searches **only local original-PC Aztec map folders** for filenames under \`weapons/\` in IWD ZIP directory records and loose weapon files; also searches fingerprint-validated **existing original PC OAT \`--list\` inventories from other analyzed map baselines** for those six WeaponDef type+name keys, distinguishing reference-only entries. It does not rerun OAT or scan the complete Steam PC WaW installation. PC archived filenames and listed original-PC FF asset names are SOURCE DISCOVERY, not equivalent to a real converted Xbox WeaponDef body. If there are no other cached PC source-zone lists, the result is limited; the script should not label this as exhaustive original-PC game-wide absence.
+
+Simultaneously, the script joins the prior **43 different real converted Xbox body hash conflicts**, records every original-PC source role (map.ff / mod.ff / etc.), source blob byte lengths, whether the conflicts cross FF roles, and quarantines every source-selection choice pending actual game/zone override semantics. Output is a JSON/Markdown summary and a 43-row CSV in \`pc_g11_lightning_six_weapons_43_override_sources/\`. It never reads Xbox retail asset payloads, emits a map, creates dummy weapons or tests on the Xbox.
+
+Run from PC2XB3 root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if($LASTEXITCODE -ne 0){throw "PS5.1 syntax parse failed"}
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecSixWeaponsAnd43Overrides.ps1"
+\`\`\`
+
+No FF/writer/model source-body mutation, no OAT or .NET execution. Full playable map remains **NOT** approved: Materials 498 source-unproven under the special 39-world pipeline, localization 177 source values but unrebased, six generated image pixels and numerous other source image/audio graphs unresolved, 43 original-PC body conflicts undecided, Xbox hardware playability unverified. Native gate still **10/13**. Windows run pending.
