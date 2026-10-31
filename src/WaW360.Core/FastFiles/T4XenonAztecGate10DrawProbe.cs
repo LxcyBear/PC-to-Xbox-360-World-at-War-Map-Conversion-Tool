@@ -57,9 +57,7 @@ public sealed class T4XenonAztecGate10DrawProbe
         // three-byte UTF-8 BOM. Keep those exact original bytes for the
         // SHA-256 check above, but omit the BOM for System.Text.Json.
         // No source proof or output file is modified by this normalization.
-        var jsonStart=planBytes.AsSpan().StartsWith(
-            new byte[] { 0xEF, 0xBB, 0xBF }) ? 3 : 0;
-        using var planDoc=JsonDocument.Parse(planBytes.AsMemory(jsonStart));
+        using var planDoc=ParseOriginalUtf8Json(planBytes);
         var plan=planDoc.RootElement;
         if(plan.GetProperty("schema").GetString()!="WaW360.Aztec1903ModelRootRelocations.v1" ||
            plan.GetProperty("drawCount").GetInt32()!=1903 ||
@@ -102,6 +100,32 @@ public sealed class T4XenonAztecGate10DrawProbe
            rebased.Candidate.Length!=1903*60)
             throw new InvalidDataException("Final-layout static draw relocation count mismatch.");
         return rebased.Candidate;
+    }
+
+    // The proof hash is taken from the entire file, including any BOM.
+    // This helper only adjusts the parser's view, not the signed-off bytes.
+    private static JsonDocument ParseOriginalUtf8Json(byte[] source)
+    {
+        var offset=source.AsSpan().StartsWith(
+            new byte[] { 0xEF, 0xBB, 0xBF }) ? 3 : 0;
+        return JsonDocument.Parse(source.AsMemory(offset));
+    }
+
+    public static void SelfTestPowerShellUtf8Bom()
+    {
+        var json=System.Text.Encoding.UTF8.GetBytes("{\"test\":1903}");
+        var ps51=new byte[json.Length+3];
+        ps51[0]=0xEF;ps51[1]=0xBB;ps51[2]=0xBF;
+        json.CopyTo(ps51.AsSpan(3));
+        var originalHash=Sha(ps51);
+        using var a=ParseOriginalUtf8Json(ps51);
+        using var b=ParseOriginalUtf8Json(json);
+        if(a.RootElement.GetProperty("test").GetInt32()!=1903 ||
+           b.RootElement.GetProperty("test").GetInt32()!=1903 ||
+           !Eq(originalHash,Sha(ps51)) ||
+           ps51[0]!=0xEF || ps51[1]!=0xBB || ps51[2]!=0xBF)
+            throw new InvalidDataException(
+                "PS5.1 BOM/regular UTF-8 JSON parse or original SHA integrity check failed.");
     }
 
     private static string Sha(ReadOnlySpan<byte> x)=>
