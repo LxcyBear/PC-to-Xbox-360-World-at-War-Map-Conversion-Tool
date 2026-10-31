@@ -26,6 +26,24 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));
                 return 0;
             }
+            case "xenon-static-draw-pointer-selftest" when args.Length == 1:
+            {
+                T4XenonStaticDrawPointerCodec.SelfTest();
+                Console.WriteLine("[XENON-DRAW-CODEC] PASS: generic 3 x 48-byte synthetic records, stable VIRTUAL pointers, endian and fail-closed regression.");
+                Console.WriteLine("[XENON-DRAW-CODEC] No FF or Xbox deployment.");
+                return 0;
+            }
+            case "xenon-static-draw-pointer-encode" when args.Length == 4:
+            {
+                var encoded = await T4XenonStaticDrawPointerCodec.EncodeFromManifestAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("[XENON-DRAW-CODEC] PASS: real source-owned pointer words=" +
+                    encoded.OwnedPointersWritten + ", external stock quarantined=" +
+                    encoded.ExternalReferencesQuarantined + ", distinct owned model roots=" +
+                    encoded.DistinctOwnedRootBodies + ".");
+                Console.WriteLine("[XENON-DRAW-CODEC] Diagnostic native draw array ONLY: missing lighting/DPVS; no FF, no hardware approval.");
+                return 0;
+            }
             case "decompress" when args.Length >= 3:
             {
                 var result = await FastFileDecompressor.DecompressAutoAsync(args[1], args[2]);
@@ -1945,6 +1963,8 @@ static void PrintHelp()
 {
     Console.WriteLine("WaW360Converter Linker V2 / legacy proof CLI");
     Console.WriteLine("  inspect <file.ff>                       Probe PC/Xbox wrapper + XFile header");
+    Console.WriteLine("  xenon-static-draw-pointer-selftest      Regression for generic T4 native draw XModel pointer codec");
+    Console.WriteLine("  xenon-static-draw-pointer-encode <input.json> <output.bin> <report.json>  Encode source-owned static draw pointers from verified native roots; no FF");
     Console.WriteLine("  decompress <file.ff> <out.zone>        Decompress to raw zone");
     Console.WriteLine("  aztec-pc-gameworldsp-hunt <PC map.ff> <report.json>  Find source 44-byte path-header candidates");
     Console.WriteLine("  compare <left.ff> <right.ff>            Compare fastfile metadata/block sizes");
