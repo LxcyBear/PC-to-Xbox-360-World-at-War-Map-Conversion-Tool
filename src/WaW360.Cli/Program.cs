@@ -102,6 +102,13 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-xanim-602-source-selection" when args.Length == 5:
+            {
+                var report=await T4AztecXAnim602RootSelection.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-XANIM-602] Exact source Xbox body-hash selection (no FF output): "+report);
+                return 0;
+            }
             case "aztec-xanim-614-source-native" when args.Length is 6 or 7:
             {
                 var namesOnly=args.Length==7 &&
