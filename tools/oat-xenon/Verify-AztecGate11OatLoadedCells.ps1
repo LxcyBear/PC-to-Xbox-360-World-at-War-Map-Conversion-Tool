@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([switch]$PrimitiveCandidate,[switch]$LightingCandidate,[switch]$ImageHeadersCandidate)
-if(@($PrimitiveCandidate,$LightingCandidate,$ImageHeadersCandidate|Where-Object {$_}).Count -gt 1){
+if((([int]$PrimitiveCandidate.IsPresent)+([int]$LightingCandidate.IsPresent)+([int]$ImageHeadersCandidate.IsPresent)) -gt 1){
     throw 'Choose only one isolated FF candidate.'
 }
 Set-StrictMode -Version Latest
