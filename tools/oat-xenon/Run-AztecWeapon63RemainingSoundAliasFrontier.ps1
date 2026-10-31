@@ -119,8 +119,23 @@ foreach($weapon in $weapons){
     }
 }
 $allRecords=@($rows).Count
-$allNameBytes=[long](($totals.Values | Measure-Object -Property inlineNameBytes -Sum).Sum)
-$allNames=[int](($totals.Values | Measure-Object -Property inlineNames -Sum).Sum)
+# Windows PowerShell 5.1 treats OrderedDictionary keys as items, not
+# Measure-Object properties. Sum the verified typed counters explicitly.
+# Use the key indexer to avoid PSObject property-adapter differences.
+[long]$allNameBytes=0
+[int]$allNames=0
+[int]$allCategoryRecords=0
+foreach($categoryName in @('BOUNCE_ALREADY_GRAFTED','DIRECT_WEAPON_FIXED_SLOT',
+                            'NESTED_FLAME_PARENT_NOT_GRAFTED','OTHER_FOREIGN_PARENT_FENCED')){
+    $categoryTotals=$totals[$categoryName]
+    if($null -eq $categoryTotals){throw "Missing source ownership category $categoryName"}
+    $allNameBytes+=[long]$categoryTotals['inlineNameBytes']
+    $allNames+=[int]$categoryTotals['inlineNames']
+    $allCategoryRecords+=[int]$categoryTotals['records']
+}
+if($allCategoryRecords -ne $allRecords){
+    throw "Source alias category accounting mismatch: categories=$allCategoryRecords, records=$allRecords"
+}
 $bounce=$totals['BOUNCE_ALREADY_GRAFTED']
 $direct=$totals['DIRECT_WEAPON_FIXED_SLOT']
 $flame=$totals['NESTED_FLAME_PARENT_NOT_GRAFTED']
