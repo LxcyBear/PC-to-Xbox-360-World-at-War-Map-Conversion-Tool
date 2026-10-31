@@ -58,6 +58,8 @@ public sealed class T4XenonAztecWorldGraft
     // Gate10 OAT-only source draw probe: never hardware-approved.
     private T4XenonAztecGate10DrawProbe? _gate10DrawProbe;
     private int _gate10DrawPointerAt;
+    // Gate11 opt-in: 11 source-owned PC GfxCells, 740 AABB and nested index arrays.
+    private T4XenonAztecGate11CellProbe? _gate11Cells;
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
@@ -100,6 +102,10 @@ public sealed class T4XenonAztecWorldGraft
     public int RealMaterialOwners => _materialOwners.Count;
     public int Gate10OatDiagnosticDrawRecords => _gate10DrawProbe?.DrawCount ?? 0;
     public int Gate10UnverifiedStockDraws => _gate10DrawProbe?.UnverifiedStockDraws ?? 0;
+    public int Gate11DiagnosticCells => _gate11Cells?.CellCount ?? 0;
+    public int Gate11DiagnosticAabbTrees => _gate11Cells?.TreeCount ?? 0;
+    public int Gate11DiagnosticSmodelIndexChildren => _gate11Cells?.ModelIndexCount ?? 0;
+    public int Gate11DiagnosticReflectionIndices => _gate11Cells?.ReflectionIndexCount ?? 0;
 
     private T4XenonAztecWorldGraft(
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
@@ -417,6 +423,23 @@ public sealed class T4XenonAztecWorldGraft
                 lightProof,relocationProof,ct);
             graft._gate10DrawPointerAt=dpvsRootAt+84;
         }
+        var gate11Source=Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT");
+        if(!string.IsNullOrWhiteSpace(gate11Source))
+        {
+            if(graft._gate10DrawProbe is null ||
+               !StaticDpvsProbeEnabled || ProbeStage!=4 ||
+               graft._gate8Planes is null || graft._gate8Nodes is null ||
+               graft._gate8Layer is null)
+                throw new InvalidDataException(
+                    "Gate11 source GfxCells require all proven Gate8 native children and Gate10 1903-draw diagnostics.");
+            graft._gate11Cells=await T4XenonAztecGate11CellProbe.LoadAsync(gate11Source,ct);
+            if(graft._gate11Cells.WorldCellPointerAt<=0 ||
+               graft._gate11Cells.WorldCellPointerAt>=XboxRootSize-4 ||
+               BinaryPrimitives.ReadUInt32BigEndian(
+                   graft._root.AsSpan(graft._gate11Cells.WorldCellPointerAt,4))!=0)
+                throw new InvalidDataException(
+                    "Gate11 source-owned GfxWorld::cells pointer was not NULL in the original seeded Xbox root.");
+        }
         return graft;
     }
 
@@ -435,6 +458,10 @@ public sealed class T4XenonAztecWorldGraft
             virtualAlloc(_gate8Planes.Length,4,true);
         if(_gate8Nodes is not null)
             virtualAlloc(_gate8Nodes.Length,2,true);
+        // GfxWorld::cells is decoded after dpvsPlanes and BEFORE the
+        // materialMemory/vd/vld reordered payloads, per pinned T4 Xenon
+        // GfxWorld child layout. Nested AABB and index arrays follow cells.
+        _gate11Cells?.Plan(virtualAlloc);
         // Pinned OAT GfxWorld reorder: '... materialMemory vd vld'.
         // Its first member remains at the original position; vd/vld follow
         // immediately, while the embedded DPVS surfaces are loaded later.
@@ -474,6 +501,8 @@ public sealed class T4XenonAztecWorldGraft
         if(stage>=2)Put(body,_dpvsSurfaceAt,T4ZonePointer.Following);
         if(_gate10DrawProbe is not null)
             Put(body,_gate10DrawPointerAt,T4ZonePointer.Following);
+        if(_gate11Cells is not null)
+            Put(body,_gate11Cells.WorldCellPointerAt,T4ZonePointer.Following);
         if(StaticDpvsProbeEnabled)
         {
             Put(body,_dpvsSortedAt,T4ZonePointer.Following);
@@ -516,6 +545,7 @@ public sealed class T4XenonAztecWorldGraft
             virtualAlloc(_gate8Nodes.Length,2,true);
             zone.Write(_gate8Nodes);
         }
+        _gate11Cells?.Emit(zone,virtualAlloc);
         // OAT reads MaterialMemory, then GfxWorldVertexData, then embedded
         // GfxWorldDpvsStatic.surfaces. A surface-first stream causes the first
         // surface's vertexCount/triCount to be decoded as a TEMP-block pointer.
