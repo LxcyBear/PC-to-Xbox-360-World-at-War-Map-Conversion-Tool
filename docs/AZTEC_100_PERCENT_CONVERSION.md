@@ -724,3 +724,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 **Purpose:** rank work and immediately distinguish true SOURCE-BODY conversion versus only stock-reference-name appearance to avoid padding the 78,228,774-byte compressed gap. The 5,306 sound roots may be source audio or runtime external XMA and cannot be dumped indiscriminately. Source-owned images need actual GfxImage/Xenos texture and mip validation; six generated \`*\` image names still require proven engine-generation or real pixels. **This is fast triage, not completion:** Gate11 stays **10/13**, with no claim that the 7,817 unverified bodies have been converted.
+
+### Gate11 lightning VERIFIED PC source-name joins -> original PC source BODY pointer structure follow-up (2026-10-31)
+
+Windows run confirmed **51/51 PowerShell 5.1 scripts parsed**, old OAT no rerun, all **8,509** native roots assigned a source-name/asset-type row, **6,476 exact type+name matches** across cached original PC OAT \`map.ff\`/\`map_patch.ff\`/\`mod.ff\` source lists (8,425 distinct PC OAT source-name keys). Name agreement includes all **3,774 Sound**, **602 XAnim**, **69 Weapon** native roots; images **647/666**, XModels **279/284**, Materials **509/537**, FX **225/233**, RawFiles **119/120**. All **1,532 Xbox LoadedSound** roots had **0 exact PC typed names**. Image 67-zone retail NAME listing sample hits **459**, with zero proven runtime residency. This is **name/source-index evidence only**, not real 6,476 converted body proofs; 7,817 roots remain shell or unverified. Verified size audit compressed gap **78,228,774 B**, decompressed gap **146,752,101 B**. Source-state 10/13 Gate11, no Xbox.
+
+To move beyond names with one source-only batch, newly added \`T4AztecSourceBodyQuickBatch.cs\` and CLI \`aztec-pc-source-body-batch\`. This loads each of the three **SHA-256-pinned original PC FFs** (using previous \`pc_fastfile_image_sources.json\` source SHA inventory and the existing content-addressed zone cache), tallies every original PC XAsset header precisely as **inline (Following/Insert), packed offset/alias, or NULL** for sound, loadedsound, xanim, image, xmodel, material, fx, weapon, rawfile, localize, stringtable and gfxworld. This proves only original-PC structural header presence—not full typed payload equivalence or native serialization. For original-PC physical SoundAliasList roots, optionally invokes the existing **\`T4SoundAliasSmokeSerializer.Build\`** to verify typed alias-list structure and report loaded/streamed/primed SoundFile node counts, alias records, and original-PC loaded audio bytes skipped. This decoder emits SILENT diagnostic stubs in RAM for structure proof but does not save them, does NOT produce Xbox XMA, and never modifies Xbox FFs. If typed sound parsing does not cover a body, it is reported INCOMPLETE, not fake verified. It neither attempts XAnim/FX/Weapon body conversion nor runs OAT; these require their separate proof parsers later.
+
+One-command PowerShell runner \`tools/oat-xenon/Run-AztecPcSourceBodyLightningBatch.ps1\`. Takes \`-FastHeadersOnly\` to skip the deep sound alias parser (in that mode, only original-PC exact XAsset header type/kind classification). Runner prereqs: passing 8,509-root lightning JSON from \`Run-AztecLightningVerification.ps1\`, previous 4.51MB FF size report and original PC source manifest SHA. Output folder \`pc_g11_lightning_source_body_batch\` with \`aztec_pc_typed_sound_and_source_headers.json\`, \`aztec_pc_three_ff_type_pointer_census.csv\`, and console log. PowerShell 5.1 AST parser gate includes this runner.
+
+Run from PC2XB3 repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "Syntax regression" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecPcSourceBodyLightningBatch.ps1"
+\`\`\`
+
+**Windows compile and source typed-sound scan pending** (no claim of pass before user run). All 1,532 LoadedSound identities need their own actual ownership/residency investigation (PC SoundFile node counts and external usermap XMA are separate from standalone Xbox LoadedSound root names). Stage still 10/13; no original Xbox donor bytes, fake payloads, Xbox size-padding, or automatic deployment.
