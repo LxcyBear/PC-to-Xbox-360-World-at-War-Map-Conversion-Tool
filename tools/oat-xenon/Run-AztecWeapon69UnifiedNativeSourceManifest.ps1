@@ -125,7 +125,13 @@ function Index-WeaponProof([string]$file){
                 })
             }
             if($stream.Position -ne $stream.Length){throw "Unexpected trailing WeaponDef proof bytes: $file"}
-            return ,@($records.ToArray())
+            # Return a scalar object carrying the record collection, never
+            # a comma-wrapped PowerShell array. The previous caller wrapped
+            # this array again and could index its WHOLE array as record #0.
+            return [pscustomobject]@{
+                Records=$records.ToArray()
+                Count=$records.Count
+            }
         }finally{$sha.Dispose()}
     }finally{$reader.Dispose();$stream.Dispose()}
 }
@@ -136,8 +142,13 @@ function Get-ProofRecords([string]$file,[string]$expectedSha){
        (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ine $expectedSha){
         throw "Native 7b WeaponDef proof container SHA changed: $file"
     }
-    if(-not $cache.ContainsKey($file)){$cache[$file]=@(Index-WeaponProof $file)}
-    return ,@($cache[$file])
+    if(-not $cache.ContainsKey($file)){$cache[$file]=Index-WeaponProof $file}
+    $index=$cache[$file]
+    if($null -eq $index -or $null -eq $index.Records -or
+       [int]$index.Count -ne @($index.Records).Count -or [int]$index.Count -lt 1){
+        throw "Malformed parsed WeaponDef proof container index: $file"
+    }
+    return $index
 }
 $rows=New-Object 'System.Collections.Generic.List[object]'
 $selected=0;$uncompressed=0L
@@ -167,14 +178,20 @@ foreach($root in ($old|Sort-Object nativeRootOrdinal)){
         $file=[string]$root.selectedProofFile
         $sha=[string]$root.selectedProofSha256
         $ordinal=[int]$root.selectedProofOrdinal
-        $records=Get-ProofRecords $file $sha
+        $index=Get-ProofRecords $file $sha
+        $records=@($index.Records)
+        if($records.Count -ne [int]$index.Count){throw "WeaponDef index collection nesting drift: $file"}
         if($ordinal -lt 0 -or $ordinal -ge $records.Count){throw "Existing weapon proof ordinal invalid: $name"}
         $record=$records[$ordinal]
         if([string]$record.name -ine $name -or
            [string]$record.blobSha256 -ine [string]$root.selectedBlobSha256 -or
            [long]$record.blobOffset -ne [long]$root.selectedBlobOffset -or
            [long]$record.blobBytes -ne [long]$root.selectedBlobLength){
-            throw "Original 57 exact WeaponDef root/body SHA or offset mismatch: $name"
+            throw ("Original 57 exact WeaponDef root/body SHA or offset mismatch: {0} (# {1}, container records={2}, ordinal={3}); name expected='{4}' observed='{5}'; body SHA expected={6} observed={7}; offset expected={8} observed={9}; length expected={10} observed={11}" -f
+                $name,$root.nativeRootOrdinal,$records.Count,$ordinal,$name,$record.name,
+                $root.selectedBlobSha256,$record.blobSha256,
+                $root.selectedBlobOffset,$record.blobOffset,
+                $root.selectedBlobLength,$record.blobBytes)
         }
         $base.conclusion='EXACT_ORIGINAL_PC_NAME_AND_XBOX_OWNED_BODY_SHA_VERIFIED'
         $base.proofFile=$file;$base.proofContainerSha256=$sha
@@ -187,7 +204,9 @@ foreach($root in ($old|Sort-Object nativeRootOrdinal)){
         $file=[string]$w.xbox7bProofFile
         $sha=[string]$w.xbox7bProofSha256
         $ordinal=[int]$w.xbox7bRecordOrdinal
-        $records=Get-ProofRecords $file $sha
+        $index=Get-ProofRecords $file $sha
+        $records=@($index.Records)
+        if($records.Count -ne [int]$index.Count){throw "WeaponDef index collection nesting drift: $file"}
         if($ordinal -lt 0 -or $ordinal -ge $records.Count){throw "Direct WeaponDef record ordinal out of bounds: $name"}
         $record=$records[$ordinal]
         $pointer=[Convert]::ToUInt64([string]$w.originalPackedPointer,16)
