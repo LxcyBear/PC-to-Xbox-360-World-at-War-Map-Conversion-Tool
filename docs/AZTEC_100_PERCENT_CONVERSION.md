@@ -1158,3 +1158,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Output \`repo/.deps/aztec-w63-inline-ab/aztec_weapon63_extra_inline_xstrings_exact_ab.json\`, companion Markdown and both SHA-archived \`.ff\` candidates. This is still only genuine **partial scalar + fixed inline original-PC XString** WeaponDef ownership, **NOT full 179,775-byte source-owned 7b child graph** and NOT ready for Xbox deployment. Further progress requires typed source-owned XModel/FX/Material/XAnim/sound pointer and nested-graph translation rather than file-size inflation.
+
+### Same-revision 63/63 extra-XString Xbox FF A/B **PASS**, first true non-string WeaponDef source-owned accuracy Vec2 array census next (2026-10-31)
+
+User Windows run at \`3bd85c9\`: PowerShell 5.1 AST parser **65/65 PASS**, BOTH incremental .NET builds PASS, and two separately SHA-archived original-PC-source native Xbox FFs **OAT exact 8,509 roots / 0 warnings and 0 errors**:
+- 63 source-owned original-PC WeaponDef scalar + opening inline-string bodies: **4,512,790 B**, SHA \`3DBA6CB661691065192B57D4A11A1E4DE5FA0E5FCF6937C8B86E70A57C9152D7\`.
+- Same exact full Gate11 source/world settings and same 63 weapon body selection with **207 additional original-PC inline XString fields**: **4,513,376 B**, SHA \`A3009316D64FE8EB61E69ABF79F33ECFC2F6ECE10A96F62AFCD17CE5C92FF226\`.
+- **Exactly +2,855 B new serialized original-PC inline string payload**, **+2,855 B uncompressed zone**, and **+586 B compressed FF**. Status \`AZTEC_WEAPON63_EXTRA_PC_INLINE_XSTRINGS_EXACT_COMPRESSED_FF_GROWTH_OAT_PASS\`. Identical Git/source inputs are validated during fresh 2-case A/B run. Separate preserved output at \`repo/.deps/aztec-w63-inline-ab/same_world_base_63\` and \`same_world_extended_63\`. Historical protected OAT-good \`4,510,695 B\` still unchanged.
+- Alpha 7b Xbox-endian source-verified owned blobs still **63/69** native WeaponDef roots, 2 different-PC-source conflicts (\`fraggrenade\`, \`mine_bouncing_betty\`), 4 stock-only unresolved names (\`molotov\`, \`ray_gun\`, \`kar98k\`, \`30cal\`). The full 179,775 B source-owned 7b serialized nested WeaponDef graph is **not** in the native FF. OAT acceptance is not Xbox runtime/playability; missing images and world material semantics still blocked.
+
+**NEXT source-only non-string child witness (new, pending first Windows compilation):**
+- \`T4WeaponVariableSerializerProof.TryCollectSourceOwnedAccuracyVec2Arrays\` adds a forensic collector to the original 7b **typed variable-owned stream walker**, capturing only genuinely INLINE source-owned 8-byte \`vec2\` knot values. Four original fixed WeaponDef big-endian pointer sites in ZoneCode visitation order: \`2184\` (\`aiVsAiAccuracyGraphKnots\`), \`2192\` (\`originalAiVsAiAccuracyGraphKnots\`), \`2188\` (\`aiVsPlayerAccuracyGraphKnots\`), \`2196\` (\`originalAiVsPlayerAccuracyGraphKnots\`). The corresponding two source counts are at \`2200\` (AI-vs-AI) and \`2204\` (AI-vs-player). Counts bounded by 4096, array bytes \`8 × knots\` and physical owned-source variable-stream offsets are proved by walking the full 7b payload. Packed/external source array pointers are NEVER treated as inline and are explicitly quarantined.
+- \`T4XenonAztecWeaponAccuracySourceWitness.RunAsync\` independently reopens all 63 original-PC source-owned Xbox 7b proof blobs, rechecks original PC source name/Virtual pointer identity for six direct packed names, proof container and body SHA-256, physical offset/length, and the separately protected original 4,510,695 B FF SHA-256. Outputs original PC accuracy array classification/count, original source 7b physical byte offsets, full per-array data SHA, knot counts and total eligible original-PC big-endian array bytes. This is only the original-PC-to-Xbox standalone typed **source proof**, not native runtime FF graph closure.
+- New CLI command \`aztec-weapon63-original-pc-accuracy-vec2-witness <69-weapon-source-manifest> <protected-size-ledger> <output-json>\` and PowerShell runner \`Run-AztecWeapon63AccuracyVec2SourceWitness.ps1\`, registered in Windows PowerShell 5.1 AST suite. This does **NOT** build/alter any native FF, call OAT, or touch the previous passing 4,513,376 B image. It generates \`.../native_material_mapping/pc_g11_lightning_weapon63_accuracy_vec2/aztec_63_original_pc_owned_accuracy_vec2_source_witness.json\` and console log.
+- If the 63 source-owned bodies contain inline accuracy arrays, those original-PC source-backed bytes become the next eligible nested-child class for a *separate* Stage4D/4E FF insertion with correct ZoneCode order, pointer alignment, count/offset, and OAT checks. If none exist, witness reports this honestly and we pivot to another typed non-string child (e.g., bounce-sound owned 31-pointer table), without fabricating map-size growth.
+
+Next Windows run (from repo root):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PowerShell 5.1 parser regression" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63AccuracyVec2SourceWitness.ps1"
+\`\`\`
+
+Expected source-only status is one of \`AZTEC_63_WEAPON_ORIGINAL_PC_INLINE_VEC2_CHILD_GRAPH_SOURCE_PROVEN_NOT_IN_FF\` (positive genuine inline knot provenance) or \`AZTEC_63_WEAPON_ACCURACY_VEC2_ALL_SOURCE_ARRAYS_ABSENT_OR_PACKED_NO_INLINE_PROOF\` (no eligible owned inline arrays). Do NOT use "no eligible arrays" as a conversion failure or promote packed aliases by order. Native source 8,509-root FF remains a diagnostic and Gate11 10/13 / Xbox hardware readiness remain blocked.
