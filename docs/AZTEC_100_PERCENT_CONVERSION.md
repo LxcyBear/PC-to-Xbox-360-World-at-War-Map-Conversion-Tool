@@ -1058,3 +1058,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 If it blocks at a particular source-owned name, send \`[AZTEC-WORLD39-FF] EMIT ...\` lines; can use \`-Limit 1\` to verify first one independently, then \`-Limit 6\`. Only a complete OAT load plus byte-level readback and nonzero new candidate counts as actual FF growth; current baseline size remains 4.51MB. Gate11 10/13 and runtime Xbox release remain blocked.
+
+### 63/63 source-backed WeaponDef scalar/XString FF canaries OAT PASS, **4,512,790 B**; exact same-world A/B control (2026-10-31)
+
+User ran \`Run-AztecWeapon63FfGrowthCanary.ps1 -Limit 63\` on commit \`a39d5ae\`:
+- .NET incremental **BUILD PASS**. Full original-PC Gate11 scratch world branch emitted **1,903** static draws, **11** cells, **740** AABB trees, **14,974** cell smodel indexes, **39** real native material source graphs, **28** PC-backed XModels, the existing original-PC lightgrid and linked-but-still-name-only six GfxImage aliases.
+- **63/63 original-PC SHA-verified Xbox WeaponDef scalar/inline-XString canaries physically emitted into a native-format FF**. The original full **179,775 B** of owned 7b source weapon graph blobs were NOT grafted. All unrebased XModel/FX/Material/XAnim/sound child pointers remain omitted; 2 conflicting PC weapon versions + 4 stock-only names remain unverified.
+- **Actual compressed scratch Xbox FF:** **4,512,790 bytes**, compared with separate protected prior FF **4,510,695 bytes**: **+2,095 bytes**. **Stage4D/4E layoutReplayExact=True**, **OAT exact identities 8,509/8,509**, **OAT zero warnings/zero errors=True**, wrapper roundtrip and scratch validation PASS. Output \`.deps/aztec-w63-ff-growth/scratch_emit/nazi_zombie_aztec.ff\` is **NOT Xbox-deployable**. The protected FF remains intact.
+- Status: \`AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED\`. The **+2,095 B** compares two DIFFERENT workflow snapshots (historical FF vs current scratch). It proves a physically larger, OAT-accepted current source-backed FF, but **does not yet precisely isolate weapon-only compressed growth** because world/FF settings may differ between snapshots.
+
+**New 64th Windows PowerShell 5.1 AST regression target / morning command:** \`tools/oat-xenon/Run-AztecWeapon63ExactABSizeLightning.ps1\` and explicit \`-Limit 0\` A/B control capability in the existing \`Run-AztecWeapon63FfGrowthCanary.ps1\`, \`Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1\`, and \`T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync\`. Both A/B builds use the identical full Gate11 settings, same inputs, same C# binaries and source SHA-256 manifest pinned to Git HEAD. Only the requested number of native WeaponDef **partial source scalar/XString canaries** changes: **0** control vs **63** experimental. Each independently gets native Stage4D/4E zone layout, 8,509-root identity and actual OAT zero-warning/error load. Each resulting actual compressed FF is SHA-pinned, copied to separate \`.deps/aztec-w63-exact-ab/control_00/\` and \`weapons_63/\` directories, and compared. The previously passing 63 FF is automatically archived beforehand under \`prior_OAT_passed_63/\` when its saved report+FF SHA still agree. A/B script also requires the same source manifest/size ledger hashes and Git SHA at both points, exactly matching tracked non-weapon world counters, unchanged protected FF bytes+SHA; refuses stale candidate or missing FF.
+
+Important: \`-Limit 0\` is an explicit **only-for-A/B same-settings control**; this does not mean six existing unconverted stock names have been resolved, and no WeaponDef full owned graph or Xbox runtime claim is made. Parent scratch runner's normal, non-opt-in behavior remains unchanged. A/B results report (status \`AZTEC_W63_EXACT_SAME_WORLD_0_VS_63_COMPRESSED_FF_GROWTH_OAT_PASS\` if compressed delta positive) quantifies exact source-backed scalar/inline-XString **weapon-only compressed FF** delta; no guessed ratio from 179,775 source bytes and no filler. Fewer compressed bytes can occur despite genuine emitted data due to compression changes; the true OAT 0/0 and SHA conditions remain authoritative. This is **NOT** a test of gameplay-ready WeaponDef runtime child graphs.
+
+Morning run from converter repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS51 parser failure" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63ExactABSizeLightning.ps1"
+\`\`\`
+
+Outputs \`.deps/aztec-w63-exact-ab/aztec_weapon63_exact_same_world_compressed_ff_delta.json\`, corresponding Markdown summary, both individually preserved FFs, OAT emit manifests and parent logs. No Xbox deployment, no changes to the protected 4,510,695 B source FF, Gate11 still 10/13 and all other renderer/image/material/audio dependencies still open.
