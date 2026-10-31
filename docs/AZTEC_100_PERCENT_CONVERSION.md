@@ -406,3 +406,19 @@ Commands from PC2XB3 repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-AztecGate11OatLoadedCells.ps1'
 
 Gate11 overall still PENDING despite the major first-loader success: other original-PC lighting/reflection/lightmap/dynamic-DPVS dependencies and native runtime details remain; Gate12 complete main/_load and Gate13 genuine Xbox smoke-test readiness are future requirements. No console deployment from this diagnostic.
+
+## Gate11 Physical GfxCell/AABB proof: independently loaded through native OAT — PASS
+
+**User's Windows result, after verifier schema fix on `c2a120a`, October 30, 2026:**
+
+- Windows PowerShell 5.1 syntax gate: **37/37 PASS**.
+- Isolated original-PC-derived native Xenon Aztec FF: **3,642,932 bytes**. The prior first OAT loader already returned PASS for this artifact after `GfxWorld.dpvsPlanes.cellCount` was corrected from 0 to 11.
+- Second and genuinely independent OAT readback: **PASS**. All **11/11 GfxCells**, **740/740 GfxAabbTrees**, **14,974/14,974 static-model indices**, and **11/11 reflection-probe indices** match source-owned original-PC typed records, including the per-record bounds and tree scalar metadata.
+- Native FF SHA-256, immutable identity for this specific passing subproof: **`05CEEC82AF5D58706BA5A6EE24995D09A3FB764F3E547A8B4758A9347ECF2862`**.
+- Full report: `output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_cells_740/oat_loaded_11_cell_aabb_readback/aztec_gate11_independent_cells_aabb_readback.json`.
+- Actual report status: `AZTEC_GATE11_PHYSICAL_11_CELL_740_AABB_SOURCE_FIELDS_INDEPENDENT_OAT_PASS_REMAINDER_PENDING`.
+- All checks were performed against the already emitted FF; **no .NET rebuild, FF rebuild, or native OAT rebuild** was required for the independent readback. The existing passing Gate10 FF remains SHA-protected and unchanged.
+
+**Submilestone complete**: The complete 11-cell and 740-tree source-owned graph—including nested static-model index and per-cell reflection index arrays—now has physical native FF serialization and two-sided OAT evidence. The 0xC527A800 misread is resolved for this FF by setting the measured native `GfxWorldDpvsPlanes::cellCount=11`. Do NOT rerun the cell serialization or rebuild its source corpus without concrete contradictory evidence.
+
+**Overall 13-stage tracker remains 10/13; Gate11 full GfxWorld readiness is still PENDING.** Physical cell/AABB proof does not establish the world lighting/material state-bit semantics, source-owned sky/reflection/lightmaps/lightgrid, dynamic visibility, shadow world graph, external stock model residency, or every remaining GfxWorld pointer-bearing dependency. Next work should enumerate these remaining branches from original-PC loaded `GfxWorld` under pinned T4 ABI and Xbox 360 pinned T4Xenon ABI, classify genuinely NULL vs runtime-generated vs source-owned serializable children, and only then build another isolated FF with one newly proved group. Do not use donor/oracle Xbox FF payload bytes in conversion; no Xbox deployment yet.
