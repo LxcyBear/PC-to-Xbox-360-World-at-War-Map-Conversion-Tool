@@ -53,3 +53,38 @@ To run from repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63FlameInlineRealSourceBodies.ps1"
 
 The result will report precisely how many of the 4 FlameTable names and 20 non-NULL Material pointers are *physically INLINE in genuine original-PC source*. Non-INLINE pointers require real source target resolution; a Material body still needs actual converted technique/image dependencies and Xbox semantic validation. **No new FF or Xbox deployment is authorized.**
+
+
+## One-build source resolution sprint: FlameTable packed Material*, real names, sound/XMA provenance
+
+The user's confirmed 2026-10-31 results at fb9bffa:
+- Original PC FlameTable name fields: **1 real INLINE 24-byte string; 3 PACKED source strings unresolved**.
+- 32 Material slots: **3 real INLINE source material child bodies, 892 verified source serialized bytes; 17 packed source Material* references; 12 original source NULL**.
+- 16 sound slots: **6 real source-owned INLINE alias pointer records; 6 packed references; 4 original source NULL**.
+- Four 476-byte FlameTable parent bodies are real source-owned. The 4,514,599-byte prior OAT-pass candidate remains untouched; 222/228 genuine alias records in that scratch candidate. NONE of the FlameTable parents has been emitted into it.
+
+New sprint stage in commit family after fb9bffa:
+
+- tools/oat-xenon/Run-AztecRealAssetResolutionSprint.ps1 runs exactly **one incremental .NET CLI source-only audit** joining the 17 packed FlameTable Material* pointers to the 39 authentic, independently OAT-loaded PC GfxWorld Material* identities. It does not create a new native FF.
+- src/WaW360.Core/FastFiles/T4AztecFlameRealSourceJoin.cs permits an EXACT material identity only if the original-PC zone SHA matches the 735-surface worklist, the original WeaponDef fixed 0x9AC bytes match **bit-for-bit after actual LE-to-Xbox-BE conversion** at the source 7b physical offset, and its FlameTable's complete 476-byte fixed body matches the source-PC zone after endian conversion/SHA. Only then may an exactly equal packed pointer be matched to one of the 39 typed, named, previously OAT-loaded original-PC Material* sources. Numeric pointer equality across different zones is prohibited. A matched *source material identity* is not yet a fully converted Xenon shader/techset/image graph.
+- tools/oat-xenon/Run-AztecXmaRealSourcePreflight.ps1 enumerates/hash-pins genuine local audio media and opaque containers if an existing source directory is specified with -AudioSourceRoot, checks real RIFF XMA/XMA2 format tags and installed XMA encoder executables (without invoking them). The output explicitly rejects silent stubs, synthetic samples and any untested XMA native binding. If no directory is supplied, actual audio media remain UNCENSUSED, not conveniently declared "resolved". Opaque .iwd/.pak sound archives are not counted as validated individual audio samples. The provenance of existing 3 packed FlameTable name strings and 6 packed SndAliasCustom references remains unresolved until real owning source zone and asset data is proven.
+- Native emit is a **separate future hard gate**, not a switch on the source-only sprint. Required: genuine remaining names/materials, all true image/technique bindings, actual audio sample/XMA encoding and source-to-Xbox sample references, fully typed WeaponDef/FlameTable child graphs, verified stock residency, complete map/world roots, OAT and hardware gating. No non-NULL source field may be silently replaced by NULL.
+
+PowerShell 5.1 command from repo root (one incremental .NET source pass, one source audio file provenance pass):
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "Syntax gate failed" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecRealAssetResolutionSprint.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "Real asset source audit blocked; no FF" }
+
+Optional for actual WAV/MP3/XMA source files already on disk:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecRealAssetResolutionSprint.ps1" -AudioSourceRoot "X:\your\actual\PC\sound\folder"
+
+Do **not** invent a sound folder path. No original-PC media source directory supplied means no codec inventory yet. An xmaencode executable being present is only a capability detection, not encoding or a valid Xbox SndAlias binding. All source-authentic NULLs are *already correctly resolved as NULL* and must not be populated for progress.
+
+The authoritative summary is in output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_flame_real_source_sprint/aztec_real_asset_resolution_sprint.json.
+
+**Status:** code committed, not yet run in Windows; source candidates and actual XMA closure counts unknown until the user runs it. No production real-asset completion is claimed.
