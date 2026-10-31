@@ -234,9 +234,23 @@ Write-Host '[AZTEC-W63-AB-PROGRESS] [##########----------] 50% | exact same-sett
 $weapons=Invoke-ExactCase 63 'weapons_63'
 Write-Host '[AZTEC-W63-AB-PROGRESS] [#################---] 85% | exact same-settings 63 original PC weapons FF saved + OAT-validated'
 Assert-InputsStillPinned
+# Under PS5.1 StrictMode inspect PSCustomObject fields explicitly.
+# This guards against any future accidental stdout on the success stream
+# without misreporting an OAT-passing FF as bad source asset data.
+foreach($case in @(@{label='control_00';value=$control},@{label='weapons_63';value=$weapons})){
+    if($null -eq $case.value -or $case.value -is [array] -or
+       $case.value -isnot [pscustomobject]){
+        throw "A/B $($case.label) must return one validated PSCustomObject; got $($case.value.GetType().FullName). The child runner stdout must flow to Out-Host, not the function result."
+    }
+}
 foreach($key in @('realMaterialRoots','realXModelRoots','realImageRoots','realRawFileRoots','gate10Draws','gate11Cells','gate11Trees','gate11ModelIndexes','physicalBytes')){
-    if($control.$key -ne $weapons.$key){
-        throw "A/B non-weapon world content changed ($key): $($control.$key) vs $($weapons.$key). Cannot attribute byte delta to WeaponDef canaries."
+    $a=$control.PSObject.Properties[$key]
+    $b=$weapons.PSObject.Properties[$key]
+    if($null -eq $a -or $null -eq $b){
+        throw "A/B result metadata field '$key' is absent (control=$($null -ne $a), weapons=$($null -ne $b)). Both archived FFs remain OAT-good."
+    }
+    if($a.Value -ne $b.Value){
+        throw "A/B non-weapon world content changed ($key): $($a.Value) vs $($b.Value). Cannot attribute byte delta to WeaponDef canaries."
     }
 }
 if($control.weaponCanaries -ne 0 -or $control.diagnosticSourceOwnedWeaponBytesEmitted -ne 0 -or
