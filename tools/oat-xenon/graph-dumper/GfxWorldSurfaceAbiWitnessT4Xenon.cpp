@@ -173,6 +173,18 @@ namespace gfxworld
         out << ",\"dpvsPlanesCellCountAt\":" << offsetof(GfxWorldDpvsPlanes, cellCount);
         out << ",\"dpvsPlanesNodesAt\":" << offsetof(GfxWorldDpvsPlanes, nodes);
         out << ",\"dpvsPlanesPlanesAt\":" << offsetof(GfxWorldDpvsPlanes, planes);
+        // Gate11 native STRUCT ABI only, original Xbox body is a witness,
+        // NEVER an exportable conversion payload.
+        out << ",\"cellsAt\":" << offsetof(GfxWorld, cells);
+        out << ",\"gfxCellSize\":" << sizeof(GfxCell);
+        out << ",\"gfxAabbTreeSize\":" << sizeof(GfxAabbTree);
+        out << ",\"gfxPortalSize\":" << sizeof(GfxPortal);
+        out << ",\"cellAabbTreeAt\":" << offsetof(GfxCell, aabbTree);
+        out << ",\"cellPortalsAt\":" << offsetof(GfxCell, portals);
+        out << ",\"cellCullGroupsAt\":" << offsetof(GfxCell, cullGroups);
+        out << ",\"cellReflectionProbesAt\":" << offsetof(GfxCell, reflectionProbes);
+        out << ",\"portalCellAt\":" << offsetof(GfxPortal, cell);
+        out << ",\"portalVerticesAt\":" << offsetof(GfxPortal, vertices);
         out << "}";
         out << ",\"loadedWorldRootShape\":{";
         out << "\"planeCount\":" << world.planeCount;
