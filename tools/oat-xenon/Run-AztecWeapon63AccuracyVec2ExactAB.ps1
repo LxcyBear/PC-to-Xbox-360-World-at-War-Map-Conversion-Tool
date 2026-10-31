@@ -137,7 +137,14 @@ function Preserve-ExistingScratch([string]$work,[string]$label,[string]$expected
        [int]$e.NativeRoots -ne 8509){
         throw "Existing $label scratch is not proven OAT-good. Refusing overwrite."
     }
-    $where=Join-Path $archive ('previous_'+$label+'_'+$sha.Substring(0,12))
+    # The SAME FF SHA can have different report JSON metadata on a later
+    # revision/run. Preserve all three files by their combined content hashes,
+    # rather than treating changing diagnostic metadata as FF corruption.
+    $reportSha=(Get-FileHash -LiteralPath $json -Algorithm SHA256).Hash
+    $emitSha=(Get-FileHash -LiteralPath $emit -Algorithm SHA256).Hash
+    $tag=('{0}_{1}_{2}_{3}' -f $label,$sha.Substring(0,12),
+        $reportSha.Substring(0,12),$emitSha.Substring(0,12))
+    $where=Join-Path $archive ('prior_'+$tag)
     New-Item -Path $where -ItemType Directory -Force|Out-Null
     foreach($pair in @(
         @{from=$ff;to='nazi_zombie_aztec.ff'},
@@ -163,6 +170,27 @@ function Invoke-Case([string]$label,[bool]$includeVec2,[string]$work){
     Assert-Unchanged
     $dir=Join-Path $archive $label
     if($ReuseArchivedPasses){
+        # New immutable case archives are content-addressed. Read the
+        # last successful report to locate the exact archived FF; still
+        # verify all 8509 roots, proof fields, bytes and SHA below.
+        if(Test-Path -LiteralPath $report -PathType Leaf){
+            $previous=Get-Content -LiteralPath $report -Raw|ConvertFrom-Json
+            if([string]$previous.schema -ne 'WaW360.AztecWeapon63AccuracyVec2SameWorldExactAB.v1'){
+                throw 'Cannot reuse FF archives: final A/B report schema changed.'
+            }
+            $priorCase=if($includeVec2){
+                $previous.stringsPlusOriginalPcOwnedVec2FF
+            }else{$previous.stringsOnlySourceFF}
+            if($null -eq $priorCase -or [string]::IsNullOrWhiteSpace([string]$priorCase.archivedFf)){
+                throw 'Cannot reuse FF archives: prior successful case path missing.'
+            }
+            $dir=Split-Path -Path ([string]$priorCase.archivedFf) -Parent
+            if(-not([IO.Path]::GetFullPath($dir).StartsWith(
+                [IO.Path]::GetFullPath($archive)+[IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase))){
+                throw 'Cannot reuse archive outside the exact A/B experiment directory.'
+            }
+        }
         $ff=Join-Path $dir 'nazi_zombie_aztec.ff'
         $json=Join-Path $dir 'case_growth_report.json'
         $emit=Join-Path $dir 'nuclear_xenon_renderer_emit.json'
@@ -230,6 +258,15 @@ function Invoke-Case([string]$label,[bool]$includeVec2,[string]$work){
         throw "Case $label failed original-PC source/OAT/root/hash checks; no size attribution allowed."
     }
     if(-not $ReuseArchivedPasses){
+        # Never reuse a fixed archive path that was populated by an older
+        # run: content-address every individual verified OAT case instead.
+        # This preserves old successful evidence, including FF-identical
+        # revisions that have a different machine/report JSON SHA.
+        $caseKind=if($includeVec2){'v'}else{'s'}
+        $jsonSha=(Get-FileHash -LiteralPath $json -Algorithm SHA256).Hash
+        $emitSha=(Get-FileHash -LiteralPath $emit -Algorithm SHA256).Hash
+        $dir=Join-Path $archive ('case_'+$caseKind+'_'+$hash.Substring(0,12)+'_'+
+            $jsonSha.Substring(0,12)+'_'+$emitSha.Substring(0,12))
         New-Item -Path $dir -ItemType Directory -Force|Out-Null
         foreach($pair in @(
             @{from=$ff;to='nazi_zombie_aztec.ff'},
