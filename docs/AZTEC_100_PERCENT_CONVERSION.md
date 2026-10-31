@@ -520,3 +520,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-Az
 Expected if all four arrays survive native loaded scalar conversion: `MATCH original-PC skyStartSurfs`, `brushModels`, `waterBuffer0`, `waterBuffer1` and `PASS 4/4, all 2,107,664 source-owned bytes`. Strict SHA-pinned report `pc_g11_remaining_world_primitive_probe/oat_loaded_primitive_source_digest/aztec_gate11_independent_loaded_primitive_source_digest.json`. A mismatch is **real diagnosis**, not permission to copy original Xbox reference bytes. Use the same command without `-BuildDumper` on subsequent runs.
 
 **Gate11 remains pending** after primitive proof. Additional original-PC reflection/lightmap image payload identities, lightgrid scalar/native streaming order, shadow/light-region graph, material and stock semantics are required before full-world PASS, Gate12 FF family and hardware admission. The previous Xbox hardware warning remains in force.
+
+## Gate11 joint two-wave closure (lighting + reflections/lightmaps/shadows; then regions + stream info)
+
+**User-verified precedent:** 3,650,170-byte SHA-D46ABC… primitive FF OAT reload + 11-cell/AABB and **4/4 original-PC loaded primitive FNV-1a digest** PASS. Avoid another collection of tiny diagnostic map FF builds. Instead, batch the source/ABI evidence and the next output graph across two connected work waves, with **one proposed isolated FF emission after actual dependencies resolve**.
+
+**Wave A** (one workstream): validate the four converted light-grid buffers and measured 56B native embedded header; plan GfxReflectionProbe (16B) and GfxLightmapArray (8B) reference rebasing using source PC names **only after** corresponding resident GfxImage payload provenance/identity is proved; verify original PC GfxShadowGeometry (12B) headers and every nested sorted surface/static model reference. No retail Xbox image bytes are permitted as donor material. A baked-lighting *lightmap* is a GfxImage asset relationship; a *highmip* is part of a texture's mip storage and does not establish such a binding.
+
+**Wave B** (reuse the same source graph/root model): validate source nested light-region hull/axis fields, then reconstruct **Xbox-specific** GfxWorldStreamInfo (16B; aabbTrees/leafRefs) from source-derived world topology rather than copying retail reference data. Keep both lanes inspectable within one report, avoid repeating primitive FF builds for every individual dependency. Source counts, nested relationships, native sizeof/offsetof and image name audits are distinct proof layers: source-ready never equals loaded/serialized/hardware-ready.
+
+New source/ABI batch script, reuses all existing manifests and SHA-protected FFs and produces **no map FF**:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11TwoWaveWorldClosure.ps1'
+\`\`\`
+
+Machine-readable dependency report: \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_two_wave_world_closure/aztec_gate11_two_wave_source_dependency_plan.json\`. Source SHA and original 3,642,932-byte cell FF + 3,650,170-byte primitive FF SHA/size must remain unchanged.
+
+The specialized native GfxWorld ABI dumper also now records exact Xbox member offsets for grid scalars/arrays, shadow counts, light-region hull/axis pointers, and stream tree/leafRef pointers. Those extra fields will appear the next time the specialized OAT dumper and source/ABI census are rebuilt; the two-wave source audit uses **only already measured fields**, so no immediate OAT recompile is needed.
+
+**Acceptance before full Gate11:** finish real serializer and native FF emission for BOTH waves, independently OAT-read back actual values, validate the known one unresolved stock-XModel link plus material stateBits/image payload binding semantics, and retain Xbox hardware release fence until Gate12/13. This new script is a structural/source batch, **not** a claim that the two waves have already been emitted.
