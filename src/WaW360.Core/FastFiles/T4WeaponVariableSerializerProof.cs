@@ -67,6 +67,10 @@ public static class T4WeaponVariableSerializerProof
     private sealed record PlannedInsertion(int Offset, byte[] Bytes);
 
     internal sealed record OwnedFixedInlineXString(int FixedFieldOffset, string ProofLabel, string SourceValue);
+    // This is original-PC-sourced Xbox big-endian 7b proof data, NOT a native
+    // FF relocation: no packed/external WeaponDef pointer may be carried out.
+    internal sealed record OwnedFixedInlineAccuracyVec2(
+        int FixedFieldOffset,string ProofLabel,int KnotCount,int SourceBodyByteOffset,byte[] BigEndianKnotBytes);
 
     private sealed class TraverseStats
     {
@@ -91,6 +95,7 @@ public static class T4WeaponVariableSerializerProof
         public required string WeaponName { get; init; }
         public bool RequireSelfContainedPointers { get; init; }
         public List<OwnedFixedInlineXString>? ObservedFixedInlineXStrings { get; init; }
+        public List<OwnedFixedInlineAccuracyVec2>? ObservedFixedInlineAccuracyArrays { get; init; }
         public byte[]? PatchDestination { get; init; }
         public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
         public List<PlannedInsertion>? PlannedInsertions { get; init; }
@@ -337,6 +342,57 @@ public static class T4WeaponVariableSerializerProof
         }
     }
 
+    /// <summary>
+    /// Read-only ORIGINAL source-owned 7b WeaponDef accuracy-graph array
+    /// witness. Uses the exact Alpha 7b owned child traversal, not a
+    /// fixed-offset guess into the variable-length owned payload stream.
+    /// Returns only genuine inline original-PC 2-float/knot data; all
+    /// non-inline/packed references remain explicitly unresolved.
+    /// </summary>
+    internal static bool TryCollectSourceOwnedAccuracyVec2Arrays(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedFixedInlineAccuracyVec2> arrays,out string reason)
+    {
+        var observed = new List<OwnedFixedInlineAccuracyVec2>();
+        arrays = Array.Empty<OwnedFixedInlineAccuracyVec2>();
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = xboxSourceProofBlob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = false,
+                ObservedFixedInlineAccuracyArrays = observed
+            };
+            var end = WalkOwnedPayload(ctx,0);
+            if(end != xboxSourceProofBlob.Length)
+                throw new InvalidDataException(
+                    $"source owned WeaponDef accuracy walk ended at 0x{end:X}, expected 0x{xboxSourceProofBlob.Length:X}");
+            int[] expectedSlots = { 2184,2192,2188,2196 };
+            if(observed.Any(a => !expectedSlots.Contains(a.FixedFieldOffset) ||
+                                 a.KnotCount <= 0 || a.KnotCount > 4096 ||
+                                 a.BigEndianKnotBytes.Length != checked(a.KnotCount*8) ||
+                                 a.SourceBodyByteOffset < FixedBodySize ||
+                                 (long)a.SourceBodyByteOffset+a.BigEndianKnotBytes.Length>xboxSourceProofBlob.Length) ||
+               observed.Select(a => a.FixedFieldOffset).Distinct().Count() != observed.Count)
+                throw new InvalidDataException(
+                    $"source WeaponDef '{name}' accuracy array witness has invalid/duplicate slot, count or owned byte bounds.");
+            arrays=observed.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason=ex.Message;
+            arrays=Array.Empty<OwnedFixedInlineAccuracyVec2>();
+            return false;
+        }
+    }
+
     internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, string name, out string reason)
     {
         reason = string.Empty;
@@ -511,11 +567,11 @@ public static class T4WeaponVariableSerializerProof
             throw new InvalidDataException($"Weapon '{c.WeaponName}' has implausible accuracy graph knot counts ({aiCount}, {playerCount}).");
 
         cursor = ConsumeWeaponXString(c, body + 2176, cursor, "aiVsAiAccuracyGraphName");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2184, c.Endianness), aiCount, cursor, "aiVsAiAccuracyGraphKnots");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2192, c.Endianness), aiCount, cursor, "originalAiVsAiAccuracyGraphKnots");
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2184, c.Endianness), aiCount, cursor, "aiVsAiAccuracyGraphKnots", 2184);
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2192, c.Endianness), aiCount, cursor, "originalAiVsAiAccuracyGraphKnots", 2192);
         cursor = ConsumeWeaponXString(c, body + 2180, cursor, "aiVsPlayerAccuracyGraphName");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2188, c.Endianness), playerCount, cursor, "aiVsPlayerAccuracyGraphKnots");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2196, c.Endianness), playerCount, cursor, "originalAiVsPlayerAccuracyGraphKnots");
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2188, c.Endianness), playerCount, cursor, "aiVsPlayerAccuracyGraphKnots", 2188);
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2196, c.Endianness), playerCount, cursor, "originalAiVsPlayerAccuracyGraphKnots", 2196);
 
         cursor = ConsumeWeaponXString(c, body + 2288, cursor, "szUseHintString");
         cursor = ConsumeWeaponXString(c, body + 2292, cursor, "dropHintString");
@@ -621,7 +677,8 @@ public static class T4WeaponVariableSerializerProof
         return cursor;
     }
 
-    private static int ConsumeVec2Array(WalkContext c, uint raw, int count, int cursor, string label)
+    private static int ConsumeVec2Array(WalkContext c, uint raw, int count, int cursor,
+        string label,int fixedPointerOffset)
     {
         ValidateGeneralPointer(c, raw, label);
         if (raw == 0 || !IsInline(raw)) return cursor;
@@ -629,6 +686,16 @@ public static class T4WeaponVariableSerializerProof
         cursor = Align4(c, cursor, label);
         var bytes = checked(count * 8);
         Ensure(c.Source, cursor, bytes, label);
+        if(c.ObservedFixedInlineAccuracyArrays is not null && bytes>0)
+        {
+            if(fixedPointerOffset < 0 || fixedPointerOffset+4>FixedBodySize)
+                throw new InvalidDataException(
+                    $"Weapon '{c.WeaponName}' inline accuracy knot source slot out of bounds: {label}");
+            c.ObservedFixedInlineAccuracyArrays.Add(
+                new OwnedFixedInlineAccuracyVec2(
+                    fixedPointerOffset,label,count,cursor,
+                    c.Source.AsSpan(cursor,bytes).ToArray()));
+        }
         for (var p = cursor; p < cursor + bytes; p += 4)
             WriteScalar32(c, p, ReadU32(c.Source, p, c.Endianness));
         cursor += bytes;
