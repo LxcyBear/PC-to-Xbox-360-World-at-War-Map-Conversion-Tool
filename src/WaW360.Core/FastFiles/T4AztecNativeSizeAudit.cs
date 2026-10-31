@@ -32,10 +32,15 @@ public static class T4AztecNativeSizeAudit
         using var emitDoc=JsonDocument.Parse(await File.ReadAllTextAsync(emitterFile,ct));
         using var proofDoc=JsonDocument.Parse(await File.ReadAllTextAsync(independentProofFile,ct));
         var id=idDoc.RootElement;var emit=emitDoc.RootElement;var proof=proofDoc.RootElement;
-        static int Int(JsonElement e,string k)=>e.GetProperty(k).GetInt32();
-        static long Long(JsonElement e,string k)=>e.GetProperty(k).GetInt64();
-        static bool Yes(JsonElement e,string k)=>e.GetProperty(k).GetBoolean();
-        static string Str(JsonElement e,string k)=>e.GetProperty(k).GetString()??"";
+        static JsonElement Field(JsonElement doc,string key) =>
+            doc.TryGetProperty(key,out var value) ? value :
+            throw new InvalidDataException(
+                $"Aztec size audit JSON schema drift: missing '{key}' (available: " +
+                string.Join(", ",doc.EnumerateObject().Select(p=>p.Name)) + ").");
+        static int Int(JsonElement e,string k)=>Field(e,k).GetInt32();
+        static long Long(JsonElement e,string k)=>Field(e,k).GetInt64();
+        static bool Yes(JsonElement e,string k)=>Field(e,k).GetBoolean();
+        static string Str(JsonElement e,string k)=>Field(e,k).GetString()??"";
         static bool Eq(string a,string b)=>string.Equals(a,b,StringComparison.OrdinalIgnoreCase);
 
         if(Str(proof,"schema")!="WaW360.AztecGate11SixImageRootNameAliasReadback.v1" ||
@@ -50,7 +55,13 @@ public static class T4AztecNativeSizeAudit
            Int(proof,"realOriginalPcGeneratedImagePixelsProven")!=0 ||
            Yes(proof,"fullGate11Passed") || Yes(proof,"xboxHardwareReady"))
             throw new InvalidDataException("Independent proof of current 4,510,695-byte source-only FF changed.");
-        if(Int(id,"Assets")!=Roots || !Yes(id,"TypeSequenceVerified") ||
+        // The native OAT identity MANIFEST is serialized from an anonymous
+        // object and therefore uses camelCase: format/assets/entries/index/
+        // typeId/oatTypeName. The C# oracle result TYPE uses PascalCase, but
+        // that is NOT the JSON consumed here. Never silently case-fold field
+        // names because schema drift should stop the audit cleanly.
+        if(Str(id,"format")!="WaW360.T4Xenon.NativeIdentityManifest.v1" ||
+           Int(id,"assets")!=Roots || !Yes(id,"typeSequenceVerified") ||
            Int(emit,"NativeRoots")!=Roots ||
            !Eq(Path.GetFullPath(Str(emit,"OutputFastFile")),candidateFile) ||
            !Yes(emit,"ExactIdentitySequence") ||
@@ -79,16 +90,16 @@ public static class T4AztecNativeSizeAudit
             throw new InvalidDataException("Retail/candidate SHA, zone bytes, platform or 8509-root counts do not match.");
 
         var byType=new SortedDictionary<string,int>(StringComparer.OrdinalIgnoreCase);
-        var entries=id.GetProperty("Entries").EnumerateArray().ToArray();
+        var entries=id.GetProperty("entries").EnumerateArray().ToArray();
         if(entries.Length!=Roots)throw new InvalidDataException("Identity entry count mismatch.");
         for(int i=0;i<Roots;i++)
         {
             var e=entries[i];
-            if(Int(e,"Index")!=i ||
-               Int(e,"TypeId")!=retail.Document.Assets[i].TypeId ||
-               Int(e,"TypeId")!=current.Document.Assets[i].TypeId)
+            if(Int(e,"index")!=i ||
+               Int(e,"typeId")!=retail.Document.Assets[i].TypeId ||
+               Int(e,"typeId")!=current.Document.Assets[i].TypeId)
                 throw new InvalidDataException("Native root ordinal/type mismatch at "+i);
-            var kind=Str(e,"OatTypeName").Trim().ToLowerInvariant();
+            var kind=Str(e,"oatTypeName").Trim().ToLowerInvariant();
             if(kind.Length==0)throw new InvalidDataException("OAT asset type missing at "+i);
             byType[kind]=byType.GetValueOrDefault(kind)+1;
         }
