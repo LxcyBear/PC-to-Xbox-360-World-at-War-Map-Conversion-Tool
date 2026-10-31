@@ -200,3 +200,25 @@ Fast retry from repo root (the OAT v2 Unlinker is already built; do NOT use -Bui
     if ($LASTEXITCODE -ne 0) { throw "FlameTable typed-v2 real-source and stock-name crosswalk blocked" }
 
 This reruns the original PC OAT --list source-only loader (NO MSBuild) with proper role classification, then performs read-only comparison to actual OAT-listed Xbox retail Sound XAssets across up to 67 source zones. Five verified PC alias names are NOT XMA sample/codec proof, and none of the synthetic stub/zero-pointer shortcuts are permitted. All four authentic source-owned FlameTable parent bodies and 122/12/4 source-NULL fields remain unchanged.
+
+
+## 2026-10-31 real Flame material pointer cell + Xbox XMA one-build sprint
+
+The user's f363a89 test is a full original-PC source audit PASS: 4/4 real FlameTable parent bodies in the same exact source zone, 3/3 packed name references directly recovered, 6/6 original PC SndAliasCustom names directly recovered and independently OAT listed, with all six independently found as owned Sound root names in 67/67 genuine Xbox retail FF OAT listings (0 stale). All 17 packed FlameMaterial pointer occurrences collapse to five unique raw target pointers: 83061811, 83061911, 83769AC1, 83769AC5, and 83769AC9. None passed the direct 112-byte PC Material name test. Three target addresses differ by four bytes, so a live in-block 32-bit Material pointer CELL is an important candidate, not yet proven.
+
+The new OAT x86 v3 native source witness (capability t4-pc-flame-real-material-pointer-slot-hop-v3) follows at most two bounded pointers inside actual loaded original PC OAT blocks and reads genuine Material112/technique/texture/image names. A new WAW360-FLAMEMATPTR line is logged for each source-packed pointer. Actual source byte first-word evidence is independently matched by the v3 PowerShell report against the prior 32-byte memory witness. A real source name is only a candidate until an independent OAT Material XAsset name and its full native Xbox image/shader/technique graph are verified. No arbitrary dereference, source mutation, fake names or material graft is allowed.
+
+Real Xbox XMA opportunities: the pinned Xenon OAT revision already includes LoadedSoundDumperT4Xenon and SoundDumperT4Xenon. They can extract genuine RIFF XMA for actual loaded Xbox sounds, or extract streamed Xbox XMA from loose audio files and indexed Xbox sound archives. tools/oat-xenon/Run-AztecFlameRealXboxXmaExtract.ps1 selects a small number of genuine Xbox retail FFs with actual owned Sound XAsset name evidence for the six flamethrower aliases, runs the pinned native OAT dumper restricted to Sound and LoadedSound, and copies only direct matching named .xma files to SHA-pinned source-evidence staging. It inspects actual RIFF WAVE XMA headers and records unbound loaded sound candidates separately; it does not invent a sample, claim stock preload, link any SoundFile, or modify the good FF. Optional XboxSoundPackRoot can refer to the user's real Xbox archive folder. Zero available samples is a valid blocking finding, not success or an excuse for silent stubs. Retail sample provenance is not authorization to graft unrelated donor/oracle bodies.
+
+Run one sprint from the repository root:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "PS5.1 parser failed" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlameMaterialAndXmaSourceSprint.ps1" -BuildDumper
+    if ($LASTEXITCODE -ne 0) { throw "Real Flame + XMA original-source sprint blocked" }
+
+Only build once; later runs can omit -BuildDumper. You can cap real Xbox FF scans with -MaxXboxRetailZones 1 or explicitly skip Xbox sample extraction with -SkipXboxXmaExtract. Report files are pc_g11_flame_loaded_virtual_target_proof/aztec_five_original_pc_material_pointer_cells_and_real_xbox_xma_sprint.json and pc_g11_flame_real_xbox_xma_source/aztec_six_real_original_xbox_sound_xma_source_provenance.json under Aztec native material mapping output. The exact original PC FF and 4,514,599-byte previous OAT accepted Xbox test FF are read-only. Real source NULL fields (122 parent, 12 material, 4 sound) remain NULL. Production Xbox material graphs, alias-to-real-sample bindings and runtime validation remain fenced pending independent proof.
+
+The new code has not yet been Windows compiled or runtime tested by the user.
