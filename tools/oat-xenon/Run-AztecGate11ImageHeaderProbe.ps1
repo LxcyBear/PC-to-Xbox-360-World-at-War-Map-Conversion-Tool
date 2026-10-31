@@ -13,6 +13,7 @@ $ErrorActionPreference='Stop'
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $sourceFrontier=Join-Path $PSScriptRoot 'Run-AztecGate11ImageStreamClosure.ps1'
+$orderCheck=Join-Path $PSScriptRoot 'Test-AztecGate11ImageHeaderNativeOrder.ps1'
 $builder=Join-Path $PSScriptRoot 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1'
 $cellVerifier=Join-Path $PSScriptRoot 'Verify-AztecGate11OatLoadedCells.ps1'
 $prior=Join-Path $base 'pc_g11_lighting_combined_probe\oat_loaded_lighting_shadow_region\aztec_gate11_independent_lighting_shadow_source_digest.json'
@@ -25,7 +26,7 @@ $out=Join-Path $work 'oat_loaded_generated_image_headers'
 $resultPath=Join-Path $out 'aztec_gate11_independent_image_headers_and_zero_stream.json'
 $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
 $oldSha='B832EDCE7EECFBBF2B0A141FF2C3D946595B317D7E7C7ACA0D21991277522883'
-foreach($file in @($prior,$sourceFrontier,$builder,$cellVerifier,$binding)){
+foreach($file in @($prior,$sourceFrontier,$orderCheck,$builder,$cellVerifier,$binding)){
     if(-not(Test-Path -LiteralPath $file -PathType Leaf)){
         throw "Missing original-PC Gate11 prior witness: $file"
     }
@@ -43,6 +44,9 @@ if([string]$p.newNativeFfSha256 -ine $oldSha -or
 Write-Host '[AZTEC-GATE11-IMAGE-HEADERS] ============================================================'
 Write-Host '[AZTEC-GATE11-IMAGE-HEADERS] Combined source reflection/lightmap HEADER candidate, not image pixels.'
 Write-Host '[AZTEC-GATE11-IMAGE-HEADERS] 4.51MB verified FF SHA locked; six generated GfxImage* remain NULL.'
+Write-Host '[AZTEC-GATE11-PROGRESS] [#-------------------] 5% | native GfxWorld reflection/Dpvs/cells/lightmap order static fail-fast test'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $orderCheck
+if($LASTEXITCODE -ne 0){throw 'T4 Xenon source GfxWorld child order regression detected. No OAT rebuild or new FF created.'}
 Write-Host '[AZTEC-GATE11-PROGRESS] [##------------------] 10% | native Xbox image-name and zero-stream structure evidence'
 $argsList=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$sourceFrontier)
 if($BuildDumper){$argsList+='-BuildDumper'}
