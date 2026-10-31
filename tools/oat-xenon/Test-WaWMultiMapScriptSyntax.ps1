@@ -22,6 +22,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Build-Aztec1903DrawPointerRelocationCandidate.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecSharedDrawPointerCodec.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-Aztec1903StaticDrawScalarEquivalence.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Build-AztecGate10SourceFlagsCandidate.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate8NativeStaticDrawAbiWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-Aztec100PercentPackage.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-WaWRuntimeScriptDependency.ps1') -ErrorAction Stop)
