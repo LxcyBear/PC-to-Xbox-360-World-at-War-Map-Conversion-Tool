@@ -41,6 +41,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11ExistingFfOatPointerTrace.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-AztecGate11OatFaultWordProvenance.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecGate11OatLoadedCells.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecGate11OatLoadedPrimitives.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate8NativeStaticDrawAbiWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-Aztec100PercentPackage.ps1') -ErrorAction Stop)
