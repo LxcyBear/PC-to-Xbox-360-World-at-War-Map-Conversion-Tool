@@ -147,6 +147,38 @@ try{
     $sourceCopy=Join-Path $out 'original_pc_gate11_all_remaining_world_typed.json'
     Copy-Item -LiteralPath $input -Destination $sourceCopy -Force
     $sourceSha=(Get-FileHash -LiteralPath $sourceCopy -Algorithm SHA256).Hash
+    $abi=$nativeDoc.gate11RemainingNativeAbi
+    $rootFields=@('worldStreamInfoAt','skySurfCountAt','skyStartSurfsAt',
+        'reflectionProbeCountAt','reflectionProbesAt','coronasAt',
+        'lightmapCountAt','lightmapsAt','lightGridAt','modelCountAt',
+        'modelsAt','shadowGeomAt','lightRegionAt','lodChainsAt',
+        'lodInfosAt','lodSurfacesAt','waterBuffersAt')
+    foreach($field in $rootFields){
+        if([int]$abi.$field -lt 0 -or [int]$abi.$field -ge 900){
+            throw "Pinned native 900B GfxWorld field $field exceeds the real Xbox root ABI."
+        }
+    }
+    if([int]$abi.reflectionProbeBytes -ne 16 -or
+       [int]$abi.lightmapArrayBytes -ne 8 -or
+       [int]$abi.gridEntryBytes -ne 4 -or
+       [int]$abi.gridColorsBytes -ne 168){
+        throw 'Measured native GfxWorld critical reflection/lightmap/light-grid child sizes changed; no FF batch can proceed.'
+    }
+    $expectedNativeSizes=@{
+        skyStartSurfs=4
+        coronas=[int]$abi.coronaBytes
+        brushModels=[int]$abi.brushModelBytes
+        cullGroups=[int]$abi.cullGroupBytes
+        worldLodChains=[int]$abi.lodChainBytes
+        worldLodInfos=[int]$abi.lodInfoBytes
+        worldLodSurfaces=4
+        gridRowDataStart=2
+        gridRawRowData=1
+        gridEntries=[int]$abi.gridEntryBytes
+        gridColors=[int]$abi.gridColorsBytes
+        waterBuffer0=16
+        waterBuffer1=16
+    }
     $nativeOnlyPath=Join-Path $out 'measured_xbox360_remaining_world_abi_only.json'
     $nativeDoc.gate11RemainingNativeAbi|ConvertTo-Json -Depth 5 |
         Set-Content -LiteralPath $nativeOnlyPath -Encoding UTF8
@@ -181,11 +213,18 @@ try{
         $copy=Join-Path $out ('original_pc_'+$name+'_LE.bin')
         Copy-Item -LiteralPath $file -Destination $copy -Force
         $totalBytes += $length
+        $nativeSize=[int]$expectedNativeSizes[$name]
+        if($nativeSize -le 0){
+            throw "Missing compiled Xbox native size for original-PC source leaf $name."
+        }
         $blobs[$name]=[ordered]@{
             file=$copy
             sha256=(Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash
             count=[long]$entry.count
             elementBytes=[int]$entry.elementBytes
+            measuredNativeElementBytes=$nativeSize
+            sourceAndNativeElementSizesMatch=([int]$entry.elementBytes -eq $nativeSize)
+            requiresCrossAbiRepacking=([int]$entry.elementBytes -ne $nativeSize)
             byteLength=$length
             endian='ORIGINAL_PC_LITTLE_ENDIAN_REQUIRES_NATIVE_CONVERSION'
             rawPointersCopied=$false
@@ -218,7 +257,7 @@ try{
         }
         coronas=[ordered]@{
             sourceCount=[int]$c.coronas
-            nextRule='BE-convert 28B native/source GfxLightCorona float records using pinned ABI'
+            nextRule='BE-convert all corona float records with independently measured native and source record sizes'
             xenonEmitted=$false
         }
         lightmaps=[ordered]@{
