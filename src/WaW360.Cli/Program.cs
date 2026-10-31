@@ -102,6 +102,14 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-weapon63-original-pc-bounce-sound-witness" when args.Length == 4:
+            {
+                var report=await T4XenonAztecWeaponBounceSourceWitness.RunAsync(
+                    args[1],args[2],args[3]);
+                Console.WriteLine("[AZTEC-W63-BOUNCE] Genuine original-PC 7b inline bounceSound pointer table and SndAliasCustom source census: "+report);
+                Console.WriteLine("[AZTEC-W63-BOUNCE] NO Xbox donor audio, NO FF/OAT build, NO Xbox hardware.");
+                return 0;
+            }
             case "aztec-weapon63-original-pc-accuracy-vec2-witness" when args.Length == 4:
             {
                 var report=await T4XenonAztecWeaponAccuracySourceWitness.RunAsync(
