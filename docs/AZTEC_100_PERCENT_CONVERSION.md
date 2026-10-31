@@ -701,3 +701,26 @@ Output:
 - Same folder \`aztec_native_ff_size_audit_cli.log\`
 
 The new C# CLI command is \`aztec-native-ff-size-audit <retail.ff> <candidate.ff> <native-identity.json> <candidate-emitter.json> <independent-OAT-proof.json> <output-dir>\`. One .NET incremental build and 2 FF decompressions; **no new .ff is generated**. This is the most actionable structural/root coverage ledger to prioritize true content conversion work. It does not close Gate11 or enable Xbox deployment: still **10/13**.
+
+### Lightning all-root verification triage (2026-10-31, Windows run pending)
+
+User-requested fast parallel-bottleneck audit: **re-use the passing native FF/OAT proofs** without regenerating one huge 8,509-root FastFile for every category. One-command PowerShell 5.1 read-only tool \`tools/oat-xenon/Run-AztecLightningVerification.ps1\`; added to \`Test-WaWMultiMapScriptSyntax.ps1\`. Does **NOT** run .NET, OAT Linker/Unlinker or hardware; SHA-verifies protected original **82,739,469B** golden and **4,510,695B** independently OAT-passing candidate, validates the passing decompressed native size ledger, all exact native 8,509 identities, and the original PC baseline.
+
+Under \`pc_g11_lightning_all_asset_verification\`, produces:
+- \`aztec_all_8509_roots_evidence.csv\` — one row PER native root with root index, OAT type/name, exact same-typed OAT original PC map.ff/patch.ff/mod.ff *name listed* roles where available, optional 67-Xbox-zone image NAME-only candidates, all six verified GfxWorld generated-image root POINTER name matches, and the **next needed specific asset-body verification**. Each row has explicit \`IndividualBodyProvenByThisSweep=false\`, \`StockRuntimeResidencyProven=false\` and \`XboxHardwareReady=false\`: these metadata joins NEVER claim an image/sound/model is actually playable.
+- \`aztec_lightning_verification_summary.json\` — exact per-type 8,509 provenance categories from passing independent size audit: **185 original PC source-backed body upgrades, 506 replayed renderer graphs, 1 partial GfxWorld, 7,817 shells/unverified**. Also image 67-zone named identity triage (302 core, 171 other, 181 not listed, across **654 missing image-name records**), unverified stock load/residency, source name matches, SHA-locked evidence freshness, and categorical blockers.
+- \`aztec_lightning_verification_priorities.md\` — largest unresolved root types, concrete 5-domain workplan: sound+loadedsound **5,306**, image **664**, xanim **602**, material **498**, xmodel **256**, fx **233**, weapon **69**, plus scripts/localization. Counts are **ROOTS**, NOT missing compressed bytes or required map-local byte mass.
+
+This script may use the original PC cached OAT \`--list\` files and their exact baseline \`*.meta.json\` fingerprint (path+length+mtime+exit=0) AND the existing PC image source SHA-256 inventory where available. Historical cached OAT process log bytes themselves are not cryptographically authenticated to the source; results remain **name-only evidence** even if pinned PC SHA matches. Missing/stale logs produce PARTIAL status, not guessed matches. 67-zone Xbox retail image names are never treated as actual stock runtime residency or reused production donor pixels.
+
+Run from PC2XB3 repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if($LASTEXITCODE -ne 0){throw "PS51 script parser failed"}
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecLightningVerification.ps1"
+\`\`\`
+
+**Purpose:** rank work and immediately distinguish true SOURCE-BODY conversion versus only stock-reference-name appearance to avoid padding the 78,228,774-byte compressed gap. The 5,306 sound roots may be source audio or runtime external XMA and cannot be dumped indiscriminately. Source-owned images need actual GfxImage/Xenos texture and mip validation; six generated \`*\` image names still require proven engine-generation or real pixels. **This is fast triage, not completion:** Gate11 stays **10/13**, with no claim that the 7,817 unverified bodies have been converted.
