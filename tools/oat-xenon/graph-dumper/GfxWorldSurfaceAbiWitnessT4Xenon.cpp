@@ -185,6 +185,21 @@ namespace gfxworld
         out << ",\"cellReflectionProbesAt\":" << offsetof(GfxCell, reflectionProbes);
         out << ",\"portalCellAt\":" << offsetof(GfxPortal, cell);
         out << ",\"portalVerticesAt\":" << offsetof(GfxPortal, vertices);
+
+        out << ",\"cellMinsAt\":" << offsetof(GfxCell, mins);
+        out << ",\"cellMaxsAt\":" << offsetof(GfxCell, maxs);
+        out << ",\"cellAabbTreeCountAt\":" << offsetof(GfxCell, aabbTreeCount);
+        out << ",\"cellPortalCountAt\":" << offsetof(GfxCell, portalCount);
+        out << ",\"cellCullGroupCountAt\":" << offsetof(GfxCell, cullGroupCount);
+        out << ",\"cellReflectionProbeCountAt\":" << offsetof(GfxCell, reflectionProbeCount);
+        out << ",\"aabbMinsAt\":" << offsetof(GfxAabbTree, mins);
+        out << ",\"aabbMaxsAt\":" << offsetof(GfxAabbTree, maxs);
+        out << ",\"aabbChildCountAt\":" << offsetof(GfxAabbTree, childCount);
+        out << ",\"aabbSurfaceCountAt\":" << offsetof(GfxAabbTree, surfaceCount);
+        out << ",\"aabbStartSurfIndexAt\":" << offsetof(GfxAabbTree, startSurfIndex);
+        out << ",\"aabbSmodelIndexCountAt\":" << offsetof(GfxAabbTree, smodelIndexCount);
+        out << ",\"aabbSmodelIndexesAt\":" << offsetof(GfxAabbTree, smodelIndexes);
+        out << ",\"aabbChildrenOffsetAt\":" << offsetof(GfxAabbTree, childrenOffset);
         out << "}";
         out << ",\"loadedWorldRootShape\":{";
         out << "\"planeCount\":" << world.planeCount;
