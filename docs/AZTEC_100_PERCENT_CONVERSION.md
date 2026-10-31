@@ -266,3 +266,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-Azt
 ```
 
 Expected report path: `output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g10_1903/gate11_dpvs_child_frontier/aztec_gate11_source_dpvs_100b_child_frontier.json`. This will **not** award Gate 11 automatically. If `cullGroups` is genuinely source-present, next work is to prove original-PC `GfxWorld.cullGroupCount` and typed `GfxCullGroup` records, then implement current-layout source-derived Stage4D/4E emission and independently dump/read back. Otherwise prioritize 11-cell/portal/AABB, lighting/lightmaps, reflection, sky, dynamic DPVS and other remaining renderer/world dependencies. Runtime-marked OAT fields must receive correct engine allocation semantics, not copied PC pointers. Continue with one actual child milestone at a time, only rebuilding after a new real child is added.
+
+## October 30 — Gate11 source DPVS outcome and one-build 11-GfxCell topology witness
+
+Windows result for `Audit-AztecGate11DpvsChildFrontier.ps1`: verified the source DPVS 100B and SHA-pinned independently OAT-loaded Gate10 FF; `sortedSurfIndex`, `smodelInsts`, `surfaces` and `smodelDrawInsts` are physically OAT-loaded, `cullGroups` at source DPVS +80 is genuinely NULL. Runtime-marked source pointer fields (+40 to +64 and +88/+92) contain `0xFFFFFFFF` zone FOLLOWING placeholders and are **not** to be copied as machine addresses or declared as production child payloads. Source T4 world cell count is **11**. Gate 11 remains pending; **10/13 development gates verified**, not 77% complete map.
+
+Next is `Run-AztecGate11CellTopologySourceWitness.ps1`, which adds a **two-sided typed original-PC and native Xbox ABI witness** to the existing pinned specialized OAT graph-dumper. The original PC `GfxWorldMaterialCorpusDumperT4.cpp` now outputs per-cell AABB/portal/cull/reflection counts, nested pointer-presence flags and source `GfxPortal.cell` target **cell ordinal** for all 11 cells—not process pointer bytes. The native `GfxWorldSurfaceAbiWitnessT4Xenon.cpp` records exact compiled Xbox `sizeof`/`offsetof` for `GfxCell`, `GfxAabbTree`, `GfxPortal`, GfxWorld::cells and the child fields. One pinned OAT rebuild installs both capabilities together; subsequent runs reuse the installed binary. This is a data/ABI probe only; it does **not** write 11 native GfxCells or their nested AABB/portal arrays yet.
+
+First run after pulling (one *specialized OAT* build; **no converter/.NET or GfxWorld FF build**):
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell 5.1 AST preflight failed; do not start native OAT compilation' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11CellTopologySourceWitness.ps1' -BuildDumper
+```
+
+The runner SHA-checks the original-PC FF, read-only native Xbox FF and unchanged Gate10 FF/OAT witness, then invokes the specialized x86 OAT dumper on the original-PC and reference Xbox **without exporting any Xbox donor body bytes**. It writes `pc_g10_1903/gate11_cell_topology_source/aztec_gate11_pc_source_cells_native_abi.json`, including source cell/AABB/portal totals, measured structure sizes, pointer-presence/count validation, cross-cell target ordinal coverage, and independent PC/Xbox ABI comparison. It fails closed on mismatches. **No other FF should be rebuilt**, and a probe PASS is not Gate11 physical completion. After inspecting the counts, integrate genuinely source-derived 11 GfxCells and each required owned nested child into isolated Stage4D/4E OAT FF, independently read back, and only then consider the rest of GfxWorld (lightgrid, lightmaps, reflection and dynamic DPVS).
