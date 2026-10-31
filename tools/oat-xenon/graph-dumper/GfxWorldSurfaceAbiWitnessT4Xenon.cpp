@@ -326,6 +326,58 @@ namespace gfxworld
             << (world.dpvs.surfaceMaterials ? "true":"false");
         out << "}";
 
+        // Gate11 generated-name world images: read only NAME references
+        // from the fixed-up native asset graph, NOT image/pixel bodies.
+        // This distinguishes "*"-prefixed runtime/zone asset references
+        // from normal IWI source files and preserves the missing-payload
+        // release fence. Strict 2-probe, 2-lightmap typed memory limits.
+        const bool imageSlotsReady=
+            world.reflectionProbeCount==2 && world.reflectionProbes!=nullptr &&
+            world.lightmapCount==2 && world.lightmaps!=nullptr;
+        out << ",\"gate11WorldImageSlots\":{";
+        out << "\"schema\":\"WaW360.T4XenonGate11NativeWorldImageNameReferences.v1\"";
+        out << ",\"reflectionProbeCount\":" << world.reflectionProbeCount;
+        out << ",\"lightmapCount\":" << world.lightmapCount;
+        out << ",\"slotHeadersReady\":" << (imageSlotsReady?"true":"false");
+        out << ",\"reflectionProbeReferences\":[";
+        if(imageSlotsReady)
+        {
+            for(unsigned i=0;i<2;i++)
+            {
+                if(i)out<<',';
+                const auto& ref=world.reflectionProbes[i];
+                out << "{\"ordinal\":" << i << ",\"origin\":";
+                WriteTriple(out,ref.origin);
+                out << ",\"imagePointerPresent\":"
+                    << (ref.reflectionImage?"true":"false");
+                out << ",\"imageName\":";
+                JsonString(out,ref.reflectionImage?
+                    ref.reflectionImage->name:nullptr);
+                out << "}";
+            }
+        }
+        out << "],\"lightmapReferences\":[";
+        if(imageSlotsReady)
+        {
+            for(unsigned i=0;i<2;i++)
+            {
+                if(i)out<<',';
+                const auto& lm=world.lightmaps[i];
+                out << "{\"ordinal\":" << i << ",\"primaryPointerPresent\":"
+                    << (lm.primary?"true":"false");
+                out << ",\"primaryName\":";
+                JsonString(out,lm.primary?lm.primary->name:nullptr);
+                out << ",\"secondaryPointerPresent\":"
+                    << (lm.secondary?"true":"false");
+                out << ",\"secondaryName\":";
+                JsonString(out,lm.secondary?lm.secondary->name:nullptr);
+                out << "}";
+            }
+        }
+        out << "],\"imagePixelsReadOrCopied\":false";
+        out << ",\"sourceOwnedImagePayloadsVerified\":false";
+        out << ",\"hardwareRuntimeSemanticsProven\":false}";
+
         // Gate11 streaming architecture calibration: ONLY aggregated
         // scalar shape/invariants. No original-Xbox streaming AABB or
         // leaf-index payload is written, replayed or exposed as donor bytes.
