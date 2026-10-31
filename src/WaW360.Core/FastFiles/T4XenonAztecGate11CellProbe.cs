@@ -29,17 +29,19 @@ public sealed class T4XenonAztecGate11CellProbe
     public int ModelIndexCount { get; }
     public int ReflectionIndexCount { get; }
     public int WorldCellPointerAt { get; }
+    public int WorldCellCountAt { get; }
 
     private sealed record CellChild(byte[] Trees,byte[][] SmodelIndexes,
         byte[] ReflectionIndices);
 
     private T4XenonAztecGate11CellProbe(
-        byte[] cells,CellChild[] children,int worldCellPointerAt,
+        byte[] cells,CellChild[] children,int worldCellPointerAt,int worldCellCountAt,
         int modelIndexCount,int reflectionIndexCount)
     {
         _cells=cells;
         _children=children;
         WorldCellPointerAt=worldCellPointerAt;
+        WorldCellCountAt=worldCellCountAt;
         ModelIndexCount=modelIndexCount;
         ReflectionIndexCount=reflectionIndexCount;
     }
@@ -79,10 +81,27 @@ public sealed class T4XenonAztecGate11CellProbe
         using var nd=JsonDocument.Parse(nativeBytes);
         var abi=nd.RootElement.GetProperty("gfxWorldRootAbi");
         int cellsAt=abi.GetProperty("cellsAt").GetInt32();
+        // The older 900B *scalar-only* seed deliberately wrote only three
+        // top-level counters, leaving dpvsPlanes.cellCount at zero. That was
+        // harmless while GfxWorld::cells was NULL (Gate10), but it causes
+        // OAT's native loader to skip our new 11-cell array and interpret
+        // GfxCell[0].mins[0] (-2682.5f, 0xC527A800) as a packed pointer.
+        // Use the independently measured Xbox field offset, never a PC byte
+        // offset or an inferred struct position.
+        int dpvsPlanesAt=abi.GetProperty("dpvsPlanesAt").GetInt32();
+        int dpvsCellCountAt=abi.GetProperty("dpvsPlanesCellCountAt").GetInt32();
+        int worldCellCountAt=checked(dpvsPlanesAt+dpvsCellCountAt);
         if(abi.GetProperty("gfxWorldSize").GetInt32()!=900 ||
            abi.GetProperty("gfxCellSize").GetInt32()!=CellStride ||
            abi.GetProperty("gfxAabbTreeSize").GetInt32()!=TreeStride ||
            cellsAt<=0 || cellsAt>=896 ||
+           abi.GetProperty("dpvsPlanesSize").GetInt32()!=16 ||
+           dpvsPlanesAt<=0 || dpvsPlanesAt>=896 ||
+           dpvsCellCountAt!=0 ||
+           worldCellCountAt<=0 || worldCellCountAt>=896 ||
+           worldCellCountAt==cellsAt ||
+           nd.RootElement.GetProperty("loadedWorldRootShape")
+             .GetProperty("cellCount").GetInt32()!=CellCountExpected ||
            abi.GetProperty("cellMinsAt").GetInt32()!=0 ||
            abi.GetProperty("cellMaxsAt").GetInt32()!=12 ||
            abi.GetProperty("cellAabbTreeCountAt").GetInt32()!=24 ||
@@ -200,7 +219,7 @@ public sealed class T4XenonAztecGate11CellProbe
            probeTotal!=proof.GetProperty("originalPcTypedCellReflectionProbeIndicesCount").GetInt32())
             throw new InvalidDataException("Original-PC AABB/smodel/reflection counts mismatch source witness.");
 
-        return new T4XenonAztecGate11CellProbe(cellBytes,children,cellsAt,indexTotal,probeTotal);
+        return new T4XenonAztecGate11CellProbe(cellBytes,children,cellsAt,worldCellCountAt,indexTotal,probeTotal);
     }
 
     public void Plan(Action<long,int,bool> virtualAlloc)
