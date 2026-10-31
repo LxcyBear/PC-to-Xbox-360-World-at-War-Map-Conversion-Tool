@@ -1104,3 +1104,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Expected measured compressed delta: **+2,095 bytes**, provided the existing archived FFs and reports remain unchanged. Outstanding: fully owned WeaponDef child pointer/native dependency rebase, two source conflicts, four stock-only roles, missing six genuine image payloads, world and audio closure. This is still an **OAT diagnostic FF, NOT Xbox runtime-approved**.
+
+### OAT A/B FF exact weapon source scalar gain **PASS** (+2,095 B compressed; +1,187 B zone), next opt-in genuine extended inline WeaponDef XStrings (2026-10-31)
+
+Windows \`e67df4a\` A/B original run built real native scratch Xbox FastFiles:
+- NO extra PC weapon canaries: **4,510,695 B** \`nazi_zombie_aztec.ff\` SHA-256 \`F74BE6EA0C402C56D9074D6B38F80F2D6D71A5C3297EFA703714FA9C1176A0B6\`.
+- Same Gate11 GfxWorld/OAT layout + 63 original-PC-source scalar/inline-3-string WeaponDefs: **4,512,790 B** FF SHA-256 \`3DBA6CB661691065192B57D4A11A1E4DE5FA0E5FCF6937C8B86E70A57C9152D7\`.
+- Two already-generated OAT-passing FFs + original per-case metadata preserved separately under \`.deps/aztec-w63-exact-ab/control_00/\` and \`weapons_63/\`.
+- **After the PowerShell stdout-stream fix**, the user ran \`Run-AztecWeapon63ExactABSizeLightning.ps1 -ReuseArchivedPasses\` at \`4820f54\` and got \`AZTEC_W63_EXACT_SAME_WORLD_0_VS_63_COMPRESSED_FF_GROWTH_OAT_PASS\`, **+2,095 actual compressed FF bytes; +1,187 uncompressed zone bytes**; \`158,396 B\` of 63 genuine source-derived serialized scalar/XString diagnostic data, not equal to incremental bytes (previous 63 fixed-size native root shells account for most). Both archived compressed FF SHAs, 8509 native OAT identity counts, 0/0 loader warnings/errors and unchanged protected FF hash verified. The archival provenance does **not** contain cryptographic original code Git SHA; same-revision source build is supported by the original joint user-run and matching world counts, not proved by the saved FF alone.
+- Source: original PC 7b proof container SHA and selected source-owned Xbox blobs, **63/69** native WeaponDef real PC source bodies (57 literal named + six DIRECT original-PC Virtual pointer loaded string/name match), 2 competing PC weapon definitions + four Xbox retail stock-name-only roots still source/runtime unresolved. The full 179,775 B 7b WeaponDef nested child graph is NOT in the candidate. Still **not Xbox-ready**.
+
+**NEXT opt-in Lightning stage committed but unexecuted on Windows:** \`Run-AztecWeapon63FfGrowthCanary.ps1 -Limit 63 -ExpandedInlineXStrings\`:
+- \`T4WeaponVariableSerializerProof.TryCollectSourceOwnedFixedInlineXStrings\` uses the existing *exact* original-PC 7b owned child traversal of Xbox big-endian source proof bytes to locate legitimate **inline XStrings whose pointer slot is in the 0x9AC fixed WeaponDef body**, including later XAnim, ammo, mode, alternate weapon, script/rumble strings when truly inline. It records original pointer slot, original source text and typed label in actual T4 ZoneCode traversal order. It does NOT assume inline bytes come immediately after the first three pointers when original model, FX and sound children intervene.
+- \`T4XenonAztecWeapon63ScalarCanary\` validates the same original source FF/proof Sha256/body mapping; in opt-in mode, permits only those proven **inline ASCII-safe direct fixed XString values**, replaces those string pointer slots in a fresh fixed Xbox body with the typed FOLLOWING native pointers and re-emits the strings in T4 ZoneCode order; **all remaining packed original source pointers, stock XModels, material/image/FX/XAnim/audio/sound children remain NULL**. Any non-ASCII value is skipped, not mangled. The resulting assembled new source-backed Xbox 7b diagnostic partial body is independently required to PASS the existing strict \`TryValidateSelfContainedXboxBlob\` before FF emission; OAT hard-load 8,509-root exact identity/0/0 still required afterward.
+- Mode is *opt-in* via \`WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS\` controlled/restored exclusively inside \`Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1 -Weapon63ExtendedInlineStrings\`; the standard 63 canary remains unmodified. Separate OAT short-path scratch output \`repo/.deps/aztec-w63-xstr-ff-growth/scratch_emit/nazi_zombie_aztec.ff\` **does NOT overwrite** either archived A/B FF or the 4,510,695-byte protected candidate. \`OriginalPcWeaponExpandedInlineXStringFields\` and \`extendedSourceFixedInlineStringFieldsEmitted\` measure how many previously omitted source inline direct strings were physically inserted (not claims about packed sources or foreign asset graphs).
+- The wrapper prints physical compressed file bytes + delta vs protected 4.51 MB candidate; if original A/B \`weapons_63\` archived source FF and manifest SHA match, additionally prints **archive-relative compressed difference vs the existing 4,512,790 B 63-scalar baseline** with explicit warning that different Git revisions mean this extra-vs-archive delta is not a cryptographically exact same-source A/B. A valid new FF may grow, stay same or shrink when compressed; all three outcomes still require native layout/OAT PASS and only source-authentic data.
+- Normal nonopt-in canary and original 0-vs-63 A/B scripts remain available.
+
+Morning one-command from repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax failure" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63FfGrowthCanary.ps1" -Limit 63 -ExpandedInlineXStrings
+\`\`\`
+
+**Success condition:** incremental .NET build, Stage4D/4E exact layout replay, fresh OAT 8509/8509 with zero warnings and errors, and measured physical FF byte count/new SHA; report status \`AZTEC_W63_EXTENDED_ORIGINAL_PC_INLINE_XSTRINGS_NATIVE_FF_OAT_PASS_NOT_FULL_WEAPON_GRAPH\`. Experimental source inline strings may not exist in every one of the 63 proof blobs, and could stop on true typed source child/pointer issues; do not claim a bigger FF until Windows confirms. Still not hardware deployable, Gate11 10/13.
