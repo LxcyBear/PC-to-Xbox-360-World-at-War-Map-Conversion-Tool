@@ -81,17 +81,17 @@ try{
     }
     $trace=[IO.File]::ReadAllText($stdout)+[Environment]::NewLine+[IO.File]::ReadAllText($stderr)
     [IO.File]::WriteAllText($log,$trace,[Text.UTF8Encoding]::new($false))
-    if($exit -ne 0){throw "Genuine pinned Xbox retail OAT audio dump failed exit=$exit: $log"}
+    if($exit -ne 0){throw "Genuine pinned Xbox retail OAT audio dump failed exit=${exit}: $log"}
 
-    $matches=@($trace -split '[\r\n]+'|Where-Object{$_ -match '^\[WAW360-XMASOUND\] root='})
-    $expr='^\[WAW360-XMASOUND\] root=(\S+) index=(-?\d+) type=(LOADED|STREAMED|NULL|UNKNOWN|INVALID) exists=(\d+) alias=(\S+) loaded=(\S+) streamDir=(\S+) streamName=(\S+) sampleBytes=(\d+) loadedOwned=(0|1)
+    $soundTraceRows=@($trace -split '[\r\n]+'|Where-Object{$_ -match '^\[WAW360-XMASOUND\] root='})
+    $expr='^\[WAW360-XMASOUND\] root=(\S+) index=(-?\d+) type=(LOADED|STREAMED|NULL|UNKNOWN|INVALID) exists=(\d+) alias=(\S+) loaded=(\S+) streamDir=(\S+) streamName=(\S+) sampleBytes=(\d+) loadedOwned=(0|1)$'
     $roots=@{}
     $rows=New-Object 'System.Collections.Generic.List[object]'
     $sourcePayloads=New-Object 'System.Collections.Generic.List[object]'
     $matchedSamples=0
     $xmaRiffProof=0
     $totalRows=0
-    foreach($line in $matches){
+    foreach($line in $soundTraceRows){
         $m=[regex]::Match([string]$line.Trim(),$expr)
         if(-not $m.Success){throw "Xbox loaded Sound source trace malformed: $line"}
         $root=[string]$m.Groups[1].Value
@@ -207,150 +207,6 @@ try{
        [string]$zone.originalXboxRetailFastFileSha256){
         throw 'Original Xbox retail FF SHA changed during read-only native OAT Sound dump.'
     }
-    if((Get-FileHash -LiteralPath $goodFf -Algorithm SHA256).Hash -ine $oldHash){
-        throw 'Original 222-alias OAT-good native Aztec FF mutated during Xbox source audio witness.'
-    }
-    $data=[ordered]@{
-        schema='WaW360.AztecOriginalXboxSoundFileToXmaChain.v4'
-        status=if($matchedSamples -gt 0){'GENUINE_XBOX_SOUND_TO_REAL_XMA_SAMPLE_NAME_AND_BYTES_LINK_PROVEN_OFFLINE'}
-            else{'SIX_REAL_XBOX_SOUND_ALIAS_CHAINS_TRACED_NO_SOURCE_XMA_PAYLOAD_LINK'}
-        sourceXboxRetailFf=$ff
-        sourceXboxRetailSha256=[string]$zone.originalXboxRetailFastFileSha256
-        sourceOriginalPcFlameSoundAliasCount=6
-        actualXenonSoundRootsTyped=6
-        nativeXboxSoundAliasRecordsTraced=$totalRows
-        authenticXboxOatAliasToSampleFilesExtracted=$matchedSamples
-        aliasesWithActualOriginalXboxLinkedSample=$gotAliases.Count
-        riffXmaCodecHeaderProvenSampleCount=$xmaRiffProof
-        originalPcFlameParentNullSoundSlotsPreserved=4
-        nativeAztecFFModified=$false
-        originalXmaSampleSourceBytesNeverTranscoded=$true
-        nativeXboxSoundFileTypeMetadataGrafted=$false
-        CodXeActualXboxRetailZoneSoundResidencyProven=$false
-        xboxHardwareReady=$false
-        directSourceSoundChains=@($rows.ToArray())
-        verifiedOriginalXboxSourceSamplePayloads=@($sourcePayloads.ToArray())
-        nativeOatRealXenonSoundAliasTrace=$log
-    }
-    $data|ConvertTo-Json -Depth 12|Set-Content -LiteralPath $json -Encoding UTF8
-    Write-Host "[AZTEC-XMA-CHAIN] Genuine native Xbox loaded Sound roots=$($roots.Count)/6; real alias-chain linked audio samples=$matchedSamples, unique sound aliases with samples=$($gotAliases.Count)/6; RIFF-XMA samples=$xmaRiffProof"
-    Write-Host "[AZTEC-XMA-CHAIN] STATUS=$($data.status) JSON=$json"
-    Write-Host '[AZTEC-XMA-CHAIN-PROGRESS] [####################] 100% | verified Xbox retail SoundFile -> real XMA source bytes; NO map FF mutation'
-}finally{
-    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-    $roots=@{}
-    $rows=New-Object 'System.Collections.Generic.List[object]'
-    $sourcePayloads=New-Object 'System.Collections.Generic.List[object]'
-    $matchedSamples=0
-    $xmaRiffProof=0
-    $totalRows=0
-    foreach($line in $matches){
-        $m=[regex]::Match([string]$line.Trim(),$expr)
-        if(-not $m.Success){throw "Xbox loaded Sound source trace malformed: $line"}
-        $root=[string]$m.Groups[1].Value
-        if(-not $expected.ContainsKey($root)){throw "Unexpected Sound alias source root $root in exact-six witness"}
-        $i=[int]$m.Groups[2].Value
-        $kind=[string]$m.Groups[3].Value
-        $exists=([int]$m.Groups[4].Value -ne 0)
-        $alias=[string]$m.Groups[5].Value
-        $loaded=[string]$m.Groups[6].Value
-        $streamDir=[string]$m.Groups[7].Value
-        $streamName=[string]$m.Groups[8].Value
-        $packetBytes=[long]$m.Groups[9].Value
-        if($i -lt -1 -or $i -gt 512){throw 'Xbox real Sound alias source index outside bounds.'}
-        if(-not $roots.ContainsKey($root)){$roots[$root]=New-Object 'System.Collections.Generic.HashSet[int]'}
-        if(-not $roots[$root].Add($i)){throw "Repeated Xbox native alias record root=$root index=$i"}
-        $rel=$null
-        if($i -ge 0 -and $kind -eq 'LOADED' -and $loaded -ne '-'){
-            # OAT's pinned LoadedSoundDumperT4Xenon::GetFileNameForLoadedSound:
-            # sound/ + path(name).replace_extension(".xma"), NOT aliasName.index.xma.
-            $normalized=$loaded.Replace('\','/')
-            $rel='sound/'+[IO.Path]::ChangeExtension($normalized,'.xma').Replace('\','/')
-        }elseif($i -ge 0 -and $kind -eq 'STREAMED' -and $streamName -ne '-'){
-            # OAT's pinned SoundDumperT4Xenon emits root.aliasIndex.xma.
-            $rel=('sound/{0}.{1}.xma' -f $root,$i)
-        }
-        if($rel -and ($rel -notmatch '^sound/[A-Za-z0-9_./-]{1,230}\.xma$' -or
-            $rel -match '(^|/)\.\.(/|$)')){
-            throw "Unsafe original Xbox SoundFile loaded/streamed path: $rel"
-        }
-        $found=$false;$bytes=0L;$sha=$null;$tag=$null;$validRiffXma=$false;$saved=$null
-        if($rel -and $exists){
-            $realPath=Join-Path $dump ($rel.Replace('/',[IO.Path]::DirectorySeparatorChar))
-            if(Test-Path -LiteralPath $realPath -PathType Leaf){
-                $file=Get-Item -LiteralPath $realPath
-                if([long]$file.Length -ge 32L){
-                    $found=$true
-                    $bytes=[long]$file.Length
-                    $sha=(Get-FileHash -LiteralPath $realPath -Algorithm SHA256).Hash
-                    $header=New-Object byte[] 24
-                    $s=[IO.File]::OpenRead($realPath)
-                    try{$read=$s.Read($header,0,24)}finally{$s.Dispose()}
-                    $riff=($read -ge 22 -and
-                        [Text.Encoding]::ASCII.GetString($header,0,4) -ceq 'RIFF' -and
-                        [Text.Encoding]::ASCII.GetString($header,8,4) -ceq 'WAVE')
-                    if($riff){
-                        $fmt=[BitConverter]::ToUInt16($header,20)
-                        $tag=('0x{0:X4}' -f $fmt)
-                        $validRiffXma=($fmt -in @(0x0165,0x0166))
-                    }
-                    New-Item -ItemType Directory -Path $evidence -Force|Out-Null
-                    $safeName=('{0}_{1}_{2}' -f $root,$i,([IO.Path]::GetFileName($realPath)))
-                    $saved=Join-Path $evidence $safeName
-                    Copy-Item -LiteralPath $realPath -Destination $saved -Force
-                    if((Get-FileHash -LiteralPath $saved -Algorithm SHA256).Hash -ine $sha){
-                        throw 'Authenticated original Xbox source audio sample SHA changed during staging.'
-                    }
-                    $matchedSamples++
-                    if($validRiffXma){$xmaRiffProof++}
-                    $sourcePayloads.Add([pscustomobject][ordered]@{
-                        XboxRetailFfSource=$ff
-                        XboxRetailFfSha256=[string]$zone.originalXboxRetailFastFileSha256
-                        originalPcAndRetailSoundAliasName=$root
-                        exactOatSourceSoundAliasIndex=$i
-                        sourceSoundFileType=$kind
-                        sourceLoadedSoundName=if($kind -eq 'LOADED'){$loaded}else{$null}
-                        genuineOatDumpRelativeXmaFile=$rel
-                        stagedAuthenticSample=$saved
-                        sampleSha256=$sha
-                        sampleBytes=$bytes
-                        riffXmaCodecHeaderProven=$validRiffXma
-                        riffWavFormatTag=$tag
-                        sourceAliasToSampleFileRelationshipProven=$true
-                        samplePlaybackOrCodXeRuntimeProven=$false
-                    })
-                    Write-Host "[AZTEC-XMA-CHAIN] $root #$i source-type=$kind linked-XMA=$rel bytes=$bytes RIFF-XMA=$validRiffXma"
-                }
-            }
-        }
-        $totalRows++
-        $rows.Add([pscustomobject][ordered]@{
-            realOriginalPcAndXboxSoundAlias=$root
-            originalXboxRetailAliasIndex=$i
-            OatLoadedSoundAliasRecordName=$alias
-            originalXboxSoundFileType=$kind
-            originalXboxSoundFileExistsFlag=$exists
-            originalXboxLoadedSoundName=if($loaded -eq '-'){$null}else{$loaded}
-            originalXboxStreamDirectory=if($streamDir -eq '-'){$null}else{$streamDir}
-            originalXboxStreamFile=if($streamName -eq '-'){$null}else{$streamName}
-            originalXboxLoadedXmaPacketBytes=$packetBytes
-            exactPinnedOatSampleRelativePath=$rel
-            exactSamplePayloadExtracted=$found
-            actualExtractedXmaSampleBytes=$bytes
-            actualXmaSampleSha256=$sha
-            actualXmaRiffCodecHeaderProven=$validRiffXma
-            sourceAliasChainToSampleRelationshipProven=$found
-            nativeAztecSoundFileGrafted=$false
-            CodXeRuntimeSoundSampleResidencyVerified=$false
-        })
-    }
-    if($roots.Count -ne 6){throw "OAT loaded Sound alias chain trace coverage incomplete: $($roots.Count)/6. No XMA identity promoted."}
-    foreach($name in $names){
-        if($roots[$name].Count -lt 1){throw "No Xbox native SoundFile alias records for $name"}
-    }
-    $gotAliases=@($sourcePayloads.ToArray()|Select-Object -ExpandProperty originalPcAndRetailSoundAliasName -Unique)
     if((Get-FileHash -LiteralPath $goodFf -Algorithm SHA256).Hash -ine $oldHash){
         throw 'Original 222-alias OAT-good native Aztec FF mutated during Xbox source audio witness.'
     }
