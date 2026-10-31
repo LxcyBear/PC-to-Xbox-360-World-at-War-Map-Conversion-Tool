@@ -54,7 +54,7 @@ foreach($stale in @($ff,$emitReport)){
 Write-Host '[AZTEC-W63-GROWTH] ==========================================================='
 Write-Host '[AZTEC-W63-GROWTH] ACTUAL isolated Xbox FF size experiment from original PC data'
 Write-Host "[AZTEC-W63-GROWTH] Baseline protected OAT-good FF: $baselineBytes bytes"
-Write-Host "[AZTEC-W63-GROWTH] Try $Limit / 63 real source-owned WeaponDef scalar/inline XString canaries."
+Write-Host "[AZTEC-W63-GROWTH] Mode=$(if($Limit -eq 0){'SAME-SETTINGS NO-WEAPON A/B CONTROL'}else{'SOURCE-OWNED WEAPON CANARY'}) ; original-PC WeaponDef diagnostic roots=$Limit/63."
 Write-Host '[AZTEC-W63-GROWTH] 179775B full 7b blobs remain standalone: NOT copied into FF.'
 Write-Host '[AZTEC-W63-GROWTH] Remaining 2 conflicting + 4 stock-only weapon roots remain shells.'
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [####----------------] 20% | protected FF and all 69 source-root SHA identities pinned'
@@ -95,16 +95,18 @@ $pass=($exit -eq 0 -and $null -ne $e -and $null -ne $newBytes -and
        -not [bool]$e.OriginalPcWeaponFullOwnedGraphsEmitted)
 $summaryObj=[ordered]@{
     schema='WaW360.AztecWeapon63RealSourceScalarXstringFfGrowthCanary.v1'
-    status=if($pass){'AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED'}
-        else{'AZTEC_W63_ISOLATED_NATIVE_FF_OAT_OR_LAYOUT_BLOCKED'}
+    status=if($pass){
+        if($Limit -eq 0){'AZTEC_W63_NO_WEAPON_SAME_SETTINGS_CONTROL_OAT_PASS'}
+        else{'AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED'}
+    }else{'AZTEC_W63_ISOLATED_NATIVE_FF_OAT_OR_LAYOUT_BLOCKED'}
     originalPcAuthenticXboxWeaponDefBodiesSourceProven=63
     originalPcNativeOwnedProofBytesAvailable=179775
     nativeWeaponRootScalarXstringCanariesEmitted=$emitted
     fullWeaponDefChildrenAndDependenciesEmitted=$false
     requestedCanaries=$Limit
-    originalPcSourceWeaponBodyUsedForEachCanary=$true
-    fixedBodyNativeScalarsOnly=$true
-    originalInlineXstringsOnly=$true
+    originalPcSourceWeaponBodyUsedForEachCanary=($Limit -gt 0)
+    fixedBodyNativeScalarsOnly=($Limit -gt 0)
+    originalInlineXstringsOnly=($Limit -gt 0)
     protectedPriorNativeFastFile=$protected
     protectedPriorNativeFastFileBytes=$baselineBytes
     protectedPriorSha256=[string]$s.converted.sha256
