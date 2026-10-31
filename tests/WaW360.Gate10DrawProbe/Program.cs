@@ -11,6 +11,7 @@ if (args.Length != 3)
 try
 {
     T4XenonStaticDrawLayoutRebaser.SelfTest();
+    T4XenonAztecGate10DrawProbe.SelfTestPowerShellUtf8Bom();
     var probe=await T4XenonAztecGate10DrawProbe.LoadAsync(args[0],args[1]);
     using var lightDoc=JsonDocument.Parse(await File.ReadAllTextAsync(args[0]));
     var light=lightDoc.RootElement;
