@@ -32,7 +32,7 @@ public static class T4AztecSourceBodyQuickBatch
         static string S(JsonElement j,string n)=>j.GetProperty(n).GetString()??"";
         static int I(JsonElement j,string n)=>j.GetProperty(n).GetInt32();
         static long L(JsonElement j,string n)=>j.GetProperty(n).GetInt64();
-        static bool B(JsonElement j,string n)=>j.GetProperty(n).GetBoolean();
+
 
         if(S(bas,"format")!="WaW360.SecondMapBaseline.v1" ||
            !S(bas,"mapName").Equals("nazi_zombie_aztec_V2.2",StringComparison.OrdinalIgnoreCase) ||
