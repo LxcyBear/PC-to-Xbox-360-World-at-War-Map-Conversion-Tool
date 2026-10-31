@@ -239,8 +239,9 @@ public static class T4AztecFlameRealSourceJoin
                         else throw new InvalidDataException("FlameTable parent name unexpectedly original source NULL.");
                     }
                     else throw new InvalidDataException("Unexpected non-typed FlameTable child field.");
+                    (string Name,int NativeRoot) resolved=("",-1);
                     bool sameSourceMatch=kind=="FlameMaterial" && packed && sameZone &&
-                        materialLookup.TryGetValue(raw,out var resolved);
+                        materialLookup.TryGetValue(raw,out resolved);
                     if(kind=="FlameMaterial"&&packed)
                     {
                         if(sameSourceMatch)realWorldMaterialPointerMatches++;
