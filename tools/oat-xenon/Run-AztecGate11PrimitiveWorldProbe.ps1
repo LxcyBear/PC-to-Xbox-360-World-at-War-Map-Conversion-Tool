@@ -88,9 +88,33 @@ $newHash=(Get-FileHash -LiteralPath $new -Algorithm SHA256).Hash
 if($newBytes -le $originalBytes -or $newHash -ieq $originalHash){
     throw "Candidate size/hash not distinct from protected cell FF: $newBytes / $newHash"
 }
-Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | first native OAT load passed; independent field readback PENDING'
+$verifier=Join-Path $PSScriptRoot 'Verify-AztecGate11OatLoadedCells.ps1'
+$readback=Join-Path $work 'oat_loaded_11_cell_aabb_readback\\aztec_gate11_independent_cells_aabb_readback.json'
+if(-not(Test-Path -LiteralPath $verifier -PathType Leaf)){
+    throw "Source-owned independent Gate11 cell verifier missing: $verifier"
+}
+Write-Host '[AZTEC-GATE11-PROGRESS] [################----] 80% | SECOND OAT loaded-cell readback for the NEW primitive FF'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $verifier -PrimitiveCandidate
+if($LASTEXITCODE -ne 0 -or -not(Test-Path -LiteralPath $readback -PathType Leaf)){
+    throw 'New primitive FF second independent 11-cell/740-AABB OAT readback FAILED. Preserve baseline.'
+}
+$verify=Get-Content -LiteralPath $readback -Raw|ConvertFrom-Json
+if([string]$verify.status -ne 'AZTEC_GATE11_PHYSICAL_11_CELL_740_AABB_SOURCE_FIELDS_INDEPENDENT_OAT_PASS_REMAINDER_PENDING' -or
+   [string]$verify.actualGfxWorldFfSha256 -ine $newHash -or
+   -not [bool]$verify.sourceOwnedPrimitiveCandidate -or
+   [bool]$verify.primitiveSkyBrushWaterTypedReadbackProven -or
+   [int]$verify.exactLoadedCounts.cellOrdinals -ne 11 -or
+   [int]$verify.exactLoadedCounts.treeOrdinals -ne 740 -or
+   [int]$verify.exactLoadedCounts.treeModelIndexes -ne 14974 -or
+   [bool]$verify.hardwareReady){
+    throw 'Second independent native OAT cell readback not bound to the exact new FF.'
+}
+if((Get-FileHash -LiteralPath $old -Algorithm SHA256).Hash -ine $originalHash){
+    throw 'CRITICAL: previously proven Gate11 FF changed during new primitive independent OAT readback.'
+}
+Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | new FF first OAT + second cell/AABB readback PASS; primitive-field readback PENDING'
 Write-Host "[AZTEC-GATE11-PRIMITIVE] Prior FF=$originalBytes B SHA=$originalHash (UNCHANGED)"
 Write-Host "[AZTEC-GATE11-PRIMITIVE] New FF=$newBytes B SHA=$newHash"
 Write-Host '[AZTEC-GATE11-PRIMITIVE] Sky=2; brush models=183; two source-owned water float arrays=2,097,408 uncompressed bytes.'
-Write-Host '[AZTEC-GATE11-PRIMITIVE] OAT first load PASS. New groups still require independent per-field OAT readback.'
+Write-Host '[AZTEC-GATE11-PRIMITIVE] OAT first load + SECOND 11-cell/740-AABB source-field readback PASS; new primitive fields still need direct readback.'
 Write-Host '[AZTEC-GATE11-PRIMITIVE] Gate 11 overall=10/13 PENDING; other GfxWorld branches and Xbox testing NOT approved.'
