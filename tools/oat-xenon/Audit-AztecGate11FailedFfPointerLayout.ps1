@@ -104,8 +104,8 @@ public static class WaWG11ByteSearch
     }
     $signature=New-Object byte[] 24
     for($i=0;$i -lt 3;$i++){
-        $a=[WaWG11ByteSearch]::FloatBe([single]$original[0].mins[$i])
-        $b=[WaWG11ByteSearch]::FloatBe([single]$original[0].maxs[$i])
+        $a=[WaWG11ByteSearch]::FloatBe([single]($original[0].mins[$i]))
+        $b=[WaWG11ByteSearch]::FloatBe([single]($original[0].maxs[$i]))
         [Array]::Copy($a,0,$signature,$i*4,4)
         [Array]::Copy($b,0,$signature,12+$i*4,4)
     }
@@ -124,7 +124,7 @@ public static class WaWG11ByteSearch
         for($ci=0;$ci -lt 11;$ci++){
             $at=$pos+56*$ci
             if([WaWG11ByteSearch]::Big32($raw,$at+24) -ne [uint32]$original[$ci].aabbTreeCount){$badCell=$ci;break}
-            $expectedPtr=if([int]$original[$ci].aabbTreeCount){[uint32]0xFFFFFFFF}else{[uint32]0}
+            $expectedPtr=if([int]$original[$ci].aabbTreeCount){[uint32]::MaxValue}else{[uint32]0}
             if([WaWG11ByteSearch]::Big32($raw,$at+28) -ne $expectedPtr){$badCell=$ci;break}
             if([int]$raw[$at+48] -ne [int]$original[$ci].reflectionProbeCount){$badCell=$ci;break}
             $matches++
@@ -150,7 +150,7 @@ public static class WaWG11ByteSearch
                     $firstMismatch="Cell $($cell.ordinal) AABB#$ti header mismatch at stream offset $at"
                     break outer
                 }
-                $want=if([int]$tree.smodelIndexCount){[uint32]0xFFFFFFFF}else{[uint32]0}
+                $want=if([int]$tree.smodelIndexCount){[uint32]::MaxValue}else{[uint32]0}
                 if([WaWG11ByteSearch]::Big32($raw,$at+32) -ne $want){
                     $firstMismatch="Cell $($cell.ordinal) AABB#$ti pointer mismatch at stream offset $($at+32)"
                     break outer
