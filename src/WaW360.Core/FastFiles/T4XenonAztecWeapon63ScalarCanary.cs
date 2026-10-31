@@ -535,6 +535,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             // 61 original-PC NULL fields remain NULL. No fictitious 63 tables.
             int realBounceTables=0,realBounceAliasRecords=0,realBounceInlineNames=0;
             long realBounceInlineNameBytes=0;
+            IReadOnlyList<T4WeaponVariableSerializerProof.OwnedInlineSndAliasName> sourceAliases=
+                Array.Empty<T4WeaponVariableSerializerProof.OwnedInlineSndAliasName>();
             if(emitSoundAliases)
             {
                 if(!soundWitnesses!.TryGetValue(name,out var soundProof) ||
@@ -549,6 +551,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                        original,desc.Name??name,out var tables,out var aliases,out var reason))
                     throw new InvalidDataException(
                         $"Weapon {name} original-PC typed bounce stream refused: {reason}");
+                sourceAliases=aliases;
                 var originalPointer=BinaryPrimitives.ReadUInt32BigEndian(original.AsSpan(624,4));
                 if(tables.Count>1 ||
                    (tables.Count==1)!=(originalPointer is T4ZonePointer.Following or T4ZonePointer.Insert))
@@ -671,7 +674,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             if(emitDirectAliases)
             {
                 var seenSourceLabels=new HashSet<string>(StringComparer.Ordinal);
-                foreach(var alias in aliases)
+                foreach(var alias in sourceAliases)
                 {
                     var witnessKey=name+"\n"+alias.ProofLabel;
                     if(!seenSourceLabels.Add(witnessKey) ||
