@@ -8,6 +8,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate8AllModelProbe,
       [switch]$Gate10StaticDrawProbe,
       [switch]$Gate11CellProbe,
+      [switch]$Gate11PrimitiveProbe,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -47,6 +48,9 @@ if($Gate10StaticDrawProbe -and
 }
 if($Gate11CellProbe -and -not $Gate10StaticDrawProbe){
     throw '-Gate11CellProbe requires -Gate10StaticDrawProbe and the full verified Gate8 original-PC children.'
+}
+if($Gate11PrimitiveProbe -and -not $Gate11CellProbe){
+    throw '-Gate11PrimitiveProbe requires -Gate11CellProbe; the source-owned GfxCell/AABB baseline must be present.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -136,6 +140,7 @@ if($Gate8ChildProbe -and -not(Test-Path -LiteralPath $gate8Source -PathType Leaf
 $gate10Light=''
 $gate10Plan=''
 $gate11Summary=''
+$gate11Primitive=''
 if($Gate10StaticDrawProbe){
     $sourceLights=Join-Path $base 'pc_gate8_source_light_codec_candidate'
     $latest=@(Get-ChildItem -LiteralPath $sourceLights -Recurse -File -Filter 'aztec_gate10_source_light_candidate_summary.json' -ErrorAction Stop |
@@ -154,9 +159,16 @@ if($Gate11CellProbe){
         throw "Source-owned typed 11-cell/740-AABB SHA report is missing: $gate11Summary"
     }
 }
+if($Gate11PrimitiveProbe){
+    $gate11Primitive=Join-Path $base 'pc_g11_cells_740\gate11_remaining_unified_source\aztec_gate11_combined_no_ff_build_preflight.json'
+    if(-not(Test-Path -LiteralPath $gate11Primitive -PathType Leaf)){
+        throw "The SHA-verified 13-family Gate11 preflight must run first: $gate11Primitive"
+    }
+}
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate11CellProbe){'pc_g11_cells_740'}
+        if($Gate11PrimitiveProbe){'pc_g11_remaining_world_primitive_probe'}
+        elseif($Gate11CellProbe){'pc_g11_cells_740'}
         elseif($Gate10StaticDrawProbe){'pc_g10_1903'}
         elseif($Gate8AllModelProbe){'pc_gate8_29x_ff'}
         elseif($Gate8FiveModelProbe){'pc_gate8_5x_ff'}
@@ -315,6 +327,7 @@ try{
     $priorGate10Light=$env:WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT
     $priorGate10Plan=$env:WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY
     $priorGate11=$env:WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT
+    $priorGate11Primitive=$env:WAW360_AZTEC_GATE11_PRIMITIVE_BATCH
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -342,6 +355,12 @@ try{
             Write-Host '[AZTEC-GATE11-PROGRESS] [########------------] 40% | emit source-owned 11 GfxCells and 740 AABB trees in isolated new FF'
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT -ErrorAction SilentlyContinue
+        }
+        if($Gate11PrimitiveProbe){
+            $env:WAW360_AZTEC_GATE11_PRIMITIVE_BATCH=$gate11Primitive
+            Write-Host '[AZTEC-GATE11-PRIMITIVE] Emit original-PC skyStartSurfs + 183 brush models + 2 water buffers, isolated FF.'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_GATE11_PRIMITIVE_BATCH -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -376,6 +395,11 @@ try{
             Remove-Item Env:\WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_GATE11_CELL_GRAPH_REPORT=$priorGate11
+        }
+        if($null -eq $priorGate11Primitive){
+            Remove-Item Env:\WAW360_AZTEC_GATE11_PRIMITIVE_BATCH -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE11_PRIMITIVE_BATCH=$priorGate11Primitive
         }
         if($null -eq $priorGate10Plan){
             Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
@@ -440,7 +464,13 @@ if($IntegrateWorld){
     }
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate11CellProbe){
+        status=if($Gate11PrimitiveProbe){
+            if($core -and $candidateOatPass){
+                'AZTEC_GATE11_PRIMITIVE_SKY_BRUSH_WATER_OAT_LOAD_PASS_REMAINDER_PENDING'
+            }else{
+                'AZTEC_GATE11_PRIMITIVE_SKY_BRUSH_WATER_OAT_LOAD_BLOCKED'
+            }
+        }elseif($Gate11CellProbe){
             if($core -and $candidateOatPass){
                 'AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_PASS_REMAINDER_PENDING'
             }else{
@@ -491,6 +521,11 @@ if($IntegrateWorld){
         gate10StockModelDrawUnverified=[int]$e.OriginalPcGfxWorldGate10UnverifiedStockDraws
         gate10ProductionApproved=$false
         gate11PhysicalCellDiagnostic=[bool]$Gate11CellProbe
+        gate11PrimitiveProbe=[bool]$Gate11PrimitiveProbe
+        gate11PrimitiveSkySurfaces=if($Gate11PrimitiveProbe){2}else{0}
+        gate11PrimitiveBrushModels=if($Gate11PrimitiveProbe){183}else{0}
+        gate11PrimitiveWaterBytes=if($Gate11PrimitiveProbe){2097408L}else{0L}
+        gate11PrimitiveIndependentReadbackProven=$false
         gate11SourceCellsInFf=[int]$e.OriginalPcGfxWorldGate11Cells
         gate11AabbTreesInFf=[int]$e.OriginalPcGfxWorldGate11AabbTrees
         gate11SmodelIndicesInFf=[int]$e.OriginalPcGfxWorldGate11SmodelIndexes
