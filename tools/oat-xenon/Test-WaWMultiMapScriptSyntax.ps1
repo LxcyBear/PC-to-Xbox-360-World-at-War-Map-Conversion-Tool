@@ -19,6 +19,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Stage-AztecWorldFirstExceptionCanary.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecWorldXboxCopiedFFs.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Plan-Aztec1903NativeDrawRelocations.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Build-Aztec1903DrawPointerRelocationCandidate.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-Aztec100PercentPackage.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-WaWRuntimeScriptDependency.ps1') -ErrorAction Stop)
 ) | Sort-Object Name
