@@ -116,6 +116,9 @@ foreach($name in $fields){
 }
 $cachedEq=0
 $cachedAlignedEq=0
+$cachedLightPairCounts=@{}
+$cachedLightBySource=@{}
+$conflictingCachedLightSource=@{}
 $pcFlagOutOfByte=0
 $padRowsNonZero=0
 $alignment=@()
@@ -202,7 +205,18 @@ for($i=0;$i -lt 1903;$i++){
     if($pcReflection -lt 0 -or $pcReflection -gt 255){$sourceReflectionRangeOk=$false}
     if($pcPrimary -lt 0 -or $pcPrimary -gt 255){$sourcePrimaryRangeOk=$false}
     if($pcFlags -lt 0 -or $pcFlags -gt 255){$sourceFlagsRangeOk=$false;$pcFlagOutOfByte++}
-    if([int](Field $p 'cachedLightSettingIndex') -eq [int](Field $n 'lightingHandle')){
+    $pcCached=[int](Field $p 'cachedLightSettingIndex')
+    $xboxHandle=[int](Field $n 'lightingHandle')
+    $cachePair=('{0}->{1}' -f $pcCached,$xboxHandle)
+    if(-not $cachedLightPairCounts.ContainsKey($cachePair)){$cachedLightPairCounts[$cachePair]=0}
+    $cachedLightPairCounts[$cachePair]++
+    $cacheKey=[string]$pcCached
+    if(-not $cachedLightBySource.ContainsKey($cacheKey)){
+        $cachedLightBySource[$cacheKey]=$xboxHandle
+    }elseif([int]$cachedLightBySource[$cacheKey] -ne $xboxHandle){
+        $conflictingCachedLightSource[$cacheKey]=$true
+    }
+    if($pcCached -eq $xboxHandle){
         $cachedEq++;if($aligned){$cachedAlignedEq++}
     }
     if([int](Field $n 'paddingNonZeroBytes') -gt 0){$padRowsNonZero++}
@@ -226,6 +240,16 @@ foreach($name in $fields){
     $fullGeometryPass=$fullAligned -and $rangeOk -and [int]$allCounters[$name] -eq 1903
     $identityOnlyCandidate=($identityAnchoredRows -eq 1903 -and
         $rangeOk -and [int]$allCounters[$name] -eq 1903)
+    $bySource=@{}
+    $conflicts=@{}
+    foreach($entry in @($mappingCounts[$name].GetEnumerator())){
+        $pieces=([string]$entry.Key).Split(@('->'),[StringSplitOptions]::None)
+        if($pieces.Count -ne 2){throw "Malformed field mapping pair for $name."}
+        $key=[string]$pieces[0]
+        $mapped=[string]$pieces[1]
+        if(-not $bySource.ContainsKey($key)){$bySource[$key]=$mapped}
+        elseif([string]$bySource[$key] -cne $mapped){$conflicts[$key]=$true}
+    }
     $proofs.Add([ordered]@{
         field=$name
         originalPcMatchesOriginalXboxOrdinalValues=[int]$allCounters[$name]
@@ -235,6 +259,10 @@ foreach($name in $fields){
         candidateExactIdentitySemanticsProven=[bool]$fullGeometryPass
         sourceFieldOnlyDiagnosticCandidateSupported=[bool]$identityOnlyCandidate
         sourceOwnedFieldSerializationPermittedByThisAudit=[bool]$fullGeometryPass
+        distinctSourceValues=$bySource.Count
+        observedDeterministicSourceToXboxValueMapping=($conflicts.Count -eq 0)
+        nonDeterministicSourceValueCount=$conflicts.Count
+        mappingSemanticsProven=$false
         sourceToXboxObservedPairCounts=@(
             $mappingCounts[$name].GetEnumerator() |
             Sort-Object Name |
@@ -268,6 +296,16 @@ $report=Join-Path $OutputDirectory 'aztec_1903_pc_to_native_draw_scalar_equivale
     fields=@($proofs.ToArray())
     cachedLightSettingIndexEqualsXboxLightingHandleCount=$cachedEq
     cachedLightEqualsHandleOnAlignedGeometryRows=$cachedAlignedEq
+    cachedLightDistinctPcValues=$cachedLightBySource.Count
+    cachedLightDistinctXboxHandles=@($cachedLightPairCounts.Keys | ForEach-Object {
+        ([string]$_).Split(@('->'),[StringSplitOptions]::None)[1]
+    } | Sort-Object -Unique).Count
+    cachedLightObservedDeterministicMapping=($conflictingCachedLightSource.Count -eq 0)
+    cachedLightConflictingSourceValues=@($conflictingCachedLightSource.Keys|Sort-Object)
+    cachedLightSourceToXboxObservedPairs=@($cachedLightPairCounts.GetEnumerator()|
+        Sort-Object Name|ForEach-Object {
+            [ordered]@{pcCachedIndexToXboxHandle=[string]$_.Key;count=[int]$_.Value}
+        })
     exactCachedLightSettingIndexToXboxLightingHandleHypothesis=$lightingHypothesis
     exactLightingHandleSemanticMappingProven=$false
     nativePaddingRowsWithNonzeroBytes=$padRowsNonZero
@@ -295,6 +333,16 @@ foreach($f in @($proofs.ToArray())){
     Write-Host "[AZTEC-DRAW-SCALAR] $($f.field) equal=$($f.originalPcMatchesOriginalXboxOrdinalValues)/1903 checkedGeometry=$($f.valuesEqualOnCorrespondingGeometry)/$rowsFullyAligned identityAnchors=$($f.valuesEqualOnNameOriginScaleCullAnchors)/$identityAnchoredRows -> $state"
 }
 Write-Host "[AZTEC-DRAW-SCALAR] cachedLightSettingIndex == Xbox lightingHandle: $cachedEq/1903 (exact mapping proven=$lightingHypothesis; field SEMANTICS not yet independently proven)"
+Write-Host "[AZTEC-DRAW-SCALAR] cachedLight unique PC source indices=$($cachedLightBySource.Count), mapping conflicts=$($conflictingCachedLightSource.Count). Observed lookup is NOT a source-owned light conversion rule."
+foreach($item in @($cachedLightPairCounts.GetEnumerator()|Sort-Object Name|Select-Object -First 18)){
+    Write-Host "[AZTEC-DRAW-SCALAR] LIGHT-PAIR pcCached->xboxHandle=$($item.Key) rows=$($item.Value)"
+}
+foreach($f in @($proofs.ToArray())){
+    Write-Host "[AZTEC-DRAW-SCALAR] REMAP-DIAGNOSTIC field=$($f.field) deterministic=$($f.observedDeterministicSourceToXboxValueMapping) conflictingSourceValues=$($f.nonDeterministicSourceValueCount) distinctPCValues=$($f.distinctSourceValues) SEMANTICS_UNPROVEN"
+    foreach($pair in @($f.sourceToXboxObservedPairCounts|Select-Object -First 12)){
+        Write-Host "[AZTEC-DRAW-SCALAR] INDEX-PAIR $($f.field) $($pair.sourceToReferencePair) rows=$($pair.count)"
+    }
+}
 Write-Host "[AZTEC-DRAW-SCALAR] Native padding nonzero rows=$padRowsNonZero. NO native pad bytes are imported."
 Write-Host "[AZTEC-DRAW-SCALAR] REPORT=$report"
 Write-Host '[AZTEC-DRAW-SCALAR] ZERO draw bytes emitted; 0/1903 FF draw links. NO Xbox test.'
