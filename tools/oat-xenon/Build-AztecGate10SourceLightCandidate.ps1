@@ -172,7 +172,7 @@ if($after.Length -ne 114180 -or $before.Length -ne $after.Length){
 for($i=0;$i -lt 1903;$i++){
     $start=$i*60
     if([int]$after[$start+36] -ne ($sourceReflection[$i]-1) -or
-       $after[$start+38] -ne [byte](($sourcePrimary[$i]+256 -shr 8) -band 255) -or
+       $after[$start+38] -ne [byte](((($sourcePrimary[$i]+256) -shr 8)) -band 255) -or
        $after[$start+39] -ne [byte](($sourcePrimary[$i]+256) -band 255)){
         throw "Derived big-endian native light bytes do not match original PC values at draw $i"
     }
