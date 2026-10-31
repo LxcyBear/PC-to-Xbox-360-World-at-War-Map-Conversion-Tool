@@ -69,20 +69,20 @@ if(-not [string]::IsNullOrWhiteSpace($AudioSourceRoot)){
 # Codec executables are only capabilities; their mere existence cannot
 # certify Xbox compatibility. Never invoke proprietary tools automatically.
 $toolsFound=New-Object 'System.Collections.Generic.List[object]'
-$toolPaths=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$toolPaths=@{}
 foreach($name in @('xmaencode.exe','xma2encode.exe')){
     $command=Get-Command $name -ErrorAction SilentlyContinue
     if($null -ne $command -and -not [string]::IsNullOrWhiteSpace([string]$command.Source)){
-        [void]$toolPaths.Add([string]$command.Source)
+        $toolPaths[[string]$command.Source]=$true
     }
 }
 if(-not [string]::IsNullOrWhiteSpace($env:XEDK)){
     foreach($rel in @('bin\xmaencode.exe','bin\win32\xmaencode.exe','bin\xma2encode.exe','bin\win32\xma2encode.exe')){
         $candidate=Join-Path $env:XEDK $rel
-        if(Test-Path -LiteralPath $candidate -PathType Leaf){[void]$toolPaths.Add($candidate)}
+        if(Test-Path -LiteralPath $candidate -PathType Leaf){$toolPaths[[string]$candidate]=$true}
     }
 }
-foreach($path in $toolPaths){
+foreach($path in $toolPaths.Keys){
     $toolsFound.Add([pscustomobject]@{
         executable=[IO.Path]::GetFileName($path)
         path=$path
