@@ -26,6 +26,23 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));
                 return 0;
             }
+            case "xenon-static-draw-derived-selftest" when args.Length == 1:
+            {
+                T4XenonStaticDrawDerivedScalarCodec.SelfTest();
+                Console.WriteLine("[XENON-DRAW-DERIVED] PASS: arbitrary 2 x 52B native layout, uint8/uint16 BE, model-pointer preservation, overflow rejection.");
+                Console.WriteLine("[XENON-DRAW-DERIVED] Source-only semantics; no FF.");
+                return 0;
+            }
+            case "xenon-static-draw-derived-encode" when args.Length == 4:
+            {
+                var converted = await T4XenonStaticDrawDerivedScalarCodec.EncodeFromManifestAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("[XENON-DRAW-DERIVED] source rows=" + converted.Rows +
+                    ", derived scalar sites=" + converted.FieldsWritten +
+                    ", fields=" + string.Join(",",converted.Names));
+                Console.WriteLine("[XENON-DRAW-DERIVED] Diagnostic-only; native semantic closure, stock XModel and world links still missing.");
+                return 0;
+            }
             case "xenon-static-draw-scalar-selftest" when args.Length == 1:
             {
                 T4XenonStaticDrawScalarCodec.SelfTest();
@@ -1982,6 +1999,8 @@ static void PrintHelp()
     Console.WriteLine("  inspect <file.ff>                       Probe PC/Xbox wrapper + XFile header");
     Console.WriteLine("  xenon-static-draw-pointer-selftest      Regression for generic T4 native draw XModel pointer codec");
     Console.WriteLine("  xenon-static-draw-scalar-selftest       Generic source byte-overlay and pointer preservation test");
+    Console.WriteLine("  xenon-static-draw-derived-selftest      Arbitrary-layout PC integer -> Xbox BE16/byte additive test");
+    Console.WriteLine("  xenon-static-draw-derived-encode <input.json> <out.bin> <report.json>  Derive static draw candidates from source PC scalars; not FF");
     Console.WriteLine("  xenon-static-draw-scalar-encode <source.json> <out.bin> <report.json>  PC-owned, exact-audited uint8 fields only; not an Xbox FF");
     Console.WriteLine("  xenon-static-draw-pointer-encode <input.json> <output.bin> <report.json>  Encode source-owned static draw pointers from verified native roots; no FF");
     Console.WriteLine("  decompress <file.ff> <out.zone>        Decompress to raw zone");
