@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param([ValidateSet('0','1','6','63')][int]$Limit=63,
-      [switch]$ExpandedInlineXStrings)
+      [switch]$ExpandedInlineXStrings,
+      [switch]$OwnedAccuracyVec2)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
@@ -12,7 +13,10 @@ $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
 $sourceReport=Join-Path $base 'pc_g11_lightning_weapon_69_unified_native_source\aztec_69_weapon_unified_original_pc_xbox_body_selections.json'
 $sizeReport=Join-Path $base 'pc_g11_native_ff_size_audit\aztec_native_ff_size_and_source_ledger.json'
-$work=Join-Path $repo $(if($ExpandedInlineXStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
+if($OwnedAccuracyVec2 -and (-not $ExpandedInlineXStrings -or $Limit -ne 63)){
+    throw 'Authentic original-PC owned accuracy Vec2 arrays require -Limit 63 -ExpandedInlineXStrings. No unrebased packed pointer may be promoted.'
+}
+$work=Join-Path $repo $(if($OwnedAccuracyVec2){'.deps\aztec-w63-vec2-ff-growth'}elseif($ExpandedInlineXStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
 $emitReport=Join-Path $work 'scratch_emit\nuclear_xenon_renderer_emit.json'
 $ff=Join-Path $work 'scratch_emit\nazi_zombie_aztec.ff'
 $summary=Join-Path $work ('aztec_weapon63_ff_growth_'+$Limit+'.json')
@@ -60,6 +64,10 @@ Write-Host '[AZTEC-W63-GROWTH] 179775B full 7b blobs remain standalone: NOT copi
 if($ExpandedInlineXStrings){
     Write-Host '[AZTEC-W63-XSTR] Opt-in: additional source-owned typed FIXED BODY inline XStrings; packed source/foreign child pointers fenced.'
 }
+if($OwnedAccuracyVec2){
+    Write-Host '[AZTEC-W63-VEC2-FF] SOURCE-PROVEN nested child experiment: 96 real inline vec2 arrays, 612 knots / 4896 bytes, never packed aliases.'
+    Write-Host '[AZTEC-W63-VEC2-FF] Exact original typed Alpha 7b source byte offsets, order, and child SHA mandatory. No full 7b graph, not Xbox-ready.'
+}
 Write-Host '[AZTEC-W63-GROWTH] Remaining 2 conflicting + 4 stock-only weapon roots remain shells.'
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [####----------------] 20% | protected FF and all 69 source-root SHA identities pinned'
 $runner=Join-Path $PSScriptRoot 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1'
@@ -70,6 +78,7 @@ $params=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$runner,
     '-Gate11LightingProbe','-Gate11ImageHeadersProbe','-Gate11ImageRootLinksProbe',
     '-Weapon63SourceCanary','-WeaponCanaryLimit',[string]$Limit)
 if($ExpandedInlineXStrings){$params+=@('-Weapon63ExtendedInlineStrings')}
+if($OwnedAccuracyVec2){$params+=@('-Weapon63OwnedAccuracyVec2')}
 Write-Host '[AZTEC-W63-GROWTH-PROGRESS] [########------------] 40% | existing world emitter + native Stage4D/4E weapon layout and OAT'
 & powershell @params
 $exit=[int]$LASTEXITCODE
@@ -97,11 +106,16 @@ $pass=($exit -eq 0 -and $null -ne $e -and $null -ne $newBytes -and
        [bool]$e.ValidationPass -and
        [bool]$e.ValidationOnly -and
        -not [bool]$e.ReadyForHardware -and
-       -not [bool]$e.OriginalPcWeaponFullOwnedGraphsEmitted)
+       -not [bool]$e.OriginalPcWeaponFullOwnedGraphsEmitted -and
+       (-not $OwnedAccuracyVec2 -or
+        ([int]$e.OriginalPcWeaponOwnedAccuracyVec2Arrays -eq 96 -and
+         [int]$e.OriginalPcWeaponOwnedAccuracyVec2Knots -eq 612 -and
+         [long]$e.OriginalPcWeaponOwnedAccuracyVec2Bytes -eq 4896)))
 $summaryObj=[ordered]@{
     schema='WaW360.AztecWeapon63RealSourceScalarXstringFfGrowthCanary.v1'
     status=if($pass){
-        if($ExpandedInlineXStrings){'AZTEC_W63_EXTENDED_ORIGINAL_PC_INLINE_XSTRINGS_NATIVE_FF_OAT_PASS_NOT_FULL_WEAPON_GRAPH'}
+        if($OwnedAccuracyVec2){'AZTEC_W63_96_ORIGINAL_PC_ACCURACY_VEC2_OWNED_CHILDREN_NATIVE_FF_OAT_PASS_NOT_FULL_GRAPH'}
+        elseif($ExpandedInlineXStrings){'AZTEC_W63_EXTENDED_ORIGINAL_PC_INLINE_XSTRINGS_NATIVE_FF_OAT_PASS_NOT_FULL_WEAPON_GRAPH'}
         elseif($Limit -eq 0){'AZTEC_W63_NO_WEAPON_SAME_SETTINGS_CONTROL_OAT_PASS'}
         else{'AZTEC_W63_SOURCE_SCALAR_XSTRINGS_IN_NATIVE_FF_OAT_LOAD_PASS_FULL_WEAPON_GRAPH_BLOCKED'}
     }else{'AZTEC_W63_ISOLATED_NATIVE_FF_OAT_OR_LAYOUT_BLOCKED'}
@@ -110,6 +124,10 @@ $summaryObj=[ordered]@{
     nativeWeaponRootScalarXstringCanariesEmitted=$emitted
     extendedOriginalPcFixedInlineXStringsMode=[bool]$ExpandedInlineXStrings
     extendedSourceFixedInlineStringFieldsEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponExpandedInlineXStringFields}else{0}
+    originalPcAccuracyVec2OwnedChildMode=[bool]$OwnedAccuracyVec2
+    originalPcAccuracyVec2OwnedArraysEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedAccuracyVec2Arrays}else{0}
+    originalPcAccuracyVec2OwnedKnotsEmitted=if($null -ne $e){[int]$e.OriginalPcWeaponOwnedAccuracyVec2Knots}else{0}
+    originalPcAccuracyVec2OwnedPayloadBytesEmitted=if($null -ne $e){[long]$e.OriginalPcWeaponOwnedAccuracyVec2Bytes}else{0L}
     fullWeaponDefChildrenAndDependenciesEmitted=$false
     requestedCanaries=$Limit
     originalPcSourceWeaponBodyUsedForEachCanary=($Limit -gt 0)
@@ -137,7 +155,9 @@ $summaryObj=[ordered]@{
     gate11Closed=$false
     parentRunnerExitCode=$exit
     emitterManifest=$emitReport
-    note=if($ExpandedInlineXStrings){
+    note=if($OwnedAccuracyVec2){
+        'Proof-gated partial WeaponDef: 63 original PC Xbox 7b SHA-owned scalars + authentic original fixed inline XStrings + 96 genuine source-owned big-endian 2-float knot arrays (612 knots, 4896 B). Exact typed original ZoneCode order and native layout replay. All original packed aliases and foreign Model/FX/Material/XAnim/Audio child graphs remain NULL; OAT acceptance only, never Xbox-ready.'
+    }elseif($ExpandedInlineXStrings){
         'Experimental isolated FF: original-PC source typed 7b owned walk identifies direct fixed-body inline XStrings in correct ZoneCode order; only ASCII-safe inline fields rebased, all unverified packed source strings and XModel/FX/Material/XAnim/audio pointers stay NULL. Full 7b graphs NOT integrated, not playable, OAT list does not establish runtime correctness.'
     }else{
         'This isolated FF includes real original-PC numeric WeaponDef scalars and original inline WeaponDef display/overlay strings, but nulls all other WeaponDef pointers. It does not contain 63 complete 7b source-owned weapon graphs, nor make the map playable. Size alone never certifies source closure.'
@@ -154,6 +174,19 @@ if($null -ne $newBytes){
     Write-Host '[AZTEC-W63-GROWTH] MEASURED DELTA = N/A (build failed before writing FF; no size change proven)'
 }
 Write-Host "[AZTEC-W63-GROWTH] Native original-PC scalar+inline XString WeaponDef roots=$emitted/$Limit; full 7b graph in FF=0"
+if($OwnedAccuracyVec2){
+    Write-Host "[AZTEC-W63-VEC2-FF] GENUINE original-PC inline accuracy Vec2 arrays actually emitted=$($summaryObj.originalPcAccuracyVec2OwnedArraysEmitted)"
+    Write-Host "[AZTEC-W63-VEC2-FF] ORIGINAL SOURCE big-endian knots=$($summaryObj.originalPcAccuracyVec2OwnedKnotsEmitted); owned bytes=$($summaryObj.originalPcAccuracyVec2OwnedPayloadBytesEmitted)"
+    $priorExtended=Join-Path $repo '.deps\aztec-w63-inline-ab\same_world_extended_63\nazi_zombie_aztec.ff'
+    if(Test-Path -LiteralPath $priorExtended -PathType Leaf){
+        $baseSha=(Get-FileHash -LiteralPath $priorExtended -Algorithm SHA256).Hash
+        if($baseSha -ieq 'A3009316D64FE8EB61E69ABF79F33ECFC2F6ECE10A96F62AFCD17CE5C92FF226' -and $null -ne $newBytes){
+            $sizeOld=[long](Get-Item -LiteralPath $priorExtended).Length
+            Write-Host "[AZTEC-W63-VEC2-FF] Prior OAT-good extended-string FF=$sizeOld B; new Vec2 FF=$newBytes B; archive-relative delta=$($newBytes-$sizeOld) B"
+            Write-Host '[AZTEC-W63-VEC2-FF] Different revisions: NOT an exact controlled same-source A/B until two identical-world fresh builds are paired.'
+        }
+    }
+}
 if($ExpandedInlineXStrings){
     Write-Host "[AZTEC-W63-XSTR] NEW typed source-owned fixed WeaponDef inline XString fields=$($summaryObj.extendedSourceFixedInlineStringFieldsEmitted)"
     $old63=Join-Path $repo '.deps\aztec-w63-exact-ab\weapons_63\nazi_zombie_aztec.ff'
