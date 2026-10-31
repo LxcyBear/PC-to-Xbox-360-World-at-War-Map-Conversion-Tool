@@ -1132,3 +1132,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 **Success condition:** incremental .NET build, Stage4D/4E exact layout replay, fresh OAT 8509/8509 with zero warnings and errors, and measured physical FF byte count/new SHA; report status \`AZTEC_W63_EXTENDED_ORIGINAL_PC_INLINE_XSTRINGS_NATIVE_FF_OAT_PASS_NOT_FULL_WEAPON_GRAPH\`. Experimental source inline strings may not exist in every one of the 63 proof blobs, and could stop on true typed source child/pointer issues; do not claim a bigger FF until Windows confirms. Still not hardware deployable, Gate11 10/13.
+
+### 207 additional source inline WeaponDef fields OAT PASS at **4,513,376 B**, new same-revision XString A/B test (2026-10-31)
+
+User's Windows output on \`35ddf07\` (full log attached) established **64/64 PowerShell 5.1 parser PASS**, incremental .NET BUILD PASS, 63/63 original-PC-source WeaponDef partial-owned canaries, and **207** additional original-PC 7b typed fixed-body inline XString fields emitted into an isolated new native FF. Source ownership verified by exact source-PC SHA/pointer identity and 7b big-endian owned traversal; unverified packed original-PC pointers, XModel/FX/Material/Audio/XAnim/other foreign child graph remains *not emitted*.
+
+**Physical compiled FF:** \`repo/.deps/aztec-w63-xstr-ff-growth/scratch_emit/nazi_zombie_aztec.ff\`, **4,513,376 bytes**. Full native layout replay exact, **8,509/8,509 OAT exact identity**, OAT warnings/errors **0/0**, scratch OAT PASS. Earlier \`weapons_63\` FF was **4,512,790 bytes**; archival-relative +**586 bytes**, different Git revisions so NOT a cryptographically exact same-code A/B proof. Original protected 0-weapon baseline FF **4,510,695 bytes**, +**2,681 bytes**. Reflection/lightmap GfxImages still have six missing pixel bodies, a stock XModel is unverified; two competing PC WeaponDefs and four stock-only names remain unresolved. **No hardware testing or gameplay release.**
+
+New repo script \`tools/oat-xenon/Run-AztecWeapon63ExtendedXStringsExactAB.ps1\` (Windows execution pending; now included in AST suite) addresses the remaining compressed-size source attribution gap with **two full Gate11 same-code scratch FF/OAT builds**:
+- A: \`Run-AztecWeapon63FfGrowthCanary.ps1 -Limit 63\` (original-PC scalar/first XStrings)
+- B: the same runner \`-Limit 63 -ExpandedInlineXStrings\` (source scalar + **additional genuinely inline XStrings** from 7b typed ownership walker).
+- Each emitter uses the same real PC 63 source-verified WeaponDef blob hashes, 8,509 native root identity sequence, 1,903 source static draws, 11 cells, 740 AABB, 39 materials, 28 source XModels, same image root placeholders and source world settings. Each must show native Stage4D/4E layout exact, OAT 0 warnings/errors, zero unauthorized full 7b weapon child graphs, and independently consistent FF length/SHA.
+- Prior OAT-passing scratch FFs are first backed up into \`repo/.deps/aztec-w63-inline-ab/previous_oat_passed_base_63/\` and \`previous_oat_passed_extended_63/\`. New FFs are copied, separately SHA-verified and preserved in \`same_world_base_63/\` and \`same_world_extended_63/\`. It does NOT touch the old \`repo/.deps/aztec-w63-exact-ab/control_00/\` and \`weapons_63/\` archives or the protected 4,510,695-byte source FF.
+- A/B requires unchanged original-PC weapon selection manifest SHA, current Git revision and all seven tracked writer/renderer/PowerShell file SHA values across builds, matching all independently measured non-weapon world and material counts. It reports compressed size difference, extra typed original-PC inline fields, extra serialized original-PC string bytes and uncompressed zone difference. Even if compression results in equal/smaller FF, the size report remains factual.
+- \`-ReuseArchivedPasses\` is available *only after this script has generated its own two case archives*. Readback-mode validates existing per-case FF SHA and OAT manifest without .NET or OAT; original build revision is not retroactively proven, and report flags this. A successful fresh 2-case run is required for cryptographically same-code controlled comparison.
+
+Next Windows command (from repo root):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS51 syntax failure" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63ExtendedXStringsExactAB.ps1"
+\`\`\`
+
+Output \`repo/.deps/aztec-w63-inline-ab/aztec_weapon63_extra_inline_xstrings_exact_ab.json\`, companion Markdown and both SHA-archived \`.ff\` candidates. This is still only genuine **partial scalar + fixed inline original-PC XString** WeaponDef ownership, **NOT full 179,775-byte source-owned 7b child graph** and NOT ready for Xbox deployment. Further progress requires typed source-owned XModel/FX/Material/XAnim/sound pointer and nested-graph translation rather than file-size inflation.
