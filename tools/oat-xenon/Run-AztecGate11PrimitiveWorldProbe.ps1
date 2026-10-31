@@ -89,7 +89,7 @@ if($newBytes -le $originalBytes -or $newHash -ieq $originalHash){
     throw "Candidate size/hash not distinct from protected cell FF: $newBytes / $newHash"
 }
 $verifier=Join-Path $PSScriptRoot 'Verify-AztecGate11OatLoadedCells.ps1'
-$readback=Join-Path $work 'oat_loaded_11_cell_aabb_readback\\aztec_gate11_independent_cells_aabb_readback.json'
+$readback=Join-Path $work 'oat_loaded_11_cell_aabb_readback\aztec_gate11_independent_cells_aabb_readback.json'
 if(-not(Test-Path -LiteralPath $verifier -PathType Leaf)){
     throw "Source-owned independent Gate11 cell verifier missing: $verifier"
 }
