@@ -102,6 +102,14 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
                 return 0;
             }
+            case "aztec-weapon63-original-pc-accuracy-vec2-witness" when args.Length == 4:
+            {
+                var report=await T4XenonAztecWeaponAccuracySourceWitness.RunAsync(
+                    args[1],args[2],args[3]);
+                Console.WriteLine("[AZTEC-W63-VEC2] SOURCE-only genuine original PC 7b WeaponDef fixed-owned Vec2 array census: "+report);
+                Console.WriteLine("[AZTEC-W63-VEC2] NO native map FF/OAT, NO retail donor, NO Xbox hardware.");
+                return 0;
+            }
             case "aztec-six-weapon-real-source-recovery" when args.Length == 4:
             {
                 var report=await T4AztecSixWeaponSourceRecovery.RunAsync(args[1],args[2],args[3]);
