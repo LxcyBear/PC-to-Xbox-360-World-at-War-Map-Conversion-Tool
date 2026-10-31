@@ -14,6 +14,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate11ImageRootLinksProbe,
       [switch]$Weapon63SourceCanary,
       [switch]$Weapon63ExtendedInlineStrings,
+      [switch]$Weapon63OwnedAccuracyVec2,
       [ValidateSet('0','1','6','63')][int]$WeaponCanaryLimit=63,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
@@ -66,6 +67,10 @@ if($Gate11ImageHeadersProbe -and -not $Gate11LightingProbe){
 }
 if($Gate11ImageRootLinksProbe -and -not $Gate11ImageHeadersProbe){
     throw '-Gate11ImageRootLinksProbe requires source-owned reflection/lightmap headers and all prior Gate11 children.'
+}
+if($Weapon63OwnedAccuracyVec2 -and
+   (-not $Weapon63ExtendedInlineStrings -or -not $Weapon63SourceCanary -or $WeaponCanaryLimit -ne 63)){
+    throw 'Typed original-PC accuracy Vec2 graft requires all 63 source-owned weapon bodies and expanded original-PC inline XStrings.'
 }
 if($Weapon63ExtendedInlineStrings -and -not $Weapon63SourceCanary){
     throw '-Weapon63ExtendedInlineStrings requires -Weapon63SourceCanary and its existing original PC 69-root source proof.'
@@ -220,8 +225,29 @@ $work=Join-Path $base $(if($IntegrateWorld){
 if($Weapon63SourceCanary){
     # OAT Win32 has a legacy MAX_PATH restriction. Keep the dedicated
     # diagnostic FF short and OUTSIDE every previously passing output dir.
-    $work=Join-Path $repo $(if($Weapon63ExtendedInlineStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
+    $work=Join-Path $repo $(if($Weapon63OwnedAccuracyVec2){'.deps\aztec-w63-vec2-ff-growth'}elseif($Weapon63ExtendedInlineStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
     $weaponManifest=Join-Path $base 'pc_g11_lightning_weapon_69_unified_native_source\aztec_69_weapon_unified_original_pc_xbox_body_selections.json'
+    if($Weapon63OwnedAccuracyVec2){
+        $vec2Witness=Join-Path $base 'pc_g11_lightning_weapon63_accuracy_vec2\aztec_63_original_pc_owned_accuracy_vec2_source_witness.json'
+        if(-not(Test-Path -LiteralPath $vec2Witness -PathType Leaf)){
+            throw "Original PC 63-WeaponDef typed Vec2 owned child SHA witness missing: $vec2Witness"
+        }
+        $v=Get-Content -LiteralPath $vec2Witness -Raw|ConvertFrom-Json
+        if([string]$v.schema -ne 'WaW360.Aztec63WeaponOriginalPcAccuracyVec2OwnedSourceWitness.v1' -or
+           [string]$v.status -ne 'AZTEC_63_WEAPON_ORIGINAL_PC_INLINE_VEC2_CHILD_GRAPH_SOURCE_PROVEN_NOT_IN_FF' -or
+           [int]$v.originalPcWeaponRootsWithGenuineXbox7bOwnedProof -ne 63 -or
+           [int]$v.provenInlineSourceOwnedVec2ArrayRecords -ne 96 -or
+           [int]$v.provenInlineSourceOwnedVec2Knots -ne 612 -or
+           [long]$v.provenInlineBigEndianXenonOwnedBytes -ne 4896 -or
+           [int]$v.weaponRootsWithRealInlineVec2Children -ne 49 -or
+           [int]$v.packedSourceArrayPointersQuarantined -ne 96 -or
+           [int]$v.nullSourceArrayPointers -ne 60 -or
+           -not [bool]$v.sourcePcWeaponBodySourceProofHashesAllRevalidated -or
+           -not [bool]$v.noXboxFfGeneratedOrModified -or
+           [bool]$v.xboxRuntimeGameplayReady){
+            throw 'Original PC 7b Vec2 proof mismatch; never promote unverified source pointers.'
+        }
+    }
     if(-not(Test-Path -LiteralPath $weaponManifest -PathType Leaf)){
         throw "63-source WeaponDef SHA manifest missing: $weaponManifest"
     }
@@ -395,6 +421,7 @@ try{
     $priorWeapon63=$env:WAW360_AZTEC_WEAPON63_DIAGNOSTIC
     $priorWeaponLimit=$env:WAW360_AZTEC_WEAPON63_LIMIT
     $priorWeaponXStrings=$env:WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS
+    $priorWeaponVec2=$env:WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -461,11 +488,19 @@ try{
             }else{
                 Remove-Item Env:\WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS -ErrorAction SilentlyContinue
             }
+            if($Weapon63OwnedAccuracyVec2){
+                $env:WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE=$vec2Witness
+                Write-Host '[AZTEC-W63-VEC2-FF] 96 authentic original-PC inline accuracy Vec2 arrays: 612 knots, 4896 B; typed 7b source SHA and native strict walk mandatory.'
+                Write-Host '[AZTEC-W63-VEC2-FF] Only genuine INLINE arrays promoted; 96 original packed aliases and 60 null sites remain NULL.'
+            }else{
+                Remove-Item Env:\WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE -ErrorAction SilentlyContinue
+            }
             Write-Host "[AZTEC-WEAPON-GROWTH-PROGRESS] [##########----------] 50% | Stage4D/4E source-backed WeaponDef canaries -> isolated FF/OAT"
         }else{
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIAGNOSTIC -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_LIMIT -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS -ErrorAction SilentlyContinue
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -480,6 +515,9 @@ try{
         if($null -eq $priorWeaponXStrings){
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS -ErrorAction SilentlyContinue
         }else{$env:WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS=$priorWeaponXStrings}
+        if($null -eq $priorWeaponVec2){
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE -ErrorAction SilentlyContinue
+        }else{$env:WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE=$priorWeaponVec2}
         if($null -eq $priorProbe){
             Remove-Item Env:\WAW360_AZTEC_WORLD_CHILD_PROBE -ErrorAction SilentlyContinue
         }else{
