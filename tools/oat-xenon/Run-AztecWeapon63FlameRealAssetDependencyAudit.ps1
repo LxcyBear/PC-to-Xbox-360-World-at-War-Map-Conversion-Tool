@@ -135,7 +135,7 @@ foreach($weapon in @($f.weapons)){
             $child=$sounds[$i]
             $raw=[string]$child.rawPointer
             $kind=Classify-SourcePointer $raw
-            if([string]$child.label -ne "$label.sound[$i]" -or
+            if([string]$child.label -ne "$($label).sound[$i]" -or
                [string]$child.verdict -ne $(if($kind -eq 'SOURCE_NULL'){'NULL'}elseif($kind -like 'SOURCE_INLINE*'){'GENUINE_OWNED_INLINE_ALIAS'}else{'PACKED_EXTERNAL_ALIAS_FENCED'})){
                 throw "Original-PC nested FlameTable sound pointer and typed 7b verdict disagree: $weaponName / $label / $i"
             }
@@ -175,7 +175,8 @@ foreach($weapon in @($f.weapons)){
             }
             materialReferences=$materialRows
             soundReferences=$soundRows
-            nativeParentReadyWithoutSubstitutions=($nameKind -eq 'SOURCE_NULL' -and @($materialRows | Where-Object {$_.originClass -ne 'SOURCE_NULL'}).Count -eq 0 -and @($soundRows | Where-Object {$_.originClass -notlike 'SOURCE_INLINE*' -and $_.originClass -ne 'SOURCE_NULL'}).Count -eq 0)
+            nativeParentProductionReady=$false
+            reason='Real source ownership alone does not establish a complete FlameTable material/name and gameplay-sound asset closure.'
         }
     }
 }
