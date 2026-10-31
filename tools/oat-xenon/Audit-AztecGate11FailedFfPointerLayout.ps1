@@ -119,7 +119,9 @@ public static class WaWG11ByteSearch
     $rawPointerHits=@([WaWG11ByteSearch]::Find($raw,$ptrBytes,30))
     $candidateDetails=New-Object 'System.Collections.Generic.List[object]'
     foreach($pos in $cellPositions){
-        if($pos+616 -gt $raw.Length)continue
+        if(($pos + 616) -gt $raw.Length) {
+            continue
+        }
         $matches=0;$badCell=-1
         for($ci=0;$ci -lt 11;$ci++){
             $at=$pos+56*$ci
