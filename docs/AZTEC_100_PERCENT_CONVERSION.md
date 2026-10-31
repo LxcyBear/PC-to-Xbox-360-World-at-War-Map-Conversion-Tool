@@ -253,3 +253,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Show-Azte
 ```
 
 Expect **10/13 only if** the user's on-disk verified FF and OAT witness manifests still pass all hash, file and source conditions. Never interpret this 10/13 tally as 77% of full conversion or a deployable Xbox map.
+
+## October 30 — first Gate11 source-DPVS child census without rebuilding
+
+The **13-gate development tracker has now been run and passed 10/13 on Windows** after user pull, with 30/30 PS5.1 script syntax checks and source-owned Gate10 1903-draw OAT readback (FF `3,625,073` bytes) confirmed. Gate 10 is the physical static-draw link/independent OAT witness milestone; Gate 11/12/13 remain legitimately pending. Do not change the existing Gate10 FF or its SHA-locked manifest just to explore missing GfxWorld children.
+
+Source-backed **new script** `Audit-AztecGate11DpvsChildFrontier.ps1` inspects the original-PC SHA-pinned 100B GfxWorldDpvsStatic object and already-produced native/PC ABI, FF/OAT manifests. It has **no OAT, .NET, or FF build step**. It inventories all 14 pointer slots (offsets +40 through +92), classifies the nine `XFILE_BLOCK_RUNTIME` slots separately from five pointer-bearing serialized children, asserts nonzero source pointers for the four already verified serialized children (`sortedSurfIndex`, `smodelInsts`, `surfaces`, `smodelDrawInsts`), reports any source-present but unlinked `cullGroups` pointer at +80, and selects a next source-child proof objective. The source count prefix 1903 smodels / 613 static surfaces / 60 smodelVisDataCount / 20 surfaceVisDataCount and 11 cells must match OAT. T4 asset dependency layout comes from OpenAssetTools `src/ZoneCode/Game/T4/XAssets/GfxWorld.txt`, and source/static source-pointer bytes remain original-PC-owned; no runtime or donor fields are blindly copied.
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-AztecGate11DpvsChildFrontier.ps1'
+```
+
+Expected report path: `output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g10_1903/gate11_dpvs_child_frontier/aztec_gate11_source_dpvs_100b_child_frontier.json`. This will **not** award Gate 11 automatically. If `cullGroups` is genuinely source-present, next work is to prove original-PC `GfxWorld.cullGroupCount` and typed `GfxCullGroup` records, then implement current-layout source-derived Stage4D/4E emission and independently dump/read back. Otherwise prioritize 11-cell/portal/AABB, lighting/lightmaps, reflection, sky, dynamic DPVS and other remaining renderer/world dependencies. Runtime-marked OAT fields must receive correct engine allocation semantics, not copied PC pointers. Continue with one actual child milestone at a time, only rebuilding after a new real child is added.
