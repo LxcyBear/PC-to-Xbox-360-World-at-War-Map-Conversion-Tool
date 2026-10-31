@@ -465,6 +465,136 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                     throw new InvalidDataException(
                         $"Source-only accuracy witness disagrees with actual inline knot arrays: {name}");
             }
+            // Speedrun mode: all 63 WeaponDef sound-table fields are
+            // source-classified. Exactly 2 genuine INLINE tables have data,
+            // 61 original-PC NULL fields remain NULL. No fictitious 63 tables.
+            int realBounceTables=0,realBounceAliasRecords=0,realBounceInlineNames=0;
+            long realBounceInlineNameBytes=0;
+            if(emitSoundAliases)
+            {
+                if(!soundWitnesses!.TryGetValue(name,out var soundProof) ||
+                   soundProof.GetProperty("nativeRootOrdinal").GetInt32()!=ordinal ||
+                   !string.Equals(soundProof.GetProperty("originalPcWeapon7bProofContainerSha256").GetString(),
+                       containerSha,StringComparison.OrdinalIgnoreCase) ||
+                   !string.Equals(soundProof.GetProperty("sourceOwnedXbox7bProofBodySha256").GetString(),
+                       blobSha,StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"Weapon {name} original-PC bounce witness root/proof SHA changed.");
+                if(!T4WeaponVariableSerializerProof.TryCollectSourceOwnedBounceSound(
+                       original,desc.Name??name,out var tables,out var aliases,out var reason))
+                    throw new InvalidDataException(
+                        $"Weapon {name} original-PC typed bounce stream refused: {reason}");
+                var originalPointer=BinaryPrimitives.ReadUInt32BigEndian(original.AsSpan(624,4));
+                if(tables.Count>1 ||
+                   (tables.Count==1)!=(originalPointer is T4ZonePointer.Following or T4ZonePointer.Insert))
+                    throw new InvalidDataException(
+                        $"Weapon {name} 7b bounce table pointer/owned source mismatch.");
+
+                if(tables.Count==1)
+                {
+                    var table=tables[0];
+                    if(soundProof.GetProperty("bounceTableSourceVerdict").GetString()!=
+                           "INLINE_31_POINTER_TABLE_SOURCE_BYTES_PROVEN" ||
+                       soundProof.GetProperty("originalPcInlineBounceTableSerializedByteOffset").GetInt32()!=
+                           table.SourceBodyByteOffset ||
+                       soundProof.GetProperty("originalPcOwnedInlineBouncePointerTableBytes").GetInt32()!=124 ||
+                       table.BigEndianPointerBytes.Length!=124 ||
+                       !string.Equals(soundProof.GetProperty("originalPcOwnedInlineBounceTableSha256").GetString(),
+                           Convert.ToHexString(SHA256.HashData(table.BigEndianPointerBytes)),
+                           StringComparison.OrdinalIgnoreCase) ||
+                       !original.AsSpan(table.SourceBodyByteOffset,124)
+                           .SequenceEqual(table.BigEndianPointerBytes))
+                        throw new InvalidDataException(
+                            $"Weapon {name} original-PC owned bounce table source bytes/SHA changed.");
+
+                    var sourceRecords=aliases.Where(a=>
+                        a.ProofLabel.StartsWith("bounceSound[",StringComparison.Ordinal))
+                        .ToDictionary(a=>a.ProofLabel,a=>a,StringComparer.Ordinal);
+                    var expectedEntries=soundProof.GetProperty("bounceTableEntries").EnumerateArray().ToArray();
+                    var witnessAliases=soundProof.GetProperty("originalPcInlineSoundAliasRecords")
+                        .EnumerateArray().ToDictionary(
+                            a=>a.GetProperty("label").GetString()??"",a=>a,StringComparer.Ordinal);
+                    if(expectedEntries.Length!=31 || sourceRecords.Count!=31)
+                        throw new InvalidDataException(
+                            $"Weapon {name} 31-entry bounce alias source record count changed.");
+                    var safeTable=new byte[124];
+                    for(var i=0;i<31;i++)
+                    {
+                        var label=$"bounceSound[{i}]";
+                        var raw=BinaryPrimitives.ReadUInt32BigEndian(
+                            table.BigEndianPointerBytes.AsSpan(i*4,4));
+                        var inlineAlias=raw is T4ZonePointer.Following or T4ZonePointer.Insert;
+                        if(expectedEntries[i].GetProperty("index").GetInt32()!=i ||
+                           !string.Equals(expectedEntries[i].GetProperty("originalPcPointerRaw").GetString(),
+                               $"0x{raw:X8}",StringComparison.OrdinalIgnoreCase) ||
+                           sourceRecords.ContainsKey(label)!=inlineAlias)
+                            throw new InvalidDataException(
+                                $"Weapon {name} bounce alias #{i} pointer/record mismatch.");
+                        // Preserve only genuinely inline alias records; original
+                        // source packed pointers and NULL fields are zeroed.
+                        BinaryPrimitives.WriteUInt32BigEndian(safeTable.AsSpan(i*4,4),
+                            inlineAlias?T4ZonePointer.Following:0u);
+                        if(!inlineAlias)continue;
+
+                        if(!witnessAliases.TryGetValue(label,out var evidence))
+                            throw new InvalidDataException(
+                                $"Weapon {name} bounce alias #{i} missing independent source witness.");
+                        var record=sourceRecords[label];
+                        if(evidence.GetProperty("source7bSoundAliasCustomRecordOffset").GetInt32()!=
+                               record.SourceRecordByteOffset ||
+                           !string.Equals(evidence.GetProperty("bigEndianFourByteSoundNamePointer").GetString(),
+                               $"0x{record.RawStringPointer:X8}",StringComparison.OrdinalIgnoreCase) ||
+                           BinaryPrimitives.ReadUInt32BigEndian(
+                               original.AsSpan(record.SourceRecordByteOffset,4))!=record.RawStringPointer)
+                            throw new InvalidDataException(
+                                $"Weapon {name} bounce alias #{i} typed source record mismatch.");
+                        var nameInline=record.RawStringPointer is
+                            T4ZonePointer.Following or T4ZonePointer.Insert;
+                        var namePayload=record.InlineNameBytes;
+                        if(nameInline!=(namePayload is not null) ||
+                           nameInline!=(record.SourceInlineNameByteOffset is not null) ||
+                           evidence.GetProperty("originalPcOwnedInlineNameBytes").GetInt32()!=
+                               (namePayload?.Length??0))
+                            throw new InvalidDataException(
+                                $"Weapon {name} bounce alias #{i} owned name/pointer mismatch.");
+
+                        var safeAlias=new byte[4];
+                        BinaryPrimitives.WriteUInt32BigEndian(safeAlias,
+                            nameInline?T4ZonePointer.Following:0u);
+                        orderedSourceChildren!.Add(new OwnedChild(
+                            record.SourceRecordByteOffset,624,label,
+                            safeAlias,4,false,true));
+                        realBounceAliasRecords++;
+                        if(nameInline)
+                        {
+                            if(!string.Equals(evidence.GetProperty("originalPcOwnedInlineNameSha256").GetString(),
+                                   Convert.ToHexString(SHA256.HashData(namePayload!)),
+                                   StringComparison.OrdinalIgnoreCase) ||
+                               evidence.GetProperty("originalPcOwnedInlineNameSerializedOffset").GetInt32()!=
+                                   record.SourceInlineNameByteOffset!.Value ||
+                               !original.AsSpan(record.SourceInlineNameByteOffset.Value,namePayload!.Length)
+                                   .SequenceEqual(namePayload))
+                                throw new InvalidDataException(
+                                    $"Weapon {name} bounce alias #{i} name bytes/SHA changed.");
+                            orderedSourceChildren.Add(new OwnedChild(
+                                record.SourceInlineNameByteOffset.Value,624,label+".soundName",
+                                namePayload.ToArray(),1,false));
+                            realBounceInlineNames++;
+                            realBounceInlineNameBytes+=namePayload.Length;
+                        }
+                    }
+                    BinaryPrimitives.WriteUInt32BigEndian(
+                        fixedOut.AsSpan(624,4),T4ZonePointer.Following);
+                    orderedSourceChildren!.Add(new OwnedChild(
+                        table.SourceBodyByteOffset,624,"bounceSound[31]",safeTable,4,false,true));
+                    realBounceTables++;
+                }
+                else if(soundProof.GetProperty("bounceTableEntries").GetArrayLength()!=0 ||
+                        soundProof.GetProperty("bounceTableSourceVerdict").GetString()!=
+                            (originalPointer==0?"NULL":"PACKED_EXTERNAL_TABLE_FENCED"))
+                    throw new InvalidDataException(
+                        $"Weapon {name} original-PC null/packed bounce table classification changed.");
+            }
             byte[] fullDiagnostic;
             if(orderedSourceChildren is not null)
             {
@@ -484,8 +614,9 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                     if(child.SourceBodyByteOffset<lastEnd ||
                        child.SourceBodyByteOffset<FixedBytes ||
                        (long)child.SourceBodyByteOffset+child.Payload.Length>original.Length ||
+                       (!child.SourceVerifiedRebasedPointers &&
                        !original.AsSpan(child.SourceBodyByteOffset,child.Payload.Length)
-                           .SequenceEqual(child.Payload))
+                           .SequenceEqual(child.Payload)))
                         throw new InvalidDataException(
                             $"Weapon {name} typed original-PC variable child overlap, byte identity or ordering mismatch: {child.ProofLabel}");
                     lastEnd=checked(child.SourceBodyByteOffset+child.Payload.Length);
@@ -524,7 +655,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             chosen.Add(ordinal,new Entry(
                 ordinal,name,fixedOut,childStrings,index.Sha256,blobSha,
                 proofOrdinal,original.Length,extendedFixedFields,
-                orderedSourceChildren,realOwnedArrays,realOwnedKnots,realOwnedArrayBytes));
+                orderedSourceChildren,realOwnedArrays,realOwnedKnots,realOwnedArrayBytes,
+                realBounceTables,realBounceAliasRecords,realBounceInlineNames,realBounceInlineNameBytes));
             allSourceBytes+=original.Length;
         }
         if(chosen.Count!=limit)
@@ -537,6 +669,13 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             throw new InvalidDataException(
                 "Authenticated original-PC 63-WeaponDef 7b accuracy arrays no longer total 96 owned arrays / 612 knots / 4896 bytes / 49 weapon roots.");
 
+        if(emitSoundAliases &&
+           (chosen.Values.Sum(x=>x.OwnedBounceTables)!=2 ||
+            chosen.Values.Sum(x=>x.OwnedSoundAliasRecords)!=62 ||
+            chosen.Values.Sum(x=>x.OwnedSoundAliasNames)!=9 ||
+            chosen.Values.Sum(x=>x.OwnedSoundAliasNameBytes)!=199))
+            throw new InvalidDataException(
+                "Original-PC sound bounce graft no longer has exactly 2 real tables / 62 inline alias records / 9 original source names / 199 name bytes.");
         return new T4XenonAztecWeapon63ScalarCanary(chosen,allSourceBytes);
     }
 
