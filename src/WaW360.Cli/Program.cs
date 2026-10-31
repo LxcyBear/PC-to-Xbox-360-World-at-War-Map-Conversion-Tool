@@ -93,6 +93,15 @@ static async Task<int> MainAsync(string[] args)
                     Console.WriteLine($"{item.Field,-22} {item.Left,-24} | {item.Right,-24} {(item.Equal ? "=" : "!=")}");
                 return 0;
             }
+            case "aztec-native-ff-size-audit" when args.Length == 7:
+            {
+                var report = await T4AztecNativeSizeAudit.RunAsync(
+                    args[1],args[2],args[3],args[4],args[5],args[6]);
+                Console.WriteLine("[AZTEC-SIZE] PASS: exact compressed + decompressed FF size, 7 block capacities, 8509 source-root status.");
+                Console.WriteLine("[AZTEC-SIZE] Report: " + report);
+                Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
+                return 0;
+            }
             case "assets" when args.Length >= 2:
             {
                 var zone = await T4ZoneParser.ParseFastFileAsync(args[1]);
@@ -2006,6 +2015,7 @@ static void PrintHelp()
     Console.WriteLine("  decompress <file.ff> <out.zone>        Decompress to raw zone");
     Console.WriteLine("  aztec-pc-gameworldsp-hunt <PC map.ff> <report.json>  Find source 44-byte path-header candidates");
     Console.WriteLine("  compare <left.ff> <right.ff>            Compare fastfile metadata/block sizes");
+    Console.WriteLine("  aztec-native-ff-size-audit <retail.ff> <source.ff> <identity.json> <emitter.json> <proof.json> <outdir>  Exact native size/block and source-root coverage; NO payload guesses");
     Console.WriteLine("  assets <file.ff>                        Parse T4 script strings + XAssetList");
     Console.WriteLine("  manifest <file.ff> <out.json>           Export Stage 2 asset manifest");
     Console.WriteLine("  resolve <file.ff>                       Resolve Localize/RawFile/StringTable/MenuList payloads");
