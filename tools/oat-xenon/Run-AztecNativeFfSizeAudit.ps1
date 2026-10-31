@@ -56,6 +56,39 @@ if((Get-FileHash -LiteralPath $retail -Algorithm SHA256).Hash -ine $rsha -or
    [long](Get-Item -LiteralPath $candidate).Length -ne 4510695L){
     throw 'FF file hash or exact verified size changed; refuse misleading size comparison.'
 }
+# Exact JSON casing preflight before dotnet: the native identity exporter
+# uses a camelCase anonymous outer object but PascalCase typed entries[].
+$identityDoc=Get-Content -LiteralPath $identity -Raw|ConvertFrom-Json
+$topFields=@($identityDoc.PSObject.Properties.Name)
+foreach($required in @('format','assets','typeSequenceVerified','entries')){
+    if($topFields -cnotcontains $required){
+        throw "Native identity manifest missing exact top-level field '$required' (actual: $($topFields -join ', '))."
+    }
+}
+$entries=@($identityDoc.entries)
+if([string]$identityDoc.format -ne 'WaW360.T4Xenon.NativeIdentityManifest.v1' -or
+   [int]$identityDoc.assets -ne 8509 -or
+   -not [bool]$identityDoc.typeSequenceVerified -or
+   $entries.Count -ne 8509){
+    throw 'Native identity root count/schema changed; size audit does not guess the asset sequence.'
+}
+$entryFields=@($entries[0].PSObject.Properties.Name)
+foreach($required in @('Index','TypeId','OatTypeName')){
+    if($entryFields -cnotcontains $required){
+        throw "Native identity entries[] typed record missing exact field '$required' (actual: $($entryFields -join ', '))."
+    }
+}
+$emissionDoc=Get-Content -LiteralPath $emitter -Raw|ConvertFrom-Json
+$emitterFields=@($emissionDoc.PSObject.Properties.Name)
+foreach($required in @('NativeRoots','RealImageRoots','RealXModelRoots','RealMaterialRoots',
+                       'RealRawFileRoots','RealMapEntsRoots','RealComWorldRoots',
+                       'RendererTechniqueSets','RendererPixelShaders','ZoneBytes')){
+    if($emitterFields -cnotcontains $required){
+        throw "Stage4E emitter manifest missing exact field '$required' (actual: $($emitterFields -join ', '))."
+    }
+}
+Write-Host '[AZTEC-SIZE] Native identity mixed-case schema and emitter body fields exact: PASS'
+
 New-Item -ItemType Directory -Path $out -Force|Out-Null
 Write-Host '[AZTEC-SIZE-PROGRESS] [########------------] 40% | one incremental .NET build, decompress both FFs, exact XFile header and root audit'
 $oldPref=$ErrorActionPreference
