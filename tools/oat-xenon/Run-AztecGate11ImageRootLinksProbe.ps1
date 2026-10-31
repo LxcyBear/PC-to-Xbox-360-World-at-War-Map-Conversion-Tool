@@ -50,11 +50,11 @@ if([string]$p.schema -ne 'WaW360.AztecGate11IndependentSourceImageHeaders.v1' -o
 }
 $old=[string]$p.newNativeFf
 $oldLighting=[string]$l.newNativeFf
-foreach($pair in @(@($old,$oldSha),@($oldLighting,$lightingSha))){
-    if(-not(Test-Path -LiteralPath ([string]$pair[0]) -PathType Leaf) -or
-       (Get-FileHash -LiteralPath ([string]$pair[0]) -Algorithm SHA256).Hash -ine [string]$pair[1]){
-        throw "Proven prior native world FF no longer SHA matches: $($pair[0])"
-    }
+if(-not(Test-Path -LiteralPath $old -PathType Leaf) -or
+   -not(Test-Path -LiteralPath $oldLighting -PathType Leaf) -or
+   (Get-FileHash -LiteralPath $old -Algorithm SHA256).Hash -ine $oldSha -or
+   (Get-FileHash -LiteralPath $oldLighting -Algorithm SHA256).Hash -ine $lightingSha){
+    throw 'Proven native image-header or lighting source FF has changed. No new FF allowed.'
 }
 $names=@(
     '*reflection_probe0','*reflection_probe1',
