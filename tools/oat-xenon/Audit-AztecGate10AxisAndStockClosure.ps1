@@ -155,15 +155,45 @@ $expectedShape=(($actualOrdinals -join ',') -ceq ($expectedOrdinals -join ',')) 
 $withinTolerance=$maxComponentDiff -le $MaxAllowedReferenceAxisComponentDifference
 $stockReportStatus='MISSING_NOT_YET_AUDITED'
 $stockOriginalVerified=$false
+$stockIdentityVerifiedInOneBaseZone=$false
+$stockBaseZoneCensusComplete=$false
+$missingStockBaseZones=@()
+$stockVerifiedOwningZones=@()
 if(Test-Path -LiteralPath $stockAuditPath -PathType Leaf){
     $stockAudit=Get-Content -LiteralPath $stockAuditPath -Raw|ConvertFrom-Json
     if([string]$stockAudit.schema -ne 'WaW360.AztecExpectedLoadedStockXModelReferenceAudit.v1'){
         throw 'Previously saved stock XModel audit schema changed.'
     }
     $stockReportStatus=[string]$stockAudit.status
-    $stockOriginalVerified=([int]$stockAudit.unresolvedSourceReferenceNames -eq 0 -and
-        [int]$stockAudit.exactSourceRootStockBodyMatches -ge 1 -and
-        [bool]$stockAudit.allExpectedLoadedZonesOatListed)
+    $stockReferences=@($stockAudit.references)
+    $stockOwner=@($modelStock.ToArray())
+    if($stockOwner.Count -ne 1 -or $stockReferences.Count -ne 1 -or
+       [int]$stockAudit.targetSourceReferences -ne 1){
+        throw 'Expected exactly one source reference and one saved retail stock referent.'
+    }
+    $saved=$stockReferences[0]
+    $seen=$stockOwner[0]
+    $ownerName=([string]$seen.originalPcReference).TrimStart(',')
+    $stockReferenceName=([string]$saved.pcReferenceName).TrimStart(',')
+    $savedRootIndices=@($saved.nativeRootIndices)
+    if($ownerName -ine $stockReferenceName -or
+       $savedRootIndices.Count -ne 1 -or
+       [int]$savedRootIndices[0] -ne [int]$seen.nativeRootIndex){
+        throw 'Saved retail stock XModel name/native-root differs from the OAT-loaded PC-derived source.'
+    }
+    $stockVerifiedOwningZones=@($saved.expectedPreloadedStockBodyZones)
+    $allZoneRows=@($stockAudit.zones)
+    $missingStockBaseZones=@($allZoneRows | Where-Object {-not [bool]$_.oatValid} |
+        ForEach-Object {[string]$_.zone})
+    $stockBaseZoneCensusComplete=([bool]$stockAudit.allExpectedLoadedZonesOatListed -and
+        $missingStockBaseZones.Count -eq 0)
+    $stockIdentityVerifiedInOneBaseZone=([bool]$saved.exactExpectedStockBodyFound -and
+        [bool]$saved.foundInIndividuallyVerifiedStockBaseZone -and
+        [bool]$saved.exactNativeAliasMatch -and
+        [int]$stockAudit.unresolvedSourceReferenceNames -eq 0 -and
+        [int]$stockAudit.exactSourceRootStockBodyMatches -eq 1)
+    $stockOriginalVerified=($stockIdentityVerifiedInOneBaseZone -and
+        $stockBaseZoneCensusComplete)
 }
 $result=[ordered]@{
     schema='WaW360.AztecGate10ReferenceAxisAndStockClosure.v1'
@@ -185,7 +215,11 @@ $result=[ordered]@{
     stockReferenceDraws=@($modelStock.ToArray())
     earlierRetailStockBodyIdentityAudit=$stockAuditPath
     earlierRetailStockBodyIdentityStatus=$stockReportStatus
+    earlierRetailIndividualBaseZoneIdentityEvidencePass=$stockIdentityVerifiedInOneBaseZone
+    earlierRetailBaseZoneCensusComplete=$stockBaseZoneCensusComplete
     earlierRetailBaseZoneIdentityEvidencePass=$stockOriginalVerified
+    baseZonesMissingOatCensus=@($missingStockBaseZones)
+    actualVerifiedStockBodyOwningZones=@($stockVerifiedOwningZones)
     stockBodyRuntimeResidencyProven=$false
     runtimeLightSemanticsIndependentlyProven=$false
     nativeReferenceAxisExactnessProven=$false
@@ -206,6 +240,10 @@ foreach($stock in @($modelStock.ToArray())){
     Write-Host "[AZTEC-GATE10-STOCK] draw=$($stock.ordinal) source='$($stock.originalPcReference)' root=$($stock.nativeRootIndex) FF-loaded='$($stock.convertedOatLoadedName)'"
 }
 Write-Host "[AZTEC-GATE10-STOCK] Retail base-zone identity audit=$stockReportStatus; hardware residency UNVERIFIED"
+Write-Host "[AZTEC-GATE10-STOCK] Independently verified owning-zone identity=$stockIdentityVerifiedInOneBaseZone; full expected zone census=$stockBaseZoneCensusComplete"
+Write-Host "[AZTEC-GATE10-STOCK] Stock model body owning zones: $($stockVerifiedOwningZones -join ',')"
+Write-Host "[AZTEC-GATE10-STOCK] Missing expected-zone OAT listings: $($missingStockBaseZones -join ',')"
+Write-Host '[AZTEC-GATE10-STOCK] An owned body in a retail zone is NOT proof that CodXe/TU7 preloads or resolves it on hardware.'
 Write-Host "[AZTEC-GATE10-AXIS] REPORT=$out"
 Write-Host '[AZTEC-GATE10-AXIS] No FF, OAT, asset dump or .NET build performed.'
 Write-Host '[AZTEC-GATE10-AXIS] Source-v-reference tolerance is NOT runtime or binary equivalence.'
