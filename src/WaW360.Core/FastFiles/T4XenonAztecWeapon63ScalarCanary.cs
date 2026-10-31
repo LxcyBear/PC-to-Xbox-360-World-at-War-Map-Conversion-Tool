@@ -256,6 +256,11 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                     $"Original PC-owned WeaponDef 7b source typed walk failed {name}: {sourceReason}");
 
             var childStrings=new List<string>{name};
+            var orderedSourceChildren=emitAccuracyVec2
+                ? new List<OwnedChild>{
+                    new(-1,0,"szInternalName native root",Utf8.GetBytes(name+"\0"),1,false)
+                }
+                : null;
             var fixedOut=new byte[FixedBytes];
             foreach(var offset in ScalarOffsets)
                 original.AsSpan(offset,4).CopyTo(fixedOut.AsSpan(offset,4));
@@ -301,6 +306,10 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                     BinaryPrimitives.WriteUInt32BigEndian(
                         fixedOut.AsSpan(field.FixedFieldOffset,4),T4ZonePointer.Following);
                     childStrings.Add(field.SourceValue);
+                    if(orderedSourceChildren is not null)
+                        orderedSourceChildren.Add(new OwnedChild(
+                            field.SourceBodyByteOffset,field.FixedFieldOffset,field.ProofLabel,
+                            Utf8.GetBytes(field.SourceValue+"\0"),1,false));
                     extendedFixedFields++;
                 }
             }
@@ -329,15 +338,136 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                     }
                 }
             }
-            var fullDiagnostic=new byte[checked(FixedBytes+childStrings.Sum(s=>Utf8.GetByteCount(s)+1))];
-            fixedOut.CopyTo(fullDiagnostic,0);
-            var at=FixedBytes;
-            foreach(var child in childStrings)
+            int realOwnedArrays=0,realOwnedKnots=0;
+            long realOwnedArrayBytes=0;
+            if(emitAccuracyVec2)
             {
-                var bytes=Utf8.GetBytes(child);
-                bytes.CopyTo(fullDiagnostic,at);
-                at+=bytes.Length;
-                fullDiagnostic[at++]=0;
+                if(!accuracyWitnesses!.TryGetValue(name,out var approved) ||
+                   approved.GetProperty("nativeRootOrdinal").GetInt32()!=ordinal ||
+                   !string.Equals(approved.GetProperty("originalPcWeapon7bProofContainerSha256").GetString(),
+                         containerSha,StringComparison.OrdinalIgnoreCase) ||
+                   !string.Equals(approved.GetProperty("sourceOwnedXbox7bProofBodySha256").GetString(),
+                         blobSha,StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException(
+                        $"Original PC accuracy Vec2 source witness root/proof body SHA mismatch: {name}");
+                if(!T4WeaponVariableSerializerProof.TryCollectSourceOwnedAccuracyVec2Arrays(
+                        original,desc.Name??name,out var arrays,out var arrayReason))
+                    throw new InvalidDataException(
+                        $"Typed Alpha 7b PC accuracy stream child walk failed {name}: {arrayReason}");
+                var bySlot=arrays.ToDictionary(x=>x.FixedFieldOffset);
+                var sourceSlots=approved.GetProperty("fourAccuracySourceFields").EnumerateArray().ToArray();
+                if(sourceSlots.Length!=4)
+                    throw new InvalidDataException(
+                        $"Original PC accuracy report lacks four audited owned-child slots: {name}");
+                foreach(var slot in sourceSlots)
+                {
+                    var fieldOffset=slot.GetProperty("pointerFieldOffset").GetInt32();
+                    if(fieldOffset is not (2184 or 2192 or 2188 or 2196))
+                        throw new InvalidDataException(
+                            $"Weapon {name} original-PC accuracy source slot not supported: {fieldOffset}");
+                    var evidence=slot.GetProperty("verdict").GetString()??"";
+                    var raw=BinaryPrimitives.ReadUInt32BigEndian(
+                        original.AsSpan(fieldOffset,4));
+                    bool sourceArray=bySlot.TryGetValue(fieldOffset,out var array);
+                    if(sourceArray)
+                    {
+                        if(evidence!="ORIGINAL_PC_OWNED_TYPED_INLINE_VEC2_ARRAY_PROVEN" ||
+                           raw!=T4ZonePointer.Following && raw!=T4ZonePointer.Insert ||
+                           slot.GetProperty("source7bOwnedSerializedBodyByteOffset").GetInt32()!=array!.SourceBodyByteOffset ||
+                           slot.GetProperty("knotCount").GetInt32()!=array!.KnotCount ||
+                           slot.GetProperty("source7bOwnedXenonEndianPayloadBytes").GetInt32()!=array!.BigEndianKnotBytes.Length ||
+                           !string.Equals(
+                               slot.GetProperty("source7bOwnedPayloadSha256").GetString(),
+                               Convert.ToHexString(SHA256.HashData(array!.BigEndianKnotBytes)),
+                               StringComparison.OrdinalIgnoreCase) ||
+                           !string.Equals(array.ProofLabel,
+                               slot.GetProperty("proofLabel").GetString(),StringComparison.Ordinal))
+                            throw new InvalidDataException(
+                                $"Original-PC accuracy array byte SHA, count, offset or pointer witness changed: {name}/{fieldOffset}");
+                        BinaryPrimitives.WriteUInt32BigEndian(
+                            fixedOut.AsSpan(fieldOffset,4),T4ZonePointer.Following);
+                        orderedSourceChildren!.Add(new OwnedChild(
+                            array.SourceBodyByteOffset,fieldOffset,array.ProofLabel,
+                            array.BigEndianKnotBytes.ToArray(),4,true));
+                        realOwnedArrays++;
+                        realOwnedKnots+=array.KnotCount;
+                        realOwnedArrayBytes+=array.BigEndianKnotBytes.Length;
+                    }
+                    else if(evidence=="NULL_SOURCE_POINTER" && raw==0)
+                    {
+                        // Null stays null. Never infer a source child from a
+                        // knot count alone; external arrays are not ours.
+                    }
+                    else if(evidence=="PACKED_OR_EXTERNAL_SOURCE_POINTER_FENCED" &&
+                            raw!=0 && raw!=T4ZonePointer.Following && raw!=T4ZonePointer.Insert)
+                    {
+                        // Packed original-PC VIRTUAL array alias stays NULL.
+                    }
+                    else if(evidence=="ZERO_KNOT_INLINE_NO_OWNED_BYTES" &&
+                            (raw==T4ZonePointer.Following || raw==T4ZonePointer.Insert) &&
+                            slot.GetProperty("knotCount").GetInt32()==0)
+                    {
+                        // Source owned zero-byte array is represented as NULL.
+                    }
+                    else
+                        throw new InvalidDataException(
+                            $"Original-PC source accuracy pointer/owned-array classification drift: {name}/{fieldOffset}");
+                }
+                if(realOwnedArrays!=arrays.Count)
+                    throw new InvalidDataException(
+                        $"Source-only accuracy witness disagrees with actual inline knot arrays: {name}");
+            }
+            byte[] fullDiagnostic;
+            if(orderedSourceChildren is not null)
+            {
+                // Source 7b file byte offsets exactly encode the original
+                // ZoneCode visitation order. Omit unsupported source-owned
+                // foreign children while preserving the relative order of
+                // authentic inline XStrings and accuracy vec2 knot arrays.
+                var sorted=orderedSourceChildren
+                    .OrderBy(x=>x.SourceBodyByteOffset).ToArray();
+                if(sorted.Length==0 || sorted[0].SourceBodyByteOffset!=-1 ||
+                   sorted[0].FixedPointerSlot!=0 || sorted[0].AccuracyVec2)
+                    throw new InvalidDataException(
+                        $"Missing first native WeaponDef inline root name: {name}");
+                var lastEnd=FixedBytes;
+                foreach(var child in sorted.Skip(1))
+                {
+                    if(child.SourceBodyByteOffset<lastEnd ||
+                       child.SourceBodyByteOffset<FixedBytes ||
+                       (long)child.SourceBodyByteOffset+child.Payload.Length>original.Length ||
+                       !original.AsSpan(child.SourceBodyByteOffset,child.Payload.Length)
+                           .SequenceEqual(child.Payload))
+                        throw new InvalidDataException(
+                            $"Weapon {name} typed original-PC variable child overlap, byte identity or ordering mismatch: {child.ProofLabel}");
+                    lastEnd=checked(child.SourceBodyByteOffset+child.Payload.Length);
+                }
+                var total=checked(FixedBytes+sorted.Sum(x=>x.Payload.Length));
+                fullDiagnostic=new byte[total];
+                fixedOut.CopyTo(fullDiagnostic,0);
+                var write=FixedBytes;
+                foreach(var child in sorted)
+                {
+                    child.Payload.CopyTo(fullDiagnostic,write);
+                    write+=child.Payload.Length;
+                }
+                orderedSourceChildren=sorted.ToList();
+            }
+            else
+            {
+                // Existing OAT-good base/extended string-only modes are
+                // retained exactly, with unchanged serializer bytes.
+                fullDiagnostic=new byte[checked(FixedBytes+
+                    childStrings.Sum(s=>Utf8.GetByteCount(s)+1))];
+                fixedOut.CopyTo(fullDiagnostic,0);
+                var at=FixedBytes;
+                foreach(var child in childStrings)
+                {
+                    var bytes=Utf8.GetBytes(child);
+                    bytes.CopyTo(fullDiagnostic,at);
+                    at+=bytes.Length;
+                    fullDiagnostic[at++]=0;
+                }
             }
             if(!T4WeaponVariableSerializerProof.TryValidateSelfContainedXboxBlob(
                     fullDiagnostic,name,out var diagReason))
@@ -345,11 +475,19 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
 
             chosen.Add(ordinal,new Entry(
                 ordinal,name,fixedOut,childStrings,index.Sha256,blobSha,
-                proofOrdinal,original.Length,extendedFixedFields));
+                proofOrdinal,original.Length,extendedFixedFields,
+                orderedSourceChildren,realOwnedArrays,realOwnedKnots,realOwnedArrayBytes));
             allSourceBytes+=original.Length;
         }
         if(chosen.Count!=limit)
             throw new InvalidDataException($"Requested {limit} weapon canaries but built {chosen.Count}.");
+        if(emitAccuracyVec2 &&
+           (chosen.Values.Sum(x=>x.OwnedAccuracyArrays)!=96 ||
+            chosen.Values.Sum(x=>x.OwnedAccuracyKnots)!=612 ||
+            chosen.Values.Sum(x=>x.OwnedAccuracyBytes)!=4896 ||
+            chosen.Values.Count(x=>x.OwnedAccuracyArrays>0)!=49))
+            throw new InvalidDataException(
+                "Authenticated original-PC 63-WeaponDef 7b accuracy arrays no longer total 96 owned arrays / 612 knots / 4896 bytes / 49 weapon roots.");
 
         return new T4XenonAztecWeapon63ScalarCanary(chosen,allSourceBytes);
     }
