@@ -29,6 +29,9 @@ public sealed class T4XenonRendererEmitResult
     public long OriginalPcWeaponDiagnosticSerializedBytes { get; init; }
     public long OriginalPcWeaponSourceProofBytes { get; init; }
     public int OriginalPcWeaponExpandedInlineXStringFields { get; init; }
+    public int OriginalPcWeaponOwnedAccuracyVec2Arrays { get; init; }
+    public int OriginalPcWeaponOwnedAccuracyVec2Knots { get; init; }
+    public long OriginalPcWeaponOwnedAccuracyVec2Bytes { get; init; }
     public bool OriginalPcWeaponFullOwnedGraphsEmitted { get; init; }
     public required int XModelReferenceRoots { get; init; }
     public required long ZoneBytes { get; init; }
@@ -687,6 +690,9 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Weapon canary real isolated source proof bytes: {weaponCanary?.TotalOriginalOwnedProofBytes ?? 0:N0}");
         report.AppendLine($"Weapon diagnostic bytes serialized in FF: {weaponCanary?.TotalDiagnosticEmittedBytes ?? 0:N0}");
         report.AppendLine($"Original PC additional typed fixed inline XString fields in scratch FF: {weaponCanary?.TotalExtendedFixedSourceInlineStrings ?? 0:N0}");
+        report.AppendLine($"AUTHENTIC ORIGINAL-PC INLINE WeaponDef Vec2 arrays: {weaponCanary?.TotalOwnedAccuracyVec2Arrays ?? 0:N0} (612 knots / 4896 source bytes if all 63 proven; no packed pointers)");
+        report.AppendLine($"OWNED source WeaponDef accuracy Vec2 knots: {weaponCanary?.TotalOwnedAccuracyVec2Knots ?? 0:N0}");
+        report.AppendLine($"OWNED source WeaponDef accuracy Vec2 bytes: {weaponCanary?.TotalOwnedAccuracyVec2PayloadBytes ?? 0:N0}");
         report.AppendLine($"XModel reference roots:     {(xmodelCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Zone bytes:                 {zoneBytes.LongLength:N0}");
         report.AppendLine($"TEMP:                       0x{state.TempMax:X}");
@@ -733,6 +739,9 @@ public static class T4XenonRendererGraphEmitter
             OriginalPcWeaponDiagnosticSerializedBytes = weaponCanary?.TotalDiagnosticEmittedBytes ?? 0,
             OriginalPcWeaponSourceProofBytes = weaponCanary?.TotalOriginalOwnedProofBytes ?? 0,
             OriginalPcWeaponExpandedInlineXStringFields = weaponCanary?.TotalExtendedFixedSourceInlineStrings ?? 0,
+            OriginalPcWeaponOwnedAccuracyVec2Arrays = weaponCanary?.TotalOwnedAccuracyVec2Arrays ?? 0,
+            OriginalPcWeaponOwnedAccuracyVec2Knots = weaponCanary?.TotalOwnedAccuracyVec2Knots ?? 0,
+            OriginalPcWeaponOwnedAccuracyVec2Bytes = weaponCanary?.TotalOwnedAccuracyVec2PayloadBytes ?? 0,
             OriginalPcWeaponFullOwnedGraphsEmitted = false,
             XModelReferenceRoots = xmodelCorpus?.ReferenceRoots ?? 0,
             ZoneBytes = zoneBytes.LongLength,
