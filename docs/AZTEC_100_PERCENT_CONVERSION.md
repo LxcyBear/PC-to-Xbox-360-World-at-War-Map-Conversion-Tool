@@ -958,3 +958,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Report: \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lightning_six_weapon_packed_name_witness/aztec_six_weapon_packed_name_source_witness.json\` and \`.md\`. **First Windows execution pending.** Gate11 and native Xbox runtime residency not closed.
+
+### Source BODY names six-for-six order witness, existing ten DIRECT Virtual-pointer evidence, and no-rebuild exact recovery (2026-10-31)
+
+**User Windows output after commit \`73f7de2\`:** 60/60 PowerShell 5.1 parser targets PASS; **71/71** original-PC WeaponDef source-owned Xbox 7b blobs preserved and independently verified. Exactly **10** original-PC internal-name pointers were synthetic packed-source labels: \`mod.ff\` **4/10** synthetic + **6/10** literal, \`nazi_zombie_aztec.ff\` **6/61** synthetic + **55/61** literal. All known literal-name OAT original-PC list ordering anchors aligned in both FFs (no order conflicts), placing the **four** \`zombie_perk_bottle_*\` and **two** \`m7_launcher_zombie*\` at packed-name physical-proof ordinals. Output intentionally \`AZTEC_SIX_WEAPON_PACKED_NAME_POINTER_TO_STRING_NOT_PROVEN\`; **this is order-only evidence**, not an independently proven original PC internal-name pointer identity.
+
+**Important existing higher-grade source:** \`Run-WaWMultiMapWeaponPointerDirectWitness.ps1\` uses a specialized, pinned OAT Xenon graph-dumper to resolve original-PC packed WeaponDef internal-name pointers **against OAT's actual loaded PC Virtual memory block**, independently of any asset-table ordinal. It writes \`weapon_direct_vptr_*.json\` with \`WaW360.WeaponDirectVirtualPointerWitness.v1\`, requires ten direct pointer matches, original PC source FF SHA, source role, physical proof body offset, exact packed pointer, direct loaded target string, and retained raw \`[WAW360-WPTR]\` trace files. The Linker V2 proof-gated diagnostic already consumes that schema but previously emits **inert 0x9AC WeaponDef name/scalar shells**, not a production FF full owned-payload graft.
+
+**New zero-build bridge (first Windows run pending):** \`tools/oat-xenon/Run-AztecSixWeaponDirectPointerClosure.ps1\`, in 61-script PowerShell 5.1 parser suite. It cross-checks:
+1. Latest real native Xbox 7b owned-payload proof for each of 71 original PC WeaponDefs, unchanged source-PC compressed FF SHA, saved proof-container SHA, and synthetic label's original physical body offset + exact packed pointer (10 entries).
+2. The previous actual \`Run-AztecSixWeaponPackedNameWitness.ps1\` diagnostic and its source authentic OAT owned-name list (no reference-only names).
+3. Previously saved **full 10/10 DIRECT OAT loaded Virtual-pointer name witness JSON** and each original raw \`[WAW360-WPTR]\` trace. Requires the same original-PC source file SHA256, source role, exact body offset and raw Virtual pointer, actual PC Virtual offset/string, exact name present in original PC OAT owned list, no ordinal inference, no duplicate keys or unmatched source bodies. No unproven name substitution.
+4. Exactly the six native Aztec target names with one independently witnessed direct source-owned Xbox body each, while retaining all earlier 43 PC source-body conflicts and current FF/gate limitations.
+
+If 10/10 direct evidence isn't present or is stale/mismatched, fail closed and instruct a **one-time execution** of the existing \`Run-WaWMultiMapWeaponPointerDirectWitness.ps1\` (which invokes OAT and may require its prebuilt specialized OAT graph dumper); then rerun the no-build bridge. The new bridge **does not call OAT** by itself.
+
+Expected report if verified: \`AZTEC_SIX_REAL_PC_NAME_DIRECT_POINTER_AND_VERIFIED_XBOX_OWNED_BODIES_PROVEN_NOT_IN_FF\`. This is a **source-ownership/name-to-real-Xbox-body evidence** milestone, not evidence that the 6 have been added to Aztec's 8,509-root native map or that gameplay references, asset child dependencies, sound/images/materials or runtime function.
+
+Run from repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS5.1 AST regression" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecSixWeaponDirectPointerClosure.ps1"
+\`\`\`
+
+Output: \`pc_g11_lightning_six_weapon_direct_pointer_closure/aztec_six_weapon_direct_pointer_body_closure.json\` and \`.md\`. All prior source FFs, proof bodies, OAT baseline candidate and Xbox files untouched.
