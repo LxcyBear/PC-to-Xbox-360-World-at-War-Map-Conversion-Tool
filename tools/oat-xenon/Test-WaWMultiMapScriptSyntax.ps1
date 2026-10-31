@@ -25,6 +25,8 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Build-AztecGate10SourceFlagsCandidate.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Build-AztecGate10SourceLightCandidate.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Verify-AztecGate10LiveLayoutRebase.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate10RealDrawWorldProbe.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate8NativeStaticDrawAbiWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-Aztec100PercentPackage.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Test-WaWRuntimeScriptDependency.ps1') -ErrorAction Stop)
