@@ -177,3 +177,26 @@ Report pair:
 - pc_g11_flame_loaded_virtual_target_proof/aztec_flame_sound_alias_real_xbox_retail_stock_names.json
 
 Next after this v2 run: for source-proven Material names, recover complete original-PC-owned serialized Material children and verify real Xbox technique/image counterparts; for SoundAlias names, select source-owned or resident stock Xbox SoundFile and actual XMA audio bytes only with byte-level and runtime provenance. No filler/silence allowed. This code is committed but has not yet been Windows run.
+
+
+## 2026-10-31 v2 Windows runtime correction: Material-only count checks must be role-scoped
+
+The user's actual 27c9635 Windows run confirmed 76/76 PowerShell syntax PASS, pinned OAT x86 v2 rebuild PASS, loaded PC source OAT PASS and 13 distinct original-PC typed target trace rows emitted. Five named SoundAliasCustom source records were directly resolved and independently present in OAT's original-PC Sound XAsset list:
+- weap_flamethrower_start
+- weap_flamethrower_fireloop
+- weap_flamethrower_start_3p
+- weap_flamethrower_fireloop_3p
+- weap_flamethrower_cooldown_3p
+
+The script then mistakenly marked five of the 13 targets as missing and blocked before the Xbox retail crosswalk. Root cause: the script applied arbitrary offsets 91,92,93 as Material texture/constant/state-bit counts on **every** loaded pointer target, including 4-byte SndAliasCustom and plain original-PC name strings. Those bytes do not have Material semantics for non-Material assets, so the unconditional >64 threshold silently dropped valid rows. These skipped rows included valid source references and were NOT evidence of missing/unloaded memory.
+
+The PowerShell-only correction at 083f771 tests Material count consistency only when a source field is FlameMaterial and its typed 112-byte Material header has a plausible real loaded name; it does NOT invent Material identities for headers that do not parse. For other roles it reports Material count fields as null (not applicable). This correction retains the complete 13/13 typed row accounting and allows the existing real-asset sound-name crosswalk to execute. **The patch has been committed but not yet rerun by the user, so no new names or Xbox sound byte matches are claimed.**
+
+Fast retry from repo root (the OAT v2 Unlinker is already built; do NOT use -BuildDumper):
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlamePackedPointerLoaderProbe.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "FlameTable typed-v2 real-source and stock-name crosswalk blocked" }
+
+This reruns the original PC OAT --list source-only loader (NO MSBuild) with proper role classification, then performs read-only comparison to actual OAT-listed Xbox retail Sound XAssets across up to 67 source zones. Five verified PC alias names are NOT XMA sample/codec proof, and none of the synthetic stub/zero-pointer shortcuts are permitted. All four authentic source-owned FlameTable parent bodies and 122/12/4 source-NULL fields remain unchanged.
