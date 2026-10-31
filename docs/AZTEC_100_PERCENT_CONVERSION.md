@@ -787,3 +787,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Prior XAnim and PC FF assets are protected; the source root selection's report is only an audit. Once duplicate bodies are resolved the next build can optionally integrate a **602-real-native-XAnim-graph** candidate under a new isolated output path and require independent native OAT full load/readback + world/image/renderer regression tests before considering hardware. Still **10/13**.
+
+### Five-class lightning source-native proof sweep (2026-10-31; first Windows execution pending)
+
+The Windows XAnim-602 selection on commit \`57dd68c\` established the exact 614 genuine original-PC-to-Xbox transform body proofs SHA/readback: all **614/614** bodies validated at **8,494,093** native-layout payload bytes. Original-PC names deduplicate into **602 Xbox names**. **590** names have exactly one unambiguous original-PC source body, totaling **8,351,603 bytes**, while **12** duplicate animation names have **different real Xbox payload hashes** and must not be silently selected. The 12 include \`viewmodel_mk2_throw\`, \`viewmodel_mk2_pullpin\`, \`viewmodel_livegrenade_tossback\`, two \`ai_zombie_crawl_jump_down_*\` animations and eight \`viewmodel_bbetty_*\` variants. These are **source-proven but conflicted**, not failed endian conversions. Source-name/hardware runtime resolution and Xbox live memory still pending; no FF output.
+
+**Next one-command stage:** \`tools/oat-xenon/Run-AztecFiveClassLightning.ps1\`. It uses the three **SHA-locked original-PC Aztec FFs** and previous native 8,509-root identity/proof manifests, and performs a single five-class source-body diagnostic:
+- **Weapons:** the existing Xbox 0x9AC fixed-body \`T4WeaponSerializerProof\` plus \`T4WeaponVariableSerializerProof\` for real owned variable strings/tables; independent \`T4NativeProofContainerReader.IndexAsync("weapon")\` on the full owned-payload container. Fixed-only pass is NOT a WeaponDef full-content PASS.
+- **XModels:** the existing source-owned \`T4XModelSerializerProof\` and independent native proof-container index, using previously source-converted XAnim proof and any successfully recovered Weapon-owned proof as source XAsset-order alignment anchors. Nested geometry/material/phys pointers may still be blocked; no shell substitution is counted.
+- **FX:** the existing strict typed \`T4FxSerializerProof\` and native readback/index for owned FxEffectDef element and child graphs. Packed symbolic names are NOT exact native root identity evidence until resolved.
+- **Localization:** the existing conservative \`T4PayloadScanner\` verifies the source LocalizeEntry names and VALUES when XAsset declared count, ordered identity and scanner agree. Packed source VALUE pointers remain explicitly blocked from native payload use until rebased; no synthetic localized text is emitted.
+- **Materials:** re-runs the existing **39 original-PC world Material** graph preflight with \`T4AztecPcXenonMaterial39CodecPreflight.RunAsync\` against the authentic native identities, checks the source-owned 39 root binding graph and reports codec planning/dependency errors. This does **NOT** automatically convert all 537 native Material roots; 498 already-known shell/unverified Materials and material stateBits, PC/Xenos shader technique and image dependency closure remain open.
+- **Carry-forward:** all **12 unresolved same-name XAnim blob conflicts** are captured in the same JSON/Markdown report, with no implicit file-precedence rule and no integration.
+- Any model, FX, weapon, localization or Material subtype that cannot pass the existing typed parser is reported **BLOCKED**, not guessed or replaced by null-content bodies. One category can be blocked while other category proofs complete.
+
+\`-EvidenceOnly\` skips costly native owned-body model/FX/weapon and Material codec reruns, leaving their body proof statuses explicitly \`HEADERS_ONLY\`, so it is only an optional quick dry-run, not a complete proof. Full mode is the default. One incremental .NET CLI build; uses existing original-PC compressed SHA-pinned zone cache and native XAnim proof anchors. NO OAT/FF rebuild, no new map, no hardware.
+
+From the PC2XB3 repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw "PS51 syntax regression" }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFiveClassLightning.ps1"
+\`\`\`
+
+Outputs in \`output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lightning_five_class_source_proof/\`:
+- \`aztec_five_class_lightning_source_proof.json\` with source stage-by-stage pass/incomplete/blocked evidence and per-native-root same-name typed-body counts.
+- \`aztec_five_class_lightning_source_proof.md\` ranked exact category numbers, blockers and 12 XAnim conflicts.
+- \`standalone_pc_source_native_proofs/\` with any source-authentic owned native Xbox XModel/FX/Weapon diagnostic blobs produced; **never written into the protected FF**.
+- \`aztec_five_class_lightning_console.log\` with full CLI warnings and stage diagnostics.
+
+**Windows compile/test pending.** Do not treat the output as full Materials/XModels/FX/Localization/Weapons runtime closure; do not claim more than 10/13 native structural gates or approve Xbox deployment based on independent payload readbacks.
