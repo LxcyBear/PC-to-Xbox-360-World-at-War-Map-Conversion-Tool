@@ -849,3 +849,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 Reports: \`pc_g11_lightning_three_class_native_root_resolution/aztec_three_class_native_root_body_resolution.json\` and \`.md\`, with source body hashes and per-root candidate byte offsets, conflict/quarantine decisions, and exact remaining names. Reuses previous proof files without writing new .ff or rerunning OAT. **First Windows .NET compile/execution not yet verified.** Never treat this stage as Xbox deployment approval.
+
+### Lightning 586-native-root payload SHA selection PASS (2026-10-31), 43 conflicting source bodies + 24 absent exact-PC-owned roots
+
+User Windows run from \`964334c\` showed **56/56 PS5.1 parser PASS**, all original PC converted XModel/FX/Weapon proof containers SHA-verified, **623** real Xbox-format owned source payloads independently indexed/read back. Existing protected current OAT-passing Aztec FF SHA unchanged. The exact native Xbox root selection across **586** native XModel/FX/Weapon roots yielded:
+
+| Asset type | Native roots | Unambiguous original PC owned Xbox body | Same-name differing Xbox body SHA conflicts | No exact source-owned Xbox body |
+|---|---:|---:|---:|---:|
+| XModel | 284 | 257 | 21 | 6 |
+| FX | 233 | 217 | 8 | 8 |
+| Weapon | 69 | 57 | 2 | 10 |
+| **Total** | **586** | **531** | **31** | **24** |
+
+All prior XAnim SHA checks remain **590 single source** plus **12 differing native-body hashes**, making **43 competing source body assignments across four types**. No identical duplicate converted bytes in the disputed groups. **Do not** claim the 43 are faulty conversions; both candidate data bodies passed their own serialization/readback. Conversely do not claim any absent PC body is necessarily "in Xbox retail common.ff": a matching name in some campaign/map file does not prove a loaded Game/TitleUpdate-specific asset dependency.
+
+The exact missing 24 includes native XModel roots \`projectile_usa_m9a1_riflegrenade\`, \`fx_rifle_shell\`, \`fx_char_gib_chunk_fat\`, \`fx_char_gib_chunk_meat02\`, \`static_berlin_rubble01\`, \`viewmodel_default\`; 8 FX names including \`explosions/default_explosion\`, \`weapon/muzzleflashes/heavy\`, \`weapon/shellejects/rifle_view\`; 10 Weapon roots including \`ray_gun\`, \`kar98k\`, \`molotov\`, \`30cal\`, the four \`zombie_perk_bottle_*\` variants and two \`m7_launcher_zombie*\` names. The 31 source-source conflicts include world zombie character meshes, MK2/Betty viewmodels, dog-fire/explosion effects, \`fraggrenade\`, \`mine_bouncing_betty\`. These are original PC same-name differing real converted body payload SHA conflicts that require explicit loader/zone ownership semantics before selecting one. None was automatically chosen in the prior run.
+
+**Next cheap one-command audit, committed, Windows run pending:** \`tools/oat-xenon/Run-AztecAssetConflictStockTriage.ps1\`, registered in PowerShell 5.1 syntax suite. Does not invoke \`dotnet\`, OAT or console, and never reads/copies Xbox retail FF payloads. It checks protected OAT FF SHA, the 623-source-body and 590/12 XAnim root manifests, exact 31+12 competing Xbox-body SHA hashes, then reads the **cached 67-zone retail OAT \`--list\` logs**, individually refusing stale file path/size/mtime/exit proofs. It indexes **ONLY the 24 unresolved type+name pairs**, preserves OAT leading-comma **reference-only** entries versus owned-body type/name listings, and separates expected base-zone identities (common.ff / code_post_gfx.ff / patch.ff) from all other retail zone identity sightings. It does not infer that those zones are actually loaded at the precise time CodXe uses the map; the entire retail evidence remains offline stock *identity* only, not verified runtime residency. If valid catalogs are absent/incomplete, missing names are marked unproven instead of asserting no retail ownership.
+
+For the 43 original-PC duplicated names, reports each candidate's source role, exact converted payload SHA-256 and serialized byte length, whether body sizes differ, and keeps **selected source null**, **production graft prohibited**. Prioritize actual \`map.ff\` vs \`mod.ff\` override semantics and whether two same-name bodies belong to different gameplay/source loading contexts; do NOT blindly prefer mod or map. Results written as JSON, Markdown, and CSV to \`pc_g11_lightning_conflict_stock_provenance/\`.
+
+From converter repo root:
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if($LASTEXITCODE -ne 0){throw "PS5.1 syntax regression"}
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecAssetConflictStockTriage.ps1"
+\`\`\`
+
+**Current unchanged limits:** native material 39/39 world codec is source graph-only; 498 other native materials lack that specific source-typed proof. Localization 177/177 PC names/values but native packed value pointer rebasing unverified. Sound 3,774 PC alias structures source-proven but no native Xbox audio conversion. Images/pixels, shader technique/stateBits, real world/runtime load remain incomplete. The native FF is NOT rebuilt/deployed by these audits. **10/13** structural checkpoint, Xbox hardware readiness still blocked. The successful XModel/FX/Weapon source proof containers are *not* integrated into the current map.
