@@ -263,13 +263,7 @@ public static class T4AztecFiveClassLightningProof
                     Path.Combine(outDir,"material39_codec_recheck"),ct);
                 if(report.MaterialGraphsLoadedByExistingCodec!=39)
                     throw new InvalidDataException("39 Material graphs not loaded by native codec.");
-                runs.Add(new Run("material","gfxworld","existing_39_material_codec",39,39,
-                    "39_GRAPH_CODEC_SOURCE_PASS",
-                    "Native codec plan="+report.MaterialGraphsPlannedByExistingCodec+
-                    "/39; dependency errors="+report.ExistingCodecDependencyErrorCount+
-                    "; stateBits, shader and image semantics remain unresolved.",
-                    Path.Combine(outDir,"material39_codec_recheck",
-                        "aztec_39_material_existing_codec_preflight.json")));
+                var validatedMaterials=new List<Body>(39);
                 using var materialDoc=JsonDocument.Parse(await File.ReadAllTextAsync(materialCandidatePath,ct));
                 var entries=materialDoc.RootElement.GetProperty("Materials").EnumerateArray().ToArray();
                 if(entries.Length!=39)throw new InvalidDataException("World Material source graph list isn't 39.");
@@ -279,8 +273,16 @@ public static class T4AztecFiveClassLightningProof
                     var idx=It(e,"GoldenXboxRootIndex");
                     if(idx<0 || idx>=roots.Length || roots[idx].Type!="material" || !Eq(roots[idx].Name,name))
                         throw new InvalidDataException("39 source Material names differ from native XAsset roots.");
-                    bodies.Add(new Body("material","gfxworld",name,0,"39_codec_graph",materialCandidatePath,null));
+                    validatedMaterials.Add(new Body("material","gfxworld",name,0,"39_codec_graph",materialCandidatePath,null));
                 }
+                bodies.AddRange(validatedMaterials);
+                runs.Add(new Run("material","gfxworld","existing_39_material_codec",39,39,
+                    "39_GRAPH_CODEC_SOURCE_PASS",
+                    "Native codec plan="+report.MaterialGraphsPlannedByExistingCodec+
+                    "/39; dependency errors="+report.ExistingCodecDependencyErrorCount+
+                    "; stateBits, shader and image semantics remain unresolved.",
+                    Path.Combine(outDir,"material39_codec_recheck",
+                        "aztec_39_material_existing_codec_preflight.json")));
             }
         }
         catch(Exception ex) when(ex is not OperationCanceledException and not OutOfMemoryException)
