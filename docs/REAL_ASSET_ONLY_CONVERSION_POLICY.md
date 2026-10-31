@@ -26,3 +26,30 @@ Effective immediately for any **new** asset, material, texture, model, animation
 The repository script tools/oat-xenon/Run-AztecWeapon63FlameRealAssetDependencyAudit.ps1 will independently check the SHA-pinned four FlameTable source parents and the previous passing OAT FF. It classifies **32 Material pointer cells**, **four parent name pointers**, and **16 nested sound pointer cells** without creating any new FF, adding a placeholder material or mutating previous accepted binaries.
 
 A non-NULL source pointer in that report is an unresolved real asset link until backed by genuine data, never permission to replace it with a zero. Next stage: actual PC source material/name resolution, exact Xbox body/stock binding, then complete typed FlameTable parent/child graph with no placeholders.
+
+
+## Actual four FlameTable parents: dependency findings and next source-byte proof
+
+The user ran the FlameTable real-asset dependency audit on Windows at commit 151546b. It passed all 71 PS5.1 source syntax checks and verified:
+
+- Four true source-owned 476-byte FlameTable parents (1,904 authentic source bytes), 122 naturally NULL parent pointers, no packed/external parents.
+- Parent name fields: **4 non-NULL / 4 total**, but *none* may be treated as a real string until inline source bytes or a packed string's original source target is proven.
+- Parent material slots: **12 authentic NULL / 32; 20 NON-NULL** requiring original-PC Material source proof and valid native Xbox backing.
+- Parent sound slots: **6 genuinely INLINE SndAliasCustom records / 16; 4 authentic NULL; 6 PACKED references**. No material, name, or actual XMA/audio sample resolved by these counts.
+- No native FF created or modified. Status: AZTEC_REAL_PC_FLAMETABLE_PARENT_DEPENDENCIES_CLASSIFIED_NOT_NATIVE_ASSET_CLOSED.
+
+A stricter next read-only original-PC source witness, tools/oat-xenon/Run-AztecWeapon63FlameInlineRealSourceBodies.ps1, uses the existing genuine 7b walker's physical ownership order. The typed collector records:
+
+- Each **actually INLINE FlameTable name** at parent byte +424 with its genuine original-PC 7b physical byte offset, byte length and SHA-256. Packed name references remain unresolved.
+- Each **actually INLINE Material child** at parent +428..+456 with the *entire consumed original-PC 7b typed serialized child extent*, byte length and SHA-256. The raw owned span is evidence, not proof that the Material's technique/images/stream dependencies are native runtime complete.
+- Parent and name/material pointer classes MUST conserve exactly four non-NULL names, 20 non-NULL Materials and 12 authentic NULL Materials. No invented bodies, empty replacement textures, or false native binding.
+- Existing 4,514,599-byte 222/228-record OAT-good FF hash, original-PC proof containers and previous parent/dependency reports are preconditions. Output goes to a **new** source-only report folder, not the original FlameTable witness or any native FF.
+
+To run from repo root:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63FlameInlineRealSourceBodies.ps1"
+
+The result will report precisely how many of the 4 FlameTable names and 20 non-NULL Material pointers are *physically INLINE in genuine original-PC source*. Non-INLINE pointers require real source target resolution; a Material body still needs actual converted technique/image dependencies and Xbox semantic validation. **No new FF or Xbox deployment is authorized.**
