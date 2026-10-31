@@ -89,10 +89,14 @@ public static class WaWG11ByteSearch
         }
         return hits.ToArray();
     }
-    public static uint Big32(byte[] d,int i)=>
-        ((uint)d[i]<<24)|((uint)d[i+1]<<16)|((uint)d[i+2]<<8)|d[i+3];
-    public static ushort Big16(byte[] d,int i)=>
-        (ushort)((d[i]<<8)|d[i+1]);
+    public static uint Big32(byte[] d,int i)
+    {
+        return ((uint)d[i]<<24)|((uint)d[i+1]<<16)|((uint)d[i+2]<<8)|d[i+3];
+    }
+    public static ushort Big16(byte[] d,int i)
+    {
+        return (ushort)((d[i]<<8)|d[i+1]);
+    }
     public static byte[] FloatBe(float value)
     {
         var b=BitConverter.GetBytes(value);
