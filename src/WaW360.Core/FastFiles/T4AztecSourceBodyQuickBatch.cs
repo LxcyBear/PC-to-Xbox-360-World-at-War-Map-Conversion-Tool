@@ -64,6 +64,7 @@ public static class T4AztecSourceBodyQuickBatch
         int soundLoadedNodes=0,soundStreamedNodes=0,soundPrimedNodes=0;
         long pcLoadedAudioBytesObserved=0;
         int soundFailures=0;
+        int soundOffsetAliasHeaders=0,soundNullHeaders=0;
         int pcPhysicalXanims=0;
         foreach(var f in sourceFiles)
         {
@@ -106,6 +107,8 @@ public static class T4AztecSourceBodyQuickBatch
             var phys=snd.Count(x=>x.ReferenceKind is
                 T4AssetReferenceKind.Inline or T4AssetReferenceKind.InlineShared);
             soundDeclared+=snd.Length;soundPhysical+=phys;
+            soundOffsetAliasHeaders+=snd.Count(x=>x.ReferenceKind==T4AssetReferenceKind.OffsetOrAlias);
+            soundNullHeaders+=snd.Count(x=>x.ReferenceKind==T4AssetReferenceKind.Null);
             object? soundResult=null;
             if(!skipDeepSound && phys!=0)
             {
@@ -180,7 +183,8 @@ public static class T4AztecSourceBodyQuickBatch
             sourcePhysicalXanimHeaders=pcPhysicalXanims,
             originalPcSoundRootsDeclared=soundDeclared,
             originalPcSoundPhysicalInlineHeaders=soundPhysical,
-            originalPcSoundAliasPointerHeaders=soundDeclared-soundPhysical,
+            originalPcSoundAliasPointerHeaders=soundOffsetAliasHeaders,
+            originalPcSoundNullHeaders=soundNullHeaders,
             typedPcSoundAliasListsVerified=soundTyped,
             sourceSoundTypedFailedRuns=soundFailures,
             typedPcSoundAliasEntries=aliasEntries,
