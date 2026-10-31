@@ -71,6 +71,13 @@ public static class T4WeaponVariableSerializerProof
     // FF relocation: no packed/external WeaponDef pointer may be carried out.
     internal sealed record OwnedFixedInlineAccuracyVec2(
         int FixedFieldOffset,string ProofLabel,int KnotCount,int SourceBodyByteOffset,byte[] BigEndianKnotBytes);
+    // 31 SndAliasCustom pointer cells, exactly as serialized by the original
+    // PC-owned Alpha 7b stream. These are POINTERS, not Xbox sound assets.
+    internal sealed record OwnedInlineBounceSoundTable(
+        int FixedFieldOffset,int SourceBodyByteOffset,byte[] BigEndianPointerBytes);
+    internal sealed record OwnedInlineSndAliasName(
+        string ProofLabel,int SourceRecordByteOffset,uint RawStringPointer,
+        int? SourceInlineNameByteOffset,byte[]? InlineNameBytes);
 
     private sealed class TraverseStats
     {
@@ -96,6 +103,8 @@ public static class T4WeaponVariableSerializerProof
         public bool RequireSelfContainedPointers { get; init; }
         public List<OwnedFixedInlineXString>? ObservedFixedInlineXStrings { get; init; }
         public List<OwnedFixedInlineAccuracyVec2>? ObservedFixedInlineAccuracyArrays { get; init; }
+        public List<OwnedInlineBounceSoundTable>? ObservedBounceSoundTables { get; init; }
+        public List<OwnedInlineSndAliasName>? ObservedSoundAliasNames { get; init; }
         public byte[]? PatchDestination { get; init; }
         public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
         public List<PlannedInsertion>? PlannedInsertions { get; init; }
@@ -393,6 +402,66 @@ public static class T4WeaponVariableSerializerProof
         }
     }
 
+    /// <summary>
+    /// Source-only forensic witness for T4 WeaponDef bounceSound at fixed
+    /// pointer slot 624, and independently source-owned inline SndAliasCustom
+    /// name records. Never treats 31 pointer words as resolved Xbox sounds.
+    /// </summary>
+    internal static bool TryCollectSourceOwnedBounceSound(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedInlineBounceSoundTable> tables,
+        out IReadOnlyList<OwnedInlineSndAliasName> aliases,
+        out string reason)
+    {
+        var observedTables=new List<OwnedInlineBounceSoundTable>();
+        var observedAliases=new List<OwnedInlineSndAliasName>();
+        tables=Array.Empty<OwnedInlineBounceSoundTable>();
+        aliases=Array.Empty<OwnedInlineSndAliasName>();
+        reason=string.Empty;
+        try
+        {
+            var ctx=new WalkContext
+            {
+                Source=xboxSourceProofBlob,
+                Endianness=Endian.Big,
+                Header=null,
+                Output=null,
+                Stats=new TraverseStats(),
+                WeaponName=name,
+                RequireSelfContainedPointers=false,
+                ObservedBounceSoundTables=observedTables,
+                ObservedSoundAliasNames=observedAliases
+            };
+            var end=WalkOwnedPayload(ctx,0);
+            if(end!=xboxSourceProofBlob.Length)
+                throw new InvalidDataException(
+                    $"Weapon '{name}' bounce source stream ended at 0x{end:X}, expected 0x{xboxSourceProofBlob.Length:X}");
+            if(observedTables.Count>1 ||
+               observedTables.Any(t=>t.FixedFieldOffset!=624 ||
+                   t.SourceBodyByteOffset<FixedBodySize ||
+                   (long)t.SourceBodyByteOffset+BounceSoundCount*4>xboxSourceProofBlob.Length ||
+                   t.BigEndianPointerBytes.Length!=BounceSoundCount*4) ||
+               observedAliases.Any(a=>a.SourceRecordByteOffset<FixedBodySize ||
+                   (long)a.SourceRecordByteOffset+4>xboxSourceProofBlob.Length ||
+                   (a.InlineNameBytes is not null &&
+                      (a.SourceInlineNameByteOffset is null ||
+                       a.SourceInlineNameByteOffset.Value<FixedBodySize ||
+                       (long)a.SourceInlineNameByteOffset.Value+a.InlineNameBytes.Length>xboxSourceProofBlob.Length))))
+                throw new InvalidDataException(
+                    $"Weapon '{name}' bounce/sound-name owned offsets out of source blob bounds.");
+            tables=observedTables.AsReadOnly();
+            aliases=observedAliases.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason=ex.Message;
+            tables=Array.Empty<OwnedInlineBounceSoundTable>();
+            aliases=Array.Empty<OwnedInlineSndAliasName>();
+            return false;
+        }
+    }
+
     internal static bool TryValidateSelfContainedXboxBlob(byte[] blob, string name, out string reason)
     {
         reason = string.Empty;
@@ -652,6 +721,18 @@ public static class T4WeaponVariableSerializerProof
         WriteScalar32(c, cursor, soundNamePtr);
         cursor += 4;
         c.Stats.SoundNameRecords++;
+        if(c.ObservedSoundAliasNames is not null)
+        {
+            var nameOffset=IsInline(soundNamePtr)?cursor:(int?)null;
+            byte[]? nameBytes=null;
+            if(nameOffset is not null)
+            {
+                var end=FindCStringEnd(c.Source,cursor,label+".soundName");
+                nameBytes=c.Source.AsSpan(cursor,end-cursor).ToArray();
+            }
+            c.ObservedSoundAliasNames.Add(new OwnedInlineSndAliasName(
+                label,cursor-4,soundNamePtr,nameOffset,nameBytes));
+        }
         return ConsumeXString(c, soundNamePtr, cursor, label + ".soundName");
     }
 
@@ -662,6 +743,9 @@ public static class T4WeaponVariableSerializerProof
 
         cursor = Align4(c, cursor, "bounceSound");
         Ensure(c.Source, cursor, BounceSoundCount * 4, "bounceSound[31]");
+        if(c.ObservedBounceSoundTables is not null)
+            c.ObservedBounceSoundTables.Add(new OwnedInlineBounceSoundTable(
+                624,cursor,c.Source.AsSpan(cursor,BounceSoundCount*4).ToArray()));
         var pointers = new uint[BounceSoundCount];
         for (var i = 0; i < BounceSoundCount; i++)
         {
