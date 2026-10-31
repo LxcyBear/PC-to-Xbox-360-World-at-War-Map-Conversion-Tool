@@ -54,6 +54,51 @@
                     }
                     return {};
                 };
+                const auto loadedPacked = [&](uint32_t packed, size_t count)
+                    -> const unsigned char*
+                {
+                    // Separate packed-T4-zone pointer from a live x86
+                    // process address. Never cast a serialized pointer and
+                    // dereference it as a host virtual address.
+                    if(!packed || packed >= 0xFFFFFFFEu || count==0u)
+                        return nullptr;
+                    const auto unbiased=static_cast<uintptr_t>(packed)-1u;
+                    const auto block=static_cast<size_t>(
+                        (unbiased&m_block_mask)>>m_block_shift);
+                    const auto offset=static_cast<size_t>(unbiased&m_offset_mask);
+                    if(block>=m_blocks.size() || !m_blocks[block])
+                        return nullptr;
+                    const auto* b=m_blocks[block];
+                    const auto limit=std::min(b->m_buffer_size,m_block_offsets[block]);
+                    if(offset>limit || count>limit-offset)
+                        return nullptr;
+                    return reinterpret_cast<const unsigned char*>(
+                        b->m_buffer.get()+offset);
+                };
+                const auto boundedPtrBytes = [&](uint32_t pointer, size_t size)
+                    -> const unsigned char*
+                {
+                    const auto* direct=loadedBytes(pointer,size);
+                    return direct?direct:loadedPacked(pointer,size);
+                };
+                const auto boundedPtrName = [&](uint32_t pointer)->std::string
+                {
+                    const auto direct=loadedString(pointer);
+                    if(!direct.empty())return direct;
+                    std::string text;
+                    for(size_t i=0;i<96;i++)
+                    {
+                        const auto* ch=loadedPacked(pointer+static_cast<uint32_t>(i),1u);
+                        if(!ch)return {};
+                        if(*ch==0)return text.empty()?std::string{}:text;
+                        if(!((*ch>='a'&&*ch<='z')||(*ch>='A'&&*ch<='Z')||
+                             (*ch>='0'&&*ch<='9')||*ch=='_'||
+                             *ch=='-'||*ch=='.'||*ch=='/'))
+                            return {};
+                        text.push_back(static_cast<char>(*ch));
+                    }
+                    return {};
+                };
                 std::stringstream flameTokens(flameRequested);
                 std::string flameToken;
                 std::unordered_set<uint32_t> flameSeen;
@@ -173,6 +218,87 @@
                     // record to a real loaded alias name, NOT an audio sample.
                     if(typed && typedRemaining>=4)
                         aliasName=loadedString(read32(typed));
+                    // Some original FlameTable Material* references can
+                    // target pointer CELLS rather than a 112-byte Material.
+                    // Do not reinterpret that cell as a Material header.
+                    // First prove each hop lands within an actual loaded PC
+                    // block, then verify a real MaterialInfo.name string and
+                    // 3 bounded table-count fields. No recursive arbitrary
+                    // address reads and no XAsset rebinding.
+                    std::string indirectMaterialName;
+                    std::string indirectTechnique;
+                    std::string indirectImages;
+                    unsigned indirectTextures=0,indirectConstants=0,
+                             indirectStates=0,indirectNamedImages=0;
+                    int indirectDepth=-1;
+                    uint32_t firstU32=typed && typedRemaining>=4?
+                        read32(typed):0u;
+                    const unsigned char* candidate=typed && typedRemaining>=112?
+                        typed:nullptr;
+                    uint32_t candidateNext=firstU32;
+                    std::unordered_set<uint32_t> visited;
+                    for(int depth=0;depth<=2;depth++)
+                    {
+                        if(depth>0)
+                        {
+                            if(!candidateNext || !visited.insert(candidateNext).second)
+                                break;
+                            candidate=boundedPtrBytes(candidateNext,112u);
+                        }
+                        if(candidate)
+                        {
+                            const auto namePtr=read32(candidate);
+                            const auto name=boundedPtrName(namePtr);
+                            const unsigned tc=candidate[91];
+                            const unsigned cc=candidate[92];
+                            const unsigned sc=candidate[93];
+                            if(!name.empty() && tc<=64 && cc<=64 && sc<=64)
+                            {
+                                indirectDepth=depth;
+                                indirectMaterialName=name;
+                                indirectTextures=tc;
+                                indirectConstants=cc;
+                                indirectStates=sc;
+                                const auto tsPtr=read32(candidate+96);
+                                const auto* ts=boundedPtrBytes(tsPtr,4);
+                                if(ts)
+                                    indirectTechnique=boundedPtrName(read32(ts));
+                                const auto texturePtr=read32(candidate+100);
+                                if(tc==0 || boundedPtrBytes(texturePtr,
+                                    static_cast<size_t>(tc)*16))
+                                {
+                                    for(unsigned ti=0;ti<tc;ti++)
+                                    {
+                                        const auto* record=boundedPtrBytes(
+                                            texturePtr+ti*16,16);
+                                        if(!record)break;
+                                        const auto* image=boundedPtrBytes(
+                                            read32(record+12),36);
+                                        const auto imageName=image?
+                                            boundedPtrName(read32(image+32)):
+                                            std::string{};
+                                        if(!indirectImages.empty())
+                                            indirectImages.push_back(';');
+                                        indirectImages+=imageName.empty()?"?":imageName;
+                                        if(!imageName.empty())indirectNamedImages++;
+                                    }
+                                }
+                                break;
+                            }
+                            candidateNext=read32(candidate);
+                        }
+                    }
+                    std::cerr << "[WAW360-FLAMEMATPTR] raw=" << flameToken
+                              << " depth=" << indirectDepth
+                              << " firstU32=0x" << std::hex << firstU32 << std::dec
+                              << " name=" << (indirectMaterialName.empty()?"-":indirectMaterialName)
+                              << " technique=" << (indirectTechnique.empty()?"-":indirectTechnique)
+                              << " textures=" << indirectTextures
+                              << " constants=" << indirectConstants
+                              << " statebits=" << indirectStates
+                              << " namedImages=" << indirectNamedImages
+                              << " images=" << (indirectImages.empty()?"-":indirectImages)
+                              << std::endl;
                     std::cerr << "[WAW360-FLAMETYPED] raw=" << flameToken
                               << " shape=" << (materialShape?"PC_MATERIAL112_NAME_MATCH":"NO_TYPED_MATERIAL_MATCH")
                               << " materialName=" << (materialName.empty()?"-":materialName)
