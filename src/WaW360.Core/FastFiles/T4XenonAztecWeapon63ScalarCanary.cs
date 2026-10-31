@@ -18,6 +18,7 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public const string LimitEnvironment = "WAW360_AZTEC_WEAPON63_LIMIT";
     public const string ExtraInlineStringsEnvironment = "WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS";
     public const string AccuracyVec2WitnessEnvironment = "WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE";
+    public const string SoundAliasWitnessEnvironment = "WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE";
     private const int FixedBytes = 0x9AC;
 
     // Cross-validated 32-bit scalar-only slots in the original-PC Weapon
@@ -36,13 +37,16 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     // Source-owned INLINE children only, in original 7b ZoneCode order;
     // NEVER a packed/external XModel/FX/Material/Audio pointer or donor.
     public sealed record OwnedChild(int SourceBodyByteOffset,int FixedPointerSlot,
-        string ProofLabel,byte[] Payload,int VirtualAlignment,bool AccuracyVec2);
+        string ProofLabel,byte[] Payload,int VirtualAlignment,bool AccuracyVec2,
+        bool SourceVerifiedRebasedPointers=false);
     public sealed record Entry(
         int RootIndex,string Name,byte[] Body,IReadOnlyList<string> Children,
         string SourceProofSha256,string SourceBlobSha256,int ProofRecordOrdinal,
         int OriginalOwnedBlobBytes,int ExtendedFixedSourceInlineStrings,
         IReadOnlyList<OwnedChild>? OrderedOwnedChildren=null,
-        int OwnedAccuracyArrays=0,int OwnedAccuracyKnots=0,long OwnedAccuracyBytes=0)
+        int OwnedAccuracyArrays=0,int OwnedAccuracyKnots=0,long OwnedAccuracyBytes=0,
+        int OwnedBounceTables=0,int OwnedSoundAliasRecords=0,
+        int OwnedSoundAliasNames=0,long OwnedSoundAliasNameBytes=0)
     {
         public long SerializedDiagnosticBytes => Body.LongLength +
             (OrderedOwnedChildren is not null
@@ -96,6 +100,10 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
     public int TotalOwnedAccuracyVec2Arrays => ByRoot.Values.Sum(e=>e.OwnedAccuracyArrays);
     public int TotalOwnedAccuracyVec2Knots => ByRoot.Values.Sum(e=>e.OwnedAccuracyKnots);
     public long TotalOwnedAccuracyVec2PayloadBytes => ByRoot.Values.Sum(e=>e.OwnedAccuracyBytes);
+    public int TotalOwnedBounceTables => ByRoot.Values.Sum(e=>e.OwnedBounceTables);
+    public int TotalOwnedSoundAliasRecords => ByRoot.Values.Sum(e=>e.OwnedSoundAliasRecords);
+    public int TotalOwnedSoundAliasNames => ByRoot.Values.Sum(e=>e.OwnedSoundAliasNames);
+    public long TotalOwnedSoundAliasNameBytes => ByRoot.Values.Sum(e=>e.OwnedSoundAliasNameBytes);
     public long TotalDiagnosticEmittedBytes => ByRoot.Values.Sum(e=>e.SerializedDiagnosticBytes);
 
     private T4XenonAztecWeapon63ScalarCanary(
@@ -122,6 +130,11 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
         var expandedSourceStrings=extras=="1";
         var accuracySourceFile=Environment.GetEnvironmentVariable(AccuracyVec2WitnessEnvironment);
         var emitAccuracyVec2=!string.IsNullOrWhiteSpace(accuracySourceFile);
+        var soundSourceFile=Environment.GetEnvironmentVariable(SoundAliasWitnessEnvironment);
+        var emitSoundAliases=!string.IsNullOrWhiteSpace(soundSourceFile);
+        if(emitSoundAliases && (!emitAccuracyVec2 || !expandedSourceStrings || rawLimit!="63"))
+            throw new InvalidDataException(
+                "Authentic PC WeaponDef source sound aliases require all 63 original PC weapon bodies, typed XStrings and Vec2 prerequisites.");
         if(emitAccuracyVec2 && (!expandedSourceStrings || rawLimit!="63"))
             throw new InvalidDataException(
                 "Weapon63 accuracy Vec2 native FF canary requires all 63 source bodies and typed expanded inline XStrings.");
@@ -186,6 +199,41 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                 v=>v,StringComparer.Ordinal);
             if(accuracyWitnesses.Count!=63)
                 throw new InvalidDataException("Original PC accuracy source proof native WeaponDef names duplicated.");
+        }
+
+        // A second independent source-only witness verifies both source blob SHA
+        // and physical 7b owned-stream offsets of bounce tables and sound names.
+        using var soundDoc=emitSoundAliases
+            ? JsonDocument.Parse(await File.ReadAllTextAsync(
+                Path.GetFullPath(soundSourceFile!),cancellationToken))
+            : null;
+        Dictionary<string,JsonElement>? soundWitnesses=null;
+        if(emitSoundAliases)
+        {
+            var q=soundDoc!.RootElement;
+            if(q.GetProperty("schema").GetString()!="WaW360.Aztec63WeaponOriginalPcBounceSoundSourceWitness.v1" ||
+               q.GetProperty("status").GetString()!="AZTEC_63_WEAPON_ORIGINAL_PC_BOUNCE_TABLE_INLINE_OWNERSHIP_PROVEN_NOT_IN_FF" ||
+               q.GetProperty("originalPcWeaponRootsWithGenuineXbox7bOwnedProof").GetInt32()!=63 ||
+               q.GetProperty("inlineOriginalPcBounceTables").GetInt32()!=2 ||
+               q.GetProperty("originalPcOwnedInlineBouncePointerTableBytes").GetInt64()!=248 ||
+               q.GetProperty("originalPcBounceChildInlineAliasRecords").GetInt32()!=62 ||
+               q.GetProperty("originalPcBounceChildInlineNameStrings").GetInt32()!=9 ||
+               q.GetProperty("originalPcBounceChildInlineNameBytes").GetInt64()!=199 ||
+               q.GetProperty("originalPcInlineSoundAliasCustomRecordsAcrossAllOwnedWeaponFields").GetInt32()!=228 ||
+               q.GetProperty("originalPcOwnedInlineSoundAliasNameBytesAcrossAllOwnedWeaponFields").GetInt64()!=895 ||
+               !q.GetProperty("sourcePcWeaponBodySourceProofHashesAllRevalidated").GetBoolean() ||
+               !q.GetProperty("source7bTypedWalkerProvidesPhysicalOffsets").GetBoolean() ||
+               !q.GetProperty("sourceOwnedPointerBytesAreNotValidNativeFfRebases").GetBoolean() ||
+               !q.GetProperty("noNativeFastFileGeneratedOrModified").GetBoolean() ||
+               q.GetProperty("xboxRuntimeGameplayReady").GetBoolean())
+                throw new InvalidDataException(
+                    "Original PC sound alias 7b source witness changed; refusing unsupported Xbox pointer promotion.");
+            var ss=q.GetProperty("weapons").EnumerateArray().ToArray();
+            soundWitnesses=ss.ToDictionary(
+                row=>row.GetProperty("nativeWeaponRootName").GetString()??"",
+                row=>row,StringComparer.Ordinal);
+            if(ss.Length!=63 || soundWitnesses.Count!=63)
+                throw new InvalidDataException("Original PC sound witness requires 63 unique source roots.");
         }
         var selected=manifestRows.Where(r=>IsSelected(r.GetProperty("conclusion").GetString()??""))
             .OrderBy(r=>r.GetProperty("nativeRootOrdinal").GetInt32()).Take(limit).ToArray();
