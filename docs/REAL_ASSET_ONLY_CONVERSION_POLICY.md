@@ -157,3 +157,23 @@ From the repo root:
 IMPORTANT: an XMA encoder executable was detected in a previous Windows test, but no actual original-PC WAV/MP3/sound archive sources were scanned. A genuine Sound XAsset name does not imply an audio sample/XMA asset is present or converted. Next native audio stage requires exact real input audio payload provenance/stream decoding, actual Xbox XMA encoding with roundtrip test, and correct source-owned SoundFile/Xbox SndAlias binding. Dummy/muted samples are disallowed.
 
 The v2 C++ OAT code and PowerShell parser have been pushed but have NOT YET compiled or run on the user's Windows PC. Do not claim v2 sample/Material child names were recovered until its results are verified.
+
+
+## One-build Xbox-first sound alias path added to FlameTable typed v2
+
+The user's prior no-source-folder XMA preflight detected one encoder executable but 0 real input samples. Do not assume a Steam install folder exists; the previous Steam retail path was explicitly invalid. The correct Xbox-first approach is to identify genuinely owned stock Xbox 360 sound XAsset names and then separately prove whether the relevant zones/runtime sound assets are available. A genuine offline Xbox XAsset name is *never* itself an XMA sample byte provenance or a proven stock-preload contract.
+
+The typed v2 FlameTable loader probe now automatically calls tools/oat-xenon/Run-AztecFlameXboxSoundStockCrosswalk.ps1 after the original-PC 13-target OAT memory test. This extra step is source-only: it checks each authentic original-PC *SndAliasCustom* name against the existing 67 original Xbox retail OAT --list cache. Cache rows must retain the exact retail source path, original file length, UTC modification timestamp, and successful OAT exit code. Genuine asset-owned names and reference-only names are separately recorded. Original retail Sound XAssets in common.ff/code_post_gfx.ff/patch.ff are labeled only as possible stock-base candidates, NOT proven runtime residency.
+
+The 67-zone crosswalk does NOT extract any SoundFile bytes, perform Xbox XMA encoding, copy data from a donor/oracle, or modify the existing 4,514,599-byte OAT-good map. Its optional presence is not a justification for replacing PC references with arbitrarily selected stock sounds. Unknown/unmatched names are fenced. The 122/12/4 authentic source NULLs remain NULL. The v2 report and stock crosswalk report both describe incomplete native/XMA closure.
+
+To repeat after v2 has already installed the new OAT capability, omit -BuildDumper:
+
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlamePackedPointerLoaderProbe.ps1"
+
+Report pair:
+
+- pc_g11_flame_loaded_virtual_target_proof/aztec_26_flame_packed_original_pc_typed_material_alias_probe_v2.json
+- pc_g11_flame_loaded_virtual_target_proof/aztec_flame_sound_alias_real_xbox_retail_stock_names.json
+
+Next after this v2 run: for source-proven Material names, recover complete original-PC-owned serialized Material children and verify real Xbox technique/image counterparts; for SoundAlias names, select source-owned or resident stock Xbox SoundFile and actual XMA audio bytes only with byte-level and runtime provenance. No filler/silence allowed. This code is committed but has not yet been Windows run.
