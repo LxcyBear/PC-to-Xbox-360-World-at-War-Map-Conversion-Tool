@@ -240,7 +240,8 @@ Assert-InputsStillPinned
 foreach($case in @(@{label='control_00';value=$control},@{label='weapons_63';value=$weapons})){
     if($null -eq $case.value -or $case.value -is [array] -or
        $case.value -isnot [pscustomobject]){
-        throw "A/B $($case.label) must return one validated PSCustomObject; got $($case.value.GetType().FullName). The child runner stdout must flow to Out-Host, not the function result."
+        $actualType=if($null -eq $case.value){'<null>'}else{$case.value.GetType().FullName}
+        throw "A/B $($case.label) must return one validated PSCustomObject; got $actualType. The child runner stdout must flow to Out-Host, not the function result."
     }
 }
 foreach($key in @('realMaterialRoots','realXModelRoots','realImageRoots','realRawFileRoots','gate10Draws','gate11Cells','gate11Trees','gate11ModelIndexes','physicalBytes')){
