@@ -183,8 +183,9 @@ for($i=0;$i -lt 1903;$i++){
             $mismatches.Add([ordered]@{ordinal=$i;field='unverified-stock-model';actual=[string]$read.model})
         }
     }else{throw "Unknown model owner class at draw $i."}
-    if(Approx ([double]$read.cullDist) ([double]$pc.cullDist) 0.0001){$matches.cullDist++}
-    if(Approx ([double]$read.scale) ([double]$pc.scale) 0.00001){$matches.scale++}
+    $rowChecks=[ordered]@{}
+    $rowChecks.cullDist=Approx ([double]$read.cullDist) ([double]$pc.cullDist) 0.0001
+    $rowChecks.scale=Approx ([double]$read.scale) ([double]$pc.scale) 0.00001
     $sameOrigin=(@($read.origin).Count -eq 3 -and @($pc.origin).Count -eq 3)
     if($sameOrigin){
         for($a=0;$a -lt 3;$a++){
@@ -193,7 +194,7 @@ for($i=0;$i -lt 1903;$i++){
             }
         }
     }
-    if($sameOrigin){$matches.origin++}
+    $rowChecks.origin=$sameOrigin
     $sameAxis=@($read.packedAxisWords).Count -eq 3
     if($sameAxis){
         for($a=0;$a -lt 3;$a++){
@@ -202,20 +203,18 @@ for($i=0;$i -lt 1903;$i++){
             }
         }
     }
-    if($sameAxis){$matches.packedAxes++}
-    if([int]$read.reflectionProbeIndex -eq [int]$source[$at+36]){$matches.reflectionIndex++}
-    if([int]$read.primaryLightIndex -eq [int]$source[$at+37]){$matches.primaryLightIndex++}
+    $rowChecks.packedAxes=$sameAxis
+    $rowChecks.reflectionIndex=[int]$read.reflectionProbeIndex -eq [int]$source[$at+36]
+    $rowChecks.primaryLightIndex=[int]$read.primaryLightIndex -eq [int]$source[$at+37]
     $be16=([int]$source[$at+38])*256+[int]$source[$at+39]
-    if([int]$read.lightingHandle -eq $be16){$matches.lightingHandle++}
-    if([int]$read.flags -eq [int]$source[$at+40]){$matches.flags++}
-    if([int]$read.paddingNonZeroBytes -eq 0){$matches.zeroPadding++}
-    if($mismatches.Count -lt 20){
-        foreach($field in @('cullDist','scale','origin','packedAxes','reflectionIndex','primaryLightIndex','lightingHandle','flags','zeroPadding')){
-            if([int]$matches[$field] -lt ($i+1 - @($mismatches.ToArray() | Where-Object { [int]$_.ordinal -eq $i -and [string]$_.field -eq $field }).Count) -and
-               $field -in @('packedAxes','lightingHandle','reflectionIndex','primaryLightIndex','flags')){
-                $mismatches.Add([ordered]@{ordinal=$i;field=$field})
-                break
-            }
+    $rowChecks.lightingHandle=[int]$read.lightingHandle -eq $be16
+    $rowChecks.flags=[int]$read.flags -eq [int]$source[$at+40]
+    $rowChecks.zeroPadding=[int]$read.paddingNonZeroBytes -eq 0
+    foreach($field in @($rowChecks.Keys)){
+        if([bool]$rowChecks[$field]){
+            $matches[$field]++
+        }elseif($mismatches.Count -lt 20){
+            $mismatches.Add([ordered]@{ordinal=$i;field=$field})
         }
     }
 }
