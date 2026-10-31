@@ -215,6 +215,9 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                q.GetProperty("status").GetString()!="AZTEC_63_WEAPON_ORIGINAL_PC_BOUNCE_TABLE_INLINE_OWNERSHIP_PROVEN_NOT_IN_FF" ||
                q.GetProperty("originalPcWeaponRootsWithGenuineXbox7bOwnedProof").GetInt32()!=63 ||
                q.GetProperty("inlineOriginalPcBounceTables").GetInt32()!=2 ||
+               q.GetProperty("packedBounceTablesQuarantined").GetInt32()!=0 ||
+               q.GetProperty("nullBounceTableFields").GetInt32()!=61 ||
+               q.GetProperty("inlineBounceEntryAliasRecords").GetInt32()!=62 ||
                q.GetProperty("originalPcOwnedInlineBouncePointerTableBytes").GetInt64()!=248 ||
                q.GetProperty("originalPcBounceChildInlineAliasRecords").GetInt32()!=62 ||
                q.GetProperty("originalPcBounceChildInlineNameStrings").GetInt32()!=9 ||
