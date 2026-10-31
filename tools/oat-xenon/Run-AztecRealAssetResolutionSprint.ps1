@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$AudioSourceRoot='',
-    [int]$MaxAudioFiles=2500
+    [int]$MaxAudioFiles=2500,
+    [switch]$NoBuild
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -48,9 +49,11 @@ New-Item -ItemType Directory -Force -Path $out|Out-Null
 Write-Host '[AZTEC-REAL-SPRINT] ====================================================='
 Write-Host '[AZTEC-REAL-SPRINT] ONE-BUILD ORIGINAL-PC MATERIAL + FLAME + AUDIO/XMA SOURCE SPRINT'
 Write-Host '[AZTEC-REAL-SPRINT] No null substitution, no dummy audio, no FF, no Xbox.'
+if($NoBuild){Write-Host '[AZTEC-REAL-SPRINT] FAST RETRY: reuse previously compiled Release CLI; PowerShell-only XMA preflight fix.'}
 Write-Host '[AZTEC-REAL-SPRINT-PROGRESS] [####----------------] 20% | 222/228 prior FF and real PC FlameTable sources hash-pinned'
-$argsList=@('run','--no-launch-profile','-c','Release','--project',$cli,'--',
-    'aztec-weapon63-real-flame-material-join',$weapon,$flame,$mat,$join)
+$argsList=@('run','--no-launch-profile','-c','Release','--project',$cli)
+if($NoBuild){$argsList+=@('--no-build')}
+$argsList+=@('--','aztec-weapon63-real-flame-material-join',$weapon,$flame,$mat,$join)
 $saved=$ErrorActionPreference
 try{
     $ErrorActionPreference='Continue'
