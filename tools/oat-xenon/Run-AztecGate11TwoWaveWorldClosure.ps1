@@ -249,7 +249,7 @@ Write-Host "[AZTEC-GATE11-TWO-WAVE] SHADOW primaryLights=$lights, headers=$($sha
 
 Write-Host '[AZTEC-GATE11-PROGRESS] [################----] 80% | nested light-region graph and Xbox-only stream ABI, same scan'
 $regions=@($w.lightRegions)
-$regionRoot=[bool]$c.regionRootPresent
+$regionRoot=[bool]$c.lightRegionRootPresent
 if(($regionRoot -and $regions.Count -ne $lights) -or
    (-not $regionRoot -and $regions.Count -ne 0) -or
    [int]$a.lightRegionBytes -ne 8 -or
