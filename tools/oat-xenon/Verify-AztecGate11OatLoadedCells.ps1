@@ -1,13 +1,13 @@
 [CmdletBinding()]
-param([switch]$PrimitiveCandidate,[switch]$LightingCandidate,[switch]$ImageHeadersCandidate)
-if((([int]$PrimitiveCandidate.IsPresent)+([int]$LightingCandidate.IsPresent)+([int]$ImageHeadersCandidate.IsPresent)) -gt 1){
+param([switch]$PrimitiveCandidate,[switch]$LightingCandidate,[switch]$ImageHeadersCandidate,[switch]$ImageRootLinksCandidate)
+if((([int]$PrimitiveCandidate.IsPresent)+([int]$LightingCandidate.IsPresent)+([int]$ImageHeadersCandidate.IsPresent)+([int]$ImageRootLinksCandidate.IsPresent)) -gt 1){
     throw 'Choose only one isolated FF candidate.'
 }
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
-$work=Join-Path $base $(if($ImageHeadersCandidate){'pc_g11_image_headers_probe'}elseif($LightingCandidate){'pc_g11_lighting_combined_probe'}elseif($PrimitiveCandidate){'pc_g11_remaining_world_primitive_probe'}else{'pc_g11_cells_740'})
+$work=Join-Path $base $(if($ImageRootLinksCandidate){'pc_g11_image_root_links_probe'}elseif($ImageHeadersCandidate){'pc_g11_image_headers_probe'}elseif($LightingCandidate){'pc_g11_lighting_combined_probe'}elseif($PrimitiveCandidate){'pc_g11_remaining_world_primitive_probe'}else{'pc_g11_cells_740'})
 $manifestPath=Join-Path $work 'aztec_pc_world_core_integrated_oat_run.json'
 $gate10Path=Join-Path $base 'pc_g10_1903\oat_loaded_1903_draw_readback\aztec_gate10_independent_1903_draw_readback.json'
 $sourcePath=Join-Path $base 'pc_g10_1903\gate11_cell_topology_source\aztec_gate11_pc_source_cells_native_abi.json'
@@ -27,7 +27,9 @@ if([string]$cap.format -ne 'WaW360.OatGraphDumperCapabilities.v1' -or
 $m=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
 $g=Get-Content -LiteralPath $gate10Path -Raw|ConvertFrom-Json
 $s=Get-Content -LiteralPath $sourcePath -Raw|ConvertFrom-Json
-$expectedStatus=if($ImageHeadersCandidate){
+$expectedStatus=if($ImageRootLinksCandidate){
+    'AZTEC_GATE11_SIX_IMAGE_ROOT_NAME_SHELL_LINKS_OAT_PASS_PIXELS_UNPROVEN'
+}elseif($ImageHeadersCandidate){
     'AZTEC_GATE11_SOURCE_IMAGE_HEADERS_OAT_PASS_PIXELS_UNPROVEN'
 }elseif($LightingCandidate){
     'AZTEC_GATE11_LIGHT_GRID_SHADOW_REGION_OAT_LOAD_PASS_FIELDS_UNVERIFIED'
@@ -40,24 +42,28 @@ if([string]$m.schema -ne 'WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1' -or
    [string]$m.status -ne $expectedStatus -or
    -not [bool]$m.OatPass -or
    -not [bool]$m.gate11PhysicalCellDiagnostic -or
-   (($PrimitiveCandidate -or $LightingCandidate -or $ImageHeadersCandidate) -and (-not [bool]$m.gate11PrimitiveProbe -or
+   (($PrimitiveCandidate -or $LightingCandidate -or $ImageHeadersCandidate -or $ImageRootLinksCandidate) -and (-not [bool]$m.gate11PrimitiveProbe -or
       [int]$m.gate11PrimitiveSkySurfaces -ne 2 -or
       [int]$m.gate11PrimitiveBrushModels -ne 183 -or
       [long]$m.gate11PrimitiveWaterBytes -ne 2097408L -or
       [bool]$m.gate11PrimitiveIndependentReadbackProven)) -or
-   (($LightingCandidate -or $ImageHeadersCandidate) -and (-not [bool]$m.gate11LightingCombinedProbe -or
+   (($LightingCandidate -or $ImageHeadersCandidate -or $ImageRootLinksCandidate) -and (-not [bool]$m.gate11LightingCombinedProbe -or
       [long]$m.gate11LightingGridBytes -ne 4822860L -or
       [int]$m.gate11LightingShadowModelReferences -ne 1903 -or
       [int]$m.gate11LightingEmptyRegionHeaders -ne 2 -or
       [bool]$m.gate11LightingIndependentLoadedFieldReadback -or
       [bool]$m.gate11LightmapImagePayloadsResolved -or
       [bool]$m.gate11XboxStreamInfoReconstructed)) -or
-   ($ImageHeadersCandidate -and (-not [bool]$m.gate11ImageHeadersProbe -or
+   (($ImageHeadersCandidate -or $ImageRootLinksCandidate) -and (-not [bool]$m.gate11ImageHeadersProbe -or
       [int]$m.gate11SourceReflectionHeaderCount -ne 2 -or
       [int]$m.gate11SourceLightmapHeaderCount -ne 2 -or
       [int]$m.gate11UnboundGeneratedImagePointers -ne 6 -or
       -not [bool]$m.gate11NativeEmptyStreamStructRequiredByReference -or
       [bool]$m.gate11ImageHeaderIndependentLoadedReadbackProven)) -or
+   ($ImageRootLinksCandidate -and (-not [bool]$m.gate11ImageRootLinksProbe -or
+      [int]$m.gate11ImageRootNamesLinked -ne 6 -or
+      [int]$m.gate11ImageShellPixelPayloadsVerified -ne 0 -or
+      [bool]$m.gate11ImageRootLinksIndependentReadbackProven)) -or
    [int]$m.gate10DrawRecordsInEmittedFf -ne 1903 -or
    [int]$m.gate10StockModelDrawUnverified -ne 1 -or
    [int]$m.gate11SourceCellsInFf -ne 11 -or
@@ -189,9 +195,10 @@ $answer=[ordered]@{
     actualGfxWorldFf=$ff
     actualGfxWorldFfSha256=$ffSha
     preservedGate10FfSha256=$baselineHash
-    sourceOwnedPrimitiveCandidate=[bool]($PrimitiveCandidate -or $LightingCandidate -or $ImageHeadersCandidate)
-    sourceOwnedLightingCandidate=[bool]($LightingCandidate -or $ImageHeadersCandidate)
-    sourceOwnedImageHeadersCandidate=[bool]$ImageHeadersCandidate
+    sourceOwnedPrimitiveCandidate=[bool]($PrimitiveCandidate -or $LightingCandidate -or $ImageHeadersCandidate -or $ImageRootLinksCandidate)
+    sourceOwnedLightingCandidate=[bool]($LightingCandidate -or $ImageHeadersCandidate -or $ImageRootLinksCandidate)
+    sourceOwnedImageHeadersCandidate=[bool]($ImageHeadersCandidate -or $ImageRootLinksCandidate)
+    sourceOwnedImageRootLinksCandidate=[bool]$ImageRootLinksCandidate
     primitiveSkyBrushWaterTypedReadbackProven=$false
     originalPcSourceTypedGraphSha256=$sourceHash
     independentOatWitness=$witnessCopy
@@ -207,7 +214,7 @@ Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "[AZTEC-GATE11-READBACK] 11/11 cells; 740/740 trees; $($counts.treeModelIndexes) model indices and $($counts.cellReflectionIndices) probes match ORIGINAL PC"
 Write-Host "[AZTEC-GATE11-READBACK] New FF SHA=$ffSha"
 Write-Host "[AZTEC-GATE11-READBACK] Report=$report"
-if($PrimitiveCandidate -or $LightingCandidate -or $ImageHeadersCandidate){
+if($PrimitiveCandidate -or $LightingCandidate -or $ImageHeadersCandidate -or $ImageRootLinksCandidate){
     Write-Host '[AZTEC-GATE11-READBACK] New primitive FF preserves all source-owned cell/AABB fields in SECOND independent OAT readback.'
     Write-Host '[AZTEC-GATE11-READBACK] Sky, brush and water FIELD readback is still PENDING. No Gate11 overall PASS.'
 }else{
