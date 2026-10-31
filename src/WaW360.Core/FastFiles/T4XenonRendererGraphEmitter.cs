@@ -43,6 +43,8 @@ public sealed class T4XenonRendererEmitResult
     public required bool ReadyForHardware { get; init; }
     public required bool OriginalPcGfxWorldCoreEmitted { get; init; }
     public required bool OriginalPcGfxWorldFullDpvsGraphComplete { get; init; }
+    public required int OriginalPcGfxWorldGate10DrawRecords { get; init; }
+    public required int OriginalPcGfxWorldGate10UnverifiedStockDraws { get; init; }
     public required string? OatGateError { get; init; }
     public required string TextReportFile { get; init; }
     public required string JsonReportFile { get; init; }
@@ -642,6 +644,8 @@ public static class T4XenonRendererGraphEmitter
         report.AppendLine($"Original-PC MapEnts roots:   {realMapEnts:N0} (scratch-only)");
         report.AppendLine($"Original-PC ComWorld roots:  {realComWorlds:N0} (source-derived; scratch-only)");
         report.AppendLine($"Original-PC GfxWorld core:    {(sourceWorld is null ? "NOT EMITTED" : "EMITTED (735 live surfaces; incomplete DPVS children; OAT probe)") }");
+        report.AppendLine($"Gate10 native diagnostic draw records: {sourceWorld?.Gate10OatDiagnosticDrawRecords ?? 0:N0}");
+        report.AppendLine($"Gate10 runtime-unverified stock draw: {sourceWorld?.Gate10UnverifiedStockDraws ?? 0:N0}");
         report.AppendLine($"PC ComWorld zone offset:     0x{comWorldZoneOffset:X}");
         report.AppendLine($"Material reference roots:   {(materialCorpus?.ReferenceRoots ?? 0):N0}");
         report.AppendLine($"Real XModel roots:          {realXModels:N0}");
@@ -706,6 +710,8 @@ public static class T4XenonRendererGraphEmitter
             ReadyForHardware = ready,
             OriginalPcGfxWorldCoreEmitted = sourceWorld is not null,
             OriginalPcGfxWorldFullDpvsGraphComplete = sourceWorld?.FullDpvsChildGraphComplete ?? false,
+            OriginalPcGfxWorldGate10DrawRecords = sourceWorld?.Gate10OatDiagnosticDrawRecords ?? 0,
+            OriginalPcGfxWorldGate10UnverifiedStockDraws = sourceWorld?.Gate10UnverifiedStockDraws ?? 0,
             OatGateError = oatError,
             TextReportFile = txt,
             JsonReportFile = json

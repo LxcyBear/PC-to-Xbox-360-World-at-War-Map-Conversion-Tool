@@ -6,6 +6,7 @@ param([switch]$IntegrateWorld,
       [switch]$Gate8ChildProbe,
       [switch]$Gate8FiveModelProbe,
       [switch]$Gate8AllModelProbe,
+      [switch]$Gate10StaticDrawProbe,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
 Set-StrictMode -Version Latest
@@ -36,6 +37,12 @@ if($Gate8AllModelProbe -and
     -not $DpvsStaticProbe -or -not $Gate8ChildProbe -or
     $Gate8ChildLevel -ne 'All')){
     throw '-Gate8AllModelProbe requires -IntegrateWorld -ProbeLevel Full -DpvsStaticProbe -Gate8ChildProbe -Gate8ChildLevel All.'
+}
+if($Gate10StaticDrawProbe -and
+   (-not $Gate8AllModelProbe -or -not $IntegrateWorld -or
+    -not $DpvsStaticProbe -or -not $Gate8ChildProbe -or
+    $ProbeLevel -ne 'Full' -or $Gate8ChildLevel -ne 'All')){
+    throw '-Gate10StaticDrawProbe requires the full source DPVS, Gate8 all-model/plane/node and current original-PC world diagnostic.'
 }
 $repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 $base=Join-Path $repo 'output\second_map_baselines\nazi_zombie_aztec_V2.2\native_material_mapping'
@@ -122,9 +129,24 @@ $gate8Source=Join-Path $base 'pc_gfxworld_gate8_child_source_corpus\aztec_pc_gat
 if($Gate8ChildProbe -and -not(Test-Path -LiteralPath $gate8Source -PathType Leaf)){
     throw "Missing typed original-PC Gate8 source corpus. Run Run-SecondMapAztecGate8PcChildCorpus.ps1 first: $gate8Source"
 }
+$gate10Light=''
+$gate10Plan=''
+if($Gate10StaticDrawProbe){
+    $sourceLights=Join-Path $base 'pc_gate8_source_light_codec_candidate'
+    $latest=@(Get-ChildItem -LiteralPath $sourceLights -Recurse -File -Filter 'aztec_gate10_source_light_candidate_summary.json' -ErrorAction Stop |
+        Sort-Object LastWriteTime -Descending)
+    if($latest.Count -eq 0){throw "Missing source-owned Gate10 light sidecar under $sourceLights"}
+    $gate10Light=$latest[0].FullName
+    $gate10Plan=Join-Path $base 'pc_gate8_1903_draw_relocation_plan\aztec_1903_model_pointer_relocation_summary.json'
+    if(-not(Test-Path -LiteralPath $gate10Plan -PathType Leaf)){
+        throw "Gate10 1903 draw -> native XModel root plan missing: $gate10Plan"
+    }
+    Write-Host '[AZTEC-GATE10-FF] Isolated OAT-only candidate: 1903 original-PC draws, one stock XModel still UNVERIFIED.'
+}
 $work=Join-Path $base $(if($IntegrateWorld){
     if($Gate8ChildProbe){
-        if($Gate8AllModelProbe){'pc_gate8_29x_ff'}
+        if($Gate10StaticDrawProbe){'pc_g10_1903'}
+        elseif($Gate8AllModelProbe){'pc_gate8_29x_ff'}
         elseif($Gate8FiveModelProbe){'pc_gate8_5x_ff'}
         elseif($Gate8ChildLevel -eq 'All'){'pc_gate8_planes_nodes_layer'}
         else{'pc_735_39_gfxworld_integrated_ff_oat_run_probe_gate8_'+$Gate8ChildLevel.ToLowerInvariant()}
@@ -274,6 +296,8 @@ try{
     $priorDpvs=$env:WAW360_AZTEC_WORLD_DPVS_STATIC_PROBE
     $priorGate8=$env:WAW360_AZTEC_GATE8_CHILD_CORPUS
     $priorGate8Level=$env:WAW360_AZTEC_GATE8_CHILD_LEVEL
+    $priorGate10Light=$env:WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT
+    $priorGate10Plan=$env:WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -287,6 +311,14 @@ try{
         }else{
             Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_CORPUS -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_LEVEL -ErrorAction SilentlyContinue
+        }
+        if($Gate10StaticDrawProbe){
+            $env:WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT=$gate10Light
+            $env:WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY=$gate10Plan
+            Write-Host '[AZTEC-GATE10-PROGRESS] [########------------] 40% | re-plan and emit GfxWorld draws with new XModel pointers'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT -ErrorAction SilentlyContinue
+            Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -311,6 +343,16 @@ try{
             Remove-Item Env:\WAW360_AZTEC_GATE8_CHILD_LEVEL -ErrorAction SilentlyContinue
         }else{
             $env:WAW360_AZTEC_GATE8_CHILD_LEVEL=$priorGate8Level
+        }
+        if($null -eq $priorGate10Light){
+            Remove-Item Env:\WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE10_SOURCE_LIGHT_REPORT=$priorGate10Light
+        }
+        if($null -eq $priorGate10Plan){
+            Remove-Item Env:\WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY -ErrorAction SilentlyContinue
+        }else{
+            $env:WAW360_AZTEC_GATE10_ROOT_RELOCATION_SUMMARY=$priorGate10Plan
         }
     }
 }finally{$ErrorActionPreference=$save}
@@ -341,6 +383,12 @@ if($IntegrateWorld){
             [int]$e.RealMapEntsRoots -eq 1 -and
             [int]$e.RealComWorldRoots -eq 1
     }
+    if($Gate10StaticDrawProbe){
+        $candidateOatPass=$candidateOatPass -and
+            [int]$e.OriginalPcGfxWorldGate10DrawRecords -eq 1903 -and
+            [int]$e.OriginalPcGfxWorldGate10UnverifiedStockDraws -eq 1 -and
+            [bool]$e.ValidationOnly -and -not [bool]$e.ReadyForHardware
+    }
     if($Gate8AllModelProbe){
         $candidateOatPass=$candidateOatPass -and
             [bool]$e.ValidationOnly -and
@@ -355,7 +403,13 @@ if($IntegrateWorld){
     }
     $result=[ordered]@{
         schema='WaW360.AztecPcGfxWorldIntegratedFastFileOatRun.v1'
-        status=if($Gate8AllModelProbe){
+        status=if($Gate10StaticDrawProbe){
+            if($core -and $candidateOatPass){
+                'AZTEC_GATE10_1903_STATIC_DRAW_DIAGNOSTIC_OAT_PASS_STOCK_UNVERIFIED'
+            }else{
+                'AZTEC_GATE10_1903_STATIC_DRAW_DIAGNOSTIC_OAT_BLOCKED'
+            }
+        }elseif($Gate8AllModelProbe){
             if($core -and $candidateOatPass){
                 if([int]$allStage.unresolvedNativeReferenceModelTypes -gt 0){
                     'AZTEC_GATE8_REAL_OWNED_XMODEL_FF_OAT_PASS_REFERENCES_UNRESOLVED'
@@ -389,6 +443,10 @@ if($IntegrateWorld){
         sourceBackedGate8ProbeLevel=if($Gate8ChildProbe){$Gate8ChildLevel}else{''}
         fiveSourceOwnedXModelProbe=[bool]$Gate8FiveModelProbe
         all27StaticSourceXModelProbe=[bool]$Gate8AllModelProbe
+        gate10SourceDrawDiagnostic=[bool]$Gate10StaticDrawProbe
+        gate10DrawRecordsInEmittedFf=[int]$e.OriginalPcGfxWorldGate10DrawRecords
+        gate10StockModelDrawUnverified=[int]$e.OriginalPcGfxWorldGate10UnverifiedStockDraws
+        gate10ProductionApproved=$false
         all27SourceModelStagingManifest=if($Gate8AllModelProbe){$allStaging}else{''}
         unresolvedNativeSourceModelReferences=if($Gate8AllModelProbe){[int]$allStage.unresolvedNativeReferenceModelTypes}else{0}
         unresolvedNativeSourceModelDraws=if($Gate8AllModelProbe){[int]$allStage.unresolvedNativeReferenceDraws}else{0}
@@ -412,7 +470,9 @@ if($IntegrateWorld){
         outputFastFile=[string]$e.OutputFastFile
         emitterReport=$emitManifest
         emitterLog=$log
-        note=if($Gate8AllModelProbe){
+        note=if($Gate10StaticDrawProbe){
+            'Diagnostic-only source-owned 1903 x 60B smodelDrawInsts child physically serialized with CURRENT Stage4D XModel pointer rebases. One stock model NULL; lighting handle hypotheses and four packed rotations still need semantic proof. Complete world children, runtime assets and Xbox test blocked.'
+        }elseif($Gate8AllModelProbe){
             'SCRATCH-ONLY: source 27 model NAMES are accounted by actual converted source mesh bodies, proven native refs, and explicitly UNRESOLVED PC reference/native-root mismatches. Only real source bodies are serialized; unresolved models remain identity shells. OAT must accept real FF. No 1903 GfxWorld static draws, external residency, complete DPVS, images, runtime dependency closure or Xbox hardware approval.'
         }elseif($Gate8FiveModelProbe){
             'SCRATCH-ONLY five source-owned Xenon XModel graph root upgrades, with original-PC Gate8 BSP plane/node/layer world. Exactly 3 static draw models added to the 2 earlier canaries, but all 1903 static draw entries remain unbound, and other DPVS/cell/runtime branches are incomplete. No main/_load pair or Xbox hardware.'
@@ -427,6 +487,20 @@ if($IntegrateWorld){
         }
     }
     $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $report -Encoding UTF8
+    if($Gate10StaticDrawProbe){
+        $ffPath=[string]$e.OutputFastFile
+        if(Test-Path -LiteralPath $ffPath -PathType Leaf){
+            $newLength=[long](Get-Item -LiteralPath $ffPath).Length
+            $priorFf=Join-Path $base 'pc_gate8_29x_ff\scratch_emit\nazi_zombie_aztec.ff'
+            if(Test-Path -LiteralPath $priorFf -PathType Leaf){
+                $previousLength=[long](Get-Item -LiteralPath $priorFf).Length
+                Write-Host "[AZTEC-GATE10-SIZE] baseline=$previousLength B new=$newLength B delta=$($newLength-$previousLength) B"
+            }else{
+                Write-Host "[AZTEC-GATE10-SIZE] new OAT diagnostic FF=$newLength B; previous baseline missing"
+            }
+        }
+        Write-Host "[AZTEC-GATE10-PROGRESS] [####################] 100% | diagnostic FF emitted; OAT pass=$candidateOatPass; NOT Xbox ready"
+    }
     Write-Host "[AZTEC-WORLD-INTEGRATED] probeLevel=$ProbeLevel sourceDpvsProbe=$DpvsStaticProbe gate8ChildProbe=$Gate8ChildProbe gate8Level=$Gate8ChildLevel fiveModelProbe=$Gate8FiveModelProbe allStaticModelProbe=$Gate8AllModelProbe realXModels=$($e.RealXModelRoots) fullCore=$($core -and -not $diagnosticProbe) realMaterials=$($e.RealMaterialRoots)/39"
     Write-Host "[AZTEC-WORLD-INTEGRATED] OAT PASS=$candidateOatPass originalPcWorldFF=$($e.OutputFastFile)"
     Write-Host "[AZTEC-WORLD-INTEGRATED] status=$($result.status)"
