@@ -110,6 +110,14 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine("[AZTEC-W63-BOUNCE] NO Xbox donor audio, NO FF/OAT build, NO Xbox hardware.");
                 return 0;
             }
+            case "aztec-weapon63-real-flame-material-join" when args.Length == 5:
+            {
+                var report=await T4AztecFlameRealSourceJoin.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-REAL-JOIN] Original-PC SAME-ZONE SHA-and-byte matched FlameTable Material* vs 39 genuine OAT-loaded PC Material* roots: "+report);
+                Console.WriteLine("[AZTEC-REAL-JOIN] No fake names/materials, audio samples, XMA, native FF or Xbox. Identity matches are not runtime asset bodies.");
+                return 0;
+            }
             case "aztec-weapon63-original-pc-flame-parent-witness" when args.Length == 5:
             {
                 var report=await T4XenonAztecWeaponFlameSourceWitness.RunAsync(
