@@ -1038,3 +1038,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 On OAT failure retry \`-Limit 1\`, then \`-Limit 6\` for controlled bisection; do not equate a successful 1-asset trial to completed 63-asset integration. When comparing to the 4.51MB protected candidate, note that the growth experiment rebuilds the Stage4E scratch from its own source graph; the raw delta measures the whole resulting FF variant, *not necessarily pure incremental WeaponDef bytes* if other source world settings differ. To measure true same-settings weapon-only growth, also generate a no-weapon control using the same Stage4D/4E mode and compare those two FFs. Any actual OAT success is still **NOT Xbox runtime/gameplay readiness**. Gate11 10/13 remains.
+
+### Weapon63 first Windows FF growth attempt BLOCKED before candidate, corrected 7b source/native pointer gates (2026-10-31)
+
+User Windows run at \`3e04011\`: **63/63 PowerShell syntax PASS, incremental C# build PASS**. Full original-PC Gate11 (1,903 source static draws, 11 source GfxCells/740 AABB, 4.82 MB source lightgrid, 39 material bodies, image header aliases) started, but Stage4D failed in \`T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync\` on FIRST original-PC weapon \`zombie_melee\`: \`gunXModel[0] retains packed/source pointer 0x80001A51; self-contained promotion refused\`. Therefore **no new FF emitted, OAT never called**. Reported scratch \`0 B\` and \`-4,510,695 B\` were a misleading arithmetic artifact, NOT actual map shrinkage. Protected prior good candidate still **4,510,695 B**, intact; standalone **63/69** native WeaponDef source SHA/name verifications remain intact.
+
+**Root cause:** the authentic Alpha 7b source-owned Xbox-endian body proof is intentionally **not self-contained**, because it preserves legitimate original PC packed asset/Virtual pointers while independently proving typed source-owned child traversal and byte order. \`T4WeaponVariableSerializerProof.BuildProofAsync\` already uses a big-endian \`WalkOwnedPayload\` with \`RequireSelfContainedPointers=false\`. The new Weapon63 scratch canary incorrectly called the stricter \`TryValidateSelfContainedXboxBlob\` on the **source evidence** before it could copy safe scalars. That gate is correct **only for the newly constructed native Xbox FF canary** with all unresolved child pointers NULL. This was an inappropriate evidence-versus-runtime validation mixup, not proof corruption or a problem with OAT.
+
+**Pushed fix:** introduced \`T4WeaponVariableSerializerProof.TryValidateSourceOwnedXboxBlob\`, which matches the original approved Alpha 7b source-owned endian/typed traversal and accepts valid source packed pointers. \`T4XenonAztecWeapon63ScalarCanary\` now uses this validator **only on the unchanged SHA-pinned original PC source-owned blob**. It continues to create a **new** 0x9AC source scalar / inline-XString FF canary with all other child pointers zeroed and requires the **original strict** \`TryValidateSelfContainedXboxBlob\` to pass before stage4D/4E serialization. NO source/raw packed pointers are copied to the FF, and the original full 179,775 B proof graph is still NOT emitted. If the source body is malformed, the source gate still fails; if the new FF contains even one unrebased packed pointer, the self-contained gate still fails.
+
+**Fixed size report:** missing generated scratch FF now prints \`NO CANDIDATE GENERATED\` and delta \`N/A\`, with null JSON byte/delta fields, instead of false negative growth. \`wrapperRoundTripVerified\` no longer equates 4D layout replay with writer roundtrip success. All previous original PC source SHA/identity checks and hardware fences preserved.
+
+Rerun (Windows first run of fix still pending):
+
+\`\`\`powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecWeapon63FfGrowthCanary.ps1" -Limit 63
+\`\`\`
+
+If it blocks at a particular source-owned name, send \`[AZTEC-WORLD39-FF] EMIT ...\` lines; can use \`-Limit 1\` to verify first one independently, then \`-Limit 6\`. Only a complete OAT load plus byte-level readback and nonzero new candidate counts as actual FF growth; current baseline size remains 4.51MB. Gate11 10/13 and runtime Xbox release remain blocked.
