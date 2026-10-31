@@ -30,6 +30,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-AztecGate10AxisAndStockClosure.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Show-AztecFirstXboxFFProgress.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-AztecGate11DpvsChildFrontier.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate11CellTopologySourceWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecGate8NativeStaticDrawAbiWitness.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Audit-Aztec100PercentPackage.ps1') -ErrorAction Stop)
