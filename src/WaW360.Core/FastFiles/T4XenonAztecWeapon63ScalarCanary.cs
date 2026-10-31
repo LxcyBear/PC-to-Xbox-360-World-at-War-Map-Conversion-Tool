@@ -682,8 +682,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
                        witness.GetProperty("originalPcRecordOffset").GetInt32()!=alias.SourceRecordByteOffset ||
                        witness.GetProperty("originalPcOwnedNameBytes").GetInt32()!=(alias.InlineNameBytes?.Length??0) ||
                        !string.Equals(
-                           witness.GetProperty("originalPcOwnedNameSha256").GetString(),
-                           alias.InlineNameBytes is null?null:
+                           witness.GetProperty("originalPcOwnedNameSha256").GetString()??"",
+                           alias.InlineNameBytes is null?"":
                                Convert.ToHexString(SHA256.HashData(alias.InlineNameBytes)),
                            StringComparison.OrdinalIgnoreCase) ||
                        BinaryPrimitives.ReadUInt32BigEndian(
