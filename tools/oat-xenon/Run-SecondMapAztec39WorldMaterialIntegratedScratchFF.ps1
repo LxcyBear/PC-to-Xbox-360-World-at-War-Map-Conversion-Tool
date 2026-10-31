@@ -16,6 +16,7 @@ param([switch]$IntegrateWorld,
       [switch]$Weapon63ExtendedInlineStrings,
       [switch]$Weapon63OwnedAccuracyVec2,
       [switch]$Weapon63OwnedBounceSound,
+      [switch]$Weapon63OwnedDirectSoundAliases,
       [ValidateSet('0','1','6','63')][int]$WeaponCanaryLimit=63,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
@@ -77,6 +78,12 @@ if($Weapon63OwnedBounceSound -and
    (-not $Weapon63OwnedAccuracyVec2 -or -not $Weapon63SourceCanary -or
     -not $Weapon63ExtendedInlineStrings -or $WeaponCanaryLimit -ne 63)){
     throw 'Original-PC 2 authentic bounceSound tables require all 63 source-proven weapons + Vec2 + expanded XStrings.'
+}
+if($Weapon63OwnedDirectSoundAliases -and
+   (-not $Weapon63OwnedBounceSound -or -not $Weapon63OwnedAccuracyVec2 -or
+    -not $Weapon63ExtendedInlineStrings -or -not $Weapon63SourceCanary -or
+    $WeaponCanaryLimit -ne 63)){
+    throw 'Original-PC 160 fixed sound-alias children require all 63 weapon sources plus the proven 2-table bounce graft and Vec2/XStrings.'
 }
 if($Weapon63ExtendedInlineStrings -and -not $Weapon63SourceCanary){
     throw '-Weapon63ExtendedInlineStrings requires -Weapon63SourceCanary and its existing original PC 69-root source proof.'
@@ -231,7 +238,7 @@ $work=Join-Path $base $(if($IntegrateWorld){
 if($Weapon63SourceCanary){
     # OAT Win32 has a legacy MAX_PATH restriction. Keep the dedicated
     # diagnostic FF short and OUTSIDE every previously passing output dir.
-    $work=Join-Path $repo $(if($Weapon63OwnedBounceSound){'.deps\aztec-w63-bounce-ff-growth'}elseif($Weapon63OwnedAccuracyVec2){'.deps\aztec-w63-vec2-ff-growth'}elseif($Weapon63ExtendedInlineStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
+    $work=Join-Path $repo $(if($Weapon63OwnedDirectSoundAliases){'.deps\aztec-w63-direct-ff-growth'}elseif($Weapon63OwnedBounceSound){'.deps\aztec-w63-bounce-ff-growth'}elseif($Weapon63OwnedAccuracyVec2){'.deps\aztec-w63-vec2-ff-growth'}elseif($Weapon63ExtendedInlineStrings){'.deps\aztec-w63-xstr-ff-growth'}else{'.deps\aztec-w63-ff-growth'})
     $weaponManifest=Join-Path $base 'pc_g11_lightning_weapon_69_unified_native_source\aztec_69_weapon_unified_original_pc_xbox_body_selections.json'
     if($Weapon63OwnedAccuracyVec2){
         $vec2Witness=Join-Path $base 'pc_g11_lightning_weapon63_accuracy_vec2\aztec_63_original_pc_owned_accuracy_vec2_source_witness.json'
@@ -274,6 +281,38 @@ if($Weapon63SourceCanary){
            -not [bool]$b.noNativeFastFileGeneratedOrModified -or
            [bool]$b.xboxRuntimeGameplayReady){
             throw 'Original-PC sound source witness changed; never fabricate missing 61 bounce tables.'
+        }
+    }
+    if($Weapon63OwnedDirectSoundAliases){
+        $directFrontier=Join-Path $repo '.deps\aztec-w63-bounce-ff-growth\aztec_weapon63_remaining_real_sound_alias_frontier.json'
+        $bounceFf=Join-Path $repo '.deps\aztec-w63-bounce-ff-growth\scratch_emit\nazi_zombie_aztec.ff'
+        if(-not(Test-Path -LiteralPath $directFrontier -PathType Leaf) -or
+           -not(Test-Path -LiteralPath $bounceFf -PathType Leaf)){
+            throw 'Original-PC 160 fixed sound alias graft requires the prior read-only 228-record census and untouched OAT-good two-bounce FF.'
+        }
+        $d=Get-Content -LiteralPath $directFrontier -Raw|ConvertFrom-Json
+        if([string]$d.schema -ne 'WaW360.AztecWeapon63RemainingSoundAliasFrontier.v1' -or
+           [string]$d.status -ne 'AZTEC_63_WEAPON_SOURCE_7B_SOUND_ALIAS_ORIGIN_CLASSIFIED_NOT_YET_IN_FF' -or
+           [int]$d.nativeWeaponRootSourceProofs -ne 63 -or
+           [int]$d.sourceOnlyInlineSoundAliasRecords -ne 228 -or
+           [long]$d.sourceOnlyInlineSoundAliasNameBytes -ne 895 -or
+           [int]$d.remainingDirectWeaponFixedSlots.records -ne 160 -or
+           [int]$d.remainingDirectWeaponFixedSlots.inlineNames -ne 41 -or
+           [long]$d.remainingDirectWeaponFixedSlots.inlineNameBytes -ne 696 -or
+           [int]$d.alreadyGraftedBounce.records -ne 62 -or
+           [int]$d.remainingNestedFlameParentBlocked.records -ne 6 -or
+           [int]$d.remainingOtherForeignParentBlocked.records -ne 0 -or
+           -not [bool]$d.all228RecordsConserved -or
+           -not [bool]$d.noDonorAudioOrInventedTables -or
+           [bool]$d.producedAnyNewNativeFf -or
+           [string]$d.latestOatGoodBounceFastfileSha256 -ine
+               (Get-FileHash -LiteralPath $bounceFf -Algorithm SHA256).Hash -or
+           [long]$d.latestOatGoodBounceFastfileBytes -ne (Get-Item -LiteralPath $bounceFf).Length){
+            throw 'Original-PC 160 direct sound alias frontier drift or previous OAT-good bounce FF has changed. Refusing native output.'
+        }
+        if([string]$d.originalPc63WeaponBounceSourceWitnessSha256 -ine
+           (Get-FileHash -LiteralPath $bounceWitness -Algorithm SHA256).Hash){
+            throw 'Original-PC bounce source witness SHA drift since 228-alias census.'
         }
     }
     if(-not(Test-Path -LiteralPath $weaponManifest -PathType Leaf)){
@@ -451,6 +490,7 @@ try{
     $priorWeaponXStrings=$env:WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS
     $priorWeaponVec2=$env:WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE
     $priorWeaponBounce=$env:WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE
+    $priorWeaponDirect=$env:WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -531,6 +571,13 @@ try{
             }else{
                 Remove-Item Env:\WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE -ErrorAction SilentlyContinue
             }
+            if($Weapon63OwnedDirectSoundAliases){
+                $env:WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER=$directFrontier
+                Write-Host '[AZTEC-W63-DIRECT-FF] ADD genuine 160 original-PC fixed-slot SndAliasCustom records + 41 real source name strings (696 B).'
+                Write-Host '[AZTEC-W63-DIRECT-FF] Only original-PC owned inline 7b children; SIX nested FlameTable aliases and all sound/XMA samples stay FENCED.'
+            }else{
+                Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER -ErrorAction SilentlyContinue
+            }
             Write-Host "[AZTEC-WEAPON-GROWTH-PROGRESS] [##########----------] 50% | Stage4D/4E source-backed WeaponDef canaries -> isolated FF/OAT"
         }else{
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIAGNOSTIC -ErrorAction SilentlyContinue
@@ -538,6 +585,7 @@ try{
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_EXTENDED_INLINE_STRINGS -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE -ErrorAction SilentlyContinue
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER -ErrorAction SilentlyContinue
         }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
@@ -558,6 +606,9 @@ try{
         if($null -eq $priorWeaponBounce){
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE -ErrorAction SilentlyContinue
         }else{$env:WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE=$priorWeaponBounce}
+        if($null -eq $priorWeaponDirect){
+            Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER -ErrorAction SilentlyContinue
+        }else{$env:WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER=$priorWeaponDirect}
         if($null -eq $priorProbe){
             Remove-Item Env:\WAW360_AZTEC_WORLD_CHILD_PROBE -ErrorAction SilentlyContinue
         }else{
