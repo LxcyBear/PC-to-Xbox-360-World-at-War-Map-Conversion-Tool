@@ -141,7 +141,7 @@ $proof=Join-Path $out 'aztec_shared_engine_exact_comparison.json'
     sourceWorldLayout=$layoutPath
     sourceOwnedXModelStagingProof=$stagePath
     draws=@($sites.ToArray())
-    roots=@($neededRoots.GetEnumerator()|Sort-Object Name|ForEach-Object {$_.Value})
+    roots=@($neededRoots.GetEnumerator()|Sort-Object Key|ForEach-Object {$_.Value})
 }|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $neutral -Encoding UTF8
 Write-Host '[AZTEC-SHARED-CODEC] ====================================================='
 Write-Host '[AZTEC-SHARED-CODEC] Source plan=1903/1903; real owned=1902; stock dependency quarantined=1'
