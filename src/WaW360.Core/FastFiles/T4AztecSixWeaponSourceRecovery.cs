@@ -127,10 +127,10 @@ public static class T4AztecSixWeaponSourceRecovery
                 var meta=expectedLog.Replace(".list.log",".meta.json",StringComparison.OrdinalIgnoreCase);
                 if(!File.Exists(meta))
                     throw new FileNotFoundException("Original PC OAT fingerprint record absent",meta);
-                using var md=JsonDocument.Parse(await File.ReadAllTextAsync(meta,ct));
+                using var metaDocument=JsonDocument.Parse(await File.ReadAllTextAsync(meta,ct));
                 var expectedFingerprint=fi.FullName+"|"+fi.Length+"|"+fi.LastWriteTimeUtc.Ticks;
-                if(!St(md.RootElement,"Fingerprint").Equals(expectedFingerprint,StringComparison.Ordinal) ||
-                   It(md.RootElement,"ExitCode")!=0)
+                if(!St(metaDocument.RootElement,"Fingerprint").Equals(expectedFingerprint,StringComparison.Ordinal) ||
+                   It(metaDocument.RootElement,"ExitCode")!=0)
                     throw new InvalidDataException("Original-PC OAT source listing fingerprint is stale.");
                 await using(var srcStream=File.OpenRead(original))
                     sha=Convert.ToHexString(await SHA256.HashDataAsync(srcStream,ct));
