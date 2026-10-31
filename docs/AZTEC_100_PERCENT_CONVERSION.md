@@ -389,3 +389,20 @@ Commands from converter repo root:
     powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-AztecGate11PhysicalCellWorldProbe.ps1'
 
 Gate11 OVERALL remains pending until the rest of GfxWorld renderer/lightmap/lightgrid/dynamic DPVS and runtime dependencies are proven. Gate10 remains a verified 10/13 developer milestone and old FF untouched. No Xbox deployment authorized.
+
+## Gate11 first OAT loader PASS — independent verifier schema mismatch (fixed)
+
+User ran the targeted `GfxWorld.dpvsPlanes.cellCount=11` fix at commit `54531b2`: 37/37 PowerShell 5.1 syntax PASS; isolated native Xbox FF now **3,642,932 bytes**, up 7 B from the previously rejected 3,642,925-byte diagnostic; OAT FIRST load `OatPass=True` with status `AZTEC_GATE11_11_CELL_740_AABB_DIAGNOSTIC_OAT_LOAD_PASS_REMAINDER_PENDING`. This is strong direct validation of the missing-cell-count fix and confirms the original fatal pointer interpretation no longer blocks a first full native OAT load. 11 cells, 740 trees, 14,974 nested static-model indexes were physically emitted. Source-owned old Gate10 FF SHA remains protected.
+
+The SECOND independent OAT field readback did NOT run in that test, because `Verify-AztecGate11OatLoadedCells.ps1` requested nonexistent `$s.fullPcTypedCellsAndTreesPass` under strict mode. Source witness `Run-AztecGate11CellTopologySourceWitness.ps1` actually writes `typedPcCellGraphSourcePass`, `nativeCellAabbOffsetsProven`, and `nativeCellPortalAabbSizesAndCriticalOffsetsMatchPc`. The verifier is now corrected to require all three real evidence fields without weakening any OAT/source/FF/negative hardware guards.
+
+**Do NOT rebuild this passing 3,642,932-byte FF.** Pull the verifier fix, run `Test-WaWMultiMapScriptSyntax.ps1`, then invoke `Verify-AztecGate11OatLoadedCells.ps1` **DIRECTLY**. It SHA-checks existing Gate10 FF and source graph, independently opens the NEW existing Gate11 FF with the already-installed specialized OAT native loaded-cell witness, compares all 11 cell bounds/metadata, 740 AABB tree records and 14,974 model index entries against PC-owned source JSON, and writes `pc_g11_cells_740/oat_loaded_11_cell_aabb_readback/aztec_gate11_independent_cells_aabb_readback.json` on actual PASS. No .NET build, no FF rebuild, no specialized OAT rebuild.
+
+Commands from PC2XB3 repo root:
+
+    git pull --ff-only
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+    if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax check failed' }
+    powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-AztecGate11OatLoadedCells.ps1'
+
+Gate11 overall still PENDING despite the major first-loader success: other original-PC lighting/reflection/lightmap/dynamic-DPVS dependencies and native runtime details remain; Gate12 complete main/_load and Gate13 genuine Xbox smoke-test readiness are future requirements. No console deployment from this diagnostic.
