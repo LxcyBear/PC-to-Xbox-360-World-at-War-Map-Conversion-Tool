@@ -128,7 +128,6 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             var proofFile=Path.GetFullPath(row.GetProperty("proofFile").GetString()??"");
             var containerSha=row.GetProperty("proofContainerSha256").GetString()??"";
             var blobSha=row.GetProperty("xboxBlobSha256").GetString()??"";
-            var sourceOffset=row.GetProperty("originalPcBodyOffset");
             if(!indexCache.TryGetValue(proofFile,out var index))
             {
                 index=await T4NativeProofContainerReader.IndexAsync(
@@ -245,7 +244,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
         while(end<blob.Length && blob[end]!=0 && end-start<=512)end++;
         if(end==blob.Length || end-start>512)return false;
         var bytes=blob.AsSpan(start,end-start);
-        if(bytes.IndexOfAnyExceptInRange((byte)0x20,(byte)0x7e)>=0)return false;
+        foreach(var ch in bytes)
+            if(ch<0x20 || ch>0x7e)return false;
         value=Utf8.GetString(bytes);
         cursor=end+1;
         return true;
