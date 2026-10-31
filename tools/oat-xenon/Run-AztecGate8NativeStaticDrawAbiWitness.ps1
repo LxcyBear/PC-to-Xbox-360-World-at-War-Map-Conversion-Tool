@@ -38,32 +38,66 @@ function Test-Capability{
         [string]$c.oatRevision -eq '3beaa7c81af517f0c05f2b4612d477ed1541b676' -and
         @($c.capabilities) -contains 't4xenon-gfxworld-static-draw-60b-loaded-witness-v1')
 }
-if(-not(Test-Capability) -and $BuildDumper){
-    Write-Host '[AZTEC-GATE8-NATIVE] Building pinned OAT once for the new native static-draw witness.'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Build-OatXenonGraphDumper.ps1')
-    if($LASTEXITCODE -ne 0){throw 'Specialized native Xbox OAT build failed.'}
+# Fast path: a prior OAT-loaded 76B native GfxWorld witness may already
+# contain the 60B typed static draw array. Reuse it ONLY if the exact Xbox
+# provenance and fully loaded 1903 records are present. This avoids an
+# unnecessary repeated OAT extraction or special dumper build.
+$reuse=$false
+$prior=$null
+$w=$null
+$raw=''
+if(Test-Path -LiteralPath $priorNativeReport -PathType Leaf){
+    $candidate=Get-Content -LiteralPath $priorNativeReport -Raw | ConvertFrom-Json
+    if([string]$candidate.status -eq 'AZTEC_NATIVE_XENON_76_BYTE_GFXSURFACE_ABI_LOADED_SOURCE_WITNESS' -and
+       [string]$candidate.originalNativeSha256 -ieq 'E0F3C244DD7B72D0FE71C05FAF014C2C9BFB05F770183954B3E7CDE625EBA98F' -and
+       -not [bool]$candidate.hardwareReady){
+        $candidateRaw=[string]$candidate.rawNativeOatWitness
+        if(-not [string]::IsNullOrWhiteSpace($candidateRaw) -and
+           (Test-Path -LiteralPath $candidateRaw -PathType Leaf)){
+            $candidateData=Get-Content -LiteralPath $candidateRaw -Raw | ConvertFrom-Json
+            if([string]$candidateData.schema -eq 'WaW360.T4XenonGfxWorldSurfaceAbiWitness.v1' -and
+               [string]$candidateData.status -eq 'NATIVE_XENON_GFXWORLD_SURFACE_ABI_LOADER_WITNESS' -and
+               [bool]$candidateData.nativeStaticDrawWitnessOnly -and
+               [bool]$candidateData.nativeStaticDrawArrayAvailable -and
+               [int]$candidateData.nativeStaticDrawCount -eq 1903 -and
+               @($candidateData.nativeStaticDraws).Count -eq 1903){
+                $prior=$candidate
+                $w=$candidateData
+                $raw=$candidateRaw
+                $reuse=$true
+                Write-Host '[AZTEC-GATE8-NATIVE] CACHE HIT: 1903 original Xbox static draw rows are already OAT-loaded; skipping native OAT and rebuild.'
+            }
+        }
+    }
 }
-if(-not(Test-Capability)){
-    throw 'Native static draw OAT witness capability missing. Re-run THIS script with -BuildDumper ONCE.'
+if(-not $reuse){
+    Write-Host '[AZTEC-GATE8-NATIVE] CACHE MISS: native 1903-draw loaded OAT evidence absent or incomplete.'
+    if(-not(Test-Capability) -and $BuildDumper){
+        Write-Host '[AZTEC-GATE8-NATIVE] Building specialized OAT once because its native static draw capability is missing.'
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Build-OatXenonGraphDumper.ps1')
+        if($LASTEXITCODE -ne 0){throw 'Specialized native Xbox OAT build failed.'}
+    }
+    if(-not(Test-Capability)){
+        throw 'Native 1903-draw OAT witness capability missing. Run THIS script with -BuildDumper ONCE.'
+    }
+    # Only a cache miss needs to rerun the proven native FF OAT loader.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Run-SecondMapAztecXenonGfxWorldSurfaceAbiWitness.ps1')
+    if($LASTEXITCODE -ne 0){throw 'Pinned original Xbox GfxWorld OAT witness failed.'}
+    if(-not(Test-Path -LiteralPath $priorNativeReport -PathType Leaf)){
+        throw 'Original Xbox GfxWorld OAT witness report missing.'
+    }
+    $prior=Get-Content -LiteralPath $priorNativeReport -Raw | ConvertFrom-Json
+    if([string]$prior.status -ne 'AZTEC_NATIVE_XENON_76_BYTE_GFXSURFACE_ABI_LOADED_SOURCE_WITNESS' -or
+       [string]$prior.originalNativeSha256 -ine 'E0F3C244DD7B72D0FE71C05FAF014C2C9BFB05F770183954B3E7CDE625EBA98F' -or
+       [bool]$prior.hardwareReady){
+        throw 'Original Xbox native FF provenance changed after OAT run.'
+    }
+    $raw=[string]$prior.rawNativeOatWitness
+    if(-not(Test-Path -LiteralPath $raw -PathType Leaf)){
+        throw "OAT raw native GfxWorld witness missing: $raw"
+    }
+    $w=Get-Content -LiteralPath $raw -Raw | ConvertFrom-Json
 }
-# Reuse the already verified native original-Xbox FF hash, loader execution
-# and surface/root witness runner rather than inventing new OAT entry points.
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Run-SecondMapAztecXenonGfxWorldSurfaceAbiWitness.ps1')
-if($LASTEXITCODE -ne 0){throw 'Pinned original Xbox GfxWorld OAT witness failed.'}
-if(-not(Test-Path -LiteralPath $priorNativeReport -PathType Leaf)){
-    throw 'Original Xbox GfxWorld witness report missing.'
-}
-$prior=Get-Content -LiteralPath $priorNativeReport -Raw | ConvertFrom-Json
-if([string]$prior.status -ne 'AZTEC_NATIVE_XENON_76_BYTE_GFXSURFACE_ABI_LOADED_SOURCE_WITNESS' -or
-   [string]$prior.originalNativeSha256 -ine 'E0F3C244DD7B72D0FE71C05FAF014C2C9BFB05F770183954B3E7CDE625EBA98F' -or
-   [bool]$prior.hardwareReady){
-    throw 'Existing OAT original Xbox 76B GfxSurface provenance changed.'
-}
-$raw=[string]$prior.rawNativeOatWitness
-if(-not(Test-Path -LiteralPath $raw -PathType Leaf)){
-    throw "OAT raw native GfxWorld witness missing: $raw"
-}
-$w=Get-Content -LiteralPath $raw -Raw | ConvertFrom-Json
 $abi=$w.nativeStaticDrawAbi
 $rows=@($w.nativeStaticDraws)
 if([string]$w.schema -ne 'WaW360.T4XenonGfxWorldSurfaceAbiWitness.v1' -or
