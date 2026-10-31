@@ -507,6 +507,9 @@ public sealed class T4XenonAztecWorldGraft
         virtualAlloc(Encoding.UTF8.GetByteCount("nazi_zombie_aztec")+1L,1,true);
         if(stage>=1)virtualAlloc(_indices.Length,2,true);
         _gate11Primitives?.PlanSky(virtualAlloc);
+        // Native T4 Xenon GfxWorld child traversal loads reflectionProbes
+        // before dpvsPlanes (planes/nodes), then cells, then lightmaps.
+        _gate11ImageHeaders?.PlanReflectionProbes(virtualAlloc);
         // Both source-owned arrays are loaded inside GfxWorldDpvsPlanes.
         // A single- or two-child probe must keep the same relative order.
         if(_gate8Planes is not null)
@@ -517,10 +520,9 @@ public sealed class T4XenonAztecWorldGraft
         // materialMemory/vd/vld reordered payloads, per pinned T4 Xenon
         // GfxWorld child layout. Nested AABB and index arrays follow cells.
         _gate11Cells?.Plan(virtualAlloc);
-        // Native GfxWorld field order: reflection probes, then lightmaps,
-        // then the embedded light-grid. Both headers are source-owned; all
-        // six unknown GfxImage* fields stay NULL (non-deployable probe).
-        _gate11ImageHeaders?.PlanHeaders(virtualAlloc);
+        // Lightmap headers are decoded after cells, ahead of GfxLightGrid.
+        // All six unverified GfxImage* pointers remain NULL.
+        _gate11ImageHeaders?.PlanLightmaps(virtualAlloc);
         // Native world field order: lightmaps -> embedded lightGrid -> models.
         _gate11Lighting?.PlanGrid(virtualAlloc);
         _gate11Primitives?.PlanModels(virtualAlloc);
@@ -614,6 +616,7 @@ public sealed class T4XenonAztecWorldGraft
             zone.Write(_indices);
         }
         _gate11Primitives?.EmitSky(zone,virtualAlloc);
+        _gate11ImageHeaders?.EmitReflectionProbes(zone,virtualAlloc);
         if(_gate8Planes is not null)
         {
             virtualAlloc(_gate8Planes.Length,4,true);
@@ -625,7 +628,7 @@ public sealed class T4XenonAztecWorldGraft
             zone.Write(_gate8Nodes);
         }
         _gate11Cells?.Emit(zone,virtualAlloc);
-        _gate11ImageHeaders?.EmitHeaders(zone,virtualAlloc);
+        _gate11ImageHeaders?.EmitLightmaps(zone,virtualAlloc);
         _gate11Lighting?.EmitGrid(zone,virtualAlloc);
         _gate11Primitives?.EmitModels(zone,virtualAlloc);
         // OAT reads MaterialMemory, then GfxWorldVertexData, then embedded
