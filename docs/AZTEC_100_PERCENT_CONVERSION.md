@@ -582,3 +582,23 @@ At commit `0be1b8d`, the Windows `Run-AztecGate11LightingWorldProbe.ps1 -BuildDu
 Independent report: `output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lighting_combined_probe/oat_loaded_lighting_shadow_region/aztec_gate11_independent_lighting_shadow_source_digest.json`.
 
 **Next jointly engineered dependency wave:** resolve the six reflection/lightmap **actual source-owned Xbox-compatible image payloads/root relocations**, reconstruct and verify **Xbox streaming aabbTrees/leafRefs** from PC topology (native 16B stream header), then do one isolated native FF/OAT regression on the combined world. Keep the proven 4,510,629B candidate SHA-pinned. Do not copy donor/oracle Xbox map bytes or treat image names as resident texture data.
+
+### Gate11 next joint image + Xbox stream structural frontier (built on real 4,510,629 B PASS)
+
+**Prior Windows PASS at `0be1b8d`:** native FF **4,510,629 bytes**, SHA `B832EDCE7EECFBBF2B0A141FF2C3D946595B317D7E7C7ACA0D21991277522883`; first native OAT load plus independent 11-cell/740-tree/14,974-model-index check, plus all four 4,822,860-byte original-PC light-grid arrays, 1,903 source shadow references and two zero-hull regions. This is now the protected input to the next joint workstream, **not** a release FF.
+
+**New one-pass tooling (Windows execution pending):** `Run-AztecGate11ImageStreamClosure.ps1` targets the two coupled remaining Gate11 blockers without another native FF or full .NET rebuild. First, classify **all six reflection/lightmap GfxImage pointer fields** by exact name/root index against the two legitimately PC-owned Xenon-image roundtrips (`goal` and `loadscreen_nazi_zombie_aztec`), the 11-file partial PC FF IWI dump (flagged NONREPRODUCIBLE), and the optional 32/181 external-PC-source name candidates (flagged ownership-UNPROVEN). Nothing is promoted from name matches or Xbox retail bytes. Second, verify original-PC source geometry topology (11 cell records, 740 cell AABB trees, 14,974 model links and SHA-verified aggregate bounds), then use a specialized OAT loader on **both** the current 4.51 MB converted FF and the pinned 82,739,469-byte original Xbox reference to observe **aggregate-only native `GfxWorldStreamInfo` shape**: 16-byte header, 32-byte `GfxStreamingAabbTree`, native counts, pointer presence, item/child span validity, aggregate node classifications and bounded leaf-reference range statistics. **No retail GfxStreamingAabbTree/leafRef body bytes, pixels or process pointers are exported or copied**. Native stream trees are **not** assumed to be the same as the 740 original-PC cell AABB trees. Reference shape is an ABI/algorithm-calibration oracle only; all future emitted values must be source-derived.
+
+First execution from PC2XB3 repo root:
+
+```powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+if ($LASTEXITCODE -ne 0) { throw 'PowerShell syntax failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecGate11ImageStreamClosure.ps1" -BuildDumper
+```
+
+The `-BuildDumper` switch performs **at most one specialized x86 OAT recompile** if the new stream structural witness capability is absent; the **two** OAT GfxWorld loads observe one user-generated FF and the original native FF. No map FF is built or overwritten. The SHA-pinned original Xbox reference is read only as a struct/layout oracle.
+
+New report: `output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_image_stream_closure/aztec_gate11_6_images_and_native_stream_shape.json`. It prints the classifications for each exact image and both stream tree/leaf-reference counts; this output determines the next source-owned image conversion/streaming-geometry algorithm. **All status flags remain fail closed:** no texture payload equality inferred from names, no native stream reconstruction declared, no hardware approval, **Gate11 still 10/13**. Note source-only and oracle ABI work are not a replacement for independent OAT content checks on the NEXT emitted FF, and the unresolved stock XModel/material runtime stateBits remain additional blockers.
