@@ -532,6 +532,84 @@ namespace gfxworld
         out << ",\"sourcePayloadDonorCopied\":false";
         out << ",\"hardwareRuntimeSemanticsProven\":false}";
 
+        // A second independent post-LOAD source-value witness. This only
+        // inspects the candidate's typed native XAsset, NOT retail donor
+        // payloads. Bounded before any 4.82MB grid dereference.
+        const auto& grid=world.lightGrid;
+        const bool rowsValid=grid.rowAxis<3 &&
+            grid.maxs[grid.rowAxis]>=grid.mins[grid.rowAxis];
+        const unsigned rows=rowsValid
+            ? static_cast<unsigned>(grid.maxs[grid.rowAxis]-
+                grid.mins[grid.rowAxis])+1u : 0u;
+        const bool gridReady=rows==322 && grid.rowDataStart!=nullptr &&
+            grid.rawRowDataSize==10320u && grid.rawRowData!=nullptr &&
+            grid.entryCount==1036024u && grid.entries!=nullptr &&
+            grid.colorCount==3975u && grid.colors!=nullptr;
+        bool shadowReady=world.primaryLightCount==2 &&
+            world.shadowGeom!=nullptr && world.lightRegion!=nullptr;
+        if(shadowReady)
+        {
+            for(unsigned i=0;i<2;i++)
+            {
+                const auto& sh=world.shadowGeom[i];
+                if(sh.surfaceCount!=0 || sh.sortedSurfIndex!=nullptr ||
+                   sh.smodelCount>1903 ||
+                   (sh.smodelCount && !sh.smodelIndex) ||
+                   world.lightRegion[i].hullCount!=0 ||
+                   world.lightRegion[i].hulls!=nullptr)
+                    shadowReady=false;
+            }
+        }
+        out << ",\"nativeLightingGraph\":{";
+        out << "\"schema\":\"WaW360.T4XenonLoadedGate11LightingShadowRegionDigest.v1\"";
+        out << ",\"digest\":\"FNV1A64_LE_HOST_MEMORY_OF_TYPED_LOADED_FIELDS\"";
+        out << ",\"rowCount\":" << rows;
+        out << ",\"rawRowDataSize\":" << grid.rawRowDataSize;
+        out << ",\"entryCount\":" << grid.entryCount;
+        out << ",\"colorCount\":" << grid.colorCount;
+        out << ",\"rowAxis\":" << grid.rowAxis;
+        out << ",\"colAxis\":" << grid.colAxis;
+        out << ",\"sunPrimaryLightIndex\":" << grid.sunPrimaryLightIndex;
+        out << ",\"hasLightRegions\":" << (grid.hasLightRegions?"true":"false");
+        out << ",\"mins\":[";
+        for(int i=0;i<3;i++){if(i)out<<',';out<<grid.mins[i];}
+        out << "],\"maxs\":[";
+        for(int i=0;i<3;i++){if(i)out<<',';out<<grid.maxs[i];}
+        out << ']';
+        out << ",\"gridArraysReady\":" << (gridReady?"true":"false");
+        out << ",\"gridRowDigest\":";
+        if(gridReady)emitDigest(grid.rowDataStart,322u*2u);else out<<"null";
+        out << ",\"gridRawDigest\":";
+        if(gridReady)emitDigest(grid.rawRowData,10320u);else out<<"null";
+        out << ",\"gridEntryDigest\":";
+        if(gridReady)emitDigest(grid.entries,1036024u*4u);else out<<"null";
+        out << ",\"gridColorDigest\":";
+        if(gridReady)emitDigest(grid.colors,3975u*168u);else out<<"null";
+        out << ",\"primaryLights\":" << world.primaryLightCount;
+        out << ",\"shadowRegionHeadersReady\":" << (shadowReady?"true":"false");
+        out << ",\"shadows\":[";
+        if(shadowReady)
+        {
+            for(unsigned i=0;i<2;i++)
+            {
+                if(i)out<<',';
+                const auto& sh=world.shadowGeom[i];
+                out << "{\"ordinal\":"<<i;
+                out << ",\"surfaceCount\":"<<sh.surfaceCount;
+                out << ",\"smodelCount\":"<<sh.smodelCount;
+                out << ",\"smodelDigest\":";
+                emitDigest(sh.smodelIndex,sh.smodelCount*2u);
+                out << ",\"hullCount\":"<<world.lightRegion[i].hullCount;
+                out << ",\"regionHullPointerNull\":"
+                    << (world.lightRegion[i].hulls==nullptr?"true":"false");
+                out << '}';
+            }
+        }
+        out << ']';
+        out << ",\"imagePayloadBindingsProven\":false";
+        out << ",\"xenonStreamingGraphReconstructed\":false";
+        out << ",\"hardwareRuntimeSemanticsProven\":false}";
+
         out << ",\"materialMemoryCount\":" << world.materialMemoryCount;
         out << ",\"surfaceCount\":" << world.surfaceCount;
         out << ",\"vertexCount\":" << world.vertexCount;
