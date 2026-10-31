@@ -82,8 +82,8 @@ public sealed class T4XenonAztecWeapon63ScalarCanary
             throw new FileNotFoundException("Aztec 63-weapon native source SHA manifest absent",file);
 
         var rawLimit=Environment.GetEnvironmentVariable(LimitEnvironment);
-        if(!int.TryParse(rawLimit,out var limit) || limit is not (1 or 6 or 63))
-            throw new InvalidDataException("Weapon63 scratch canary limit must be 1, 6, or 63; zero/missing is rejected.");
+        if(!int.TryParse(rawLimit,out var limit) || limit is not (0 or 1 or 6 or 63))
+            throw new InvalidDataException("Weapon63 scratch canary limit must be 0 (A/B control), 1, 6, or 63; missing is rejected.");
 
         using var document=JsonDocument.Parse(await File.ReadAllTextAsync(file,cancellationToken));
         var report=document.RootElement;
