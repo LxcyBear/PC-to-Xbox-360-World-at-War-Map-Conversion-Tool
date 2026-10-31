@@ -137,3 +137,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-Azt
 ```
 
 If the witness reports the specialized OAT dumper capability missing, run **that witness script only** with `-BuildDumper` once, then repeat the scalar audit. No need to rerun the already verified 28-XModel integrated-world build or generic pointer regression. Strict release gates remain blocked.
+
+## Gate 10 source-owned static draw serialization frontier — 1903 flags, 1902 model pointers
+
+The actual Xbox native 60-byte draw ABI witness now passes. Source-vs-reference agreement for Aztec is: **1903/1903** model identities, origins, scales and culling distances; **1899/1903** exact packed axis words; **1903/1903** flags; **0/1903** reflection indices; **28/1903** primary light indices; and **0/1903** direct PC cachedLightIndex vs Xbox lightingHandle values. Four rotation-word discrepancies and all actual light remapping must remain unresolved, not filled from Xbox donor bytes.
+
+Updated `Audit-Aztec1903StaticDrawScalarEquivalence.ps1` prints the **four exact per-axis XORs**, keeps separate (a) fully identical rotations, (b) 1903 name/origin/scale/cull identity anchors, and (c) exact field bytes, and gives value-pair histograms and a deterministic-remapping hypothesis for reflection, primary light and cached lighting handles. An observed numeric remapping is **not** sufficient proof of corresponding source asset semantics. The 1903/1903 flags result can become a source-only **diagnostic** candidate despite the unrelated four packed axes. Production draw-array approval still needs all 1903 full records with proven fields.
+
+The map-independent engine `src/WaW360.Core/FastFiles/T4XenonStaticDrawScalarCodec.cs` and CLI `xenon-static-draw-scalar-encode` safely overlay source-owned uint8 fields onto a previously verified XModel-pointer buffer without touching model pointer words, geometry, light fields or unproven padding. An unrelated **3 x 48-byte** synthetic self-test checks field width and protection.
+
+The Aztec-specific `Build-AztecGate10SourceFlagsCandidate.ps1` revalidates all independent source/native witnesses, checks every PC flag byte equals the observed original Xbox flag **without copying any native reference bytes**, builds the shared .NET converter incrementally, runs the generic self-test, writes all 1903 source flags into the existing 1902-pointer structure, and rechecks every non-flag byte stayed identical. It writes only a new incomplete sidecar candidate; 0 physical FF draw links; never an Xbox package. This command relies on the **updated** scalar audit, so run audit first:
+
+```powershell
+git pull --ff-only
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Syntax check failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Audit-Aztec1903StaticDrawScalarEquivalence.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Draw scalar source equivalence audit failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Build-AztecGate10SourceFlagsCandidate.ps1'
+```
+
+**Next source-side blocker:** interpret reflection/primary light source indices relative to the PC and Xbox light/probe tables, derive `lightingHandle` from genuine original-PC cached light data (not the original Xbox row values), explain the four rotation XORs, and prove the last stock XModel's runtime residency. Then add the fully validated 1903 x 60B array to both Stage 4D and Stage 4E in OAT child order and make the parent DPVS draw pointer FOLLOWING. Do not label Gate 10 PASS until native OAT independently loads and validates the physically linked 1903 records. The old 9/13 count remains unchanged until then.
