@@ -567,3 +567,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-Aztec
 \`\`\`
 
 This is the **first execution** of the new integrated C# emitter, so compilation/load may reveal ordering or root-scalar issues, which must be corrected from actual OAT evidence. Do not claim completion until new size, OAT and digest logs pass. The original Xbox FF remains ABI/reference only, not payload donor. Six reflection/lightmap image identity candidates **do not validate GfxImage contents/highmips**. Xbox streamInfo must be reconstructed from real source geometry/topology and independently verified. One stock XModel binding and material semantics are also release fences. If source asset identities remain unproven, they stay unbound, not filled with retail oracle bytes.
+
+### User-confirmed first combined Gate11 light-grid/shadow/region OAT PASS (2026-10-30)
+
+At commit `0be1b8d`, the Windows `Run-AztecGate11LightingWorldProbe.ps1 -BuildDumper` completed successfully: **45/45 PowerShell 5.1 script syntax**, specialized pinned x86 OAT rebuild, incremental .NET build, and one new isolated `pc_g11_lighting_combined_probe/scratch_emit/nazi_zombie_aztec.ff` native 8,509-root OAT load.
+
+- **New FF:** **4,510,629 B**, SHA-256 `B832EDCE7EECFBBF2B0A141FF2C3D946595B317D7E7C7ACA0D21991277522883`.
+- **Old untouched source-primitive FF:** 3,650,170 B, SHA-256 `D46ABC8E5681E4F235ED82821016F6F0002505AD0DEF68D680D70FCCE75F1FCB`. Compressed FF growth **860,459 B**.
+- **Second independent OAT pass:** source-level field comparisons for **11/11 GfxCells, 740/740 AABB trees, 14,974/14,974 model indexes and 11 reflection indices** matched the original PC values.
+- **Third independent OAT pass:** all **4,822,860 source-owned uncompressed light-grid bytes** matched (row starts 644 B; raw rows 10,320 B; entries 4,144,096 B; colors 667,800 B) using original-PC versus typed loaded native FNV1A64 digests. The exact logged digests were `138b003669cb1a1d`, `d55099ec258a367e`, `69f6adb80aa98cb5`, and `f67dda5056231df6` respectively.
+- **Shadow/region proof:** two native shadow structs and their source model index lists **28 + 1,875 = 1,903** matched; both native light-region headers had **0 hulls and no nested axis graph**, matching the PC map. Four prior sky/brush/water primitive digests were checked for regressions.
+- **All real verification, but not full Gate11 completion.** No reflection/lightmap GfxImage pixel/content equivalence proof or native root payload bindings (six candidates matched by NAME only), no Xbox-specific `GfxWorldStreamInfo` reconstructed from source, and one stock XModel residency and material runtime stateBits semantics remain unresolved. Gate11 still **10/13** and **no Xbox deployment approved**.
+
+Independent report: `output/second_map_baselines/nazi_zombie_aztec_V2.2/native_material_mapping/pc_g11_lighting_combined_probe/oat_loaded_lighting_shadow_region/aztec_gate11_independent_lighting_shadow_source_digest.json`.
+
+**Next jointly engineered dependency wave:** resolve the six reflection/lightmap **actual source-owned Xbox-compatible image payloads/root relocations**, reconstruct and verify **Xbox streaming aabbTrees/leafRefs** from PC topology (native 16B stream header), then do one isolated native FF/OAT regression on the combined world. Keep the proven 4,510,629B candidate SHA-pinned. Do not copy donor/oracle Xbox map bytes or treat image names as resident texture data.
