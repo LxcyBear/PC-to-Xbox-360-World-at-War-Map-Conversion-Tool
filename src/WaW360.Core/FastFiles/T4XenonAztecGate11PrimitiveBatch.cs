@@ -108,7 +108,15 @@ public sealed class T4XenonAztecGate11PrimitiveBatch
         var abiBytes=await File.ReadAllBytesAsync(abiFile,ct);
         if(!Eq(Sha(abiBytes),source.GetProperty("nativeXboxAbiOnlySha256").GetString()))
             throw new InvalidDataException("Measured Xbox field-only ABI SHA drifted.");
-        using var ad=JsonDocument.Parse(abiBytes);
+        // Windows PowerShell 5.1 Set-Content -Encoding UTF8 writes EF BB BF.
+        // Preserve SHA authentication over the EXACT original file bytes,
+        // then strip only the optional UTF-8 BOM for System.Text.Json.
+        // Do NOT rewrite or normalize the measured Xbox ABI witness.
+        var jsonBytes=abiBytes.AsMemory();
+        if(abiBytes.Length>=3 && abiBytes[0]==0xEF &&
+           abiBytes[1]==0xBB && abiBytes[2]==0xBF)
+            jsonBytes=jsonBytes[3..];
+        using var ad=JsonDocument.Parse(jsonBytes);
         var abi=ad.RootElement;
         if(abi.GetProperty("schema").GetString()!="WaW360.T4XenonGate11RemainingWorldNativeAbi.v1" ||
            abi.GetProperty("gfxWorldBytes").GetInt32()!=900 ||
