@@ -64,6 +64,8 @@ public sealed class T4XenonAztecWorldGraft
     private T4XenonAztecGate11PrimitiveBatch? _gate11Primitives;
     // Coordinated Wave A+B: source light-grid, shadows and empty light-region headers.
     private T4XenonAztecGate11LightingShadowBatch? _gate11Lighting;
+    // Gate11 star-image header only: no GfxImage payload or runtime fabrication.
+    private T4XenonAztecGate11ImageHeaders? _gate11ImageHeaders;
 
     public int NativeRootIndex { get; }
     public string NativeRootName { get; }
@@ -116,6 +118,8 @@ public sealed class T4XenonAztecWorldGraft
     public long Gate11LightingGridBytes => _gate11Lighting?.GridBytes ?? 0;
     public int Gate11LightingShadowModelRefs => _gate11Lighting?.ShadowModelReferences ?? 0;
     public int Gate11LightingRegionHeaders => _gate11Lighting?.RegionHeaders ?? 0;
+    public int Gate11SourceReflectionHeaders => _gate11ImageHeaders?.ReflectionProbeHeaders ?? 0;
+    public int Gate11SourceLightmapHeaders => _gate11ImageHeaders?.LightmapHeaders ?? 0;
 
     private T4XenonAztecWorldGraft(
         int nativeRootIndex,string rootName,byte[] root,byte[] indices,
@@ -479,6 +483,17 @@ public sealed class T4XenonAztecWorldGraft
             graft._gate11Lighting=await T4XenonAztecGate11LightingShadowBatch.LoadAsync(
                 lightingBatch,primitiveSource,graft._root,ct);
         }
+        var imageHeadersReport=Environment.GetEnvironmentVariable("WAW360_AZTEC_GATE11_IMAGE_HEADERS_BATCH");
+        if(!string.IsNullOrWhiteSpace(imageHeadersReport))
+        {
+            if(graft._gate11Lighting is null || graft._gate11Primitives is null ||
+               graft._gate11Cells is null || graft._gate10DrawProbe is null ||
+               ProbeStage!=4 || !StaticDpvsProbeEnabled)
+                throw new InvalidDataException(
+                    "Gate11 image header diagnostic requires existing source grid/shadow, 11 cells and 1903 draws.");
+            graft._gate11ImageHeaders=await T4XenonAztecGate11ImageHeaders.LoadAsync(
+                imageHeadersReport,graft._root,ct);
+        }
         return graft;
     }
 
@@ -502,6 +517,10 @@ public sealed class T4XenonAztecWorldGraft
         // materialMemory/vd/vld reordered payloads, per pinned T4 Xenon
         // GfxWorld child layout. Nested AABB and index arrays follow cells.
         _gate11Cells?.Plan(virtualAlloc);
+        // Native GfxWorld field order: reflection probes, then lightmaps,
+        // then the embedded light-grid. Both headers are source-owned; all
+        // six unknown GfxImage* fields stay NULL (non-deployable probe).
+        _gate11ImageHeaders?.PlanHeaders(virtualAlloc);
         // Native world field order: lightmaps -> embedded lightGrid -> models.
         _gate11Lighting?.PlanGrid(virtualAlloc);
         _gate11Primitives?.PlanModels(virtualAlloc);
@@ -550,6 +569,7 @@ public sealed class T4XenonAztecWorldGraft
             Put(body,_gate10DrawPointerAt,T4ZonePointer.Following);
         _gate11Primitives?.ApplyRoot(body);
         _gate11Lighting?.ApplyRoot(body);
+        _gate11ImageHeaders?.ApplyRoot(body);
         if(_gate11Cells is not null)
         {
             // CRITICAL NATIVE LOADER FIX: Gate10's intentionally partial
@@ -605,6 +625,7 @@ public sealed class T4XenonAztecWorldGraft
             zone.Write(_gate8Nodes);
         }
         _gate11Cells?.Emit(zone,virtualAlloc);
+        _gate11ImageHeaders?.EmitHeaders(zone,virtualAlloc);
         _gate11Lighting?.EmitGrid(zone,virtualAlloc);
         _gate11Primitives?.EmitModels(zone,virtualAlloc);
         // OAT reads MaterialMemory, then GfxWorldVertexData, then embedded
