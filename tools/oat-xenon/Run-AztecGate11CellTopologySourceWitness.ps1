@@ -18,6 +18,8 @@ $dumper=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unl
 $capPath=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\waw360-graph-dumper-capabilities.json'
 $pcCap='t4-pc-gfxworld-gate11-cell-topology-v1'
 $xbCap='t4xenon-gfxworld-gate11-cell-abi-v1'
+$pcGraphCap='t4-pc-gfxworld-gate11-cell-typed-aabb-graph-v1'
+$nativeFieldCap='t4xenon-gfxworld-gate11-full-cell-aabb-abi-v1'
 $build=Join-Path $PSScriptRoot 'Build-OatXenonGraphDumper.ps1'
 foreach($item in @($pcSummaryPath,$nativeIdentityPath,$gate10Path)){
     if(-not(Test-Path -LiteralPath $item -PathType Leaf)){
@@ -61,7 +63,9 @@ function Has-Capabilities {
     return ([string]$cap.format -eq 'WaW360.OatGraphDumperCapabilities.v1' -and
         [string]$cap.oatRevision -eq '3beaa7c81af517f0c05f2b4612d477ed1541b676' -and
         @($cap.capabilities) -contains $pcCap -and
-        @($cap.capabilities) -contains $xbCap)
+        @($cap.capabilities) -contains $xbCap -and
+        @($cap.capabilities) -contains $pcGraphCap -and
+        @($cap.capabilities) -contains $nativeFieldCap)
 }
 if(-not (Has-Capabilities)){
     if(-not $BuildDumper){
@@ -111,6 +115,167 @@ $pcDoc=Get-Content -LiteralPath $pcFiles[0].FullName -Raw|ConvertFrom-Json
 $xbDoc=Get-Content -LiteralPath $xbFiles[0].FullName -Raw|ConvertFrom-Json
 $pcShape=$pcDoc.gate11CellTopology
 $xbAbi=$xbDoc.gfxWorldRootAbi
+$typedMeta=$pcDoc.gate11CellSourceGraph
+if([string]$typedMeta.schema -ne 'WaW360.T4PcGate11TypedGfxCellAabbSourcePointerFree.v1' -or
+   [int]$typedMeta.exportedTrees -ne 740 -or
+   -not [bool]$typedMeta.typedGraphExportValid -or
+   [bool]$typedMeta.nativeFfChildrenEmitted){
+    throw 'OAT did not export a complete 740-tree source-owned pointer-free cell graph.'
+}
+$rel=[string]$typedMeta.path
+if($rel -notmatch '^[A-Za-z0-9_./-]+
+if([string]$pcDoc.format -ne 'WaW360.T4PcGfxWorld39MaterialSourceCorpus.v1' -or
+   [string]$pcShape.schema -ne 'WaW360.T4PcGate11CellTopology.v1' -or
+   [int]$pcShape.cellCount -ne 11 -or
+   -not [bool]$pcShape.cellsPresent -or
+   @($pcShape.cells).Count -ne 11 -or
+   [string]$xbDoc.schema -ne 'WaW360.T4XenonGfxWorldSurfaceAbiWitness.v1' -or
+   [int]$xbAbi.gfxWorldSize -ne 900 -or
+   [int]$xbDoc.loadedWorldRootShape.cellCount -ne 11 -or
+   [int]$pcShape.pcCellSize -le 0 -or
+   [int]$xbAbi.gfxCellSize -le 0 -or
+   [int]$pcShape.pcPortalSize -le 0 -or
+   [int]$xbAbi.gfxPortalSize -le 0 -or
+   [int]$pcShape.pcAabbTreeSize -le 0 -or
+   [int]$xbAbi.gfxAabbTreeSize -le 0){
+    throw 'Pinned original-PC source GfxCell and native T4Xenon cell topology/ABI not captured.'
+}
+$countsOk=[bool]$pcShape.cellTopologyConsistent
+$totalTrees=0;$totalPortals=0;$totalCull=0;$unresolved=0
+foreach($cell in @($pcShape.cells)){
+    $idx=[int]$cell.ordinal
+    if($idx -lt 0 -or $idx -gt 10 -or -not [bool]$cell.pointerAndCountShapeValid){$countsOk=$false}
+    $totalTrees+=[int]$cell.aabbTreeCount
+    $totalPortals+=[int]$cell.portalCount
+    $totalCull+=[int]$cell.cullGroupCount
+    if([bool]$cell.pointerAndCountShapeValid -and
+       @($cell.portals).Count -ne [int]$cell.portalCount){$countsOk=$false}
+    foreach($portal in @($cell.portals)){
+        if([int]$portal.targetCellIndex -lt 0 -or [int]$portal.targetCellIndex -ge 11){
+            $unresolved++
+        }
+    }
+}
+if($totalTrees -ne [int]$pcShape.totalAabbTrees -or
+   $totalPortals -ne [int]$pcShape.totalPortals -or
+   $totalCull -ne [int]$pcShape.totalCellCullGroupReferences -or
+   $unresolved -ne [int]$pcShape.unresolvedCrossCellPortalTargets){
+    throw 'Source cell graph total counts/portal-reference ordinals disagree internally.'
+}
+$nativeAbiMeasured=([int]$pcShape.pcCellSize -eq [int]$xbAbi.gfxCellSize -and
+    [int]$pcShape.pcPortalSize -eq [int]$xbAbi.gfxPortalSize -and
+    [int]$pcShape.pcAabbTreeSize -eq [int]$xbAbi.gfxAabbTreeSize -and
+    [int]$pcShape.pcCellAabbTreePointerAt -eq [int]$xbAbi.cellAabbTreeAt -and
+    [int]$pcShape.pcCellPortalsPointerAt -eq [int]$xbAbi.cellPortalsAt -and
+    [int]$pcShape.pcPortalCellPointerAt -eq [int]$xbAbi.portalCellAt)
+$pcCopy=Join-Path $out 'original_pc_oat_loaded_11_cells.json'
+$xbCopy=Join-Path $out 'original_xbox_oat_cell_abi.json'
+Copy-Item -LiteralPath $pcFiles[0].FullName -Destination $pcCopy -Force
+Copy-Item -LiteralPath $xbFiles[0].FullName -Destination $xbCopy -Force
+$verifiedTopology=$countsOk -and $nativeAbiMeasured -and $unresolved -eq 0
+$summary=[ordered]@{
+    schema='WaW360.AztecGate11PcCellTopologyNativeAbiWitness.v1'
+    status=if($verifiedTopology){
+        'AZTEC_GATE11_11_CELL_POINTER_FREE_TOPOLOGY_NATIVE_ABI_MATCH_SOURCE_PASS_NOT_EMITTED'
+    }else{
+        'AZTEC_GATE11_CELL_TOPOLOGY_OR_NATIVE_ABI_NEEDS_SOURCE_REVIEW_NOT_EMITTED'
+    }
+    pcOriginalFastFileSha256=[string]$pcSummary.sourceFastFileSha256
+    nativeReferenceFastFileSha256='E0F3C244DD7B72D0FE71C05FAF014C2C9BFB05F770183954B3E7CDE625EBA98F'
+    existingPassingGate10FfSha256=$existingGateFFsha
+    sourceWorldCellCount=11
+    originalPcCellBytes=[int]$pcShape.pcCellSize
+    nativeXboxCellBytes=[int]$xbAbi.gfxCellSize
+    originalPcPortalBytes=[int]$pcShape.pcPortalSize
+    nativeXboxPortalBytes=[int]$xbAbi.gfxPortalSize
+    originalPcAabbTreeBytes=[int]$pcShape.pcAabbTreeSize
+    nativeXboxAabbTreeBytes=[int]$xbAbi.gfxAabbTreeSize
+    originalPcWorldCellsOffset=[int]$pcShape.worldCellsPointerAt
+    nativeXboxWorldCellsOffset=[int]$xbAbi.cellsAt
+    originalPcAabbTrees=$totalTrees
+    originalPcPortals=$totalPortals
+    originalPcCellCullGroupRefs=$totalCull
+    unresolvedCrossCellPortalDestinations=$unresolved
+    originalPcTopologyPointerCountsConsistent=$countsOk
+    nativeCellPortalAabbSizesAndCriticalOffsetsMatchPc=$nativeAbiMeasured
+    originalPcOatSourceManifest=$pcCopy
+    originalPcOatSourceManifestSha256=(Get-FileHash -LiteralPath $pcCopy -Algorithm SHA256).Hash
+    originalXboxReferenceAbi=$xbCopy
+    originalXboxReferenceAbiSha256=(Get-FileHash -LiteralPath $xbCopy -Algorithm SHA256).Hash
+    sourcePointerValuesCopied=$false
+    xboxOraclePayloadBytesCopied=$false
+    portableGfxCellChildDataEmitted=$false
+    gate11ProductionPassed=$false
+    hardwareReady=$false
+    note='First TWO-sided PC source GfxCell topology / pinned Xbox native struct ABI only. This is not 11 complete portal/AABB typed payloads, not a source-child serializer, not hardware-authorized; preserve the verified 10/13 milestone.'
+}
+$summary|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $report -Encoding UTF8
+# The full material/asset extraction was only a disposable source witness.
+# Keep compact hashes and JSON copies; avoid accumulating duplicate OAT dumps.
+Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host '[AZTEC-GATE11-PROGRESS] [####################] 100% | typed original-PC cell topology & Xbox native ABI measured'
+Write-Host "[AZTEC-GATE11-CELLS] World cells=$($summary.sourceWorldCellCount) AABB trees=$totalTrees portals=$totalPortals cell cull refs=$totalCull"
+Write-Host "[AZTEC-GATE11-CELLS] Original-PC/Xbox sizes: GfxCell $($summary.originalPcCellBytes)/$($summary.nativeXboxCellBytes), Portal $($summary.originalPcPortalBytes)/$($summary.nativeXboxPortalBytes), AABB $($summary.originalPcAabbTreeBytes)/$($summary.nativeXboxAabbTreeBytes)"
+Write-Host "[AZTEC-GATE11-CELLS] Cross-cell target ordinals unresolved=$unresolved; native ABI matches=$nativeAbiMeasured"
+Write-Host "[AZTEC-GATE11-CELLS] Report=$report"
+Write-Host '[AZTEC-GATE11-CELLS] NO production FF emission or hardware deployment. Gate11 pending; 10/13 preserved.'
+if(-not $verifiedTopology){
+    throw 'Typed source topology or Xbox cell ABI differs; inspect saved per-cell report before a serializer is attempted.'
+}
+ -or
+   $rel.Contains('..') -or [IO.Path]::IsPathRooted($rel)){
+    throw "Unsafe OAT cell source path: $rel"
+}
+$typedFile=Join-Path $pcOut ($rel -replace '/','\')
+if(-not(Test-Path -LiteralPath $typedFile -PathType Leaf)){
+    throw "Missing original-PC typed 11-cell/740-AABB graph: $typedFile"
+}
+$typed=Get-Content -LiteralPath $typedFile -Raw|ConvertFrom-Json
+if([string]$typed.schema -ne 'WaW360.T4PcGate11TypedGfxCellAabbSource.v1' -or
+   [int]$typed.cellCount -ne 11 -or
+   [int]$typed.actualExportedTreeCount -ne 740 -or
+   -not [bool]$typed.completeAndValidated -or
+   [bool]$typed.originalPcSourcePointerBytesExported -or
+   [bool]$typed.xboxReferencePayloadUsed -or
+   [bool]$typed.xboxGfxCellsPhysicallyEmitted -or
+   [bool]$typed.xboxHardwareReady -or
+   @($typed.cells).Count -ne 11){
+    throw 'Original-PC typed cell tree file failed shape and pointer-free validation.'
+}
+$treeCount=0
+$modelIndexes=0
+$probeIndexes=0
+for($ci=0;$ci -lt 11;$ci++){
+    $cell=$typed.cells[$ci]
+    if([int]$cell.ordinal -ne $ci -or
+       [int]$cell.portalCount -ne 0 -or [int]$cell.cullGroupCount -ne 0 -or
+       @($cell.aabbTrees).Count -ne [int]$cell.aabbTreeCount -or
+       @($cell.reflectionProbeIndices).Count -ne [int]$cell.reflectionProbeCount -or
+       @($cell.mins).Count -ne 3 -or @($cell.maxs).Count -ne 3){
+        throw "Typed GfxCell ordinal $ci has inconsistent source child dimensions."
+    }
+    $probeIndexes+=@($cell.reflectionProbeIndices).Count
+    for($ti=0;$ti -lt @($cell.aabbTrees).Count;$ti++){
+        $t=$cell.aabbTrees[$ti]
+        if([int]$t.ordinal -ne $ti -or
+           @($t.smodelIndexes).Count -ne [int]$t.smodelIndexCount -or
+           @($t.mins).Count -ne 3 -or @($t.maxs).Count -ne 3){
+            throw "Cell $ci AABB $ti has invalid typed source scalar/index layout."
+        }
+        foreach($index in @($t.smodelIndexes)){
+            if([int]$index -lt 0 -or [int]$index -ge 1903){
+                throw "Cell $ci AABB $ti has a static model index outside 1903 source draws."
+            }
+            $modelIndexes++
+        }
+        $treeCount++
+    }
+}
+if($treeCount -ne 740 -or
+   $modelIndexes -ne [int]$typed.actualExportedSmodelIndexes -or
+   $probeIndexes -ne [int]$typed.actualExportedCellReflectionIndexes){
+    throw 'Source cell graph 740-tree and nested index totals disagree with OAT.'
+}
 if([string]$pcDoc.format -ne 'WaW360.T4PcGfxWorld39MaterialSourceCorpus.v1' -or
    [string]$pcShape.schema -ne 'WaW360.T4PcGate11CellTopology.v1' -or
    [int]$pcShape.cellCount -ne 11 -or
