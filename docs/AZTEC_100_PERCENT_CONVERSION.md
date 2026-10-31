@@ -500,3 +500,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Run-Aztec
 ```
 
 This runs one incremental .NET build, one new isolated FF/OAT first load, and a **second independent OAT reload** comparing all 11 source-owned cells, 740 AABB trees, 14,974 model indices, and the original reflection-probe index arrays against PC evidence. The new candidate readback is written under its **own** `pc_g11_remaining_world_primitive_probe/oat_loaded_11_cell_aabb_readback/` directory, preserving the existing proven report. These steps execute **only if source preflight and protected FF checks pass**. It writes to `pc_g11_remaining_world_primitive_probe`, not `pc_g11_cells_740`; the earlier FF must remain hash-identical. New result status is `AZTEC_GATE11_PRIMITIVE_SKY_BRUSH_WATER_OAT_LOAD_PASS_REMAINDER_PENDING` **only after** native OAT accepts it. Actual loaded sky/brush/water **field-by-field** independent readback is not implemented; first OAT acceptance alone cannot advance 10/13 to 11/13. On failure, inspect `pc_g11_remaining_world_primitive_probe/build.log` and `integrated_emitter.log` and do not deploy. A future combined FF requires source-proven remaining groups/asset/streamer semantics and full independent OAT readback before Gate11 can pass.
+
+## Gate11 primitive FF first and second OAT loads: Windows PASS, then full original-PC field digest check
+
+**User-verified on Windows at `246b213`:** an isolated `pc_g11_remaining_world_primitive_probe/scratch_emit/nazi_zombie_aztec.ff` has **3,650,170 bytes** and SHA-256 `D46ABC8E5681E4F235ED82821016F6F0002505AD0DEF68D680D70FCCE75F1FCB`, **7,238 bytes larger** than the unchanged 3,642,932-byte prior OAT-proven FF. The candidate includes the source-derived 2 skyStartSurfs (8B), 183 brush models (10,248B), two source water buffers (1,048,704B each), 11 cells, 740 AABB trees and 14,974 static model indices. One first OAT loader PASS and a distinct second OAT load source-value comparison of **11/11 GfxCells, 740/740 AABB trees, 14,974/14,974 indices, 11/11 reflection indices** passed. 42/42 PS5.1 scripts parsed and .NET built. The source array contents were **not** yet directly checked from the loaded native OAT memory by this result. Overall milestone stays **10/13**.
+
+**Next validation added (not yet run on Windows):** `GfxWorldSurfaceAbiWitnessT4Xenon.cpp` now produces a read-only `nativePrimitiveGraph` digest of ALL four genuinely loaded primitive buffers. The pinned x86 OAT loader is little-endian after native big-endian decoding, so each typed source-owned array is hashed as loaded x86 bytes using **FNV-1a 64** and compared to the original-PC little-endian blob (after verifying its original SHA-256, counts, stride and provenance). This is a diagnostic equality check of byte sequences, not a cryptographic standalone integrity proof; source SHA-256 and FF SHA-256 are checked separately. The native dumper never writes loaded payload bytes, only counts/pointer presence/digests. OAT x86 must be rebuilt **once** to install this new witness capability. No additional FF generation or .NET map build is required.
+
+From the PC2XB3 repository root:
+
+```powershell
+git pull --ff-only
+git rev-parse --short HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1'
+if ($LASTEXITCODE -ne 0) { throw 'Gate11 PowerShell syntax failed' }
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\tools\oat-xenon\Verify-AztecGate11OatLoadedPrimitives.ps1' -BuildDumper
+```
+
+Expected if all four arrays survive native loaded scalar conversion: `MATCH original-PC skyStartSurfs`, `brushModels`, `waterBuffer0`, `waterBuffer1` and `PASS 4/4, all 2,107,664 source-owned bytes`. Strict SHA-pinned report `pc_g11_remaining_world_primitive_probe/oat_loaded_primitive_source_digest/aztec_gate11_independent_loaded_primitive_source_digest.json`. A mismatch is **real diagnosis**, not permission to copy original Xbox reference bytes. Use the same command without `-BuildDumper` on subsequent runs.
+
+**Gate11 remains pending** after primitive proof. Additional original-PC reflection/lightmap image payload identities, lightgrid scalar/native streaming order, shadow/light-region graph, material and stock semantics are required before full-world PASS, Gate12 FF family and hardware admission. The previous Xbox hardware warning remains in force.
