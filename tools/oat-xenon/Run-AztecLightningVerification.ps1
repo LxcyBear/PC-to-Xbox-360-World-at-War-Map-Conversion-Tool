@@ -15,6 +15,7 @@ $sizePath=Join-Path $work 'pc_g11_native_ff_size_audit\aztec_native_ff_size_and_
 $proofPath=Join-Path $work 'pc_g11_image_root_links_probe\oat_loaded_six_image_root_links\aztec_gate11_independent_six_native_name_root_links.json'
 $baselinePath=Join-Path $base 'second_map_baseline.json'
 $imagePath=Join-Path $work 'pc_fastfile_image_sources\aztec_image_dependency_triage.json'
+$pcImageInventoryPath=Join-Path $work 'pc_fastfile_image_sources\pc_fastfile_image_sources.json'
 $imageSourcePath=Join-Path $work 'pc_fastfile_image_sources\aztec_external_pc_image_sources.json'
 $imageExtendedPath=Join-Path $work 'pc_fastfile_image_sources\aztec_external_pc_image_sources_extended.json'
 $out=Join-Path $work 'pc_g11_lightning_all_asset_verification'
@@ -74,6 +75,22 @@ if(-not(Test-Path -LiteralPath $ref -PathType Leaf) -or
 # optionally SHA proves the path currently exists, but a historical OAT log
 # is still not an authenticated fresh ownership/payload or Xbox residency test.
 # Avoid claiming "all stock" based on a retail identity name.
+$pcSourceHashes=New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::OrdinalIgnoreCase)
+if(Test-Path -LiteralPath $pcImageInventoryPath -PathType Leaf){
+    $sourceInventory=Get-Content -LiteralPath $pcImageInventoryPath -Raw|ConvertFrom-Json
+    if([string]$sourceInventory.schema -ne 'WaW360.AztecPcFastfileImageSourceCensus.v1' -or
+       [int]$sourceInventory.nativeImageRoots -ne 666 -or
+       @($sourceInventory.sourceFastfiles).Count -ne 3){
+        throw 'Original-PC FastFile image-source SHA inventory schema/count changed.'
+    }
+    foreach($x in @($sourceInventory.sourceFastfiles)){
+        $pathKey=[IO.Path]::GetFullPath([string]$x.SourceFastFile)
+        if($pcSourceHashes.ContainsKey($pathKey)){
+            throw "Duplicate original PC source SHA inventory $pathKey"
+        }
+        $pcSourceHashes.Add($pathKey,[string]$x.Sha256)
+    }
+}
 $pcRoles=New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::OrdinalIgnoreCase)
 $sourceRuns=New-Object 'System.Collections.Generic.List[object]'
 $missingLogs=New-Object 'System.Collections.Generic.List[string]'
@@ -87,11 +104,37 @@ foreach($ff in @($baseline.fastfiles)){
        [long](Get-Item -LiteralPath $pcPath).Length -ne [long]$ff.Bytes){
         throw "Original PC source file absent/changed length: $pcPath"
     }
+    if([bool]$ff.Success -eq $false -or [int]$ff.ExitCode -ne 0){
+        $missingLogs.Add("ORIGINAL_PC_OAT_BASELINE_NOT_PASSED: $role $pcPath")
+        $sourceRuns.Add([pscustomobject]@{Role=$role;Source=$pcPath;OatList='';Rows=0;Status='BASELINE_OAT_NOT_PASSED'})
+        continue
+    }
+    $pcFull=[IO.Path]::GetFullPath($pcPath)
+    $shaStatus='HASH_SKIPPED'
+    if(-not $SkipSourceHash){
+        $pcSha=(Get-FileHash -LiteralPath $pcPath -Algorithm SHA256).Hash
+        if($pcSourceHashes.ContainsKey($pcFull)){
+            if($pcSha -ine $pcSourceHashes[$pcFull]){
+                throw "Original-PC OAT evidence source content changed SHA: $pcFull"
+            }
+            $shaStatus='EXACT_PC_SOURCE_SHA_VERIFIED'
+        }else{
+            $shaStatus='PC_SOURCE_SHA_NOT_PINNED'
+        }
+    }
     $stem=([IO.Path]::GetFileNameWithoutExtension($pcPath)) -replace '[^A-Za-z0-9_.-]','_'
     $listPath=Join-Path $base ('oat_asset_lists\{0:D2}_{1}.list.log' -f $ffOrdinal,$stem)
-    if(-not(Test-Path -LiteralPath $listPath -PathType Leaf)){
-        [void]$missingLogs.Add($listPath)
-        $sourceRuns.Add([pscustomobject]@{Role=$role;Source=$pcPath;OatList=$listPath;Rows=0;Status='MISSING_OAT_LIST'})
+    $metaPath=[IO.Path]::ChangeExtension($listPath,'.meta.json')
+    $metaGood=$false
+    if(Test-Path -LiteralPath $metaPath -PathType Leaf){
+        $meta=Get-Content -LiteralPath $metaPath -Raw|ConvertFrom-Json
+        $pcFile=Get-Item -LiteralPath $pcPath
+        $fp="$($pcFile.FullName)|$([long]$pcFile.Length)|$($pcFile.LastWriteTimeUtc.Ticks)"
+        $metaGood=([string]$meta.Fingerprint -ceq $fp -and [int]$meta.ExitCode -eq 0)
+    }
+    if(-not(Test-Path -LiteralPath $listPath -PathType Leaf) -or -not $metaGood){
+        [void]$missingLogs.Add("MISSING_OR_STALE_OAT_LIST_META: $listPath")
+        $sourceRuns.Add([pscustomobject]@{Role=$role;Source=$pcPath;OatList=$listPath;Rows=0;Status='MISSING_OR_STALE_OAT_LIST_META';SourceHashStatus=$shaStatus})
         continue
     }
     $rows=0
@@ -110,7 +153,7 @@ foreach($ff in @($baseline.fastfiles)){
         }
     }
     $sourceRuns.Add([pscustomobject]@{
-        Role=$role;Source=$pcPath;OatList=$listPath;Rows=$rows;Status=$(if($rows -gt 0){'PC_OAT_LIST_NAME_ROWS'}else{'EMPTY_OR_UNRECOGNIZED_LIST'})
+        Role=$role;Source=$pcPath;OatList=$listPath;Rows=$rows;SourceHashStatus=$shaStatus;Status=$(if($rows -gt 0){'PC_OAT_LIST_NAME_ROWS'}else{'EMPTY_OR_UNRECOGNIZED_LIST'})
     })
 }
 if(@($sourceRuns.ToArray()).Count -ne 3){throw 'Expected exactly three original PC FastFile roles.'}
@@ -293,6 +336,8 @@ $summary=[ordered]@{
     workingXboxReferenceSha256=$rsha
     originalPcSourceFastFiles=3
     existingPcOatListLogsComplete=$completePcLogs
+    originalPcFileHashesComparedToPinnedSourceInventory=([bool](-not $SkipSourceHash -and $pcSourceHashes.Count -eq 3))
+    rawSourceFingerprintsAreHistoricalCacheOnly=$true
     sourceListRuns=$sourceRuns.ToArray()
     missingPcOatListFiles=$missingLogs.ToArray()
     exactPcOatTypeAndNameMatches=$pcMatched
