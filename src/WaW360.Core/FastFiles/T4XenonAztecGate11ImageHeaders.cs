@@ -176,15 +176,25 @@ public sealed class T4XenonAztecGate11ImageHeaders
         BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(_lightmapCountAt,4),2);
         BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(_lightmapHeadsAt,4),T4ZonePointer.Following);
     }
-    public void PlanHeaders(Action<long,int,bool> alloc)
+    // Pinned OAT T4Xenon GfxWorld.txt serializes reflectionProbes BEFORE
+    // dpvsPlanes and cells. The lightmaps array is emitted AFTER cells,
+    // before the inline GfxLightGrid child buffers. Keep the two arrays
+    // independently plannable so native loader ordering stays exact.
+    public void PlanReflectionProbes(Action<long,int,bool> alloc)
     {
         alloc(_probeHeads.Length,4,true);
-        alloc(_lightmapHeads.Length,4,true);
     }
-    public void EmitHeaders(Stream zone,Action<long,int,bool> alloc)
+    public void EmitReflectionProbes(Stream zone,Action<long,int,bool> alloc)
     {
         alloc(_probeHeads.Length,4,true);
         zone.Write(_probeHeads);
+    }
+    public void PlanLightmaps(Action<long,int,bool> alloc)
+    {
+        alloc(_lightmapHeads.Length,4,true);
+    }
+    public void EmitLightmaps(Stream zone,Action<long,int,bool> alloc)
+    {
         alloc(_lightmapHeads.Length,4,true);
         zone.Write(_lightmapHeads);
     }
