@@ -17,6 +17,7 @@ param([switch]$IntegrateWorld,
       [switch]$Weapon63OwnedAccuracyVec2,
       [switch]$Weapon63OwnedBounceSound,
       [switch]$Weapon63OwnedDirectSoundAliases,
+      [switch]$FlameSound6NativeGraft,
       [ValidateSet('0','1','6','63')][int]$WeaponCanaryLimit=63,
       [ValidateSet('Planes','Nodes','All')]
       [string]$Gate8ChildLevel='All')
@@ -87,6 +88,9 @@ if($Weapon63OwnedDirectSoundAliases -and
 }
 if($Weapon63ExtendedInlineStrings -and -not $Weapon63SourceCanary){
     throw '-Weapon63ExtendedInlineStrings requires -Weapon63SourceCanary and its existing original PC 69-root source proof.'
+}
+if($FlameSound6NativeGraft -and (-not $IntegrateWorld -or -not $Gate11ImageRootLinksProbe)){
+    throw 'Native six-XMA Source Sound + LoadedSound graft requires the source-owned full Gate11 world branch.'
 }
 if($Weapon63SourceCanary -and (-not $IntegrateWorld -or -not $Gate11ImageRootLinksProbe)){
     throw 'Weapon63 scratch canary requires the existing full Gate11 image-root-links native FF path. No other OAT baseline may be mutated.'
@@ -328,6 +332,15 @@ if($Weapon63SourceCanary){
         throw 'Source-owned Weapon63 FF diagnostic cannot use stale/unproven 69-root source report.'
     }
 }
+if($FlameSound6NativeGraft){
+    # Dedicated native Xbox sound FF experiment path, leaves all prior
+    # world and weapon FFs unchanged.
+    $work=Join-Path $repo '.deps\aztec-flame-xma-ff'
+    $flameAudioMetadata=Join-Path $base 'pc_g11_flame_real_xbox_xma_source\aztec_flame_six_genuine_xbox_sound_184b_loaded_160b_ff_metadata_v6.json'
+    if(-not(Test-Path -LiteralPath $flameAudioMetadata -PathType Leaf)){
+        throw "Genuine original Xbox 184B Sound +160B LoadedSound metadata is missing: $flameAudioMetadata"
+    }
+}
 $out=Join-Path $work 'scratch_emit'
 $log=Join-Path $work 'integrated_emitter.log'
 $buildLog=Join-Path $work 'build.log'
@@ -491,6 +504,7 @@ try{
     $priorWeaponVec2=$env:WAW360_AZTEC_WEAPON63_ACCURACY_VEC2_SOURCE
     $priorWeaponBounce=$env:WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE
     $priorWeaponDirect=$env:WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER
+    $priorFlameAudio=$env:WAW360_AZTEC_FLAME6_NATIVE_METADATA
     try{
         $env:WAW360_AZTEC_WORLD_CHILD_PROBE=$ProbeLevel
         if($DpvsStaticProbe){
@@ -587,10 +601,19 @@ try{
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_SOUND_ALIAS_SOURCE -ErrorAction SilentlyContinue
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIRECT_SOUND_FRONTIER -ErrorAction SilentlyContinue
         }
+        if($FlameSound6NativeGraft){
+            $env:WAW360_AZTEC_FLAME6_NATIVE_METADATA=$flameAudioMetadata
+            Write-Host '[AZTEC-XMA-FF] REAL native XMA ON: six verified Xbox sound aliases + 184B alias scalars + 160B LoadedSound metadata + LARGE audio packet/seek.'
+        }else{
+            Remove-Item Env:\WAW360_AZTEC_FLAME6_NATIVE_METADATA -ErrorAction SilentlyContinue
+        }
         & dotnet @argsList 2>&1 | ForEach-Object {[string]$_} |
             Set-Content -LiteralPath $log -Encoding UTF8
         $code=[int]$LASTEXITCODE
     }finally{
+        if($null -eq $priorFlameAudio){
+            Remove-Item Env:\WAW360_AZTEC_FLAME6_NATIVE_METADATA -ErrorAction SilentlyContinue
+        }else{$env:WAW360_AZTEC_FLAME6_NATIVE_METADATA=$priorFlameAudio}
         if($null -eq $priorWeapon63){
             Remove-Item Env:\WAW360_AZTEC_WEAPON63_DIAGNOSTIC -ErrorAction SilentlyContinue
         }else{$env:WAW360_AZTEC_WEAPON63_DIAGNOSTIC=$priorWeapon63}
@@ -671,6 +694,11 @@ if(-not(Test-Path -LiteralPath $emitManifest -PathType Leaf)){
     throw "Full OAT scratch FF emitter did not produce its status manifest (exit=$code): $log"
 }
 $e=Get-Content -LiteralPath $emitManifest -Raw | ConvertFrom-Json
+if($FlameSound6NativeGraft -and (
+   [int]$e.OriginalXboxFlameNativeSoundRoots -ne 6 -or
+   [long]$e.OriginalXboxFlameNativeXmaPacketBytes -le 0)){
+    throw 'Actual Stage4E genuine Xbox Sound/LoadedSound metadata+XMA packet graphs were not emitted.'
+}
 if($IntegrateWorld){
     $core=([bool]$e.OriginalPcGfxWorldCoreEmitted) -and
         [int]$e.RealMaterialRoots -eq 39 -and
