@@ -524,6 +524,7 @@ try {
         $capabilities.capabilities += 't4-pc-flame-packed-typed-material-and-alias-v2'
         $capabilities.capabilities += 't4-pc-flame-real-material-pointer-slot-hop-v3'
         $capabilities.capabilities += 't4xenon-real-flame-sound-to-loaded-xma-chain-v4'
+        $capabilities.capabilities += 't4xenon-flame-sound-alias-184b-loaded-160b-original-retail-metadata-v6'
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
