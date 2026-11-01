@@ -132,6 +132,7 @@ public static class T4XenonGraphBlockLayoutPlanner
             throw new InvalidDataException("Stage 4D requires an Xbox360 native oracle.");
 
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var flameAudio = T4XenonAztecRealFlameAudioGraft.LoadFromEnvironment(roots);
         var weaponCanary = await T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync(
             roots,cancellationToken);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
@@ -463,6 +464,24 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            // Actual Xbox retail Sound/LoadedSound source metadata and
+            // original XMA packet bytes, never identity-only shells.
+            if (flameAudio is not null && flameAudio.IsSound(root.Index))
+            {
+                flameAudio.PlanSound(root.Index,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,
+                    (size,align,serialized)=>{state.LargeAlloc(size,align,serialized);});
+                continue;
+            }
+            if (flameAudio is not null && flameAudio.IsLoaded(root.Index))
+            {
+                flameAudio.PlanLoaded(root.Index,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,
+                    (size,align,serialized)=>{state.LargeAlloc(size,align,serialized);});
+                continue;
+            }
             if(weaponCanary is not null &&
                weaponCanary.ByRoot.TryGetValue(root.Index,out var weaponEntry))
             {
@@ -517,6 +536,8 @@ public static class T4XenonGraphBlockLayoutPlanner
             notes.Add("One genuine original-PC 571011-byte MapEnts source with pinned Xenon readback, diagnostics only.");
         if (rawFileGraft.Count != 0)
             notes.Add($"PC-backed RawFile graft: {rawFileGraft.Count:N0} native roots with verified source SHA-256 and explicit logical buffer lengths.");
+        if (flameAudio is not null)
+            notes.Add($"REAL ORIGINAL XBOX SOUND: {flameAudio.RealSoundRoots}/6 typed Xbox Sound alias roots, {flameAudio.RealLoadedSoundRoots} preexisting LoadedSound roots, {flameAudio.InlineLoadedSoundChildren} genuinely owned embedded LoadedSound children, {flameAudio.OriginalXmaPacketBytes} actual XMA packet bytes in LARGE aligned 2048; native OAT still required.");
         notes.Add("TEMP is modeled as scratch: every top-level asset starts at TEMP+0; header TEMP size is the maximum root scope.");
         notes.Add("TEMP-backed roots reserve 4-byte VIRTUAL insert slots; non-TEMP StringTable roots occupy 16 serialized VIRTUAL bytes directly (no INSERT alias).");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
