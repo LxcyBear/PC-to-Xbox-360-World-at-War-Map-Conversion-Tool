@@ -125,6 +125,28 @@ internal sealed class T4XenonAztecRealFlameAudioGraft
         return result;
     }
 
+    // Verify that all six ORIGINAL encoded source Xbox XMA packet buffers
+    // are present BIT-FOR-BIT in the emitted native zone. The OAT 8509
+    // root/child pointer readback is a separate required gate.
+    public int VerifyNativeZoneOriginalPacketBytes(ReadOnlySpan<byte> bytes)
+    {
+        var verified = 0;
+        foreach (var row in _sounds.Values)
+        {
+            var source = row.Packet.Data.AsSpan();
+            var first = bytes.IndexOf(source);
+            if (first < 0)
+                throw new InvalidDataException(
+                    $"{row.SoundName}: actual source Xbox XMA packet bytes missing from native FF zone.");
+            // Each of these six samples has a unique LoadedSound origin.
+            if (bytes[(first + 1)..].IndexOf(source) >= 0)
+                throw new InvalidDataException(
+                    $"{row.SoundName}: unexpected duplicate original Xbox XMA packet in native FF zone.");
+            verified++;
+        }
+        return verified;
+    }
+
     public bool IsSound(int rootIndex) => _sounds.ContainsKey(rootIndex);
     public bool IsLoaded(int rootIndex) => _loaded.ContainsKey(rootIndex);
 
