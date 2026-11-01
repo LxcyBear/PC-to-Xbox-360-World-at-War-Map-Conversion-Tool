@@ -75,6 +75,7 @@ if([int]$e.NativeRoots -ne 8509 -or
    ([int]$e.OriginalXboxFlameNativeLoadedRoots +
       [int]$e.OriginalXboxFlameNativeInlineLoadedBodies) -ne 6 -or
    [long]$e.OriginalXboxFlameNativeXmaPacketBytes -le 0 -or
+   [int]$e.OriginalXboxFlameNativeBitExactXmaPacketsReadBack -ne 6 -or
    -not [bool]$e.LayoutReplayExact -or
    -not [bool]$e.ValidationPass -or
    -not [bool]$e.ExactIdentitySequence -or
@@ -97,6 +98,7 @@ $body=[ordered]@{
     originalXboxFlameOwnedTopLevelLoadedRoots=[int]$e.OriginalXboxFlameNativeLoadedRoots
     originalXboxFlameInlineOwnedLoadedBodies=[int]$e.OriginalXboxFlameNativeInlineLoadedBodies
     actualOriginalXboxXmaEncodedPacketBytes=[long]$e.OriginalXboxFlameNativeXmaPacketBytes
+    actualOriginalXboxXmaPacketBuffersReadBackBitExact=[int]$e.OriginalXboxFlameNativeBitExactXmaPacketsReadBack
     sourceOriginalXboxSoundMetadataProof=$meta
     nativeStage4d4eExactLayout=[bool]$e.LayoutReplayExact
     oatLoadedAll8509RootIdentitiesExact=[bool]$e.ExactIdentitySequence
