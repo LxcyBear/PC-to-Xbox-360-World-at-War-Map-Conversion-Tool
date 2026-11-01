@@ -77,6 +77,42 @@
                             dir=safe(sf->u.streamSnd.filename.dir);
                             name=safe(sf->u.streamSnd.filename.name);
                         }
+                        // Genuine fully typed 184-byte Xbox snd_alias_t
+                        // source metadata, read from the OAT-loaded owner,
+                        // NOT a guessed/ordinal/donor native skeleton.
+                        // Host pointers are intentionally scrubbed by the
+                        // later 32-bit endian rebasing writer.
+                        static_assert(sizeof(snd_alias_t)==184,
+                                      "T4Xenon sound alias ABI drift");
+                        static_assert(sizeof(SoundFile)==20,
+                                      "T4Xenon SoundFile ABI drift");
+                        const auto aliasHex=[&alias]()->std::string
+                        {
+                            static constexpr char digits[]="0123456789ABCDEF";
+                            std::string out;
+                            out.reserve(sizeof(alias)*2);
+                            const auto* p=reinterpret_cast<const unsigned char*>(&alias);
+                            for(size_t k=0;k<sizeof(alias);k++)
+                            {
+                                out.push_back(digits[p[k]>>4]);
+                                out.push_back(digits[p[k]&15]);
+                            }
+                            return out;
+                        };
+                        std::cerr << "[WAW360-XMAALIASMETA]"
+                                  << " root=" << asset.m_name
+                                  << " index=" << i
+                                  << " listName=" << safe(sound->aliasName)
+                                  << " aliasName=" << safe(alias.aliasName)
+                                  << " subtitle=" << safe(alias.subtitle)
+                                  << " secondary=" << safe(alias.secondaryAliasName)
+                                  << " chain=" << safe(alias.chainAliasName)
+                                  << " type=" << (sf?static_cast<int>(sf->type):0)
+                                  << " exists=" << (sf?static_cast<int>(sf->exists):0)
+                                  << " loadedOwned=" << (loadedOwned?1:0)
+                                  << " loadedName=" << loaded
+                                  << " aliasHostBytes=" << aliasHex()
+                                  << std::endl;
                         std::cerr << "[WAW360-XMASOUND] root=" << asset.m_name
                                   << " index=" << i
                                   << " type=" << state
