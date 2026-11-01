@@ -302,3 +302,29 @@ From repo root run:
     if ($LASTEXITCODE -ne 0) { throw "Original-PC typed material / genuine Xbox retail source crosswalk blocked" }
 
 Expected evidence JSON in pc_g11_flame_loaded_virtual_target_proof/aztec_4_parents_2_typed_flame_tables_10_material_names_xbox_67_zones_v5.json. New script pushed but NOT executed under Windows yet. Audio remains at v4 6/6 actual Xbox RIFF-XMA samples with authentic loaded Sound alias/SoundFile linkage. A further graph/binding and hardware run remains necessary before map is called playable.
+
+
+## 2026-10-31 assembly-first priority: genuine audio/XMA, then gameplay-critical assets, then scripts/collision
+
+The user set the long-term project work order: 1. Actual native Xbox audio/XMA source and graph integration; 2. Complete gameplay-critical WeaponDef/XAnim/XModel/FX/material/texture children; 3. Console scripts, animtree, collision, zombie gameplay. Only after these are assembled should a final native release be declared. Source recovery, OAT-loaded FF, audio playback and actual console gameplay remain different gates. Prefer build/emit/OAT iteration over indefinite name-only audits. Keep previous known-good FF untouched, never replace real assets with silent placeholders.
+
+### Six native flamethrower audio Sound/LoadedSound integration is implemented, not yet Windows-tested
+
+- Original verified Xbox retail ber3.ff source (v4): six exact Sound alias ownership chains and six legitimate RIFF-XMA samples SHA staged.
+- OAT v6 native SoundDumper metadata trace now prints each real 184-byte snd_alias_t and owned 160-byte LoadedSound original Xbox in-memory struct plus exact alias child strings and SoundFile type, using the original trusted owner pool. Pinned new capability t4xenon-flame-sound-alias-184b-loaded-160b-original-retail-metadata-v6.
+- Run-AztecFlameNativeAudioMetadataCapture.ps1 optionally rebuilds pinned OAT only ONCE, reruns proven v4 real Xbox audio extraction, and writes source hashes and six exact original-Xbox metadata pairs.
+- New T4XenonAztecRealFlameAudioGraft.cs authentic Xbox audio codec parses original OAT RIFF files, preserves only their real XMA data packets and original seek metadata, validates 184B original Xbox alias scalar data and 160B native LoadedSound source fields, XMA stream count, packet bytes, loop start/end/subframes, sample rates, channel counts and duration. It endian-rebases known scalar fields, replaces source process pointers with native packed FOLLOWING/INSERT or an already stable loaded source root. Payload is placed in Xenon LARGE aligned 2048, seek words in VIRTUAL.
+- Actual Stage4D and Stage4E now opt into these six genuine Sound/LoadedSound roots and their loaded inline children. No opt-in means old outputs stay untouched. Existing full Gate11 and 63 original-PC owned weapon source graph canaries run alongside native audio in a new isolated FF path.
+- Run-SecondMapAztec39WorldMaterialIntegratedScratchFF.ps1 -FlameSound6NativeGraft emits only under short .deps/aztec-flame-xma-ff; old .deps/aztec-w63-direct-ff-growth SHA untouched. Stage4E reports nativeSoundRoots=6, loaded roots/inline bodies, XMA packet bytes, exact layout and OAT identity gate.
+- Run-AztecFlameSixXmaFullNativeIntegration.ps1 -BuildDumper combines the pinned OAT one-time native source build, actual six Xbox metadata extraction, full isolated FF emission and 8509/8509 OAT identity + 0 warnings/errors. OAT may reject first attempt: fix precise serialization error, never mislabel an untested commit PASS.
+
+One user command from converter repo root:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax blocked" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlameSixXmaFullNativeIntegration.ps1" -BuildDumper
+    if ($LASTEXITCODE -ne 0) { throw "Native six-Sound/XMA build blocked. Inspect actual OAT error." }
+
+Real six-XMA native FF code has been committed but NOT compiled or OAT run by Windows user. Six proven Xbox XMA samples do not imply map-wide audio is complete. Follow-up: generalize source-owned Sound/LoadedSound native child writer to all required map identities; resolve genuine PC unique sample conversion; stream sound archive and CodXe install semantics; verify original sample extraction/CRC after native OAT; test actual hardware playback. Then integrate the already source-proven 602 XAnim, 257 PC XModel, 217 FX and full WeaponDef children and material/image graph; close remaining scripts (including animscripts/dog_combat::main observed missing on Xbox), collision and zombie gameplay.
