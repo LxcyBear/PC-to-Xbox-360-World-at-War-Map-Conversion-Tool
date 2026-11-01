@@ -13,7 +13,7 @@ $cap='t4xenon-flame-sound-alias-184b-loaded-160b-original-retail-metadata-v6'
 if(-not(Test-Path -LiteralPath $capPath -PathType Leaf) -or
    @((Get-Content -LiteralPath $capPath -Raw|ConvertFrom-Json).capabilities) -notcontains $cap){
     if(-not $BuildDumper){throw 'Genuine Xbox typed Sound/LoadedSound v6 metadata dumper not built. Run -BuildDumper once.'}
-    Write-Host '[AZTEC-XMA-V6] ONE pinned native Xbox OAT rebuild for exact 184B snd_alias_t and 160B LoadedSound source scalar metadata.'
+    Write-Host '[AZTEC-XMA-V6] ONE pinned native Xbox 360 OAT rebuild for exact 184B snd_alias_t and 160B LoadedSound source scalar metadata.'
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Build-OatXenonGraphDumper.ps1') -TraceWeaponNamePointers
     if($LASTEXITCODE -ne 0){throw 'Pinned Xbox OAT native typed Sound metadata build failed.'}
 }
@@ -120,6 +120,6 @@ $body=[ordered]@{
     xboxCodXeAudioRuntimeProven=$false
 }
 $body|ConvertTo-Json -Depth 13|Set-Content -LiteralPath $out -Encoding UTF8
-Write-Host "[AZTEC-XMA-V6] six source-owned 184B alias scalar metadata + six 160B genuine LoadedSound records verified; original Xbox RIFF XMA packet files SHA-preserved"
+Write-Host "[AZTEC-XMA-V6] six retail Xbox 360 source-owned 184B alias records + six 160B genuine LoadedSound records verified; original Xbox RIFF XMA packet files SHA-preserved"
 Write-Host "[AZTEC-XMA-V6] SOURCE=$out"
 Write-Host '[AZTEC-XMA-V6-PROGRESS] [####################] 100% | handoff to actual native Stage 4D/4E Sound/LoadedSound FF rebase'
