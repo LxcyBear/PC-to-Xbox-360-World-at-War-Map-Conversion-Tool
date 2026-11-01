@@ -21,6 +21,10 @@ $c=Get-Content -LiteralPath $capPath -Raw|ConvertFrom-Json
 if([string]$c.oatRevision -ne '3beaa7c81af517f0c05f2b4612d477ed1541b676' -or
    @($c.capabilities) -notcontains $cap){throw 'Pinned genuine Xbox OAT Sound meta v6 capability missing.'}
 Write-Host '[AZTEC-XMA-V6-PROGRESS] [######--------------] 30% | pinned source-owned T4 Xenon audio metadata instrument installed'
+# The pinned v6 OAT dumper accidentally prefixed a literal '-' before
+# the 160-byte genuine Owned LoadedSound hex. Consume only the exact 320
+# subsequent hex digits, never the prefix; avoids a second expensive
+# Win32 OAT rebuild purely to fix a formatting artifact.
 # Rerun the already passing v4 OAT Xbox audio extraction. This creates
 # fresh same-run raw metadata AND source-verified audio XMA under existing
 # evidence-only paths; no FF or production map is changed.
@@ -52,7 +56,7 @@ foreach($p in @($v.verifiedOriginalXboxSourceSamplePayloads)){
 }
 if($wanted.Count -ne 6){throw "Expected six and only six genuine original Xbox XMA sample relationships; have $($wanted.Count)"}
 $lines=@([IO.File]::ReadAllLines($trace)|Where-Object{$_ -match '^\[WAW360-XMAALIASMETA\] '})
-$regex='^\[WAW360-XMAALIASMETA\] root=(\S+) index=(\d+) listName=(\S+) aliasName=(\S+) subtitle=(\S+) secondary=(\S+) chain=(\S+) type=(\d+) exists=(\d+) loadedOwned=(0|1) loadedName=(\S+) aliasHostBytes=([A-Fa-f0-9]{368}) loadedHostBytes=([A-Fa-f0-9]{320})$'
+$regex='^\[WAW360-XMAALIASMETA\] root=(\S+) index=(\d+) listName=(\S+) aliasName=(\S+) subtitle=(\S+) secondary=(\S+) chain=(\S+) type=(\d+) exists=(\d+) loadedOwned=(0|1) loadedName=(\S+) aliasHostBytes=([A-Fa-f0-9]{368}) loadedHostBytes=-?([A-Fa-f0-9]{320})$'
 $seen=@{}
 $rows=New-Object 'System.Collections.Generic.List[object]'
 foreach($line in $lines){
