@@ -71,6 +71,8 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlamePcTypedWeaponMaterialAudit.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameTypedMaterialSourceAndRetailClosure.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameXboxLoadedSampleChain.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameNativeAudioMetadataCapture.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameSixXmaFullNativeIntegration.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameV4MaterialAndRealXboxSoundChains.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameRealXboxXmaExtract.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecWeapon63AccuracyVec2ExactAB.ps1') -ErrorAction Stop)
