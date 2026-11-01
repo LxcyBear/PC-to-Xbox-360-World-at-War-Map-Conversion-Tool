@@ -282,3 +282,23 @@ From repo root, no C++ rebuild:
     if ($LASTEXITCODE -ne 0) { throw "Original PC typed Material source audit blocked" }
 
 The typed material name audit code has been pushed but NOT yet Windows-executed. Its output is under pc_g11_flame_loaded_virtual_target_proof/aztec_four_pc_flame_tables_typed_weapon_material_names.json. Do not advance material graft or Xbox deployment until names match the actual loaded source and a real native image/technique graph can be provided. Original source NULLs (122 parent / 12 material / 4 sound) remain unchanged.
+
+
+## 2026-10-31: real PC typed FlameTable Material names 10, PC OAT-owned root name matches 8, v5 material source join
+
+The user's a7fdd18 Windows run succeeded: 82/82 PowerShell 5.1 syntax PASS and pinned OAT original-PC typed WeaponDumper export. Two OAT-typed original PC FlameTable files were genuinely produced: weapons/quinn_flame_firstperson (internal name quinn_flame_firstperson) and weapons/quinn_flame_thirdperson (internal name quinn_table_thirdperson). Each typed table has FIVE source Material name fields, giving TEN recovered original-PC typed material-name occurrences; EIGHT independently match OAT original PC Material XAsset root name listings. The two remaining matches are NOT proven fake or missing, only not independently found as listed source-PC asset roots. Do not promote them to Xbox material assets without a real source child graph.
+
+The four earlier SHA-proven same-source original-PC 476-byte FlameTable parent bodies are physical instances; the two exported original PC FlameTable definitions are typed logical files. Two typed OAT files vs four source body instances does NOT automatically imply two body instances missing, or that two logical definitions have been fully proven to own all four; original name and parent ownership joins are required. The exact four-source parent count also conserves 17 packed Material pointer source fields, 3 inline Material pointers and 12 genuine NULL Material fields.
+
+New read-only, zero-build tools/oat-xenon/Run-AztecFlameTypedMaterialSourceAndRetailClosure.ps1 joins exact SHA-pinned original PC parent/typed/v2 reports and scans 67 validated real original Xbox 360 retail FF OAT Material XAsset catalogs. It prints every verified typed name and sorts each by independent PC OAT Material root match, actual Xbox OAT OWNED Material root name match, or REFERENCE-ONLY name; NONE is native image/technique/shader graph proof. It also attempts exact name joins of the four physical original-PC FlameTable parents to the two typed logical files using only directly recovered original-PC packed FlameTable source string bytes; original inline name slots not string-proven remain unresolved, rather than guessing by first/third naming. No fake Material payloads, silent audio, donor FF bodies, new native FF, or Xbox run.
+
+From repo root run:
+
+    git pull --ff-only
+    git rev-parse --short HEAD
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Test-WaWMultiMapScriptSyntax.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "PS5.1 syntax gate blocked" }
+    powershell -NoProfile -ExecutionPolicy Bypass -File ".\tools\oat-xenon\Run-AztecFlameTypedMaterialSourceAndRetailClosure.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "Original-PC typed material / genuine Xbox retail source crosswalk blocked" }
+
+Expected evidence JSON in pc_g11_flame_loaded_virtual_target_proof/aztec_4_parents_2_typed_flame_tables_10_material_names_xbox_67_zones_v5.json. New script pushed but NOT executed under Windows yet. Audio remains at v4 6/6 actual Xbox RIFF-XMA samples with authentic loaded Sound alias/SoundFile linkage. A further graph/binding and hardware run remains necessary before map is called playable.
