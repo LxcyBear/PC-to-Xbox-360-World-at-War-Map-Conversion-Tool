@@ -21,7 +21,7 @@ if([string]$p.newScratchFastFileSha256 -ine $oldHash){
     throw 'Last passing genuine original-PC Weapon63 FF source changed.'
 }
 Write-Host '[AZTEC-SIX-XMA-FF] ===================================================='
-Write-Host '[AZTEC-SIX-XMA-FF] ACTUAL SIX ORIGINAL XBOX XMA SOUND METADATA + ENCODED PACKET NATIVE FF INTEGRATION'
+Write-Host '[AZTEC-SIX-XMA-FF] ACTUAL SIX RETAIL XBOX 360 XMA SOUND METADATA + ENCODED PACKET NATIVE FF INTEGRATION'
 Write-Host '[AZTEC-SIX-XMA-FF] Original PC owned Gate11 world + 63 WeaponDef inline/source proof + 160 direct aliases + six real Xbox sound roots.'
 Write-Host '[AZTEC-SIX-XMA-FF] Native 8509 root identities held fixed. OAT decides native schema acceptance; no fake XMA/aliases.'
 Write-Host '[AZTEC-SIX-XMA-FF-PROGRESS] [##------------------] 10% | original 63 WeaponDef source FF preserved'
