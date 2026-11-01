@@ -99,6 +99,21 @@
                             }
                             return out;
                         };
+                        std::string loadedHostHex="-";
+                        if(loadedOwned && sf && sf->u.loadSnd)
+                        {
+                            static_assert(sizeof(LoadedSound)==160,
+                                "T4 Xenon loaded sound ABI drift");
+                            static constexpr char digits[]="0123456789ABCDEF";
+                            const auto* p=reinterpret_cast<const unsigned char*>(
+                                sf->u.loadSnd);
+                            loadedHostHex.reserve(sizeof(LoadedSound)*2);
+                            for(size_t k=0;k<sizeof(LoadedSound);k++)
+                            {
+                                loadedHostHex.push_back(digits[p[k]>>4]);
+                                loadedHostHex.push_back(digits[p[k]&15]);
+                            }
+                        }
                         std::cerr << "[WAW360-XMAALIASMETA]"
                                   << " root=" << asset.m_name
                                   << " index=" << i
@@ -112,6 +127,7 @@
                                   << " loadedOwned=" << (loadedOwned?1:0)
                                   << " loadedName=" << loaded
                                   << " aliasHostBytes=" << aliasHex()
+                                  << " loadedHostBytes=" << loadedHostHex
                                   << std::endl;
                         std::cerr << "[WAW360-XMASOUND] root=" << asset.m_name
                                   << " index=" << i
