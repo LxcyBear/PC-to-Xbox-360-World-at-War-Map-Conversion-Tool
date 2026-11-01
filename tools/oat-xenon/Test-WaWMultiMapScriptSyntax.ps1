@@ -69,6 +69,7 @@ $files = @(
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameMaterialAndXmaSourceSprint.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameFiveMaterialCellEvidence.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlamePcTypedWeaponMaterialAudit.ps1') -ErrorAction Stop)
+    @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameTypedMaterialSourceAndRetailClosure.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameXboxLoadedSampleChain.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameV4MaterialAndRealXboxSoundChains.ps1') -ErrorAction Stop)
     @(Get-Item -LiteralPath (Join-Path $dir 'Run-AztecFlameRealXboxXmaExtract.ps1') -ErrorAction Stop)
