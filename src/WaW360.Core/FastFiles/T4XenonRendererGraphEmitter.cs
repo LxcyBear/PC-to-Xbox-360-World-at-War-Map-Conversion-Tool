@@ -36,6 +36,10 @@ public sealed class T4XenonRendererEmitResult
     public int OriginalPcWeaponOwnedBounceAliasRecords { get; init; }
     public int OriginalPcWeaponOwnedBounceAliasNames { get; init; }
     public long OriginalPcWeaponOwnedBounceAliasNameBytes { get; init; }
+    public int OriginalXboxFlameNativeSoundRoots { get; init; }
+    public int OriginalXboxFlameNativeLoadedRoots { get; init; }
+    public int OriginalXboxFlameNativeInlineLoadedBodies { get; init; }
+    public long OriginalXboxFlameNativeXmaPacketBytes { get; init; }
     public int OriginalPcWeaponOwnedDirectSoundAliasRecords { get; init; }
     public int OriginalPcWeaponOwnedDirectSoundAliasNames { get; init; }
     public long OriginalPcWeaponOwnedDirectSoundAliasNameBytes { get; init; }
@@ -178,6 +182,7 @@ public static class T4XenonRendererGraphEmitter
 
         var native = await FastFileAnalysisCache.GetZoneAsync(nativeFastFile, cancellationToken);
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var flameAudio = T4XenonAztecRealFlameAudioGraft.LoadFromEnvironment(roots);
         var weaponCanary = await T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync(
             roots,cancellationToken);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
@@ -505,6 +510,23 @@ public static class T4XenonRendererGraphEmitter
                 continue;
             }
 
+            if (flameAudio is not null && flameAudio.IsSound(root.Index))
+            {
+                flameAudio.EmitSound(root.Index, zone,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,
+                    (size,align,serialized)=>{state.LargeAlloc(size,align,serialized);},
+                    stableByRoot);
+                continue;
+            }
+            if (flameAudio is not null && flameAudio.IsLoaded(root.Index))
+            {
+                flameAudio.EmitLoaded(root.Index, zone,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,
+                    (size,align,serialized)=>{state.LargeAlloc(size,align,serialized);});
+                continue;
+            }
             if(weaponCanary is not null &&
                weaponCanary.ByRoot.TryGetValue(root.Index,out var weaponEntry))
             {
@@ -758,6 +780,10 @@ public static class T4XenonRendererGraphEmitter
             OriginalPcWeaponOwnedBounceAliasRecords = weaponCanary?.TotalOwnedSoundAliasRecords ?? 0,
             OriginalPcWeaponOwnedBounceAliasNames = weaponCanary?.TotalOwnedSoundAliasNames ?? 0,
             OriginalPcWeaponOwnedBounceAliasNameBytes = weaponCanary?.TotalOwnedSoundAliasNameBytes ?? 0,
+            OriginalXboxFlameNativeSoundRoots = flameAudio?.RealSoundRoots ?? 0,
+            OriginalXboxFlameNativeLoadedRoots = flameAudio?.RealLoadedSoundRoots ?? 0,
+            OriginalXboxFlameNativeInlineLoadedBodies = flameAudio?.InlineLoadedSoundChildren ?? 0,
+            OriginalXboxFlameNativeXmaPacketBytes = flameAudio?.OriginalXmaPacketBytes ?? 0,
             OriginalPcWeaponOwnedDirectSoundAliasRecords = weaponCanary?.TotalOwnedDirectSoundAliasRecords ?? 0,
             OriginalPcWeaponOwnedDirectSoundAliasNames = weaponCanary?.TotalOwnedDirectSoundAliasNames ?? 0,
             OriginalPcWeaponOwnedDirectSoundAliasNameBytes = weaponCanary?.TotalOwnedDirectSoundAliasNameBytes ?? 0,
