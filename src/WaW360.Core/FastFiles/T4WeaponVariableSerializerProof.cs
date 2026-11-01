@@ -66,6 +66,28 @@ public static class T4WeaponVariableSerializerProof
 
     private sealed record PlannedInsertion(int Offset, byte[] Bytes);
 
+    internal sealed record OwnedFixedInlineXString(int FixedFieldOffset, string ProofLabel, string SourceValue, int SourceBodyByteOffset);
+    // This is original-PC-sourced Xbox big-endian 7b proof data, NOT a native
+    // FF relocation: no packed/external WeaponDef pointer may be carried out.
+    internal sealed record OwnedFixedInlineAccuracyVec2(
+        int FixedFieldOffset,string ProofLabel,int KnotCount,int SourceBodyByteOffset,byte[] BigEndianKnotBytes);
+    // 31 SndAliasCustom pointer cells, exactly as serialized by the original
+    // PC-owned Alpha 7b stream. These are POINTERS, not Xbox sound assets.
+    internal sealed record OwnedInlineBounceSoundTable(
+        int FixedFieldOffset,int SourceBodyByteOffset,byte[] BigEndianPointerBytes);
+    internal sealed record OwnedInlineSndAliasName(
+        string ProofLabel,int SourceRecordByteOffset,uint RawStringPointer,
+        int? SourceInlineNameByteOffset,byte[]? InlineNameBytes);
+    // FlameTable parent: 476 genuine big-endian serialized bytes. Pointer
+    // cells at +424/428..456/460..472 are NOT native relocation values.
+    internal sealed record OwnedInlineFlameTable(
+        string ProofLabel,int FixedFieldOffset,int SourceBodyByteOffset,
+        byte[] BigEndianFixedBytes);
+    // Exact 7b source child; packed references intentionally have null bytes.
+    internal sealed record OwnedFlameDependencyChild(
+        string ParentLabel,string ProofLabel,string AssetKind,int ParentPointerOffset,
+        uint RawPointer,int? SourceBodyByteOffset,byte[]? InlineOwnedBytes);
+
     private sealed class TraverseStats
     {
         public int InlineStrings;
@@ -88,6 +110,12 @@ public static class T4WeaponVariableSerializerProof
         public required TraverseStats Stats { get; init; }
         public required string WeaponName { get; init; }
         public bool RequireSelfContainedPointers { get; init; }
+        public List<OwnedFixedInlineXString>? ObservedFixedInlineXStrings { get; init; }
+        public List<OwnedFixedInlineAccuracyVec2>? ObservedFixedInlineAccuracyArrays { get; init; }
+        public List<OwnedInlineBounceSoundTable>? ObservedBounceSoundTables { get; init; }
+        public List<OwnedInlineSndAliasName>? ObservedSoundAliasNames { get; init; }
+        public List<OwnedInlineFlameTable>? ObservedFlameTables { get; init; }
+        public List<OwnedFlameDependencyChild>? ObservedFlameDependencyChildren { get; init; }
         public byte[]? PatchDestination { get; init; }
         public IReadOnlyDictionary<string, string>? StringOverrides { get; init; }
         public List<PlannedInsertion>? PlannedInsertions { get; init; }
@@ -247,6 +275,281 @@ public static class T4WeaponVariableSerializerProof
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Validates the ORIGINAL source-owned endian-converted Xbox 7b stream
+    /// with the exact source-aware traversal used by BuildProofAsync.
+    /// Existing packed PC Virtual/asset pointers are acceptable EVIDENCE
+    /// here but must NOT be copied into a runtime FF. For an emitted FF
+    /// canary, validate its separately sanitized blob with
+    /// TryValidateSelfContainedXboxBlob (which rejects all packed pointers).
+    /// </summary>
+    internal static bool TryValidateSourceOwnedXboxBlob(byte[] blob, string name, out string reason)
+    {
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = false
+            };
+            var end = WalkOwnedPayload(ctx, 0);
+            if (end != blob.Length)
+                throw new InvalidDataException(
+                    $"typed source-owned Xbox walk ended at 0x{end:X}, expected 0x{blob.Length:X}.");
+            return true;
+        }
+        catch (Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Reuse the exact Alpha 7b big-endian T4 owned graph traversal to identify
+    /// inline XString values whose pointer lives DIRECTLY in the fixed
+    /// WeaponDef body. Packed source pointers and nested foreign assets are
+    /// intentionally NOT promoted; this is forensic source content only.
+    /// The caller must independently rebase/validate a fresh Xbox FF body.
+    /// </summary>
+    internal static bool TryCollectSourceOwnedFixedInlineXStrings(
+        byte[] blob, string name,
+        out IReadOnlyList<OwnedFixedInlineXString> strings,
+        out string reason)
+    {
+        var observed = new List<OwnedFixedInlineXString>();
+        strings = Array.Empty<OwnedFixedInlineXString>();
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = blob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = false,
+                ObservedFixedInlineXStrings = observed
+            };
+            var end = WalkOwnedPayload(ctx, 0);
+            if(end != blob.Length)
+                throw new InvalidDataException(
+                    $"original-PC source inline XString walk ended at 0x{end:X}, expected 0x{blob.Length:X}");
+            if(observed.Any(s => s.FixedFieldOffset < 0 || s.FixedFieldOffset >= FixedBodySize ||
+                                  (s.FixedFieldOffset & 3) != 0) ||
+               observed.Select(s => s.FixedFieldOffset).Distinct().Count() != observed.Count)
+                throw new InvalidDataException(
+                    "original-PC source owned fixed XString offset duplicated, unaligned or out of bounds.");
+            strings = observed.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason = ex.Message;
+            strings = Array.Empty<OwnedFixedInlineXString>();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Read-only ORIGINAL source-owned 7b WeaponDef accuracy-graph array
+    /// witness. Uses the exact Alpha 7b owned child traversal, not a
+    /// fixed-offset guess into the variable-length owned payload stream.
+    /// Returns only genuine inline original-PC 2-float/knot data; all
+    /// non-inline/packed references remain explicitly unresolved.
+    /// </summary>
+    internal static bool TryCollectSourceOwnedAccuracyVec2Arrays(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedFixedInlineAccuracyVec2> arrays,out string reason)
+    {
+        var observed = new List<OwnedFixedInlineAccuracyVec2>();
+        arrays = Array.Empty<OwnedFixedInlineAccuracyVec2>();
+        reason = string.Empty;
+        try
+        {
+            var ctx = new WalkContext
+            {
+                Source = xboxSourceProofBlob,
+                Endianness = Endian.Big,
+                Header = null,
+                Output = null,
+                Stats = new TraverseStats(),
+                WeaponName = name,
+                RequireSelfContainedPointers = false,
+                ObservedFixedInlineAccuracyArrays = observed
+            };
+            var end = WalkOwnedPayload(ctx,0);
+            if(end != xboxSourceProofBlob.Length)
+                throw new InvalidDataException(
+                    $"source owned WeaponDef accuracy walk ended at 0x{end:X}, expected 0x{xboxSourceProofBlob.Length:X}");
+            int[] expectedSlots = { 2184,2192,2188,2196 };
+            if(observed.Any(a => !expectedSlots.Contains(a.FixedFieldOffset) ||
+                                 a.KnotCount <= 0 || a.KnotCount > 4096 ||
+                                 a.BigEndianKnotBytes.Length != checked(a.KnotCount*8) ||
+                                 a.SourceBodyByteOffset < FixedBodySize ||
+                                 (long)a.SourceBodyByteOffset+a.BigEndianKnotBytes.Length>xboxSourceProofBlob.Length) ||
+               observed.Select(a => a.FixedFieldOffset).Distinct().Count() != observed.Count)
+                throw new InvalidDataException(
+                    $"source WeaponDef '{name}' accuracy array witness has invalid/duplicate slot, count or owned byte bounds.");
+            arrays=observed.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason=ex.Message;
+            arrays=Array.Empty<OwnedFixedInlineAccuracyVec2>();
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Source-only forensic witness for T4 WeaponDef bounceSound at fixed
+    /// pointer slot 624, and independently source-owned inline SndAliasCustom
+    /// name records. Never treats 31 pointer words as resolved Xbox sounds.
+    /// </summary>
+    internal static bool TryCollectSourceOwnedBounceSound(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedInlineBounceSoundTable> tables,
+        out IReadOnlyList<OwnedInlineSndAliasName> aliases,
+        out string reason)
+    {
+        var observedTables=new List<OwnedInlineBounceSoundTable>();
+        var observedAliases=new List<OwnedInlineSndAliasName>();
+        tables=Array.Empty<OwnedInlineBounceSoundTable>();
+        aliases=Array.Empty<OwnedInlineSndAliasName>();
+        reason=string.Empty;
+        try
+        {
+            var ctx=new WalkContext
+            {
+                Source=xboxSourceProofBlob,
+                Endianness=Endian.Big,
+                Header=null,
+                Output=null,
+                Stats=new TraverseStats(),
+                WeaponName=name,
+                RequireSelfContainedPointers=false,
+                ObservedBounceSoundTables=observedTables,
+                ObservedSoundAliasNames=observedAliases
+            };
+            var end=WalkOwnedPayload(ctx,0);
+            if(end!=xboxSourceProofBlob.Length)
+                throw new InvalidDataException(
+                    $"Weapon '{name}' bounce source stream ended at 0x{end:X}, expected 0x{xboxSourceProofBlob.Length:X}");
+            if(observedTables.Count>1 ||
+               observedTables.Any(t=>t.FixedFieldOffset!=624 ||
+                   t.SourceBodyByteOffset<FixedBodySize ||
+                   (long)t.SourceBodyByteOffset+BounceSoundCount*4>xboxSourceProofBlob.Length ||
+                   t.BigEndianPointerBytes.Length!=BounceSoundCount*4) ||
+               observedAliases.Any(a=>a.SourceRecordByteOffset<FixedBodySize ||
+                   (long)a.SourceRecordByteOffset+4>xboxSourceProofBlob.Length ||
+                   (a.InlineNameBytes is not null &&
+                      (a.SourceInlineNameByteOffset is null ||
+                       a.SourceInlineNameByteOffset.Value<FixedBodySize ||
+                       (long)a.SourceInlineNameByteOffset.Value+a.InlineNameBytes.Length>xboxSourceProofBlob.Length))))
+                throw new InvalidDataException(
+                    $"Weapon '{name}' bounce/sound-name owned offsets out of source blob bounds.");
+            tables=observedTables.AsReadOnly();
+            aliases=observedAliases.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason=ex.Message;
+            tables=Array.Empty<OwnedInlineBounceSoundTable>();
+            aliases=Array.Empty<OwnedInlineSndAliasName>();
+            return false;
+        }
+    }
+
+    // Read-only proof of the actual two optional FlameTable parent bodies in
+    // original PC-derived endian-correct 7b stream, independent of the six
+    // nested SndAliasCustom records. Not a native Xbox FF graft.
+    internal static bool TryCollectSourceOwnedFlameTables(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedInlineFlameTable> tables,
+        out IReadOnlyList<OwnedInlineSndAliasName> aliases,
+        out string reason)
+        =>TryCollectSourceOwnedFlameDependencies(
+            xboxSourceProofBlob,name,out tables,out _,out aliases,out reason);
+
+    internal static bool TryCollectSourceOwnedFlameDependencies(
+        byte[] xboxSourceProofBlob,string name,
+        out IReadOnlyList<OwnedInlineFlameTable> tables,
+        out IReadOnlyList<OwnedFlameDependencyChild> children,
+        out IReadOnlyList<OwnedInlineSndAliasName> aliases,
+        out string reason)
+    {
+        var observedTables=new List<OwnedInlineFlameTable>();
+        var observedChildren=new List<OwnedFlameDependencyChild>();
+        var observedAliases=new List<OwnedInlineSndAliasName>();
+        tables=Array.Empty<OwnedInlineFlameTable>();
+        children=Array.Empty<OwnedFlameDependencyChild>();
+        aliases=Array.Empty<OwnedInlineSndAliasName>();
+        reason=string.Empty;
+        try
+        {
+            var ctx=new WalkContext
+            {
+                Source=xboxSourceProofBlob,
+                Endianness=Endian.Big,
+                Header=null,
+                Output=null,
+                Stats=new TraverseStats(),
+                WeaponName=name,
+                RequireSelfContainedPointers=false,
+                ObservedFlameTables=observedTables,
+                ObservedFlameDependencyChildren=observedChildren,
+                ObservedSoundAliasNames=observedAliases
+            };
+            var end=WalkOwnedPayload(ctx,0);
+            if(end!=xboxSourceProofBlob.Length)
+                throw new InvalidDataException(
+                    $"Weapon '{name}' 7b FlameTable source ended 0x{end:X}, expected 0x{xboxSourceProofBlob.Length:X}.");
+            if(observedTables.Count>2 ||
+               observedTables.Select(t=>t.FixedFieldOffset).Distinct().Count()!=observedTables.Count ||
+               observedTables.Any(t=>t.FixedFieldOffset is not (2460 or 2464) ||
+                   t.SourceBodyByteOffset<FixedBodySize ||
+                   (long)t.SourceBodyByteOffset+FlameTableFixedSize>xboxSourceProofBlob.Length ||
+                   t.BigEndianFixedBytes.Length!=FlameTableFixedSize ||
+                   !xboxSourceProofBlob.AsSpan(t.SourceBodyByteOffset,FlameTableFixedSize)
+                       .SequenceEqual(t.BigEndianFixedBytes)))
+                throw new InvalidDataException(
+                    $"Weapon '{name}' original-PC FlameTable fixed-body ownership or offset invalid.");
+            if(observedChildren.Count!=observedTables.Count*9 ||
+               observedChildren.Any(ch=>
+                   !observedTables.Any(parent=>parent.ProofLabel==ch.ParentLabel &&
+                       ch.ParentPointerOffset is >= 424 and <= 456) ||
+                   (ch.SourceBodyByteOffset is null)!=(ch.InlineOwnedBytes is null) ||
+                   IsInline(ch.RawPointer)!=(ch.InlineOwnedBytes is not null) ||
+                   ch.SourceBodyByteOffset is not null &&
+                   (ch.SourceBodyByteOffset.Value<FixedBodySize ||
+                    ch.InlineOwnedBytes is null ||
+                    (long)ch.SourceBodyByteOffset.Value+ch.InlineOwnedBytes.Length>xboxSourceProofBlob.Length ||
+                    !xboxSourceProofBlob.AsSpan(ch.SourceBodyByteOffset.Value,ch.InlineOwnedBytes.Length)
+                        .SequenceEqual(ch.InlineOwnedBytes))))
+                throw new InvalidDataException(
+                    $"Weapon '{name}' FlameTable 7b inline name/material source extents are not authentic.");
+            tables=observedTables.AsReadOnly();
+            children=observedChildren.AsReadOnly();
+            aliases=observedAliases.AsReadOnly();
+            return true;
+        }
+        catch(Exception ex) when(ex is InvalidDataException or OverflowException or ArgumentOutOfRangeException)
+        {
+            reason=ex.Message;
+            return false;
         }
     }
 
@@ -424,11 +727,11 @@ public static class T4WeaponVariableSerializerProof
             throw new InvalidDataException($"Weapon '{c.WeaponName}' has implausible accuracy graph knot counts ({aiCount}, {playerCount}).");
 
         cursor = ConsumeWeaponXString(c, body + 2176, cursor, "aiVsAiAccuracyGraphName");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2184, c.Endianness), aiCount, cursor, "aiVsAiAccuracyGraphKnots");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2192, c.Endianness), aiCount, cursor, "originalAiVsAiAccuracyGraphKnots");
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2184, c.Endianness), aiCount, cursor, "aiVsAiAccuracyGraphKnots", 2184);
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2192, c.Endianness), aiCount, cursor, "originalAiVsAiAccuracyGraphKnots", 2192);
         cursor = ConsumeWeaponXString(c, body + 2180, cursor, "aiVsPlayerAccuracyGraphName");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2188, c.Endianness), playerCount, cursor, "aiVsPlayerAccuracyGraphKnots");
-        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2196, c.Endianness), playerCount, cursor, "originalAiVsPlayerAccuracyGraphKnots");
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2188, c.Endianness), playerCount, cursor, "aiVsPlayerAccuracyGraphKnots", 2188);
+        cursor = ConsumeVec2Array(c, ReadU32(c.Source, body + 2196, c.Endianness), playerCount, cursor, "originalAiVsPlayerAccuracyGraphKnots", 2196);
 
         cursor = ConsumeWeaponXString(c, body + 2288, cursor, "szUseHintString");
         cursor = ConsumeWeaponXString(c, body + 2292, cursor, "dropHintString");
@@ -449,6 +752,18 @@ public static class T4WeaponVariableSerializerProof
     private static int ConsumeWeaponXString(WalkContext c, int pointerOffset, int cursor, string label)
     {
         var raw = ReadU32(c.Source, pointerOffset, c.Endianness);
+        if(c.ObservedFixedInlineXStrings is not null &&
+           pointerOffset >= 0 && pointerOffset < FixedBodySize && IsInline(raw))
+        {
+            var next = FindCStringEnd(c.Source, cursor, label);
+            var length = next - cursor - 1;
+            if(length < 0 || length > 512)
+                throw new InvalidDataException(
+                    $"Weapon '{c.WeaponName}' original PC fixed XString '{label}' implausible length={length}.");
+            var sourceValue = Encoding.Latin1.GetString(c.Source, cursor, length);
+            c.ObservedFixedInlineXStrings.Add(
+                new OwnedFixedInlineXString(pointerOffset,label,sourceValue,cursor));
+        }
         if (c.PlanIwdStrings &&
             raw != 0 &&
             !IsInline(raw) &&
@@ -497,6 +812,18 @@ public static class T4WeaponVariableSerializerProof
         WriteScalar32(c, cursor, soundNamePtr);
         cursor += 4;
         c.Stats.SoundNameRecords++;
+        if(c.ObservedSoundAliasNames is not null)
+        {
+            var nameOffset=IsInline(soundNamePtr)?cursor:(int?)null;
+            byte[]? nameBytes=null;
+            if(nameOffset is not null)
+            {
+                var end=FindCStringEnd(c.Source,cursor,label+".soundName");
+                nameBytes=c.Source.AsSpan(cursor,end-cursor).ToArray();
+            }
+            c.ObservedSoundAliasNames.Add(new OwnedInlineSndAliasName(
+                label,cursor-4,soundNamePtr,nameOffset,nameBytes));
+        }
         return ConsumeXString(c, soundNamePtr, cursor, label + ".soundName");
     }
 
@@ -507,6 +834,9 @@ public static class T4WeaponVariableSerializerProof
 
         cursor = Align4(c, cursor, "bounceSound");
         Ensure(c.Source, cursor, BounceSoundCount * 4, "bounceSound[31]");
+        if(c.ObservedBounceSoundTables is not null)
+            c.ObservedBounceSoundTables.Add(new OwnedInlineBounceSoundTable(
+                624,cursor,c.Source.AsSpan(cursor,BounceSoundCount*4).ToArray()));
         var pointers = new uint[BounceSoundCount];
         for (var i = 0; i < BounceSoundCount; i++)
         {
@@ -522,7 +852,8 @@ public static class T4WeaponVariableSerializerProof
         return cursor;
     }
 
-    private static int ConsumeVec2Array(WalkContext c, uint raw, int count, int cursor, string label)
+    private static int ConsumeVec2Array(WalkContext c, uint raw, int count, int cursor,
+        string label,int fixedPointerOffset)
     {
         ValidateGeneralPointer(c, raw, label);
         if (raw == 0 || !IsInline(raw)) return cursor;
@@ -530,6 +861,16 @@ public static class T4WeaponVariableSerializerProof
         cursor = Align4(c, cursor, label);
         var bytes = checked(count * 8);
         Ensure(c.Source, cursor, bytes, label);
+        if(c.ObservedFixedInlineAccuracyArrays is not null && bytes>0)
+        {
+            if(fixedPointerOffset < 0 || fixedPointerOffset+4>FixedBodySize)
+                throw new InvalidDataException(
+                    $"Weapon '{c.WeaponName}' inline accuracy knot source slot out of bounds: {label}");
+            c.ObservedFixedInlineAccuracyArrays.Add(
+                new OwnedFixedInlineAccuracyVec2(
+                    fixedPointerOffset,label,count,cursor,
+                    c.Source.AsSpan(cursor,bytes).ToArray()));
+        }
         for (var p = cursor; p < cursor + bytes; p += 4)
             WriteScalar32(c, p, ReadU32(c.Source, p, c.Endianness));
         cursor += bytes;
@@ -595,6 +936,19 @@ public static class T4WeaponVariableSerializerProof
         cursor = Align4(c, cursor, label);
         Ensure(c.Source, cursor, FlameTableFixedSize, label + " fixed body");
         var tableStart = cursor;
+        if(c.ObservedFlameTables is not null)
+        {
+            var fixedField=label switch
+            {
+                "flameTableFirstPersonPtr"=>2460,
+                "flameTableThirdPersonPtr"=>2464,
+                _=>throw new InvalidDataException(
+                    $"Unknown original-PC 7b FlameTable parent field {label}.")
+            };
+            c.ObservedFlameTables.Add(new OwnedInlineFlameTable(
+                label,fixedField,tableStart,
+                c.Source.AsSpan(tableStart,FlameTableFixedSize).ToArray()));
+        }
 
         // All FlameTable fixed fields are 32-bit values/pointers.
         if (c.Output is not null)
@@ -620,9 +974,23 @@ public static class T4WeaponVariableSerializerProof
 
         cursor += FlameTableFixedSize;
         c.Stats.FlameTables++;
+        var nameStart=cursor;
         cursor = ConsumeXString(c, namePtr, cursor, label + ".name");
+        if(c.ObservedFlameDependencyChildren is not null)
+            c.ObservedFlameDependencyChildren.Add(new OwnedFlameDependencyChild(
+                label,label+".name","FlameName",424,namePtr,
+                IsInline(namePtr)?nameStart:null,
+                IsInline(namePtr)?c.Source.AsSpan(nameStart,cursor-nameStart).ToArray():null));
         for (var i = 0; i < materialPtrs.Length; i++)
+        {
+            var materialStart=cursor;
             cursor = ConsumeMaterialRef(c, materialPtrs[i], cursor, $"{label}.material[{i}]");
+            if(c.ObservedFlameDependencyChildren is not null)
+                c.ObservedFlameDependencyChildren.Add(new OwnedFlameDependencyChild(
+                    label,$"{label}.material[{i}]","FlameMaterial",428+i*4,materialPtrs[i],
+                    IsInline(materialPtrs[i])?materialStart:null,
+                    IsInline(materialPtrs[i])?c.Source.AsSpan(materialStart,cursor-materialStart).ToArray():null));
+        }
         for (var i = 0; i < soundPtrs.Length; i++)
             cursor = ConsumeSndAliasCustom(c, soundPtrs[i], cursor, $"{label}.sound[{i}]");
         return cursor;

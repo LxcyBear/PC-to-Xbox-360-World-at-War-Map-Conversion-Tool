@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$TraceNativeAssetLoader
+    [switch]$TraceNativeAssetLoader,
+    [switch]$TraceWeaponNamePointers
 )
 
 Set-StrictMode -Version Latest
@@ -31,12 +32,16 @@ try {
     $imageSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Image'
     $materialSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\Material'
     $pcXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\XModel'
+    $pcWorldSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4\GfxWorld'
     $xenonXModelSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\XModel'
+    $xenonWorldSrcDir = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\GfxWorld'
     New-Item -ItemType Directory -Force -Path $srcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $imageSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $materialSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $pcXModelSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $pcWorldSrcDir | Out-Null
     New-Item -ItemType Directory -Force -Path $xenonXModelSrcDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $xenonWorldSrcDir | Out-Null
 
     $graphSrc = Join-Path $PSScriptRoot 'graph-dumper'
     $headerSrc = Join-Path $graphSrc 'TechniqueSetGraphDumperT4Xenon.h'
@@ -75,6 +80,28 @@ try {
     Copy-Item -LiteralPath $pcClassHeaderSrc -Destination $pcClassHeaderDst -Force
     Copy-Item -LiteralPath $pcClassCppSrc -Destination $pcClassCppDst -Force
 
+    # Independent post-OAT-LOAD original-PC GfxWorld Material* witness.
+    # A new asset dumper, not a byte scanner or a binding writer.
+    $pcWorldHeaderSrc = Join-Path $graphSrc 'GfxWorldMaterialPointerWitnessT4.h'
+    $pcWorldCppSrc = Join-Path $graphSrc 'GfxWorldMaterialPointerWitnessT4.cpp'
+    if (-not (Test-Path -LiteralPath $pcWorldHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $pcWorldCppSrc -PathType Leaf)) {
+        throw 'Required PC OAT loaded GfxWorld Material* witness dumper sources missing.'
+    }
+    Copy-Item -LiteralPath $pcWorldHeaderSrc -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialPointerWitnessT4.h') -Force
+    Copy-Item -LiteralPath $pcWorldCppSrc -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialPointerWitnessT4.cpp') -Force
+
+    # Export all 39 original-PC world Material body/table sources so the
+    # production graph writer can eventually own their real dependencies.
+    $pcCorpusH = Join-Path $graphSrc 'GfxWorldMaterialCorpusDumperT4.h'
+    $pcCorpusC = Join-Path $graphSrc 'GfxWorldMaterialCorpusDumperT4.cpp'
+    if (-not (Test-Path -LiteralPath $pcCorpusH -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $pcCorpusC -PathType Leaf)) {
+        throw 'PC source-owned 39-world-Material graph corpus native dumper sources missing.'
+    }
+    Copy-Item -LiteralPath $pcCorpusH -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialCorpusDumperT4.h') -Force
+    Copy-Item -LiteralPath $pcCorpusC -Destination (Join-Path $pcWorldSrcDir 'GfxWorldMaterialCorpusDumperT4.cpp') -Force
+
     $xmodelInventoryHeaderSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.h'
     $xmodelInventoryCppSrc = Join-Path $graphSrc 'XModelGraphInventoryDumperT4Xenon.cpp'
     if (-not (Test-Path -LiteralPath $xmodelInventoryHeaderSrc -PathType Leaf) -or
@@ -96,6 +123,15 @@ try {
     $xmodelRelocCppDst = Join-Path $xenonXModelSrcDir 'XModelRelocatableGraphDumperT4Xenon.cpp'
     Copy-Item -LiteralPath $xmodelRelocHeaderSrc -Destination $xmodelRelocHeaderDst -Force
     Copy-Item -LiteralPath $xmodelRelocCppSrc -Destination $xmodelRelocCppDst -Force
+
+    $xenonWorldHeaderSrc = Join-Path $graphSrc 'GfxWorldSurfaceAbiWitnessT4Xenon.h'
+    $xenonWorldCppSrc = Join-Path $graphSrc 'GfxWorldSurfaceAbiWitnessT4Xenon.cpp'
+    if (-not (Test-Path -LiteralPath $xenonWorldHeaderSrc -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $xenonWorldCppSrc -PathType Leaf)) {
+        throw 'Pinned native Xbox GfxWorld ABI/topMip pointer witness source missing.'
+    }
+    Copy-Item -LiteralPath $xenonWorldHeaderSrc -Destination (Join-Path $xenonWorldSrcDir 'GfxWorldSurfaceAbiWitnessT4Xenon.h') -Force
+    Copy-Item -LiteralPath $xenonWorldCppSrc -Destination (Join-Path $xenonWorldSrcDir 'GfxWorldSurfaceAbiWitnessT4Xenon.cpp') -Force
 
     $writer = Join-Path $oat 'src\ObjWriting\Game\T4Xenon\ObjWriterT4Xenon.cpp'
     $text = Get-Content -LiteralPath $writer -Raw
@@ -135,6 +171,15 @@ try {
         $text = $text.Replace($xmodelIncludeLine, $xmodelIncludeLine + [Environment]::NewLine + $xmodelRelocIncludeLine)
     }
 
+    $worldXenonInclude = '#include "GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.h"'
+    if ($text -notmatch [regex]::Escape($worldXenonInclude)) {
+        if ($text -notmatch [regex]::Escape($xmodelRelocIncludeLine)) {
+            throw 'Pinned T4Xenon XModel reloc include anchor missing for GfxWorld.'
+        }
+        $text = $text.Replace($xmodelRelocIncludeLine,
+            $xmodelRelocIncludeLine + [Environment]::NewLine + $worldXenonInclude)
+    }
+
     $registerNeedle = 'RegisterAssetDumper(std::make_unique<techset::PixelShaderDumperT4Xenon>());'
     $registerLine = 'RegisterAssetDumper(std::make_unique<techset::TechniqueSetGraphDumperT4Xenon>());'
     if ($text -notmatch [regex]::Escape($registerLine)) {
@@ -170,6 +215,15 @@ try {
     }
     # Set-Content appends a record terminator and can also change BOM semantics.
     # Preserve UTF-8 without BOM and force exactly one trailing LF.
+    $worldXenonRegister = 'RegisterAssetDumper(std::make_unique<gfxworld::SurfaceAbiWitnessT4Xenon>());'
+    if ($text -notmatch [regex]::Escape($worldXenonRegister)) {
+        if ($text -notmatch [regex]::Escape($xmodelRelocRegisterLine)) {
+            throw 'Pinned T4Xenon XModel reloc registration anchor missing for GfxWorld.'
+        }
+        $text = $text.Replace($xmodelRelocRegisterLine,
+            $xmodelRelocRegisterLine + [Environment]::NewLine + '    ' + $worldXenonRegister)
+    }
+
     $normalizedText = $text.TrimEnd([char]13, [char]10) + [char]10
     [System.IO.File]::WriteAllText(
         $writer,
@@ -185,11 +239,45 @@ try {
         $pcText = $pcText.Replace($pcIncludeNeedle, $pcIncludeNeedle + [Environment]::NewLine + $pcIncludeLine)
     }
 
+    $worldPcInclude = '#include "Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.h"'
+    if ($pcText -notmatch [regex]::Escape($worldPcInclude)) {
+        if ($pcText -notmatch [regex]::Escape($pcIncludeNeedle)) {
+            throw 'Pinned OAT PC ObjWriter XModel include anchor missing before GfxWorld registration.'
+        }
+        $pcText = $pcText.Replace($pcIncludeNeedle, $pcIncludeNeedle + [Environment]::NewLine + $worldPcInclude)
+    }
+
+    $pcCorpusInclude = '#include "Game/T4/GfxWorld/GfxWorldMaterialCorpusDumperT4.h"'
+    if ($pcText -notmatch [regex]::Escape($pcCorpusInclude)) {
+        if ($pcText -notmatch [regex]::Escape($worldPcInclude)) {
+            throw 'Pinned T4 GfxWorld PC witness include anchor missing for source corpus.'
+        }
+        $pcText = $pcText.Replace($worldPcInclude,
+            $worldPcInclude + [Environment]::NewLine + $pcCorpusInclude)
+    }
+
     $pcRegisterNeedle = 'RegisterAssetDumper(std::make_unique<xmodel::DumperT4>());'
     $pcRegisterLine = 'RegisterAssetDumper(std::make_unique<xmodel::ClassificationDumperT4>());'
     if ($pcText -notmatch [regex]::Escape($pcRegisterLine)) {
         if ($pcText -notmatch [regex]::Escape($pcRegisterNeedle)) { throw 'Could not find T4 XModel dumper registration anchor.' }
         $pcText = $pcText.Replace($pcRegisterNeedle, $pcRegisterNeedle + [Environment]::NewLine + '    ' + $pcRegisterLine)
+    }
+
+    $worldPcRegister = 'RegisterAssetDumper(std::make_unique<gfxworld::MaterialPointerWitnessT4>());'
+    if ($pcText -notmatch [regex]::Escape($worldPcRegister)) {
+        if ($pcText -notmatch [regex]::Escape($pcRegisterLine)) {
+            throw 'Pinned OAT PC ObjWriter XModel registration anchor missing before GfxWorld witness.'
+        }
+        $pcText = $pcText.Replace($pcRegisterLine, $pcRegisterLine + [Environment]::NewLine + '    ' + $worldPcRegister)
+    }
+
+    $pcCorpusRegister = 'RegisterAssetDumper(std::make_unique<gfxworld::MaterialCorpusDumperT4>());'
+    if ($pcText -notmatch [regex]::Escape($pcCorpusRegister)) {
+        if ($pcText -notmatch [regex]::Escape($worldPcRegister)) {
+            throw 'Pinned T4 GfxWorld PC witness registration missing for source corpus.'
+        }
+        $pcText = $pcText.Replace($worldPcRegister,
+            $worldPcRegister + [Environment]::NewLine + '    ' + $pcCorpusRegister)
     }
 
     $normalizedPcText = $pcText.TrimEnd([char]13, [char]10) + [char]10
@@ -270,9 +358,89 @@ try {
         [IO.File]::WriteAllText($loader,
             $loaderText.TrimEnd([char]13,[char]10) + [char]10,
             [Text.UTF8Encoding]::new($false))
+        # The first-asset trace identifies the XAsset root. For the SAME
+        # exception, trace failing zone-pointer conversion, decompressed
+        # stream cursor and active block cursor. These logs are diagnostic;
+        # unlike native offsets they are never used as conversion donors.
+        $streamPath=Join-Path $oat 'src\ZoneLoading\Zone\Stream\ZoneInputStream.cpp'
+        $streamText=[IO.File]::ReadAllText($streamPath).Replace([string][char]13+[char]10,[string][char]10)
+        $badOffsetNeedle='throw InvalidOffsetBlockOffsetException(block, blockOffset);'
+        $instances=($streamText.Split([string[]]@($badOffsetNeedle),[StringSplitOptions]::None).Count-1)
+        if($instances -ne 5){
+            throw "Pinned OAT ZoneInputStream invalid-pointer throw sites changed; expected five, found $instances."
+        }
+        $badOffsetTrace=@'
+{
+    std::cerr << "[AZTEC-OAT-BADPTR] raw=0x" << std::hex
+              << reinterpret_cast<uintptr_t>(offset) << std::dec
+              << " targetBlock=" << static_cast<int>(blockNum)
+              << " targetOffset=" << blockOffset
+              << " blockSize=" << block->m_buffer_size
+              << " streamPos=" << m_stream.Pos()
+              << " targetCursor=" << m_block_offsets[block->m_index]
+              << " currentBlock="
+              << (m_block_stack.empty() ? -1 : static_cast<int>(m_block_stack.top()->m_index))
+              << " currentCursor="
+              << (m_block_stack.empty() ? 0uz : m_block_offsets[m_block_stack.top()->m_index])
+              << std::endl;
+    throw InvalidOffsetBlockOffsetException(block, blockOffset);
+}
+'@
+        $streamText=$streamText.Replace($badOffsetNeedle,$badOffsetTrace.TrimEnd([char]13,[char]10))
+        [IO.File]::WriteAllText($streamPath,$streamText.TrimEnd([char]13,[char]10)+[char]10,[Text.UTF8Encoding]::new($false))
         Write-Host '[OAT-GRAPH] Native loader first-exception index tracing enabled (diagnostic build).'
     }
 
+    if ($TraceWeaponNamePointers) {
+        # Original Xbox loaded sound chain provenance, one source-only C++
+        # instrumented native OAT build. Never mutates audio samples.
+        $soundRel='src/ObjWriting/Game/T4Xenon/Sound/SoundDumperT4Xenon.cpp'
+        $soundPath=Join-Path $oat ($soundRel.Replace('/',[IO.Path]::DirectorySeparatorChar))
+        $soundSnippet=Join-Path $graphSrc 'XboxSoundAliasLoadedSampleTrace.snippet.cpp'
+        if(-not(Test-Path -LiteralPath $soundSnippet -PathType Leaf)){
+            throw 'Pinned Xbox sound sample-chain trace snippet missing.'
+        }
+        $soundText=[IO.File]::ReadAllText($soundPath).Replace(
+            [string][char]13+[char]10,[string][char]10)
+        $soundAnchor='        const auto* sound = asset.Asset();'
+        $soundInc='#include <format>'
+        if($soundText.IndexOf($soundAnchor,[StringComparison]::Ordinal) -lt 0 -or
+           $soundText.IndexOf($soundAnchor,[StringComparison]::Ordinal) -ne $soundText.LastIndexOf($soundAnchor,[StringComparison]::Ordinal) -or
+           $soundText.IndexOf($soundInc,[StringComparison]::Ordinal) -lt 0 -or
+           $soundText.IndexOf($soundInc,[StringComparison]::Ordinal) -ne $soundText.LastIndexOf($soundInc,[StringComparison]::Ordinal)){
+            throw 'Pinned native Xbox Sound dumper snippet insertion anchors changed.'
+        }
+        $soundText=$soundText.Replace($soundInc,$soundInc+[char]10+'#include <cstdlib>'+
+            [char]10+'#include <iostream>'+[char]10+'#include <sstream>')
+        $trace=[IO.File]::ReadAllText($soundSnippet).Replace(
+            [string][char]13+[char]10,[string][char]10).TrimEnd([char]13,[char]10)
+        $soundText=$soundText.Replace($soundAnchor,$soundAnchor+[char]10+$trace)
+        [IO.File]::WriteAllText($soundPath,$soundText.TrimEnd([char]13,[char]10)+
+            [char]10,[Text.UTF8Encoding]::new($false))
+        Write-Host '[OAT-GRAPH] Genuine Xbox 360 Sound/LoadedSound source sample-chain trace enabled.'
+    }
+
+    if ($TraceWeaponNamePointers) {
+        # Original PC T4 loader witness. The raw pointers come from exact
+        # previously verified WeaponDef source-body proof labels.
+        $streamPath=Join-Path $oat 'src\ZoneLoading\Zone\Stream\ZoneInputStream.cpp'
+        $patchPath=Join-Path $graphSrc 'WeaponPointerDirectVirtualTrace.snippet.cpp'
+        if(-not(Test-Path -LiteralPath $patchPath -PathType Leaf)){throw 'Weapon pointer trace snippet missing.'}
+        $source=[IO.File]::ReadAllText($streamPath).Replace([string][char]13+[char]10,[string][char]10)
+        $inc='#include <cassert>'
+        $classAnchor='        [[nodiscard]] unsigned GetPointerBitCount() const override'
+        if($source.IndexOf($inc,[StringComparison]::Ordinal) -lt 0 -or
+           $source.IndexOf($inc,[StringComparison]::Ordinal) -ne $source.LastIndexOf($inc,[StringComparison]::Ordinal) -or
+           $source.IndexOf($classAnchor,[StringComparison]::Ordinal) -lt 0 -or
+           $source.IndexOf($classAnchor,[StringComparison]::Ordinal) -ne $source.LastIndexOf($classAnchor,[StringComparison]::Ordinal)){
+            throw 'Pinned ZoneInputStream PC trace anchors changed; fail closed before OAT build.'
+        }
+        $source=$source.Replace($inc,$inc+[char]10+'#include <algorithm>'+[char]10+'#include <cstdlib>'+[char]10+'#include <string>'+[char]10+'#include <unordered_set>')
+        $snippet=[IO.File]::ReadAllText($patchPath).Replace([string][char]13+[char]10,[string][char]10)
+        $source=$source.Replace($classAnchor,$snippet+[char]10+$classAnchor)
+        [IO.File]::WriteAllText($streamPath,$source.TrimEnd([char]13,[char]10)+[char]10,[Text.UTF8Encoding]::new($false))
+        Write-Host '[OAT-GRAPH] Experimental PC T4 loaded VIRTUAL pointer-to-string + read-only FlameTable packed-target byte trace enabled.'
+    }
     & git diff --check
     if ($LASTEXITCODE -ne 0) { throw 'OAT graph patch failed git diff --check.' }
 
@@ -324,11 +492,39 @@ try {
             't4xenon-material-relocatable-graph-v1',
             't4-xmodel-classification-v1',
             't4xenon-xmodel-graph-inventory-v1',
+            't4-pc-gfxworld-loaded-material-pointer-witness-v1',
+            't4-pc-gfxworld-39-material-source-graph-corpus-v1',
+            't4-pc-gfxworld-gate8-child-source-v1',
+            't4-pc-gfxworld-gate11-cell-topology-v1',
+            't4-pc-gfxworld-gate11-cell-typed-aabb-graph-v1',
+            't4-pc-gfxworld-gate11-all-remaining-source-census-v1',
+            't4-pc-gfxworld-gate8-static-draw-source-v1',
+            't4xenon-gfxworld-surface-abi-loaded-pointer-witness-v1',
+            't4xenon-gfxworld-root-dpvs-layout-witness-v1',
+            't4xenon-gfxworld-gate11-cell-abi-v1',
+            't4xenon-gfxworld-gate11-full-cell-aabb-abi-v1',
+            't4xenon-gfxworld-gate11-all-remaining-field-abi-v1',
+            't4xenon-gfxworld-gate11-loaded-cell-aabb-typed-witness-v1',
+            't4xenon-gfxworld-gate11-loaded-primitive-digest-v1',
+            't4xenon-gfxworld-gate11-loaded-lighting-shadow-region-digest-v1',
+            't4xenon-gfxworld-gate11-stream-structural-shape-v1',
+            't4xenon-gfxworld-gate11-reflection-lightmap-native-name-references-v1',
+            't4xenon-gfxworld-gate11-six-image-metadata-only-v1',
+            't4xenon-gfxworld-static-draw-60b-loaded-witness-v1',
             't4xenon-xmodel-relocatable-graph-v1'
         )
     }
     if ($TraceNativeAssetLoader) {
         $capabilities.capabilities += 't4xenon-asset-fault-trace-v1'
+        $capabilities.capabilities += 't4xenon-pointer-stream-fault-trace-v1'
+    }
+    if ($TraceWeaponNamePointers) {
+        $capabilities.capabilities += 't4-pc-weapon-virtual-pointer-direct-string-v1'
+        $capabilities.capabilities += 't4-pc-flame-packed-pointer-virtual-byte-probe-v1'
+        $capabilities.capabilities += 't4-pc-flame-packed-typed-material-and-alias-v2'
+        $capabilities.capabilities += 't4-pc-flame-real-material-pointer-slot-hop-v3'
+        $capabilities.capabilities += 't4xenon-real-flame-sound-to-loaded-xma-chain-v4'
+        $capabilities.capabilities += 't4xenon-flame-sound-alias-184b-loaded-160b-original-retail-metadata-v6'
     }
     $capabilityFile = Join-Path $out 'waw360-graph-dumper-capabilities.json'
     $capabilities | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $capabilityFile -Encoding UTF8
@@ -343,8 +539,10 @@ finally {
         Push-Location $oat
         try {
             & git checkout -- 'src/ObjWriting/Game/T4Xenon/ObjWriterT4Xenon.cpp' 2>$null
+            & git checkout -- 'src/ObjWriting/Game/T4Xenon/Sound/SoundDumperT4Xenon.cpp' 2>$null
             & git checkout -- 'src/ObjWriting/Game/T4/ObjWriterT4.cpp' 2>$null
             & git checkout -- 'src/ZoneLoading/Game/T4Xenon/ContentLoaderT4Xenon.cpp' 2>$null
+            & git checkout -- 'src/ZoneLoading/Zone/Stream/ZoneInputStream.cpp' 2>$null
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Techset/TechniqueSetGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/Image/ImageGraphDumperT4Xenon.h' -Force -ErrorAction SilentlyContinue
@@ -357,6 +555,12 @@ finally {
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/XModel/XModelRelocatableGraphDumperT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.h' -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/XModel/XModelClassificationDumperT4.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialPointerWitnessT4.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialCorpusDumperT4.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4/GfxWorld/GfxWorldMaterialCorpusDumperT4.cpp' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.h' -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath 'src/ObjWriting/Game/T4Xenon/GfxWorld/GfxWorldSurfaceAbiWitnessT4Xenon.cpp' -Force -ErrorAction SilentlyContinue
         } finally { Pop-Location }
     }
     Pop-Location

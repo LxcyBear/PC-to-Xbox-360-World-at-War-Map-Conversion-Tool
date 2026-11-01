@@ -1,0 +1,250 @@
+{
+  "schema": "WaW360.SharedConversionEvidenceRules.v1",
+  "purpose": "Common converter rule registry. A rule is applicable to every map only if its scope is 'global'; observations and hypotheses must be validated map-by-map.",
+  "updated": "2026-10-30",
+  "gates": [
+    {
+      "id": "GLOBAL_OAT_LOAD",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Do not authorize Xbox deployment unless both final map fastfiles independently pass native T4Xenon OAT load with zero warnings and errors, plus required package dependency checks.",
+      "enforce": "release-only"
+    },
+    {
+      "id": "GLOBAL_NO_DONOR_BYTES",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Do not copy unverified donor Xbox/retail FF payload bytes or fabricate converted XAsset graphs; stock references are name/identity evidence until proven loaded in the correct runtime zone.",
+      "enforce": "asset lineage"
+    },
+    {
+      "id": "GLOBAL_NO_PADDING",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Never inflate maps to hit an assumed minimum compressed FF size. Measure actual converted bytes and payload coverage.",
+      "enforce": "FF-size history"
+    },
+    {
+      "id": "GLOBAL_ROOT_ORDER",
+      "scope": "global",
+      "confidence": "strong evidence FRUmansion",
+      "rule": "Native asset order is dependency-driven. Do not assume PC root order or simple asset type sorting; verify native ScriptString indices and dependency closure.",
+      "enforce": "linker-v2"
+    },
+    {
+      "id": "GLOBAL_CACHED_PASS_ONLY",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "Cache only outputs that satisfy their own validation stage and whose source hashes, context and implementation version still match.",
+      "enforce": "BatchStageCache"
+    },
+    {
+      "id": "RUNTIME_210_MIB",
+      "scope": "hypothesis",
+      "confidence": "Jake suggested, not independently measured universal cutoff",
+      "rule": "A map was reported freezing above approximately 210 MiB runtime RAM. Do not infer runtime RAM from compressed FF size; collect actual runtime memory evidence per map.",
+      "enforce": "diagnostics only"
+    },
+    {
+      "id": "FRU_FX_BLOCK7",
+      "scope": "map-specific",
+      "confidence": "observed",
+      "rule": "FRUmansion FX promoted graph previously caused OAT invalid block 7 at asset #3345; tracked-shell variant passed. Fix serializer generically and run FRUmansion plus other maps through OAT regression, not blind promotion.",
+      "enforce": "FX regression"
+    },
+    {
+      "id": "FRU_IMAGE43",
+      "scope": "map-specific",
+      "confidence": "observed",
+      "rule": "FRUmansion has 43 residual source images that were text references or failing PC-OAT image dumps; stock/UGX/ZCT scans did not prove owned image payloads. Never fill with arbitrary donors.",
+      "enforce": "image payload proof"
+    },
+    {
+      "id": "AZTEC_GATE8_DRAWS",
+      "scope": "map-specific",
+      "confidence": "OAT and Windows-proven source-only",
+      "rule": "Aztec: 1903 typed PC static draws, 1902 source-owned model occurrences and 1 stock identity; 60B Xenon partial numeric array exists, but 0/1903 native pointer draw records linked. Do not mark Xbox-ready.",
+      "enforce": "GfxWorld regression"
+    },
+    {
+      "id": "ZCT_UGX",
+      "scope": "profile-specific",
+      "confidence": "known named dependencies",
+      "rule": "ZCT and UGX maps need profile-specific dependency evidence and sourcing. Do not assume generic vanilla-stock external sound/image rules cover them.",
+      "enforce": "profile routing"
+    },
+    {
+      "id": "RETAIL_LOCATION_INDEX",
+      "scope": "global",
+      "confidence": "required",
+      "rule": "A .ff file path listing is a filename index, not a validated asset or dependency index. Record OAT-decoded asset names, source FF hashes, and ownership separately before reuse.",
+      "enforce": "dependency provenance"
+    },
+    {
+      "id": "JAKE_OWNED_PRIORITY",
+      "scope": "global",
+      "confidence": "high",
+      "source": "Jake CONVERSION_RULES.txt section 0",
+      "rule": "Original PC map-owned assets and patches take priority; extra_assets and other maps fill missing gaps only. Same-named stock Xbox replacement requires exact identity and correct platform graph.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_RUNTIME_RESIDENCY",
+      "scope": "global",
+      "confidence": "strong",
+      "source": "Jake rules section 2",
+      "rule": "Only the map zone and genuinely resident common.ff/code_post_gfx.ff/patch.ff can fulfill references during gameplay. ui.ff and patch_ui.ff are not gameplay-resident.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_ASSET_SEARCH_CHAIN",
+      "scope": "global",
+      "confidence": "strong",
+      "source": "Jake rules section 3",
+      "rule": "Resolve assets in map patch/mod/main and IWD, exact Xbox stock, stock PC game, PC campaign FFs, explicit extra_assets/UGX/ZCT, then other PC maps. Only read a candidate source FF when an independently indexed asset proves it can fill the gap.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_ASSET_CRITICALITY",
+      "scope": "global",
+      "confidence": "strong",
+      "source": "Jake rules section 4",
+      "rule": "Never silently blank critical world, collision, scripts, animations, animtrees, models or weapons; report unresolved dependencies with source and queried locations.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_ASSET_INDEX_SHARED",
+      "scope": "global",
+      "confidence": "strong",
+      "source": "Jake rules section 13",
+      "rule": "Cache zone asset-name indexes and exact source FF hashes across maps; share lookup results but not guessed asset payloads. A file-location-only index is not an asset index.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_FF_FRESH_REBUILD",
+      "scope": "global",
+      "confidence": "strong",
+      "source": "Jake rules section 18",
+      "rule": "Rebuild each candidate zone and all block relocations from scratch; never reuse relocation offsets when memory-fitting moves asset bodies. Traverse whole typed dependency graph and independent readback after build.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_ADAPTIVE_MEMORY",
+      "scope": "global",
+      "confidence": "provisional",
+      "source": "Jake rules section 10",
+      "rule": "Estimate decompressed zone and runtime budgets; reduce optional large textures / unneeded LODs only if the source map actually exceeds measured budget. Do not impose a minimum FF byte size.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_TEXTURE_PRIORITY",
+      "scope": "global",
+      "confidence": "provisional",
+      "source": "Jake rules sections 9,10",
+      "rule": "Avoid downscaling critical HUD, reticle, hands, weapon models and their textures until all other eligible savings have been exhausted. Preserve original geometry/material relationships.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_TILED_MIP_XENON",
+      "scope": "global",
+      "confidence": "requires independent codec proof",
+      "source": "Jake rules section 9",
+      "rule": "Xbox tiled mip/pitch and swizzle require native codec verification; simply byte-swapping PC IWI/DDS payloads is insufficient. Confirm actual T4Xenon textures/format before authorizing GPU resources.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_3D_AUDIO_MONO",
+      "scope": "global",
+      "confidence": "requires independent codec proof",
+      "source": "Jake rules section 5",
+      "rule": "Ensure spatial/3D sound aliases do not use unsupported multichannel stream payloads; preserve actual sample rate/loop points/codec format semantics in XMA.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_SOUND_STREAM_RESOLVE",
+      "scope": "global",
+      "confidence": "requires external path proof",
+      "source": "Jake rules section 5",
+      "rule": "Streamed audio must be a real console-usable stream, not a guessed alias to a loose file. Resolve and package validated paths and wrappers.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_SCRIPT_REACHABILITY",
+      "scope": "global",
+      "confidence": "provisional",
+      "source": "Jake rules sections 6,7",
+      "rule": "Prioritize scripts actually executed and their reachable dependencies; track script and animation-tree references without blindly replacing user code.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_UGX_ZCT_PROFILES",
+      "scope": "profile-specific",
+      "confidence": "strong",
+      "source": "Jake README and rule sections",
+      "rule": "Recognize map/mod content from both mods and usermaps locations; merge only owned dependencies with provenance. Do not force UGX/ZCT or cross-mod override by default.",
+      "enforce": "explicit profile/evidence gate"
+    },
+    {
+      "id": "JAKE_LOAD_ZONE",
+      "scope": "global",
+      "confidence": "strong",
+      "source": "Jake rules section 16",
+      "rule": "A distinct map _load FF may be needed for proper console loading presentation; cannot claim complete deployment from only main FF OAT pass.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_SHARED_SHADER_LIBRARY",
+      "scope": "global",
+      "confidence": "requires per-asset proof",
+      "source": "Jake rules sections 8,18",
+      "rule": "Do not use unverified shader/techset donors or test-build byte blobs. Prove exact compatible Xenon shader graph and name, then bind with correct relocations.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_CROSSMAP_OUTLOOK",
+      "scope": "global",
+      "confidence": "diagnostic only",
+      "source": "Jake report corpus",
+      "rule": "Jake's probability-of-loading estimates are heuristic diagnostics and must not be interpreted as real console-test success or used as automatic release approval.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_PROFILE_PC_GAME_DISCOVERY",
+      "scope": "global",
+      "confidence": "implementation guidance",
+      "source": "Jake README section input locations",
+      "rule": "Source discovery should include local PC Maps, %LOCALAPPDATA% CoDWaW mods and usermaps, plus optional PC game and extra_assets folders, without hardcoded user home paths.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_FFCLI_SECOND_OPINION",
+      "scope": "global",
+      "confidence": "optional diagnostic",
+      "source": "Jake TOOL_REFERENCE.txt",
+      "rule": "Independent ffcli/FastFileLib checks may supplement OAT but cannot replace required pinned native Xenon loader checks.",
+      "enforce": "cross-map regression ledger"
+    },
+    {
+      "id": "JAKE_ARCHIVE_FORMATS",
+      "scope": "global",
+      "confidence": "requires parser proof",
+      "source": "Jake TOOL_REFERENCE.txt",
+      "rule": "Avoid selecting alternate compressors/headers just because tools have matching magic; verify precise title/platform and original FF/zone block semantics.",
+      "enforce": "cross-map regression ledger"
+    }
+  ],
+  "referenceCorpus": {
+    "title": "Jake WaW360Tool LLM infodump",
+    "format": "RAR5",
+    "entries": 351,
+    "sourceFilesPresent": false,
+    "mainTextSources": [
+      "README.txt",
+      "CONVERSION_RULES.txt",
+      "TOOL_REFERENCE.txt",
+      "settings.ini"
+    ],
+    "conversionReportsReviewed": 39,
+    "note": "Provided archive contains tool documentation and logs, no identifiable executable or Go/C# implementation. All [AUTO] claims are from Jake's tool's description, not tested as PC2XB3 behaviors."
+  }
+}

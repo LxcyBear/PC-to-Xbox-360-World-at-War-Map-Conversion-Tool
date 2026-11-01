@@ -1,0 +1,334 @@
+[CmdletBinding()]
+param(
+    [string]$MatrixJson = '',
+    [string[]]$IncludeMaps = @('nazi_zombie_FRUmansion','nazi_zombie_tower','Backrooms','nazi_zombie_aztec_V2.2')
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$IncludeMaps = @($IncludeMaps | ForEach-Object { ([string]$_) -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+$repo=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+$runs=Join-Path $repo 'output\multi_map_matrix\runs'
+
+# Select the largest existing Candidate matrix to cover all four maps.
+if([string]::IsNullOrWhiteSpace($MatrixJson)){
+    $candidates=New-Object 'System.Collections.Generic.List[object]'
+    foreach($f in (Get-ChildItem -LiteralPath $runs -Filter 'multi_map_matrix.json' -Recurse -File)){
+        try {
+            $doc=Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json
+            if([string]$doc.mode -eq 'Candidate' -and [string]$doc.schema -eq 'WaW360.MultiMapConversionMatrix.v1'){
+                $candidates.Add([pscustomobject]@{Path=$f.FullName;Count=@($doc.maps).Count;Modified=$f.LastWriteTimeUtc})
+            }
+        }catch{}
+    }
+    if($candidates.Count -eq 0){throw "No valid Candidate matrix under $runs"}
+    $MatrixJson=[string]($candidates.ToArray() | Sort-Object @{Expression='Count';Descending=$true},@{Expression='Modified';Descending=$true} | Select-Object -First 1).Path
+}
+$MatrixJson=(Resolve-Path -LiteralPath $MatrixJson).Path
+$matrix=Get-Content -LiteralPath $MatrixJson -Raw | ConvertFrom-Json
+if([string]$matrix.mode -ne 'Candidate'){throw "Not a Candidate matrix: $MatrixJson"}
+$oat=Join-Path $repo '.deps\OpenAssetTools-xenon-prebuilt\Release_x86\Unlinker.exe'
+if(-not(Test-Path -LiteralPath $oat -PathType Leaf)){
+    $oat=Join-Path $repo '.deps\OpenAssetTools-xenon-graph-dumper\Release_x86\Unlinker.exe'
+}
+if(-not(Test-Path -LiteralPath $oat -PathType Leaf)){throw "OAT Xenon Unlinker missing: $oat"}
+
+function Read-Be32([IO.BinaryReader]$reader){
+    $b=$reader.ReadBytes(4)
+    if($b.Length -ne 4){throw 'Truncated weapon proof integer'}
+    return [uint32](([uint64]$b[0]*16777216)+([uint64]$b[1]*65536)+([uint64]$b[2]*256)+[uint64]$b[3])
+}
+# Guard the unsigned/sentinel behavior using a REAL synthetic proof
+# label pointer from the preceding Aztec OAT run. No files are touched.
+$knownAztecPointer=[Convert]::ToUInt32('83445D65',16)
+$knownUnbiased=[uint64]$knownAztecPointer-1
+if($knownAztecPointer -eq [Convert]::ToUInt32('FFFFFFFE',16) -or
+   $knownAztecPointer -eq [uint32]::MaxValue -or
+   [int]($knownUnbiased -shr 29) -ne 4 -or
+   [long]($knownUnbiased -band 0x1FFFFFFF) -ne 54812004){
+    throw 'Packed WeaponDef pointer decoding regression: known Aztec pointer should be Virtual block 4, offset 0x03445D64.'
+}
+Write-Host '[WEAPON-NAMES] PS5.1 UInt32 pointer/sentinel regression: PASS (Aztec 0x83445D65 => Virtual block 4).'
+
+function Read-WeaponNames([string]$path){
+    $list=New-Object 'System.Collections.Generic.List[object]'
+    $fs=[IO.File]::OpenRead($path)
+    try{
+        $reader=[IO.BinaryReader]::new($fs,[Text.Encoding]::UTF8,$true)
+        $magic=[Text.Encoding]::ASCII.GetString($reader.ReadBytes(8)).TrimEnd([char]0)
+        if($magic -ne 'W360A7W'){throw "Unexpected proof magic in $path"}
+        $version=Read-Be32 $reader
+        $count=Read-Be32 $reader
+        $fixed=Read-Be32 $reader
+        if($version -ne 8 -or $fixed -ne 0x9AC -or $count -gt 250000){throw "Unexpected proof schema in $path"}
+        for($i=0;$i -lt $count;$i++){
+            $offset=Read-Be32 $reader
+            $size=Read-Be32 $reader
+            $nameSize=Read-Be32 $reader
+            if($nameSize -gt 4096 -or $size -gt 134217728 -or $fs.Position+$nameSize+$size -gt $fs.Length){
+                throw "Bad record #$i in $path"
+            }
+            $name=[Text.Encoding]::UTF8.GetString($reader.ReadBytes([int]$nameSize))
+            $null=$fs.Seek([long]$size,[IO.SeekOrigin]::Current)
+            $synthetic=$name.StartsWith('<packed-name@',[StringComparison]::OrdinalIgnoreCase)
+            $pointerRaw=$null
+            $pointerBlock=$null
+            $pointerOffset=$null
+            # T4 packed pointer: 3 block bits, 29 offset bits, plus 1 bias.
+            # This is not an actual WeaponDef name-resolution algorithm.
+            $label=[regex]::Match($name,'^<packed-name@0x([0-9A-Fa-f]+):0x([0-9A-Fa-f]{8})>$')
+            if($label.Success){
+                $bodyOffset=[Convert]::ToUInt32($label.Groups[1].Value,16)
+                if($bodyOffset -ne $offset){throw "Weapon proof body offset mismatch at record #$i"}
+                $pointerRaw=[Convert]::ToUInt32($label.Groups[2].Value,16)
+                # PS 5.1 parses 0xFFFFFFFE as signed -2. A UInt32
+                # comparison with ">= 0xFFFFFFFE" therefore rejected EVERY
+                # normal high-bit Xbox packed pointer (e.g. 0x83445D65).
+                # Compare exact unsigned sentinels, never an ordered range
+                # against a signed hexadecimal literal.
+                $insertSentinel=[Convert]::ToUInt32('FFFFFFFE',16)
+                $followingSentinel=[uint32]::MaxValue
+                if($pointerRaw -eq [uint32]0 -or
+                   $pointerRaw -eq $insertSentinel -or
+                   $pointerRaw -eq $followingSentinel){
+                    throw "Weapon proof pointer is null or special sentinel at record #$i (raw=0x$($pointerRaw.ToString('X8')))"
+                }
+                $unbiased=[uint64]$pointerRaw-1
+                $pointerBlock=[int]($unbiased -shr 29)
+                $pointerOffset=[long]($unbiased -band 0x1FFFFFFF)
+            }elseif($synthetic){throw "Unrecognized synthetic weapon proof label: $name"}
+            $list.Add([pscustomobject]@{
+                record=$i;offset=[long]$offset;name=$name;synthetic=$synthetic
+                pointerRaw=$pointerRaw;pointerBlock=$pointerBlock;pointerOffset=$pointerOffset
+            })
+        }
+        if($fs.Position -ne $fs.Length){throw "Trailing data in $path"}
+    }finally{$fs.Dispose()}
+    return $list.ToArray()
+}
+
+$run=Split-Path -Path $MatrixJson -Parent
+$stamp=Get-Date -Format 'yyyyMMdd_HHmmss'
+$rows=New-Object 'System.Collections.Generic.List[object]'
+Write-Host '[WEAPON-NAMES] ======================================================'
+Write-Host "[WEAPON-NAMES] Read-only original-PC + typed-proof audit. Matrix=$MatrixJson"
+foreach($m in $matrix.maps){
+    $selected=$false
+    foreach($pattern in $IncludeMaps){if([string]$m.map -like $pattern){$selected=$true;break}}
+    if(-not $selected){continue}
+    $mapName=[string]$m.map
+    $proofFolder=Join-Path ([string]$m.conversionOutputFolder) (Join-Path $mapName 'stage4_alpha7b_weapon_owned')
+    $proofFiles=@()
+    if(Test-Path -LiteralPath $proofFolder -PathType Container){
+        $proofFiles=@(Get-ChildItem -LiteralPath $proofFolder -File -Filter '*.xbox_weapon_owned_proof.bin')
+    }
+    $names=New-Object 'System.Collections.Generic.List[object]'
+    foreach($p in $proofFiles){
+        foreach($n in @(Read-WeaponNames $p.FullName)){
+            $names.Add([pscustomobject]@{
+                proof=$p.FullName;record=$n.record;offset=$n.offset;name=$n.name;synthetic=$n.synthetic
+                pointerRaw=$n.pointerRaw;pointerBlock=$n.pointerBlock;pointerOffset=$n.pointerOffset
+            })
+        }
+    }
+    $unresolved=@($names.ToArray() | Where-Object {$_.synthetic})
+    Write-Host "[WEAPON-NAMES] $mapName proof records=$($names.Count) | packed-name synthetic=$($unresolved.Count) | proof files=$($proofFiles.Count)"
+    foreach($n in @($unresolved | Select-Object -First 5)){
+        Write-Host "[WEAPON-NAMES]   unresolved: $($n.name) at PC body offset=$($n.offset) -> packed block=$($n.pointerBlock), blockOffset=$($n.pointerOffset)"
+    }
+
+    # The matrix's public per-map result has "main" and "sourceRoot",
+    # but deliberately does not persist "mod" or "patch". Under
+    # Set-StrictMode, reading $m.mod/$m.patch throws PropertyNotFoundStrict.
+    # The authoritative Linker V2 source-archive report already lists EVERY
+    # participating original PC FF (map, patch, mod, auxiliary), with
+    # GraphParticipation and its real source path. Read that inventory rather
+    # than inventing properties or silently dropping non-main sources.
+    $inputs=New-Object 'System.Collections.Generic.List[string]'
+    $sourceRoles=@{}
+    $archiveFile=Join-Path ([string]$m.conversionOutputFolder) (Join-Path $mapName (Join-Path 'linker_v2_source_archive' ($mapName+'_linker_v2_source_archive.json')))
+    if(Test-Path -LiteralPath $archiveFile -PathType Leaf){
+        $archive=Get-Content -LiteralPath $archiveFile -Raw | ConvertFrom-Json
+        if($null -eq $archive -or $null -eq $archive.PSObject.Properties['FastFiles']){
+            throw "Linker V2 source archive has no FastFiles inventory: $archiveFile"
+        }
+        foreach($source in @($archive.FastFiles)){
+            if($null -eq $source){continue}
+            if([string]$source.GraphParticipation -notin @('PRIMARY_GRAPH_SOURCE','AUXILIARY_GRAPH_SOURCE')){continue}
+            $original=[string]$source.Path
+            if([string]::IsNullOrWhiteSpace($original)){continue}
+            if(-not(Test-Path -LiteralPath $original -PathType Leaf)){
+                Write-Host "[WEAPON-NAMES]   Source FF no longer present: $original"
+                continue
+            }
+            if(-not $inputs.Contains($original)){$inputs.Add($original)}
+            $sourceRoles[$original]=[string]$source.Role
+        }
+        Write-Host "[WEAPON-NAMES]   Source archive: $($inputs.Count) participating original PC FF(s), including mod/patch when present."
+    }else{
+        # Compatibility with historical matrix records whose short-TEMP
+        # Linker V2 archive may have been deleted. Do not pretend this
+        # single-main fallback includes the complete mod/patch source graph.
+        Write-Host "[WEAPON-NAMES]   WARNING: source archive missing; auditing main PC FF only: $archiveFile"
+        $mainProperty=$m.PSObject.Properties['main']
+        if($null -ne $mainProperty -and
+            -not [string]::IsNullOrWhiteSpace([string]$mainProperty.Value) -and
+            (Test-Path -LiteralPath ([string]$mainProperty.Value) -PathType Leaf)){
+            $inputs.Add([string]$mainProperty.Value)
+            $sourceRoles[[string]$mainProperty.Value]='map.ff'
+        }
+    }
+    $oatSources=New-Object 'System.Collections.Generic.List[object]'
+    $ix=0
+    foreach($path in $inputs){
+        $ix++
+        $temp=Join-Path ([IO.Path]::GetTempPath()) ('WNAME_'+[guid]::NewGuid().ToString('N').Substring(0,8))
+        New-Item -ItemType Directory -Path $temp -Force | Out-Null
+        $log=Join-Path $run ('weapon_pc_oat_'+$stamp+'_'+($mapName -replace '[^A-Za-z0-9_-]','_')+'_'+$ix+'.log')
+        $exit=-1
+        $sample=@()
+        $actualWeaponNames=@()
+        $sourceRole=if($sourceRoles.ContainsKey([string]$path)){[string]$sourceRoles[[string]$path]}else{'UNKNOWN'}
+        $proofBase=[IO.Path]::GetFileNameWithoutExtension([string]$path)
+        $proofRole=($sourceRole -replace '[^a-zA-Z0-9]','_')
+        $expectedProofName=$proofBase+'_'+$proofRole+'.xbox_weapon_owned_proof.bin'
+        $expectedProofFile=Join-Path $proofFolder $expectedProofName
+        $sourceProofRecords=@($names.ToArray() | Where-Object {
+            [string]$_.proof -ieq $expectedProofFile
+        })
+        try {
+            $copy=Join-Path $temp ([IO.Path]::GetFileName([string]$path))
+            Copy-Item -LiteralPath $path -Destination $copy
+            if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash){
+                throw 'Source FF short copy SHA mismatch'
+            }
+            $stdout=Join-Path $temp 'stdout.txt'
+            $stderr=Join-Path $temp 'stderr.txt'
+            $arguments=(@('--list','--no-color',$copy) | ForEach-Object {'"'+([string]$_).Replace('"','\"')+'"'}) -join ' '
+            $process=Start-Process -FilePath $oat -ArgumentList $arguments -RedirectStandardOutput $stdout -RedirectStandardError $stderr -Wait -PassThru -NoNewWindow -ErrorAction Stop
+            $exit=[int]$process.ExitCode
+            $all=[IO.File]::ReadAllText($stdout)+[Environment]::NewLine+[IO.File]::ReadAllText($stderr)
+            [IO.File]::WriteAllText($log,$all,[Text.UTF8Encoding]::new($false))
+            # OAT "--list" prints real top-level assets as "weapon, name".
+            # Do NOT mix in "loadedsound, sfx/weapon/...", FX, or unrelated
+            # material paths. Capture ALL exact weapon asset declarations.
+            $actualWeaponNames=@($all -split '[\r\n]+' | ForEach-Object {
+                $lineMatch=[regex]::Match($_,'^\s*(?:\[STDOUT\]\s*)?weapon\s*,\s*(\S(?:.*\S)?)\s*$',[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                if($lineMatch.Success){$lineMatch.Groups[1].Value.Trim()}
+            } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+            $sample=@($actualWeaponNames | Select-Object -First 8)
+            Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix ($sourceRole): exit=$exit; realWeaponAssets=$($actualWeaponNames.Count); proofBodies=$($sourceProofRecords.Count); log=$log"
+            foreach($weaponName in $sample){Write-Host "[WEAPON-NAMES]     weapon, $weaponName"}
+        }catch{
+            [IO.File]::WriteAllText($log,[string]$_,[Text.UTF8Encoding]::new($false))
+            Write-Host "[WEAPON-NAMES]   OAT original PC FF $ix ERROR: $([string]$_)"
+        }finally{
+            Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        $knownProofNames=@($sourceProofRecords | Where-Object {-not $_.synthetic} | ForEach-Object {[string]$_.name})
+        $knownProofNotInOat=@($knownProofNames | Where-Object {
+            $n=$_
+            -not @($actualWeaponNames | Where-Object {$_ -ieq $n}).Count
+        })
+        $oatNotInKnownProof=@($actualWeaponNames | Where-Object {
+            $n=$_
+            -not @($knownProofNames | Where-Object {$_ -ieq $n}).Count
+        })
+        Write-Host "[WEAPON-NAMES]   source=$sourceRole actualWeaponAssets=$($actualWeaponNames.Count) knownProofNames=$($knownProofNames.Count) unresolvedProofBodies=$(@($sourceProofRecords | Where-Object {$_.synthetic}).Count) unmatchedOatNameCandidates=$($oatNotInKnownProof.Count)"
+        # Read-only positional witness: OAT lists XAssets in table order,
+        # whereas proof records are sorted by PHYSICAL WeaponDef offset.
+        # Matching counts alone does not prove these orders are identical.
+        # Check EVERY known, exact source-owned proof name at its position
+        # before even suggesting a candidate for an unresolved record.
+        $orderConflicts=New-Object 'System.Collections.Generic.List[object]'
+        $orderCandidates=New-Object 'System.Collections.Generic.List[object]'
+        $anchorCount=0
+        $sameCount=($exit -eq 0 -and $actualWeaponNames.Count -eq $sourceProofRecords.Count)
+        $namesUnique=$true
+        $uniqueNames=[System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach($actualName in $actualWeaponNames){
+            if(-not $uniqueNames.Add([string]$actualName)){$namesUnique=$false}
+        }
+        if($sameCount){
+            for($ordinal=0;$ordinal -lt $sourceProofRecords.Count;$ordinal++){
+                $proof=$sourceProofRecords[$ordinal]
+                if($proof.synthetic){continue}
+                $anchorCount++
+                if(-not [string]::Equals([string]$proof.name,[string]$actualWeaponNames[$ordinal],
+                    [StringComparison]::OrdinalIgnoreCase)){
+                    $orderConflicts.Add([pscustomobject]@{
+                        ordinal=$ordinal;physicalProofName=[string]$proof.name
+                        oatListedName=[string]$actualWeaponNames[$ordinal]
+                        proofBodyOffset=[long]$proof.offset
+                    })
+                }
+            }
+        }
+        $allKnownAnchorsMatch=($sameCount -and $namesUnique -and
+            $anchorCount -gt 0 -and $orderConflicts.Count -eq 0)
+        if($allKnownAnchorsMatch){
+            for($ordinal=0;$ordinal -lt $sourceProofRecords.Count;$ordinal++){
+                $proof=$sourceProofRecords[$ordinal]
+                if(-not $proof.synthetic){continue}
+                $orderCandidates.Add([pscustomobject]@{
+                    status='ORDER_ONLY_UNVERIFIED_DO_NOT_APPLY'
+                    ordinal=$ordinal
+                    packedPointer=[string]$proof.name
+                    proofBodyOffset=[long]$proof.offset
+                    pointerBlock=$proof.pointerBlock
+                    pointerOffset=$proof.pointerOffset
+                    oatNameAtSameOrdinal=[string]$actualWeaponNames[$ordinal]
+                    assertion='Positional candidate only. Packed-pointer target not independently decoded.'
+                })
+            }
+        }
+        Write-Host "[WEAPON-NAMES]   ORDER WITNESS $sourceRole : equalCounts=$sameCount uniqueOatNames=$namesUnique knownAnchors=$anchorCount conflicts=$($orderConflicts.Count) orderOnlyCandidates=$($orderCandidates.Count)"
+        foreach($conflict in @($orderConflicts.ToArray() | Select-Object -First 4)){
+            Write-Host "[WEAPON-NAMES]     ORDER CONFLICT #$($conflict.ordinal): proof=$($conflict.physicalProofName), OAT=$($conflict.oatListedName)"
+        }
+        foreach($candidate in @($orderCandidates.ToArray() | Select-Object -First 8)){
+            Write-Host "[WEAPON-NAMES]     UNVERIFIED ORDINAL CANDIDATE #$($candidate.ordinal): $($candidate.packedPointer) => $($candidate.oatNameAtSameOrdinal)"
+        }
+        Write-Host '[WEAPON-NAMES]   NOTE: even a 100% known-name order witness is not pointer-to-name proof; aliases/reordering may remain. No candidate is applied to a converted FF.'
+        $oatSources.Add([pscustomobject]@{
+            path=$path;sourceRole=$sourceRole;exit=$exit;log=$log
+            weaponNameEvidenceSource='OAT original PC --list; exact top-level weapon assets only'
+            oatWeaponAssetCount=$actualWeaponNames.Count
+            oatWeaponAssetNames=@($actualWeaponNames)
+            sample=@($sample)
+            expectedProofFile=$expectedProofFile
+            sourceProofPhysicalBodyCount=$sourceProofRecords.Count
+            sourceProofKnownNames=@($knownProofNames)
+            proofKnownNamesNotInOat=@($knownProofNotInOat)
+            oatWeaponNamesNotInKnownProof=@($oatNotInKnownProof)
+            ordinalWitness=[pscustomobject]@{
+                equalCounts=$sameCount
+                uniqueOatNames=$namesUnique
+                knownAnchorNamesAtSameOrdinal=$anchorCount
+                knownNameOrderConflicts=@($orderConflicts.ToArray())
+                allKnownNamesAligned=$allKnownAnchorsMatch
+                orderOnlyUnverifiedCandidates=@($orderCandidates.ToArray())
+                canBeAppliedToXenonPayload=$false
+            }
+            exactPointerToNameMappingEstablished=$false
+        })
+    }
+    $rows.Add([pscustomobject]@{
+        map=$mapName
+        weaponProofRecords=$names.Count
+        syntheticPackedNameCount=$unresolved.Count
+        proofNames=@($names.ToArray())
+        pcSourceOatListings=@($oatSources.ToArray())
+        identitiesResolved=$false
+        note='Real OAT weapon names are enumerated per original PC FF; source proof body identities remain unresolved until a verified pointer-to-virtual-block mapping exists.'
+    })
+}
+if($rows.Count -eq 0){throw 'No maps matched -IncludeMaps'}
+$report=Join-Path $run ('weapon_name_provenance_'+$stamp+'.json')
+[ordered]@{
+    schema='WaW360.WeaponNameAudit.v1'
+    matrix=$MatrixJson;readOnly=$true
+    note='Synthetic <packed-name@...> weapon proof labels are NOT authentic weapon identities. OAT PC listings are evidence, not unverified one-to-one name matches.'
+    maps=@($rows.ToArray())
+}|ConvertTo-Json -Depth 11 | Set-Content -LiteralPath $report -Encoding UTF8
+Write-Host "[WEAPON-NAMES] JSON=$report"
+Write-Host '[WEAPON-NAMES] No original PC FFs, proof FFs, or Xbox candidate FFs modified.'

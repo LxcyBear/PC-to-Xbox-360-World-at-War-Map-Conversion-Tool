@@ -26,6 +26,58 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine(JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }));
                 return 0;
             }
+            case "xenon-static-draw-derived-selftest" when args.Length == 1:
+            {
+                T4XenonStaticDrawDerivedScalarCodec.SelfTest();
+                Console.WriteLine("[XENON-DRAW-DERIVED] PASS: arbitrary 2 x 52B native layout, uint8/uint16 BE, model-pointer preservation, overflow rejection.");
+                Console.WriteLine("[XENON-DRAW-DERIVED] Source-only semantics; no FF.");
+                return 0;
+            }
+            case "xenon-static-draw-derived-encode" when args.Length == 4:
+            {
+                var converted = await T4XenonStaticDrawDerivedScalarCodec.EncodeFromManifestAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("[XENON-DRAW-DERIVED] source rows=" + converted.Rows +
+                    ", derived scalar sites=" + converted.FieldsWritten +
+                    ", fields=" + string.Join(",",converted.Names));
+                Console.WriteLine("[XENON-DRAW-DERIVED] Diagnostic-only; native semantic closure, stock XModel and world links still missing.");
+                return 0;
+            }
+            case "xenon-static-draw-scalar-selftest" when args.Length == 1:
+            {
+                T4XenonStaticDrawScalarCodec.SelfTest();
+                Console.WriteLine("[XENON-DRAW-SCALAR] PASS: arbitrary 3 x 48B byte fields, byte bounds, model-pointer preservation.");
+                Console.WriteLine("[XENON-DRAW-SCALAR] No map FF or Xbox deployment.");
+                return 0;
+            }
+            case "xenon-static-draw-scalar-encode" when args.Length == 4:
+            {
+                var result = await T4XenonStaticDrawScalarCodec.EncodeFromManifestAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("[XENON-DRAW-SCALAR] SOURCE-ONLY: rows=" + result.RecordCount +
+                    " source scalar slots=" + result.FieldSlotsWritten +
+                    " fields=" + string.Join(",", result.FieldNames));
+                Console.WriteLine("[XENON-DRAW-SCALAR] Incomplete: no light remap, no DPVS links, no FF or hardware approval.");
+                return 0;
+            }
+            case "xenon-static-draw-pointer-selftest" when args.Length == 1:
+            {
+                T4XenonStaticDrawPointerCodec.SelfTest();
+                Console.WriteLine("[XENON-DRAW-CODEC] PASS: generic 3 x 48-byte synthetic records, stable VIRTUAL pointers, endian and fail-closed regression.");
+                Console.WriteLine("[XENON-DRAW-CODEC] No FF or Xbox deployment.");
+                return 0;
+            }
+            case "xenon-static-draw-pointer-encode" when args.Length == 4:
+            {
+                var encoded = await T4XenonStaticDrawPointerCodec.EncodeFromManifestAsync(
+                    args[1], args[2], args[3]);
+                Console.WriteLine("[XENON-DRAW-CODEC] PASS: real source-owned pointer words=" +
+                    encoded.OwnedPointersWritten + ", external stock quarantined=" +
+                    encoded.ExternalReferencesQuarantined + ", distinct owned model roots=" +
+                    encoded.DistinctOwnedRootBodies + ".");
+                Console.WriteLine("[XENON-DRAW-CODEC] Diagnostic native draw array ONLY: missing lighting/DPVS; no FF, no hardware approval.");
+                return 0;
+            }
             case "decompress" when args.Length >= 3:
             {
                 var result = await FastFileDecompressor.DecompressAutoAsync(args[1], args[2]);
@@ -41,6 +93,100 @@ static async Task<int> MainAsync(string[] args)
                     Console.WriteLine($"{item.Field,-22} {item.Left,-24} | {item.Right,-24} {(item.Equal ? "=" : "!=")}");
                 return 0;
             }
+            case "aztec-native-ff-size-audit" when args.Length == 7:
+            {
+                var report = await T4AztecNativeSizeAudit.RunAsync(
+                    args[1],args[2],args[3],args[4],args[5],args[6]);
+                Console.WriteLine("[AZTEC-SIZE] PASS: exact compressed + decompressed FF size, 7 block capacities, 8509 source-root status.");
+                Console.WriteLine("[AZTEC-SIZE] Report: " + report);
+                Console.WriteLine("[AZTEC-SIZE] No per-asset byte mass claimed. No donor asset bytes or hardware approval.");
+                return 0;
+            }
+            case "aztec-weapon63-original-pc-bounce-sound-witness" when args.Length == 4:
+            {
+                var report=await T4XenonAztecWeaponBounceSourceWitness.RunAsync(
+                    args[1],args[2],args[3]);
+                Console.WriteLine("[AZTEC-W63-BOUNCE] Genuine original-PC 7b inline bounceSound pointer table and SndAliasCustom source census: "+report);
+                Console.WriteLine("[AZTEC-W63-BOUNCE] NO Xbox donor audio, NO FF/OAT build, NO Xbox hardware.");
+                return 0;
+            }
+            case "aztec-weapon63-real-flame-material-join" when args.Length == 5:
+            {
+                var report=await T4AztecFlameRealSourceJoin.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-REAL-JOIN] Original-PC SAME-ZONE SHA-and-byte matched FlameTable Material* vs 39 genuine OAT-loaded PC Material* roots: "+report);
+                Console.WriteLine("[AZTEC-REAL-JOIN] No fake names/materials, audio samples, XMA, native FF or Xbox. Identity matches are not runtime asset bodies.");
+                return 0;
+            }
+            case "aztec-weapon63-original-pc-flame-parent-witness" when args.Length == 5:
+            {
+                var report=await T4XenonAztecWeaponFlameSourceWitness.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-W63-FLAME] Original-PC typed FlameTable 476B parent ownership and six nested sound aliases: "+report);
+                Console.WriteLine("[AZTEC-W63-FLAME] SOURCE ONLY. NO guessed parent, audio/XMA, donor, OAT, FF or Xbox.");
+                return 0;
+            }
+            case "aztec-weapon63-original-pc-accuracy-vec2-witness" when args.Length == 4:
+            {
+                var report=await T4XenonAztecWeaponAccuracySourceWitness.RunAsync(
+                    args[1],args[2],args[3]);
+                Console.WriteLine("[AZTEC-W63-VEC2] SOURCE-only genuine original PC 7b WeaponDef fixed-owned Vec2 array census: "+report);
+                Console.WriteLine("[AZTEC-W63-VEC2] NO native map FF/OAT, NO retail donor, NO Xbox hardware.");
+                return 0;
+            }
+            case "aztec-six-weapon-real-source-recovery" when args.Length == 4:
+            {
+                var report=await T4AztecSixWeaponSourceRecovery.RunAsync(args[1],args[2],args[3]);
+                Console.WriteLine("[AZTEC-SIX-RECOVERY] Authentic original-PC WeaponDef source-to-Xbox proof only; no native map FF: "+report);
+                return 0;
+            }
+            case "aztec-three-class-native-root-selection" when args.Length == 5:
+            {
+                var report=await T4AztecThreeBodyRootSelection.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-3ROOT] Model/FX/Weapon exact Xbox blob SHA roots and missing names (no FF): "+report);
+                return 0;
+            }
+            case "aztec-five-class-lightning" when args.Length is 8 or 9:
+            {
+                var evidenceOnly=args.Length==9 &&
+                    args[8].Equals("--evidence-only",StringComparison.OrdinalIgnoreCase);
+                if(args.Length==9 && !evidenceOnly)
+                    throw new ArgumentException("Optional ninth argument must be --evidence-only.");
+                var report=await T4AztecFiveClassLightningProof.RunAsync(
+                    args[1],args[2],args[3],args[4],args[5],args[6],args[7],evidenceOnly);
+                Console.WriteLine("[AZTEC-5LIGHTNING] Source evidence with native proof/readback: "+report);
+                return 0;
+            }
+            case "aztec-xanim-602-source-selection" when args.Length == 5:
+            {
+                var report=await T4AztecXAnim602RootSelection.RunAsync(
+                    args[1],args[2],args[3],args[4]);
+                Console.WriteLine("[AZTEC-XANIM-602] Exact source Xbox body-hash selection (no FF output): "+report);
+                return 0;
+            }
+            case "aztec-xanim-614-source-native" when args.Length is 6 or 7:
+            {
+                var namesOnly=args.Length==7 &&
+                    args[6].Equals("--names-only",StringComparison.OrdinalIgnoreCase);
+                if(args.Length==7 && !namesOnly)
+                    throw new ArgumentException("Optional seventh argument must be --names-only.");
+                var report=await T4AztecXAnim614SourceNativeProof.RunAsync(
+                    args[1],args[2],args[3],args[4],args[5],namesOnly);
+                Console.WriteLine("[AZTEC-XANIM-614] Real PC->native Xbox proof containers only; report: "+report);
+                return 0;
+            }
+            case "aztec-pc-source-body-batch" when args.Length is 5 or 6:
+            {
+                var fastOnly=args.Length==6 &&
+                    args[5].Equals("--skip-deep-sound",StringComparison.OrdinalIgnoreCase);
+                if(args.Length==6 && !fastOnly)
+                    throw new ArgumentException("Optional sixth arg must be --skip-deep-sound.");
+                var report=await T4AztecSourceBodyQuickBatch.RunAsync(
+                    args[1],args[2],args[3],args[4],fastOnly);
+                Console.WriteLine("[AZTEC-SOURCE-BODIES] Read-only source body pointer/typed sound diagnostic: "+report);
+                return 0;
+            }
             case "assets" when args.Length >= 2:
             {
                 var zone = await T4ZoneParser.ParseFastFileAsync(args[1]);
@@ -54,6 +200,532 @@ static async Task<int> MainAsync(string[] args)
                 var zone = await T4ZoneParser.ParseFastFileAsync(args[1]);
                 await T4ZoneManifestWriter.WriteAsync(zone, args[2]);
                 Console.WriteLine($"Wrote manifest: {args[2]}");
+                return 0;
+            }
+            case "aztec-pc-null-image-boundary" when args.Length == 4:
+            {
+                var result = await T4AztecPcNullImageBoundaryProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-NULL] status=" + result.Status +
+                    " image=" + result.NullImageHeaderAt +
+                    " nameCandidate=" + result.NullImageName +
+                    " afterName=" + result.CandidateAfterInlineName +
+                    " continuation=" + result.ExactPostNameMaterialContinuationPlausible);
+                foreach (var c in result.Candidates)
+                    Console.WriteLine("[AZTEC-MAT-NULL] constants=" + c.ConstantTableAt +
+                        " plausible=" + c.PlausibleConstants + "/2" +
+                        " statebits=" + c.StateBitsAt +
+                        " nextHeader=" + c.NextHeaderAt +
+                        " nextName=" + c.NextNameCandidate +
+                        " nextCounts=" + c.NextCountsPlausible);
+                Console.WriteLine("[AZTEC-MAT-NULL] report=" + args[3] +
+                    " -- SOURCE ONLY; no walker changes or FF.");
+                return 0;
+            }
+            case "aztec-pc-material-stop-microscope" when args.Length == 4:
+            {
+                var result = await T4AztecPcMaterialStopMicroscope.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-STOP] status=" + result.Status +
+                    " imageStop=" + result.StopImageAt +
+                    " material=" + result.PendingMaterialHeader +
+                    " nameCandidate=" + result.PendingMaterialNameCandidate);
+                Console.WriteLine("[AZTEC-MAT-STOP] exact reasons: " +
+                    string.Join(", ", result.ExactStopRejectionReasons));
+                foreach (var item in result.ImageHeaderCandidates)
+                    Console.WriteLine("[AZTEC-MAT-STOP] candidate=" + item.HeaderOffset +
+                        " delta=" + item.DeltaFromStop +
+                        " map=" + item.MapType + " texture=" + item.TexturePointer +
+                        " name=" + item.NamePointer + " strict=" + item.StrictWalkerAccepts);
+                Console.WriteLine("[AZTEC-MAT-STOP] report=" + args[3] +
+                    " -- original-PC diagnostic ONLY; no FF or Xbox identity.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-root-dpvs-scalar-seed" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldRootDpvsSeed.BuildAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-WORLD-SEED] status=" + result.Status +
+                    " pcRoot=" + result.OriginalPcRootSize +
+                    " xenonRoot=" + result.XboxRootSize +
+                    " dpvsSize=" + result.DpvsSize +
+                    " verifiedRootFields=" + result.SourceVerifiedRootFields.Count +
+                    " verifiedDpvsFields=" + result.SourceVerifiedDpvsFields.Count +
+                    " fullChildrenSerialized=" + result.FullWorldChildrenSerialized);
+                Console.WriteLine("[AZTEC-WORLD-SEED] xenonRootSha=" + result.XboxScalarOnlyRootSha256 +
+                    " -- scalar seed ONLY; NOT a FastFile/GfxWorld.");
+                return 0;
+            }
+            case "aztec-xenon-39-world-surface-live-layout-link" when args.Length == 6:
+            {
+                var result = await T4AztecPcXenon39WorldSurfaceFinalLayoutLink.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5], CancellationToken.None);
+                Console.WriteLine("[AZTEC-735-LIVE-LINK] status=" + result.Status +
+                    " realFFBodies=" + result.RealFfMaterialBodies +
+                    " linkedSurfaces=" + result.SurfacesLinkedToRealFfBodies +
+                    " identityShellRefs=" + result.SurfacesLinkedToIdentityShells +
+                    " standaloneBytes=" + result.LinkedSurfaceByteLength +
+                    " FFInserted=" + result.WorldGfxSurfaceArrayInsertedInFf);
+                Console.WriteLine("[AZTEC-735-LIVE-LINK] ffSha=" +
+                    result.ExactValidated39MaterialFastFileSha256 +
+                    " linkedSurfaceSha=" + result.StandaloneLinkedSurfaceArraySha256);
+                return 0;
+            }
+            case "aztec-xenon-39-material-codec-preflight" when args.Length == 4:
+            {
+                var result = await T4AztecPcXenonMaterial39CodecPreflight.RunAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-39-CODEC] status=" + result.Status +
+                    " loaded=" + result.MaterialGraphsLoadedByExistingCodec +
+                    " planned=" + result.MaterialGraphsPlannedByExistingCodec +
+                    " nativeUnique=" + result.UniqueNativeDependencyOccurrences +
+                    " nativeMissing=" + result.MissingNativeDependencyOccurrences +
+                    " nativeAmbiguous=" + result.AmbiguousNativeDependencyOccurrences +
+                    " uniqueMissingNames=" + result.UniqueUnresolvedDependencyNames);
+                Console.WriteLine("[AZTEC-39-CODEC] binding=" + result.SourceOnlyRootBindingManifest +
+                    " -- codec proof only, no FF.");
+                return 0;
+            }
+            case "aztec-pc-to-xenon-39-world-material-graphs" when args.Length == 5:
+            {
+                var result = await T4AztecPcXenonMaterial39SourceBridge.BuildAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT39-XENON] status=" + result.Status +
+                    " candidate96ByteBodies=" + result.SourceMaterialChildrenConverted +
+                    " worldSurfaces=" + result.CoveredWorldSurfaces +
+                    " missingNativeDependencies=" + result.MissingNativeDependencies +
+                    " ambiguousNativeDependencies=" + result.AmbiguousNativeDependencies +
+                    " originalPCStateTailNeedsReview=" + result.MaterialsWithPotentiallyActiveTruncatedStateBitsEntries);
+                Console.WriteLine("[AZTEC-MAT39-XENON] root=" + result.CandidateGraphRoot +
+                    " -- candidate graphs only; no FF/GfxWorld/hardware.");
+                return 0;
+            }
+            case "aztec-pc-xenon-surface-alias-link-canary" when args.Length == 7:
+            {
+                var result = await T4AztecPcXenonSurfaceAliasLinkCanary.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5], args[6], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-LINK] status=" + result.Status +
+                    " packed=" + result.TotalSurfaceMaterialReferences +
+                    " worldRealRoots=" + result.WorldRootsWithRealMaterialGraph +
+                    " worldShellRoots=" + result.WorldRootsWithIdentityShellOnly +
+                    " realWorldSurfaces=" + result.SurfaceReferencesToRealMaterialGraphs +
+                    " pointerBytesForThisLayoutOnly=" + result.PseudoLinkedBinaryFile);
+                Console.WriteLine("[AZTEC-MAT-LINK] GfxWorldEmitted=" +
+                    result.RealXboxGfxWorldRootEmitted +
+                    " OatIntegrated=" + result.IntegratedOatGfxWorldLoaded +
+                    " XboxReady=" + result.XboxHardwareReady);
+                return 0;
+            }
+            case "aztec-pc-xenon-76byte-surface-canary" when args.Length == 5:
+            {
+                var result = await T4AztecPcXenonGfxSurface76Canary.BuildAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-76B] status=" + result.Status +
+                    " 76ByteSurfaces=" + result.Surfaces +
+                    " unresolvedTopMip=" + result.UnresolvedTopMipSurfaces +
+                    " exactPcMaterialOwners=" + result.MaterialRelocationSites.Count +
+                    " xboxPointersWritten=" + result.WrittenMaterialPointerFields +
+                    " FFEmitted=" + result.XenonGfxWorldSerialized);
+                Console.WriteLine("[AZTEC-76B] binary=" + result.BinaryFile +
+                    " SHA256=" + result.BinarySha256 +
+                    " -- NON_DEPLOYABLE; no FF.");
+                return 0;
+            }
+            case "aztec-pc-xenon-surface-topmip-calibration" when args.Length == 5:
+            {
+                var result = await T4AztecPcXenonSurfaceTopMipCalibration.ProbeAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-TOPMIP] status=" + result.Status +
+                    " sourceBoundsExact=" + result.NativeTopMipEqualsPcSurfaceBoundsExact +
+                    " vertexSpanExact=" + result.NativeTopMipEqualsPcVertexSpanAabbExact +
+                    " triangleUsedExact=" + result.NativeTopMipEqualsPcTriangleVertexAabbExact +
+                    " derived=" + result.CompleteVerifiedTopMipDerivation +
+                    " Xenon76BReady=" + result.SourceOnlyTopMipCandidateReadyFor76ByteSerialization);
+                Console.WriteLine("[AZTEC-TOPMIP] report=" + args[4] +
+                    " -- diagnostic only; no 76B payload or FF.");
+                return 0;
+            }
+            case "aztec-pc-verified-material-relocation-worklist" when args.Length == 6:
+            {
+                var result = await T4AztecPcVerifiedSurfaceMaterialRelocationPlan.BuildAsync(
+                    args[1], args[2], args[3], args[4], args[5], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-FIXUPS] status=" + result.Status +
+                    " verifiedPcMaterialIdentities=" + result.VerifiedTypedPcSurfaceIdentities +
+                    " uniqueXboxMaterialNames=" + result.UniqueGoldenXboxNativeMaterialRootNames +
+                    " exactSites=" + result.ExactRelocationSites +
+                    " surfaceBytesPatched=" + result.XenonSurfaceMaterialPointersWritten +
+                    " FFEmitted=" + result.XenonGfxWorldEmitted);
+                foreach (var entry in result.RelocationIntents.Take(8))
+                    Console.WriteLine("[AZTEC-MAT-FIXUPS] intent surface=" + entry.SurfaceIndex +
+                        " beFieldAt=" + entry.XenonSurfaceBufferByteOffset +
+                        " name=" + entry.VerifiedPcMaterialName +
+                        " rootIndex=" + entry.UniqueMatchingXboxNativeRootIndex +
+                        " written=" + entry.XenonMaterialPointerWritten);
+                Console.WriteLine("[AZTEC-MAT-FIXUPS] report=" + args[5] +
+                    " -- verified root IDENTITY, NOT Xbox pointer. NO FF.");
+                return 0;
+            }
+            case "aztec-pc-world-735-surface-material-candidates" when args.Length == 5:
+            {
+                var result = await T4AztecPcWorldSurfaceMaterialCandidateLedger.ProbeAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-735-CANDIDATES] status=" + result.Status +
+                    " exactNativeNames=" + result.UniqueExactNativeNameCandidates +
+                    " virtualSlots=" + result.DistinctVirtualAliasSlots +
+                    " hypotheticalSurfaces=" + result.HypotheticalSurfacesLabeled +
+                    " triangleCoverage=" + result.HypotheticalTrianglesLabeled);
+                foreach (var g in result.CandidateGroups.Take(8))
+                    Console.WriteLine("[AZTEC-735-CANDIDATES] candidate#" + g.Ordinal +
+                        " virtual=" + g.SourceVirtualAliasPointer +
+                        " unverifiedSourceName=" + g.SourceMaterialNameCandidate +
+                        " uniqueXboxRootNameIndex=" + g.UniqueExactNativeMaterialNameRootIndex +
+                        " proposedSurfaces=" + g.RecountedSourceSurfaceCount);
+                Console.WriteLine("[AZTEC-735-CANDIDATES] report=" + args[4] +
+                    " -- ORDINAL HYPOTHESIS ONLY. No Xbox bindings or FF.");
+                return 0;
+            }
+            case "aztec-pc-world-material-native-name-audit" when args.Length == 5:
+            {
+                var result = await T4AztecPcWorldMaterialNativeNameReconciliation.ProbeAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-NAMES] status=" + result.Status +
+                    " sourceMaterialNames=" + result.SourceMaterialCandidates +
+                    " nativeMaterialRoots=" + result.GoldenNativeMaterialRoots +
+                    " uniqueNames=" + result.UniqueExactNameCandidates +
+                    " noNameMatches=" + result.NoExactNameCandidates +
+                    " ambiguous=" + result.AmbiguousExactNameCandidates);
+                Console.WriteLine("[AZTEC-MAT-NAMES] report=" + args[4] +
+                    " -- NAME MATCHES ONLY; no virtual-pointer or Xbox bindings.");
+                return 0;
+            }
+            case "aztec-pc-material-world-boundary-bridge" when args.Length == 7:
+            {
+                var result = await T4AztecPcMaterialWorldBoundaryBridge.ProbeAsync(
+                    args[1], args[2], args[3], args[4], args[5], args[6], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-BRIDGE] status=" + result.Status +
+                    " contiguous=" + result.ContiguousPhysicalChainValidated +
+                    " materialMemory=" + result.MaterialMemoryEntries +
+                    " physicalMaterials=" + result.ConsecutiveMaterialCandidates +
+                    " virtualAliasGroups=" + result.VirtualAliasGroups +
+                    " 735surfaces=" + result.SourceSurfaceCount);
+                Console.WriteLine("[AZTEC-MAT-BRIDGE] memoryEnd=" + result.PreferredMemoryWindowEnd +
+                    " firstMaterial=" + result.FirstMaterialHeaderAt +
+                    " vertexAt=" + result.VertexBufferAt +
+                    " shiftedWindowEnd=" + result.ShiftedMemoryWindowEnd);
+                Console.WriteLine("[AZTEC-MAT-BRIDGE] report=" + args[6] +
+                    " -- ordinal pairings are HYPOTHESES; zero Xbox bindings.");
+                return 0;
+            }
+            case "aztec-pc-material-stream-walker-null-replay" when args.Length == 5:
+            {
+                var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None, args[4]);
+                var nameOnly = result.Materials
+                    .SelectMany(m => m.Images).Count(i => i.NameOnlyNullImageCandidate);
+                Console.WriteLine("[AZTEC-MAT-REPLAY] status=" + result.Status +
+                    " decoded=" + result.DecodedMaterialCandidates +
+                    " nullNameOnlyImages=" + nameOnly +
+                    " stopReason=" + result.StopReason + " stopAt=" + result.StopAt);
+                foreach (var m in result.Materials)
+                    Console.WriteLine("[AZTEC-MAT-REPLAY] material#" + m.Ordinal +
+                        " header=" + m.HeaderAt + " nameCandidate=" + m.CandidateName +
+                        " inlineImages=" + m.InlineImages + " next=" + m.NextCursor);
+                Console.WriteLine("[AZTEC-MAT-REPLAY] report=" + args[3] +
+                    " -- diagnostic replay ONLY, no FF or Xbox bindings.");
+                return 0;
+            }
+            case "aztec-pc-material-stream-walker" when args.Length == 4:
+            {
+                var result = await T4AztecPcMaterialStreamWalker.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-WALK] status=" + result.Status +
+                    " decoded=" + result.DecodedMaterialCandidates +
+                    " inlineImages=" + result.InlineImages +
+                    " stopReason=" + result.StopReason +
+                    " stopAt=" + result.StopAt);
+                foreach (var m in result.Materials)
+                    Console.WriteLine("[AZTEC-MAT-WALK] material#" + m.Ordinal +
+                        " start=" + m.HeaderAt + " unverifiedName=" + m.CandidateName +
+                        " textures=" + m.TextureCount +
+                        " inlineImages=" + m.InlineImages +
+                        " constants=" + m.ConstantCount +
+                        " statebits=" + m.StateBitsCount +
+                        " after=" + m.NextCursor);
+                Console.WriteLine("[AZTEC-MAT-WALK] report=" + args[3] +
+                    " -- structural source candidates ONLY; no Xbox FF.");
+                return 0;
+            }
+            case "aztec-pc-second-material-children" when args.Length == 4:
+            {
+                var result = await T4AztecPcSecondMaterialChildrenProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT2] status=" + result.Status +
+                    " allImageDescriptors=" + result.AllSixAreImageDescriptors +
+                    " imageChain=" + result.SixInlineImageChainCandidate +
+                    " postImages=" + result.PostSixImagesCursor);
+                foreach (var t in result.Textures)
+                    Console.WriteLine("[AZTEC-MAT2] texture#" + t.Index +
+                        " semantic=" + t.Semantic + " water=" + t.IsWater +
+                        " pointer=" + t.ImagePointer);
+                foreach (var image in result.InlineImageCandidates)
+                    Console.WriteLine("[AZTEC-MAT2] image#" + image.Index +
+                        " plausible=" + image.HeaderPlausible +
+                        " nameCandidate=" + image.NameCandidate +
+                        " loadDef=" + image.LoadDefAt +
+                        " resource=" + image.ResourceSize +
+                        " after=" + image.AfterLoadDef);
+                foreach (var candidate in result.TopConstantTableCandidates.Take(6))
+                    Console.WriteLine("[AZTEC-MAT2] constants=" + candidate.ConstantTableAt +
+                        " plausible=" + candidate.PlausibleConstants + "/6" +
+                        " nextHeader=" + candidate.NextHeaderAt);
+                Console.WriteLine("[AZTEC-MAT2] report=" + args[3] +
+                    " -- source-only; no ownership or Xbox bindings.");
+                return 0;
+            }
+            case "aztec-pc-first-material-state-next-header" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstMaterialStateAndNextHeaderProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-NEXT] status=" + result.Status +
+                    " secondHeader=" + result.SecondMaterialHeaderAt +
+                    " shape=" + result.SecondHeaderShapePlausible +
+                    " secondNameCandidate=" + result.SecondUnverifiedName);
+                foreach (var s in result.StateBits)
+                    Console.WriteLine("[AZTEC-MAT-NEXT] state#" + s.Index +
+                        " offset=" + s.Offset +
+                        " words=" + s.StateBits0 + "," + s.StateBits1);
+                foreach (var t in result.SecondTextureCandidates)
+                    Console.WriteLine("[AZTEC-MAT-NEXT] textureTable=" + t.SourceOffset +
+                        " valid=" + t.PlausibleDescriptors + "/" + t.TextureCount);
+                Console.WriteLine("[AZTEC-MAT-NEXT] report=" + args[3] +
+                    " -- source-only candidate, NO FF/XBOX or ownership proof.");
+                return 0;
+            }
+            case "aztec-pc-post-images-constants" when args.Length == 4:
+            {
+                var result = await T4AztecPcMaterialPostImagesConstantProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-CONST] status=" + result.Status +
+                    " tested=" + result.TestedPhysicalStarts +
+                    " sixOfSix=" + result.FullyPlausibleStarts +
+                    " best=" + result.BestPlausibleRecordCount + "/6");
+                foreach (var c in result.TopCandidateWindows.Take(10))
+                    Console.WriteLine("[AZTEC-MAT-CONST] candidate=" + c.ConstantTableAt +
+                        " delta=" + c.RelativeByteOffset +
+                        " mod16=" + c.PhysicalOffsetModulo16 +
+                        " valid=" + c.PlausibleConstantRecords + "/6" +
+                        " names=" + string.Join("|", c.CandidateRecordNames));
+                Console.WriteLine("[AZTEC-MAT-CONST] report=" + args[3] +
+                    " -- not a material identity/ownership/binding proof.");
+                return 0;
+            }
+            case "aztec-pc-first-material-image-chain" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstMaterialImageChainProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-MAT-CHAIN] status=" + result.Status);
+                Console.WriteLine("[AZTEC-MAT-CHAIN] possible three-image chain=" +
+                    result.ThreeImageSerializationChainCandidate +
+                    " afterThird=" + result.HypotheticalPostThirdImageCursor);
+                foreach (var image in result.AdditionalImageCandidates)
+                    Console.WriteLine("[AZTEC-MAT-CHAIN] IMAGE#" + image.ImageIndex +
+                        " header=" + image.HeaderAt +
+                        " plausible=" + image.ImageHeaderPlausible +
+                        " nameCandidate=" + image.CandidateName +
+                        " LoadDef=" + image.CandidateLoadDefAt +
+                        " dimsMatch=" + image.LoadDefPrefixDimensionsMatch +
+                        " resourceBytes=" + image.LoadDefResourceBytes +
+                        " nextCursor=" + image.CandidateAfterLoadDef);
+                foreach (var table in result.NearbyAlignedConstantTableCandidates)
+                    Console.WriteLine("[AZTEC-MAT-CHAIN] constants=" + table.ConstantTableAt +
+                        " plausible=" + table.PlausibleConstants + "/6" +
+                        " statebits=" + table.StateBitsTableAt +
+                        " nextHeader=" + table.HypotheticalNextMaterialAt +
+                        " nextNameFollowing=" + table.NextNameFollowing);
+                Console.WriteLine("[AZTEC-MAT-CHAIN] report=" + args[3] +
+                    " -- no PC material ownership, Xbox binding or FF.");
+                return 0;
+            }
+            case "aztec-pc-first-image-loaddef-boundary" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstImageLoadDefBoundaryProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("[AZTEC-LOADDEF] status=" + result.Status);
+                Console.WriteLine("[AZTEC-LOADDEF] image=" + result.ImageHeaderAt +
+                    " LoadDef=" + result.LoadDefPrefixAt +
+                    " DXT5=" + result.FormatFourCC +
+                    " mipCount=" + result.MipLevelCount +
+                    " resourceBytes=" + result.ResourceSize);
+                Console.WriteLine("[AZTEC-LOADDEF] hypothetical physical end=" +
+                    result.CandidatePhysicalCursorAfterLoadDef);
+                foreach (var candidate in result.BoundedNextImageCandidates)
+                    Console.WriteLine("[AZTEC-LOADDEF] nextHeader=" + candidate.Offset +
+                        " plausible=" + candidate.StructurallyPlausible +
+                        " dimensions=" + candidate.Width + "x" +
+                        candidate.Height + "x" + candidate.Depth);
+                Console.WriteLine("[AZTEC-LOADDEF] report=" + args[3] +
+                    " -- PC source-only; no ownership or Xbox bindings.");
+                return 0;
+            }
+            case "aztec-pc-first-material-image-cursor" when args.Length == 4:
+            {
+                var result = await T4AztecPcFirstMaterialInlineImageProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] first Material={result.FirstMaterialHeaderAt} 6x16 texture table={result.FirstMaterialTextureTableAt} next physical={result.PhysicalCursorAfterTextureTable}");
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] source pointers FOLLOWING={result.FollowingImageReferences}/6 packed={result.PackedImageReferences}/6");
+                foreach (var t in result.TextureReferences)
+                    Console.WriteLine($"[AZTEC-MAT-IMAGE] texture#{t.Index} semantic={t.Semantic} image={t.SourceImagePointer} ({t.DecodedImagePointer})");
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] image 36B header plausible={result.PlausibleHeaderCandidates}; with name={result.HeaderWithInlineNameCandidates}; with loadDef={result.HeaderWithInlineLoadDefCandidates}");
+                foreach (var h in result.CandidateImageHeaders)
+                {
+                    Console.WriteLine($"[AZTEC-MAT-IMAGE] BOUNDARY {h.PhysicalOffset} plausible={h.StructurePlausible} mapType={h.MapType} semantic={h.Semantic} dimensions={h.Width}x{h.Height}x{h.Depth} category={h.Category} namePtr={h.NamePointer} texPtr={h.TexturePointer}");
+                    foreach (var n in h.InlineNameCandidates)
+                    {
+                        Console.WriteLine($"[AZTEC-MAT-IMAGE]   NAME CANDIDATE {n.PhysicalOffset}={n.UnverifiedName} end={n.AfterName} (NOT PROVEN)");
+                        foreach (var d in n.LoadDefCandidates)
+                            Console.WriteLine($"[AZTEC-MAT-IMAGE]   LOADDEF {d.PhysicalOffset} fits={d.FitsImageDimensionsAndSourceBounds} dims={d.Width}x{d.Height}x{d.Depth} resourceBytes={d.ResourceSize} format={d.Format} end={d.EndOfPayload}");
+                    }
+                }
+                Console.WriteLine($"[AZTEC-MAT-IMAGE] report={args[3]}");
+                Console.WriteLine("[AZTEC-MAT-IMAGE] Source-only diagnostic, NO material/image root mapping and NO FF.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-first-material-children" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldFirstMaterialChildrenProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-CHILD] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-CHILD] first source Material={result.FirstMaterialHeaderAt}, nameCandidate={result.UnverifiedName}, postName={result.ExactPostNameOffset}");
+                Console.WriteLine($"[AZTEC-MAT-CHILD] childCounts textures={result.TextureCount}, constants={result.ConstantCount}, stateBits={result.StateBitsCount}, alignedLayouts={result.TestedAlignedChildLayouts}, fullyCompatible={result.FullyCompatibleDirectLayouts}");
+                Console.WriteLine($"[AZTEC-MAT-CHILD] T4 ABI textureStride={result.TextureDescriptorStride}, imagePointerOffset=+{result.TextureImagePointerOffset}, bestTextureValid={result.BestValidTextureDescriptorCount}/6, fullyValidTextureTableStarts=[{string.Join(", ", result.FullyValidTextureTableSourceOffsets)}]");
+                foreach (var c in result.BestCandidates.Take(6))
+                {
+                    Console.WriteLine($"[AZTEC-MAT-CHILD] layout texture={c.TextureTableAt} constant={c.ConstantTableAt} stateBits={c.StateBitsTableAt} nextHeader={c.NextExpectedMaterialHeaderAt}");
+                    Console.WriteLine($"[AZTEC-MAT-CHILD]   textureValid={c.ValidTextureDescriptors}/6, constantValid={c.PlausibleConstantRecords}/6, nextNameFollowing={c.NextMaterialHeaderNameFollowing}, nextCountsPlausible={c.NextMaterialHeaderCountsPlausible}");
+                    foreach (var t in c.TextureSamples)
+                        Console.WriteLine($"[AZTEC-MAT-CHILD]   texture#{t.Index} semantic={t.Semantic} mature={t.IsMatureContent} image={t.ImagePointer} plausible={t.Plausible}");
+                }
+                Console.WriteLine($"[AZTEC-MAT-CHILD] report={args[3]}");
+                Console.WriteLine("[AZTEC-MAT-CHILD] Structural candidates only; names/39 bindings/FF not proven.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-material-inline-boundary" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldMaterialInlineBoundaryProbe.ProbeAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-BOUNDARY] status={result.Status}");
+                foreach (var w in result.Windows)
+                {
+                    Console.WriteLine($"[AZTEC-MAT-BOUNDARY] WINDOW {w.WindowStart}, following={w.FollowingPointerFields}/39, after={w.FollowingHeaderCandidateStart}, afterWord={w.FollowingHeaderCandidateFirstWord}, preValid={w.ValidPrecedingEightByteRecord}, nextValid={w.ValidFollowingEightByteRecord}");
+                    Console.WriteLine($"[AZTEC-MAT-BOUNDARY] memoryFields min={w.SmallestMemoryField}, max={w.LargestMemoryField}, total={w.SumMemoryFields}");
+                    foreach (var h in w.PossibleMaterialHeaders)
+                    {
+                        Console.WriteLine($"[AZTEC-MAT-BOUNDARY] MaterialShape={h.CandidateMaterialBytes} infoBytes={h.CandidateMaterialInfoBytes}, plausibleCounts={h.PlausibleMaterialCountFields}, texture={h.TextureCount}, constant={h.ConstantCount}, stateBits={h.StateBitsCount}, camera={h.CameraRegion}, techset={h.TechniqueSetPointer}");
+                        Console.WriteLine($"[AZTEC-MAT-BOUNDARY]  ABI check namePtr={h.MaterialNamePointer} nameFollowing={h.NamePointerIsFollowing}, techsetBounded={h.TechniqueSetPointerCompatible}, texturePtrBounded={h.TextureTablePointerCompatible}, constantPtrBounded={h.ConstantTablePointerCompatible}, bitsPtrBounded={h.StateBitsTablePointerCompatible}, allDependenciesCompatible={h.AllDependencyPointerFieldsCompatible}, stringAtExactPostHeader={h.ExactPostHeaderReadableString}");
+                        Console.WriteLine($"[AZTEC-MAT-BOUNDARY]  rawDeps technique={h.TechniqueSetPointer} texture={h.TextureTablePointer} constant={h.ConstantTablePointer} stateBits={h.StateBitsTablePointer}");
+                        foreach (var n in h.NameCandidates)
+                            Console.WriteLine($"[AZTEC-MAT-BOUNDARY]   NAME-CANDIDATE {n.SourceOffset} = {n.UnverifiedName} (alignment={n.AlignmentAfterMaterialHeader}); NOT PROVEN");
+                    }
+                }
+                Console.WriteLine($"[AZTEC-MAT-BOUNDARY] report={args[3]}");
+                Console.WriteLine("[AZTEC-MAT-BOUNDARY] 39 names and Xbox bindings NOT proven. NO FF.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-material-memory-probe" when args.Length == 5:
+            {
+                var result = await T4AztecPcGfxWorldMaterialMemorySourceProbe.ScanAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-MEM] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] original source materialMemoryCount={result.MaterialMemoryCount}, FOLLOWING=0xFFFFFFFF, arrayBytes={result.MaterialMemoryArrayBytes}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] strict 3-record={result.ThreeRecordSignatures:N0}, full39={result.Full39RecordSignatures:N0}, isolated39={result.Isolated39RecordSignatures:N0}, 40-record-overlap={result.TwoFullWindowsOverlapIntoFortyRecordRun}");
+                foreach (var w in result.FullWindowBoundaryEvidence)
+                    Console.WriteLine($"[AZTEC-MAT-MEM] WINDOW {w.SourceOffsetHex} previous={w.PreviousEightByteRecordPlausible} next={w.NextEightByteRecordPlausible} matchesSourceSurfacePtrs={w.FieldMatchesWithSourceGfxSurfaceMaterialPointers}/39 virtual={w.PackedVirtualPointerFields} followingOrInsert={w.FollowingOrInsertDirectiveFields} distinct={w.DistinctMaterialPointerFields} first={w.FirstMaterialWord} last={w.LastMaterialWord} SHA={w.Source39WindowSha256}");
+                foreach (var c in result.Candidates.Take(12))
+                    Console.WriteLine($"[AZTEC-MAT-MEM] CANDIDATE {c.SourceOffsetHex} distanceToVertex={c.BytesBeforeVertexBuffer} ptrs: following={c.FollowingMaterialFields}, insert={c.InsertMaterialFields}, packed={c.PackedMaterialFields}, distinct={c.DistinctMaterialPointerFields}, positiveMemory={c.PositiveMemoryEntries}/39, sumMemory={c.TotalMemoryBytes:N0}, SHA={c.SourceArraySha256}");
+                Console.WriteLine($"[AZTEC-MAT-MEM] report={args[4]}");
+                Console.WriteLine("[AZTEC-MAT-MEM] Not physical ownership proof, no Material names, no Xbox FF.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-material-alias-trace" when args.Length == 5:
+            {
+                var result = await T4AztecPcGfxWorldMaterialAliasTrace.ScanAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] status={result.Status}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] block={result.SourcePointerBlock}, packed reference groups={result.DistinctPackedWorldMaterialPointers}, eightByteLattice={result.SharedEightByteVirtualOffsetLattice}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] spanSlots={result.VirtualSpanEightByteSlots}, emptySlots={result.UnreferencedSlotsWithinSpan}, outsideSurfaceRawHits={result.AdditionalNonSurfaceSerializedPointerHits}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] GfxWorld +0x18C count={result.HeaderMaterialMemoryCountCandidateAt0x18C}; +0x190 ptr={result.HeaderFollowingMaterialMemoryPointerCandidateAt0x190} ({result.HeaderFollowingMaterialMemoryPointerDecoded})");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] +0x190 pointer inBlock={result.HeaderMaterialMemoryPointerInSourceBlockBounds}, equalsFirstOf39={result.HeaderPointerEqualsFirstOf39VirtualSlots}, equalsAnyOf39={result.HeaderPointerEqualsAnyOf39VirtualSlots}");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] 39-count source header candidates: {string.Join(", ", result.FixedWorldHeader39CountCandidateOffsets)}");
+                foreach (var group in result.Groups.OrderByDescending(g => g.OtherSerializedReferenceCount).Take(12))
+                    Console.WriteLine($"[AZTEC-MAT-ALIAS] {group.PcMaterialPointer}: tris={group.TriangleCount}, surfaces={group.SurfaceCount}, outsideSurfaceHits={group.OtherSerializedReferenceCount} first=[{string.Join(", ", group.OtherSerializedReferenceOffsets)}]");
+                Console.WriteLine($"[AZTEC-MAT-ALIAS] report={args[4]}");
+                Console.WriteLine("[AZTEC-MAT-ALIAS] No Material names or Xbox roots bound. NO FF.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-xenon-components" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldXenonGeometryCodec.ConvertAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-GFX-XENON] status={result.Status}; 58,653 indices + 32,713 vertices + 735 surfaces");
+                Console.WriteLine($"[AZTEC-GFX-XENON] BE indices SHA={result.XenonIndicesSha256}");
+                Console.WriteLine($"[AZTEC-GFX-XENON] BE vertices SHA={result.XenonVerticesSha256}");
+                Console.WriteLine($"[AZTEC-GFX-XENON] BE surfaces SHA={result.XenonSurfacesSha256}");
+                Console.WriteLine($"[AZTEC-GFX-XENON] Source-PC material slots={result.SurfacesRequiringMaterialBinding}, distinct={result.DistinctPcMaterialPointers}; not bound for Xbox");
+                Console.WriteLine($"[AZTEC-GFX-XENON] output={args[3]}");
+                Console.WriteLine("[AZTEC-GFX-XENON] Verified endian components, NOT a Xenon GfxWorld root or a hardware FF.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-export-obj" when args.Length == 5:
+            {
+                var result = await T4AztecPcGfxWorldMeshExporter.ExportAsync(
+                    args[1], args[2], args[3], args[4], CancellationToken.None);
+                Console.WriteLine($"[AZTEC-PC-OBJ] status={result.Status}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] source-PC vertices={result.VertexCount:N0} indexedTriangles={result.TriangleCount:N0} surfaces={result.SurfaceCount:N0}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] unique referenced vertices={result.ReferencedVertexCount:N0} source packed material pointers={result.DistinctPackedMaterialPointers:N0} degenerate triples={result.DegenerateFaceIndexTriples:N0}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] neutral geometry preview={result.ObjPath}; bytes={result.ObjBytes:N0}; sha256={result.ObjSha256}");
+                Console.WriteLine($"[AZTEC-PC-OBJ] validation manifest={args[4]}");
+                Console.WriteLine("[AZTEC-PC-OBJ] NOT a FastFile, Xbox render/world serialization is still pending.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-surfaces" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldSurfaceSourceProbe.ScanAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("AZTEC-PC-GFX-SURFACE original PC 735 x 48-byte surface array investigation");
+                Console.WriteLine($"status={result.Status}; first-three={result.ThreeRecordGates:N0}; six-record={result.SixRecordGates:N0}");
+                foreach (var c in result.TopCandidates.Take(8))
+                    Console.WriteLine($"SURFACE-CANDIDATE {c.SourceOffsetHex}: headers={c.ValidSurfaceRecords}/735 bounds={c.ValidBoundingBoxes}/735 materialPtrs={c.ValidMaterialPointers}/735 tris={c.TotalTriangleCount} maxEnd={c.MaximumIndexEnd}/58653 monotonicBase={c.MonotonicIndexBasePairs}/734 coverageMissing={c.UncoveredIndexEntries} overlaps={c.IndexSpanOverlapEntries} local={c.LocalIndicesInRange}/58653 global={c.GlobalIndicesInRange}/58653 materialPtrsInBlocks={c.SourceBlockMaterialPointers}/735 SHA={c.OriginalPCArraySha256}");
+                Console.WriteLine($"report: {args[3]}");
+                Console.WriteLine("Diagnostic source geometry only; no GfxWorld/Xbox-ready FF.");
+                return 0;
+            }
+            case "aztec-pc-gfxworld-vertices" when args.Length == 4:
+            {
+                var result = await T4AztecPcGfxWorldVertexSourceProbe.ScanAsync(
+                    args[1], args[2], args[3], CancellationToken.None);
+                Console.WriteLine("AZTEC-PC-GFX-VERTICES original 32713 x 44-byte T4 GfxWorldVertex source scan");
+                Console.WriteLine($"status={result.Status}; source indices={result.SourcePCIndexCount:N0}; PC vertices={result.SourcePCVertexCount:N0}");
+                Console.WriteLine($"scan 0x{result.ScanStart:X8}..0x{result.ScanEnd:X8}; coarse={result.CoarseCandidates:N0}; deeper={result.DeepCandidates:N0}");
+                foreach (var c in result.TopCandidates.Take(8))
+                    Console.WriteLine($"CANDIDATE {c.SourceOffsetHex}: binormalSign={c.ValidBinormalSigns:N0}/32713 XYZ={c.ValidPositions:N0}/32713 UV={c.ValidTexCoords:N0}/32713 uniqueSampleXYZ={c.UniqueSampledPositions:N0} bbox=({c.MinX:N1},{c.MinY:N1},{c.MinZ:N1})..({c.MaxX:N1},{c.MaxY:N1},{c.MaxZ:N1}) SHA={c.OriginalPCArraySha256}");
+                Console.WriteLine($"report: {args[3]}");
+                Console.WriteLine("PC geometry candidate only; not full GfxWorld, no FF, not hardware ready.");
+                return 0;
+            }
+            case "aztec-pc-gameworldsp-hunt" when args.Length == 3:
+            {
+                var result = await T4AztecPcGameWorldSpHeaderHunt.ScanAsync(
+                    args[1], args[2], CancellationToken.None);
+                Console.WriteLine("AZTEC-PC-GAMEWORLDSP 44-byte PathData structure scan");
+                Console.WriteLine($"status={result.Status}; PC roots={result.PcWorldAssetRoots.Count}; PC XAssets={result.PcAssetCount}");
+                foreach (var root in result.PcWorldAssetRoots)
+                    Console.WriteLine($"PC XAsset #{root.PcAssetIndex} {root.PcTypeName} header={root.RawHeader} kind={root.ReferenceKind}");
+                Console.WriteLine($"node-array marker windows={result.RawNodesArrayPointerMarkerHits:N0}; structural header candidates={result.StructurallyPlausibleHeaderHits:N0}");
+                foreach (var item in result.TopCandidates.Take(8))
+                    Console.WriteLine($"CANDIDATE {item.OffsetHex}: score={item.Score} nodes={item.NodeCount} chain={item.ChainNodeCount} vis={item.VisBytes} trees={item.NodeTreeCount} name={item.NamePtr} baseNodes={item.BaseNodesPtr}");
+                Console.WriteLine($"report: {args[2]}");
+                Console.WriteLine("These are structure candidates, not decoded world payloads or Xbox hardware candidates.");
                 return 0;
             }
             case "resolve" when args.Length >= 2:
@@ -602,9 +1274,11 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"wrapperRoundTrip={result.WrapperRoundTripVerified}; structuralReady={result.StructuralNativeCandidateReady}; productionReady={result.ProductionMainReady}");
                 Console.WriteLine($"hardware package: {result.HardwarePackageDirectory ?? "<none>"}");
                 Console.WriteLine($"trackedShellReady={result.ConservativeCandidateReady}; readBackErrors={result.ConservativeReadBackErrors:N0}; wrapperRoundTrip={result.ConservativeWrapperRoundTripVerified}");
+                Console.WriteLine($"RECIPE IWD script-closure overrides={result.ScriptClosureIwdScriptsOverridden:N0}; indexed precedence is not full Xbox asset closure.");
                 Console.WriteLine($"tracked-shell package: {result.ConservativeHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"scriptClosureReady={result.ScriptClosureCandidateReady}; residentMenusRemoved={result.ScriptClosureResidentMenusRemoved:N0}; rawFilesPromoted={result.ScriptClosureRawFilesPromoted:N0}; readBackErrors={result.ScriptClosureReadBackErrors:N0}; wrapperRoundTrip={result.ScriptClosureWrapperRoundTripVerified}");
                 Console.WriteLine($"script-closure package: {result.ScriptClosureHardwarePackageDirectory ?? "<not emitted>"}");
+                Console.WriteLine($"WEAPON ORDINAL A/B (DIAGNOSTIC ONLY): ready={result.WeaponOrderProbeReady}; knownAnchors={result.WeaponOrderProbeKnownNameAnchors}; unverifiedSubstitutions={result.WeaponOrderProbeUnverifiedOrdinalSubstitutions}; FF={result.WeaponOrderProbeOutputFastFile ?? "<not emitted>"}; NEVER DEPLOY");
                 Console.WriteLine($"nativeBlockReady={result.NativeBlockCandidateReady}; readBackErrors={result.NativeBlockReadBackErrors:N0}; wrapperRoundTrip={result.NativeBlockWrapperRoundTripVerified}");
                 Console.WriteLine($"native-block package: {result.NativeBlockHardwarePackageDirectory ?? "<not emitted>"}");
                 Console.WriteLine($"report: {result.TextReportFile}");
@@ -627,11 +1301,45 @@ static async Task<int> MainAsync(string[] args)
                 var result = await NormalMapLinkerV2SourceArchive.RunAsync(map, output);
                 Console.WriteLine($"Linker V2 canonical source graph: {result.CanonicalBaseName}");
                 Console.WriteLine($"rawRoots={result.PrimaryGraphSourceRoots:N0}; IWD={result.IwdFiles:N0}/{result.IwdEntries:N0}; selectedLoad={Path.GetFileName(result.SelectedLoadSource ?? "<none>")}; blockers={result.Blockers.Count:N0}");
+                Console.WriteLine($"RECIPE IWD PRECEDENCE: indexed={result.RecipeIwdPrecedenceIndexed}; uniqueScriptWinners={result.RecipeIwdScriptWinners:N0}; collisions={result.RecipeIwdScriptCollisions:N0}; appliedToXenonPayload={result.RecipeIwdPrecedenceAppliedToXenonPayload}");
                 Console.WriteLine($"Package main={result.PrimaryOutputFastFile}; load={result.LoadOutputFastFile ?? "<none>"}; externalSounds={result.ExternalSoundsExpected}");
                 if (result.GoldenOracleApplied)
                     Console.WriteLine($"Golden oracle: {result.GoldenOracleName}; mainAssets={result.GoldenMainAssetCount:N0}");
                 Console.WriteLine($"Report: {result.TextReportFile}");
                 return result.Verified ? 0 : 3;
+            }
+            case "aztec-native-test-load-emit" when args.Length == 4:
+            {
+                // Deliberately no reference-native or opaque load.ff argument:
+                // select the original PC load candidate in the source archive.
+                // The existing V2 seven-node serializer writes only that
+                // selected source, never a borrowed full Xbox _load.ff.
+                var sourceRoot = args[1];
+                var mapFolderName = args[2];
+                var outputRoot = args[3];
+                var candidates = MapDiscovery.DiscoverSourceFolder(sourceRoot);
+                var map = candidates.FirstOrDefault(m =>
+                    m.Name.Equals(mapFolderName, StringComparison.OrdinalIgnoreCase));
+                if (map is null)
+                    throw new FileNotFoundException(
+                        $"Original PC Aztec map source '{mapFolderName}' not found under '{sourceRoot}'.");
+                var selected = await NormalMapLinkerV2SourceArchive.RunAsync(map, outputRoot);
+                if (selected.SelectedLoadSource is null)
+                {
+                    Console.WriteLine("[AZTEC-NATIVE-LOAD] SOURCE_LOAD_NOT_FOUND: no original-PC selected load.ff; borrowed Xbox _load.ff forbidden.");
+                    Console.WriteLine($"[AZTEC-NATIVE-LOAD] archive={selected.JsonReportFile}");
+                    return 4;
+                }
+                var result = await NormalMapLinkerV2LoadEmitter.RunAsync(map, outputRoot, selected);
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] selectedPcSource={result.SelectedSourceFastFile}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] originalPcSelectedLoadConverted={result.Verified && result.HardwareReady}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] convertedLoad={result.OutputFastFile ?? "<missing>"}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] sha256={result.FastFileSha256 ?? "<none>"}");
+                Console.WriteLine($"[AZTEC-NATIVE-LOAD] report={result.JsonReportFile}");
+                return result.Verified && result.HardwareReady && result.GraphOrderVerified &&
+                    result.ZoneReadBackVerified && result.WrapperRoundTripVerified &&
+                    result.OutputFastFile is not null &&
+                    File.Exists(result.OutputFastFile) ? 0 : 4;
             }
             case "native-oat-identity" when args.Length >= 3:
             {
@@ -849,6 +1557,20 @@ static async Task<int> MainAsync(string[] args)
                     args[10].Equals("--aztec-pc-iwd-image-rawfile-graft", StringComparison.Ordinal);
                 var aztecOneModelMode = args.Length >= 11 &&
                     args[10].Equals("--aztec-pc-one-xmodel-image-rawfile-graft", StringComparison.Ordinal);
+                var aztecTwoModelMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-two-xmodel-image-rawfile-graft", StringComparison.Ordinal);
+                var aztecTwoModelMaterialMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-two-model-two-material-image-rawfile-graft", StringComparison.Ordinal);
+                var aztecTwoModelMaterialMapEntsMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-two-model-two-material-mapents-image-rawfile-graft", StringComparison.Ordinal);
+                var aztecSixFamilyComWorldMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-six-family-comworld-scratch-graft", StringComparison.Ordinal);
+                var aztecWorld39SourceScratchMode = args.Length >= 11 &&
+                    args[10].Equals("--aztec-pc-world-39-material-source-scratch-graft", StringComparison.Ordinal);
+                var aztecTwoModelWithMaterials = aztecTwoModelMaterialMode || aztecTwoModelMaterialMapEntsMode ||
+                    aztecSixFamilyComWorldMode || aztecWorld39SourceScratchMode;
+                var aztecAnyTwoModels = aztecTwoModelMode || aztecTwoModelWithMaterials;
+                var aztecAnyMixed = aztecImageRawMode || aztecOneModelMode || aztecAnyTwoModels;
                 if (rawFileOnlyMode && (args.Length != 12 || string.IsNullOrWhiteSpace(args[11])))
                     throw new ArgumentException(
                         "RawFile-only syntax: xenon-graph-emit <graph> <native> <identity> <binding> <output> <map> <oat> <techsets> <pixelshaders> --rawfile-graft <pc-owned-manifest.json>");
@@ -870,29 +1592,86 @@ static async Task<int> MainAsync(string[] args)
                      args[8] != "70" || args[9] != "436"))
                     throw new ArgumentException(
                         "Aztec one-model scratch syntax: xenon-graph-emit <renderer> <native> <identity> <binding> <scratch-output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-one-xmodel-image-rawfile-graft <2-PC-image-graph> 2 <114-PC-rawfile-manifest> <one-PC-xmodel-graph> <single-model-binding>");
+                if (aztecTwoModelMode &&
+                    (args.Length != 16 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec two-model SCRATCH syntax: xenon-graph-emit <renderer> <native> <identity> <binding> <scratch-output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-two-xmodel-image-rawfile-graft <2-PC-image-graph> 2 <114-PC-rawfile-manifest> <two-PC-xmodel-graph> <exact-two-model-binding>");
+                if (aztecTwoModelMaterialMode &&
+                    (args.Length != 18 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec two-XModel/two-Material SCRATCH syntax: xenon-graph-emit <renderer> <native> <identity> <binding> <scratch-output> nazi_zombie_aztec <oat> 70 436 --aztec-pc-two-model-two-material-image-rawfile-graft <2-PC-image-graph> 2 <114-PC-rawfile-manifest> <2-PC-xmodel-graphs> <xmodel-binding> <2-PC-material-graphs> <material-binding>");
+                if (aztecTwoModelMaterialMapEntsMode &&
+                    (args.Length != 19 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     string.IsNullOrWhiteSpace(args[18]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec original-PC MapEnts 5-payload SCRATCH mode requires 2 images, 114 RawFiles, 2 models, 2 materials, plus the passing standalone MapEnts canary manifest (19 arguments).");
+                var aztecIntegratedWorldCoreMode=aztecWorld39SourceScratchMode && args.Length==23;
+                if (aztecWorld39SourceScratchMode &&
+                    ((args.Length != 20 && args.Length != 23) ||
+                     (aztecIntegratedWorldCoreMode &&
+                      (string.IsNullOrWhiteSpace(args[20]) ||
+                       string.IsNullOrWhiteSpace(args[21]) ||
+                       string.IsNullOrWhiteSpace(args[22]))) || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     string.IsNullOrWhiteSpace(args[18]) || string.IsNullOrWhiteSpace(args[19]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec 39 world-Material source-SCRATCH FF mode requires 2 images, 114 RawFiles, 2 XModels, all 39 candidate Material graphs, source-only 39-root binding, PC MapEnts and PC ComWorld (20 arguments). NOT for Xbox.");
+                if (aztecSixFamilyComWorldMode &&
+                    (args.Length != 20 || string.IsNullOrWhiteSpace(args[11]) ||
+                     args[12] != "2" || string.IsNullOrWhiteSpace(args[13]) ||
+                     string.IsNullOrWhiteSpace(args[14]) || string.IsNullOrWhiteSpace(args[15]) ||
+                     string.IsNullOrWhiteSpace(args[16]) || string.IsNullOrWhiteSpace(args[17]) ||
+                     string.IsNullOrWhiteSpace(args[18]) || string.IsNullOrWhiteSpace(args[19]) ||
+                     !args[6].Equals("nazi_zombie_aztec", StringComparison.OrdinalIgnoreCase) ||
+                     args[8] != "70" || args[9] != "436"))
+                    throw new ArgumentException(
+                        "Aztec ComWorld scratch graft requires 2 images, 114 RawFiles, 2 models, 2 materials, original PC MapEnts and source-pinned ComWorld burnable cells proof (20 arguments).");
                 var canonicalBaseName = args.Length >= 7 ? args[6] : "nazi_zombie_FRUmansion";
                 var unlinker = args.Length >= 8 && !string.IsNullOrWhiteSpace(args[7]) ? args[7] : null;
                 var expectedTechsets = args.Length >= 9 && int.TryParse(args[8], out var et) ? et : 87;
                 var expectedPixelShaders = args.Length >= 10 && int.TryParse(args[9], out var ep) ? ep : 897;
-                var imageGraphRoot = (aztecImageRawMode || aztecOneModelMode) ? args[11] :
+                var imageGraphRoot = aztecAnyMixed ? args[11] :
                     !rawFileOnlyMode && args.Length >= 11 && !string.IsNullOrWhiteSpace(args[10]) ? args[10] : null;
-                var expectedImages = (aztecImageRawMode || aztecOneModelMode) ? 2 :
+                var expectedImages = aztecAnyMixed ? 2 :
                     args.Length >= 12 && int.TryParse(args[11], out var ei) ? ei : 0;
-                var imageValidationOnly = (aztecImageRawMode || aztecOneModelMode) || args.Length < 13 ||
+                var imageValidationOnly = aztecAnyMixed || args.Length < 13 ||
                     !bool.TryParse(args[12], out var ivo) || ivo;
-                var imageGraftLimit = (aztecImageRawMode || aztecOneModelMode) ? 0 :
+                var imageGraftLimit = aztecAnyMixed ? 0 :
                     args.Length >= 14 && int.TryParse(args[13], out var igl) ? igl : 0;
-                var xmodelGraphRoot = aztecOneModelMode ? args[14] : aztecImageRawMode ? null :
+                var xmodelGraphRoot = (aztecOneModelMode || aztecAnyTwoModels) ? args[14] : aztecImageRawMode ? null :
                     args.Length >= 15 && !string.IsNullOrWhiteSpace(args[14]) ? args[14] : null;
-                var xmodelBindingManifest = aztecOneModelMode ? args[15] : aztecImageRawMode ? null :
+                var xmodelBindingManifest = (aztecOneModelMode || aztecAnyTwoModels) ? args[15] : aztecImageRawMode ? null :
                     args.Length >= 16 && !string.IsNullOrWhiteSpace(args[15]) ? args[15] : null;
-                var materialGraphRoot = (aztecImageRawMode || aztecOneModelMode) ? null :
+                var materialGraphRoot = aztecTwoModelWithMaterials ? args[16] : aztecAnyMixed ? null :
                     args.Length >= 17 && !string.IsNullOrWhiteSpace(args[16]) ? args[16] : null;
-                var materialBindingManifest = (aztecImageRawMode || aztecOneModelMode) ? null :
+                var materialBindingManifest = aztecTwoModelWithMaterials ? args[17] : aztecAnyMixed ? null :
                     args.Length >= 18 && !string.IsNullOrWhiteSpace(args[17]) ? args[17] : null;
-                var rawFileGraftManifest = (aztecImageRawMode || aztecOneModelMode) ? args[13] :
+                var rawFileGraftManifest = aztecAnyMixed ? args[13] :
                     rawFileOnlyMode ? args[11] :
                     args.Length >= 19 && !string.IsNullOrWhiteSpace(args[18]) ? args[18] : null;
+                var mapEntsCanaryManifest = (aztecTwoModelMaterialMapEntsMode || aztecSixFamilyComWorldMode || aztecWorld39SourceScratchMode) ? args[18] : null;
+                var comWorldProofManifest = (aztecSixFamilyComWorldMode || aztecWorld39SourceScratchMode) ? args[19] : null;
+                var sourceWorldSeed=aztecIntegratedWorldCoreMode?args[20]:null;
+                var sourceWorldSurfaces=aztecIntegratedWorldCoreMode?args[21]:null;
+                var sourceWorldMaterials=aztecIntegratedWorldCoreMode?args[22]:null;
 
                 var result = await T4XenonRendererGraphEmitter.EmitAsync(
                     args[1], args[2], args[3], args[4], args[5],
@@ -906,10 +1685,16 @@ static async Task<int> MainAsync(string[] args)
                     xmodelBindingManifest,
                     materialGraphRoot,
                     materialBindingManifest,
-                    rawFileGraftManifest);
+                    rawFileGraftManifest,
+                    mapEntsCanaryManifest,
+                    comWorldProofManifest,
+                    aztecSourceOnly39MaterialFfScratch: aztecWorld39SourceScratchMode,
+                    aztecSourceWorldSeedReport: sourceWorldSeed,
+                    aztecSource76SurfaceManifest: sourceWorldSurfaces,
+                    aztecSourceWorldMaterialCandidates: sourceWorldMaterials);
 
                 Console.WriteLine("NUCLEAR STAGE 4E/4Y real Xenon renderer + image + XModel byte emission");
-                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
+                Console.WriteLine($"roots={result.NativeRoots:N0}; rendererTechsets={result.RendererTechniqueSets:N0}; rendererPixelShaders={result.RendererPixelShaders:N0}; realImages={result.RealImageRoots:N0}; realRawFiles={result.RealRawFileRoots:N0}; realMapEnts={result.RealMapEntsRoots:N0}; realComWorlds={result.RealComWorldRoots:N0}; realMaterials={result.RealMaterialRoots:N0}; materialRefs={result.MaterialReferenceRoots:N0}; realXModels={result.RealXModelRoots:N0}; xmodelRefs={result.XModelReferenceRoots:N0}");
                 Console.WriteLine($"zoneBytes={result.ZoneBytes:N0}; mainZoneBytes={result.MainZoneBytes:N0}; LARGE_RUNTIME={result.LargeRuntimeBytes:N0}; LARGE={result.LargeBytes:N0}");
                 Console.WriteLine($"TEMP=0x{result.TempBytes:X}; VIRTUAL=0x{result.VirtualBytes:X}; PHYSICAL=0x{result.PhysicalBytes:X}");
                 Console.WriteLine($"layoutReplayExact={result.LayoutReplayExact}; oatListedRoots={result.OatListedRoots:N0}; oatLoadedAssets={result.OatLoadedAssets:N0}; oatExternalRefs={result.OatExternalReferenceAssets:N0}; exactIdentitySequence={result.ExactIdentitySequence}");
@@ -1081,6 +1866,32 @@ static async Task<int> MainAsync(string[] args)
                 Console.WriteLine($"Zone bytes: {result.ZoneBytes:N0}");
                 Console.WriteLine($"Output bytes: {result.OutputBytes:N0}");
                 Console.WriteLine($"Verified: {result.VerifiedByteForByte}");
+                return 0;
+            }
+            case "scan-maps-json":
+            {
+                // Machine-readable multi-map discovery contract. No conversion,
+                // no expensive PC asset dump, and no mutation of source maps.
+                // The runner can stage each map under its own output directory
+                // while using exactly the existing MapDiscovery rules.
+                var root = args.Length >= 2 ? args[1] : MapDiscovery.DefaultPcMapsFolder;
+                var maps = MapDiscovery.DiscoverSourceFolder(root)
+                    .Select(map => new
+                    {
+                        name = map.Name,
+                        profile = map.Profile,
+                        signals = map.ProfileSignals,
+                        mainFastFile = map.MapFastFile,
+                        modFastFile = map.ModFastFile,
+                        patchFastFile = map.PatchFastFile,
+                        iwdCount = map.IwdCount,
+                        sourceFolders = map.SourceFolders,
+                        hasMainFastFile = map.MapFastFile is not null
+                    })
+                    .OrderBy(map => map.name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(
+                    maps, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
                 return 0;
             }
             case "scan-maps":
@@ -1280,8 +2091,16 @@ static void PrintHelp()
 {
     Console.WriteLine("WaW360Converter Linker V2 / legacy proof CLI");
     Console.WriteLine("  inspect <file.ff>                       Probe PC/Xbox wrapper + XFile header");
+    Console.WriteLine("  xenon-static-draw-pointer-selftest      Regression for generic T4 native draw XModel pointer codec");
+    Console.WriteLine("  xenon-static-draw-scalar-selftest       Generic source byte-overlay and pointer preservation test");
+    Console.WriteLine("  xenon-static-draw-derived-selftest      Arbitrary-layout PC integer -> Xbox BE16/byte additive test");
+    Console.WriteLine("  xenon-static-draw-derived-encode <input.json> <out.bin> <report.json>  Derive static draw candidates from source PC scalars; not FF");
+    Console.WriteLine("  xenon-static-draw-scalar-encode <source.json> <out.bin> <report.json>  PC-owned, exact-audited uint8 fields only; not an Xbox FF");
+    Console.WriteLine("  xenon-static-draw-pointer-encode <input.json> <output.bin> <report.json>  Encode source-owned static draw pointers from verified native roots; no FF");
     Console.WriteLine("  decompress <file.ff> <out.zone>        Decompress to raw zone");
+    Console.WriteLine("  aztec-pc-gameworldsp-hunt <PC map.ff> <report.json>  Find source 44-byte path-header candidates");
     Console.WriteLine("  compare <left.ff> <right.ff>            Compare fastfile metadata/block sizes");
+    Console.WriteLine("  aztec-native-ff-size-audit <retail.ff> <source.ff> <identity.json> <emitter.json> <proof.json> <outdir>  Exact native size/block and source-root coverage; NO payload guesses");
     Console.WriteLine("  assets <file.ff>                        Parse T4 script strings + XAssetList");
     Console.WriteLine("  manifest <file.ff> <out.json>           Export Stage 2 asset manifest");
     Console.WriteLine("  resolve <file.ff>                       Resolve Localize/RawFile/StringTable/MenuList payloads");
@@ -1313,6 +2132,7 @@ static void PrintHelp()
     Console.WriteLine("  linker-v2-native-sequence <root> <map> <output> <native.ff>  Rebuild DB-table diagnostic in native root/string order without donor payload bytes");
     Console.WriteLine("  linker-v2-main-structural <root> <map> <output> [native.ff]  Emit current self-contained main diagnostic; optional native.ff also emits same-payload native-block-capacity A/B");
     Console.WriteLine("  oat-root-bisect <candidate.ff> <Unlinker.exe> <output-dir>  Binary-search first top-level root that makes OAT fail");
+    Console.WriteLine("  aztec-native-test-load-emit <pc-root> <source-folder-name> <output>    Convert ONLY canonical original-PC-selected Aztec load FF for first native test");
     Console.WriteLine("  linker-v2-source <root> <map> <output>    Build canonical multi-source graph/package plan");
     Console.WriteLine("  inspect-xbox-reference <folder> <out>    Fingerprint a known-working Xbox map package (validation only)");
     Console.WriteLine("  native-oat-identity <native.ff> <output-dir> [Unlinker.exe]  Extract exact native Xbox (index,type,name) sequence through pinned OAT Xenon");

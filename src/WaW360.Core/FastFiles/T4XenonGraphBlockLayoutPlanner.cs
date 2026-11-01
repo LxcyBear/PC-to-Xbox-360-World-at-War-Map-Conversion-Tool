@@ -88,7 +88,13 @@ public static class T4XenonGraphBlockLayoutPlanner
         string? xmodelBindingManifest = null,
         string? materialGraphRoot = null,
         string? materialBindingManifest = null,
-        string? rawFileGraftManifest = null)
+        string? rawFileGraftManifest = null,
+        string? mapEntsCanaryManifest = null,
+        string? comWorldProofManifest = null,
+        bool aztecSourceOnly39MaterialFfScratch = false,
+        string? aztecSourceWorldSeedReport = null,
+        string? aztecSource76SurfaceManifest = null,
+        string? aztecSourceWorldMaterialCandidates = null)
     {
         var graph = T4XenonTechniqueGraphImporter.Load(
             dumpRoot, expectedTechniqueSets, expectedPixelShaders);
@@ -126,10 +132,17 @@ public static class T4XenonGraphBlockLayoutPlanner
             throw new InvalidDataException("Stage 4D requires an Xbox360 native oracle.");
 
         var roots = LoadNativeIdentity(nativeIdentityManifest);
+        var flameAudio = T4XenonAztecRealFlameAudioGraft.LoadFromEnvironment(roots);
+        var weaponCanary = await T4XenonAztecWeapon63ScalarCanary.LoadFromEnvironmentAsync(
+            roots,cancellationToken);
         var rawFileGraft = T4XenonRawFileProductionGraft.Load(rawFileGraftManifest, roots);
+        var pcMapEnts = T4XenonAztecMapEntsGraft.Load(mapEntsCanaryManifest, roots);
+        var pcComWorld = await T4XenonAztecComWorldGraft.LoadAsync(comWorldProofManifest, roots, cancellationToken);
         var bindings = LoadBindings(bindingManifest);
         var blockers = new List<string>();
         var notes = new List<string>();
+        if(weaponCanary is not null)
+            notes.Add($"WEAPON63 SCRATCH diagnostic: {weaponCanary.ByRoot.Count} native weapon roots with original PC source scalar fields and real inline XStrings only; full source-owned 7b child graph NOT in FF; source SHA-pinned proof bytes={weaponCanary.TotalOriginalOwnedProofBytes:N0}; not hardware-ready.");
 
         T4XenonMaterialCorpus? materialCorpus = null;
         if (!string.IsNullOrWhiteSpace(materialGraphRoot) ||
@@ -143,10 +156,28 @@ public static class T4XenonGraphBlockLayoutPlanner
             materialCorpus = T4XenonMaterialCorpus.Load(
                 materialGraphRoot!,
                 materialBindingManifest!,
-                roots);
+                roots,
+                expectedOwned: aztecSourceOnly39MaterialFfScratch ? 39 : 502,
+                allowSourceOnlyDiagnostic: aztecSourceOnly39MaterialFfScratch);
             blockers.AddRange(materialCorpus.ValidateDependencies(roots));
         }
 
+
+        T4XenonAztecWorldGraft? sourceWorld=null;
+        if(aztecSourceWorldSeedReport is not null ||
+           aztecSource76SurfaceManifest is not null ||
+           aztecSourceWorldMaterialCandidates is not null)
+        {
+            if(!aztecSourceOnly39MaterialFfScratch ||
+               string.IsNullOrWhiteSpace(aztecSourceWorldSeedReport) ||
+               string.IsNullOrWhiteSpace(aztecSource76SurfaceManifest) ||
+               string.IsNullOrWhiteSpace(aztecSourceWorldMaterialCandidates) ||
+               materialCorpus is null || materialCorpus.OwnedByRoot.Count != 39)
+                throw new InvalidDataException("Original PC world requires all 3 manifests and the 39 native Material corpus.");
+            sourceWorld=await T4XenonAztecWorldGraft.LoadAsync(
+                aztecSourceWorldSeedReport,aztecSource76SurfaceManifest,
+                aztecSourceWorldMaterialCandidates,roots,cancellationToken);
+        }
         if (xmodelCorpus is not null)
             blockers.AddRange(xmodelCorpus.ValidateDependencies(roots));
 
@@ -393,11 +424,73 @@ public static class T4XenonGraphBlockLayoutPlanner
                 continue;
             }
 
+            if(sourceWorld is not null && root.Index == sourceWorld.NativeRootIndex)
+            {
+                sourceWorld.Plan(
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot);
+                continue;
+            }
+
+            if (pcComWorld is not null && root.Index == pcComWorld.NativeRootIndex)
+            {
+                // T4 ComWorld: fixed 64-byte TEMP root; name string,
+                // 2 x 72-byte primary lights, 88 x 12-byte cell records,
+                // then 88 x 32-byte source-owned burnable sample arrays.
+                state.TempRoot(pcComWorld.ParentXenon.Length);
+                state.VirtualAlloc(Utf8Z(pcComWorld.Name), 1, true);
+                state.VirtualAlloc(pcComWorld.LightsXenon.Length, 4, true);
+                state.VirtualAlloc(pcComWorld.BurnableCellsXenon.Length, 4, true);
+                for (var i = 0; i < 88; i++)
+                    state.VirtualAlloc(32, 1, true);
+                continue;
+            }
+
+            if (pcMapEnts is not null && root.Index == pcMapEnts.NativeRootIndex)
+            {
+                // T4 MapEnts = name*, entityString*, numEntityChars (12 bytes).
+                // ZoneCode processes both pointed child strings in order.
+                state.TempRoot(12);
+                state.VirtualAlloc(Utf8Z(pcMapEnts.AssetName), 1, true);
+                state.VirtualAlloc(checked(pcMapEnts.SourceBytes.Length + 1L), 1, true);
+                continue;
+            }
+
             if (rawFileGraft.TryGetValue(root.Index, out var graftedRaw))
             {
                 state.TempRoot(12);
                 state.VirtualAlloc(Utf8Z(root.Name), 1, true);
                 state.VirtualAlloc(graftedRaw.Bytes.Length + 1L, 1, true);
+                continue;
+            }
+
+            // Actual Xbox retail Sound/LoadedSound source metadata and
+            // original XMA packet bytes, never identity-only shells.
+            if (flameAudio is not null && flameAudio.IsSound(root.Index))
+            {
+                flameAudio.PlanSound(root.Index,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,
+                    (size,align,serialized)=>{state.LargeAlloc(size,align,serialized);});
+                continue;
+            }
+            if (flameAudio is not null && flameAudio.IsLoaded(root.Index))
+            {
+                flameAudio.PlanLoaded(root.Index,
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot,
+                    (size,align,serialized)=>{state.LargeAlloc(size,align,serialized);});
+                continue;
+            }
+            if(weaponCanary is not null &&
+               weaponCanary.ByRoot.TryGetValue(root.Index,out var weaponEntry))
+            {
+                // Original-PC owned source WeaponDef scalars/XStrings ONLY.
+                // Layout replays exactly the same typed temporary-root and
+                // serialized VIRTUAL child allocations as the FF emitter.
+                weaponEntry.Plan(
+                    (size,align,serialized)=>{state.VirtualAlloc(size,align,serialized);},
+                    state.TempRoot);
                 continue;
             }
 
@@ -435,8 +528,16 @@ public static class T4XenonGraphBlockLayoutPlanner
             blockers.Add("Projected packed-pointer block exceeds T4 29-bit block offset space.");
 
         var ready = blockers.Count == 0;
+        if(sourceWorld is not null)
+            notes.Add("Source-owned GfxWorld: 900-byte Xenon root, all 735/39 live surface Material refs, 58653 PC indices and 32713 vertices integrated in FF traversal. Full DPVS/other child closure still incomplete; no Xbox approval.");
+        if (pcComWorld is not null)
+            notes.Add("One genuine PC-derived ComWorld #7178 parent, two primary lights, 88 burnable cells and 2816 source sample bytes; validation only.");
+        if (pcMapEnts is not null)
+            notes.Add("One genuine original-PC 571011-byte MapEnts source with pinned Xenon readback, diagnostics only.");
         if (rawFileGraft.Count != 0)
             notes.Add($"PC-backed RawFile graft: {rawFileGraft.Count:N0} native roots with verified source SHA-256 and explicit logical buffer lengths.");
+        if (flameAudio is not null)
+            notes.Add($"REAL ORIGINAL XBOX SOUND: {flameAudio.RealSoundRoots}/6 typed Xbox Sound alias roots, {flameAudio.RealLoadedSoundRoots} preexisting LoadedSound roots, {flameAudio.InlineLoadedSoundChildren} genuinely owned embedded LoadedSound children, {flameAudio.OriginalXmaPacketBytes} actual XMA packet bytes in LARGE aligned 2048; native OAT still required.");
         notes.Add("TEMP is modeled as scratch: every top-level asset starts at TEMP+0; header TEMP size is the maximum root scope.");
         notes.Add("TEMP-backed roots reserve 4-byte VIRTUAL insert slots; non-TEMP StringTable roots occupy 16 serialized VIRTUAL bytes directly (no INSERT alias).");
         notes.Add("TechniqueSet children/cached shader parts are VIRTUAL; physical shader parts are PHYSICAL aligned to 32 bytes.");
