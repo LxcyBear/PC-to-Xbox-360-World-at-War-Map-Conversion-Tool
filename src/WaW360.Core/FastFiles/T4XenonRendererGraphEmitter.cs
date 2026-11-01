@@ -40,6 +40,7 @@ public sealed class T4XenonRendererEmitResult
     public int OriginalXboxFlameNativeLoadedRoots { get; init; }
     public int OriginalXboxFlameNativeInlineLoadedBodies { get; init; }
     public long OriginalXboxFlameNativeXmaPacketBytes { get; init; }
+    public int OriginalXboxFlameNativeBitExactXmaPacketsReadBack { get; init; }
     public int OriginalPcWeaponOwnedDirectSoundAliasRecords { get; init; }
     public int OriginalPcWeaponOwnedDirectSoundAliasNames { get; init; }
     public long OriginalPcWeaponOwnedDirectSoundAliasNameBytes { get; init; }
@@ -606,6 +607,9 @@ public static class T4XenonRendererGraphEmitter
         var zoneBytes = new byte[checked(mainBytes.Length + runtimeBytes.Length)];
         Buffer.BlockCopy(mainBytes, 0, zoneBytes, 0, mainBytes.Length);
         Buffer.BlockCopy(runtimeBytes, 0, zoneBytes, mainBytes.Length, runtimeBytes.Length);
+        var realXboxXmaPacketProofs = flameAudio?.VerifyNativeZoneOriginalPacketBytes(zoneBytes) ?? 0;
+        if (flameAudio is not null && realXboxXmaPacketProofs != 6)
+            throw new InvalidDataException("Six original Xbox XMA source packet buffers not bit-exact inside serialized native zone.");
         var zonePath = Path.Combine(outputDirectory, "nuclear_xenon_renderer.zone");
         await File.WriteAllBytesAsync(zonePath, zoneBytes, cancellationToken);
 
@@ -784,6 +788,7 @@ public static class T4XenonRendererGraphEmitter
             OriginalXboxFlameNativeLoadedRoots = flameAudio?.RealLoadedSoundRoots ?? 0,
             OriginalXboxFlameNativeInlineLoadedBodies = flameAudio?.InlineLoadedSoundChildren ?? 0,
             OriginalXboxFlameNativeXmaPacketBytes = flameAudio?.OriginalXmaPacketBytes ?? 0,
+            OriginalXboxFlameNativeBitExactXmaPacketsReadBack = realXboxXmaPacketProofs,
             OriginalPcWeaponOwnedDirectSoundAliasRecords = weaponCanary?.TotalOwnedDirectSoundAliasRecords ?? 0,
             OriginalPcWeaponOwnedDirectSoundAliasNames = weaponCanary?.TotalOwnedDirectSoundAliasNames ?? 0,
             OriginalPcWeaponOwnedDirectSoundAliasNameBytes = weaponCanary?.TotalOwnedDirectSoundAliasNameBytes ?? 0,
