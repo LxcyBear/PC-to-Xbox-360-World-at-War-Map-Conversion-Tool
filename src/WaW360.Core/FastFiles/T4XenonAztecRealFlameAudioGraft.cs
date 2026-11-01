@@ -312,7 +312,7 @@ internal sealed class T4XenonAztecRealFlameAudioGraft
             throw new InvalidDataException($"{asset}: original Xbox XMA format/seek chunks mismatch.");
         var streams = BinaryPrimitives.ReadUInt16LittleEndian(fmt.AsSpan(8, 2));
         if (streams is < 1 or > 6 || fmt.Length != 12 + 20 * streams ||
-            host[92] != 3 || host[96] != streams)
+            host[92] != 3 || host[96] != streams || fmt[11] != 2)
             throw new InvalidDataException($"{asset}: original Xbox XMA stream count/sample type mismatch.");
         var originalSize = BinaryPrimitives.ReadUInt32LittleEndian(host.AsSpan(8, 4));
         var originalSeekCount = BinaryPrimitives.ReadInt32LittleEndian(host.AsSpan(152, 4));
@@ -320,7 +320,10 @@ internal sealed class T4XenonAztecRealFlameAudioGraft
         if (originalSize != packet.Length || originalSize == 0 ||
             originalSeekCount < 0 || originalSeekCount != seek.Length / 4 ||
             BinaryPrimitives.ReadInt32LittleEndian(host.AsSpan(148, 4)) != duration ||
-            BinaryPrimitives.ReadUInt32LittleEndian(host.AsSpan(12, 4)) != fmt[10])
+            // OAT's RIFF XMA format holds LoopCount as one byte; the
+            // authentic Xbox XAUDIOPACKET LoopCount is a full uint.
+            // e.g. source LoopCount 0xFFFFFFFF is RIFF LoopCount 0xFF.
+            host[12] != fmt[10])
             throw new InvalidDataException($"{asset}: XMA packet size, loop count, duration or seek count is inconsistent with OAT-owned LoadedSound.");
         for (var i = 0; i < streams; i++)
         {
